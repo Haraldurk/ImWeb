@@ -286,14 +286,14 @@ export class ParameterSystem extends EventTarget {
 export function registerCoreParameters(ps) {
 
   // ── Layer source selection ────────────────────────────────────────────────
-  const SOURCES = ['Camera', 'Movie', 'Buffer', 'Color', 'Noise', '3D Scene', 'Draw', 'Output', 'BG1', 'BG2', 'Color2'];
+  const SOURCES = ['Camera', 'Movie', 'Buffer', 'Color', 'Noise', '3D Scene', 'Draw', 'Output', 'BG1', 'BG2', 'Color2', 'Text'];
 
   ps.register({ id: 'layer.fg', label: 'Foreground', group: 'layers',
     type: PARAM_TYPE.SELECT, options: SOURCES, value: 3, feedbackVisible: true }); // default: Color
   ps.register({ id: 'layer.bg', label: 'Background', group: 'layers',
     type: PARAM_TYPE.SELECT, options: SOURCES, value: 3, feedbackVisible: true }); // default: Color
   ps.register({ id: 'layer.ds', label: 'DisplaceSrc', group: 'layers',
-    type: PARAM_TYPE.SELECT, options: [...SOURCES, 'Sound'], value: 4, feedbackVisible: true });
+    type: PARAM_TYPE.SELECT, options: [...SOURCES, 'Sound'], value: 4, feedbackVisible: true }); // Sound = index 12
 
   // ── Keyer ─────────────────────────────────────────────────────────────────
   ps.register({ id: 'keyer.active',     label: 'Keyer ON',      group: 'keyer',
@@ -481,7 +481,17 @@ export function registerCoreParameters(ps) {
 
   // ── Text ──────────────────────────────────────────────────────────────────
   ps.register({ id: 'text.size',    label: 'TextSize',    group: 'text',
-    min: 0, max: 255, value: 48 });
+    min: 8, max: 255, value: 72 });
+  ps.register({ id: 'text.x',       label: 'TextX',       group: 'text',
+    min: 0, max: 100, value: 50 });
+  ps.register({ id: 'text.y',       label: 'TextY',       group: 'text',
+    min: 0, max: 100, value: 50 });
+  ps.register({ id: 'text.hue',     label: 'TextHue',     group: 'text',
+    min: 0, max: 100, value: 0, unit: '°' });
+  ps.register({ id: 'text.mode',    label: 'AdvanceMode', group: 'text',
+    type: PARAM_TYPE.SELECT, options: ['All','Char','Word','Line'], value: 0 });
+  ps.register({ id: 'text.bg',      label: 'BlackBG',     group: 'text',
+    type: PARAM_TYPE.TOGGLE, value: 0 });
   ps.register({ id: 'text.advance', label: 'TextAdvance', group: 'text',
     type: PARAM_TYPE.TRIGGER });
 

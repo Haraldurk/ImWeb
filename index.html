@@ -47,6 +47,7 @@
         <button class="tab active" data-tab="mapping">Mapping</button>
         <button class="tab" data-tab="buffer">Buffer</button>
         <button class="tab" data-tab="draw">Draw</button>
+        <button class="tab" data-tab="text">Text</button>
         <button class="tab" data-tab="scene3d">3D</button>
         <button class="tab" data-tab="clips">Clips</button>
         <button class="tab" data-tab="presets">Presets</button>
@@ -108,6 +109,27 @@
         <div class="panel-section">
           <div class="section-header">Brush</div>
           <div id="draw-params"></div>
+        </div>
+      </div>
+
+      <!-- TEXT TAB -->
+      <div id="tab-text" class="tab-content">
+        <div class="panel-section">
+          <div class="section-header">Text Layer</div>
+          <canvas id="text-preview" width="256" height="256"
+            style="display:block;width:100%;image-rendering:pixelated;border:1px solid var(--border);background:#000;"></canvas>
+          <textarea id="text-content" rows="4" spellcheck="false"
+            style="width:100%;box-sizing:border-box;margin-top:6px;font-family:var(--mono);font-size:12px;
+                   background:var(--bg-4);border:1px solid var(--border);color:var(--text-1);
+                   padding:6px;border-radius:3px;resize:vertical;">ImWeb</textarea>
+          <div style="display:flex;gap:6px;padding:4px 0;">
+            <button id="btn-text-advance" class="import-btn">→ Advance</button>
+            <button id="btn-text-reset"   class="import-btn">↩ Reset</button>
+          </div>
+        </div>
+        <div class="panel-section">
+          <div class="section-header">Style</div>
+          <div id="text-params"></div>
         </div>
       </div>
 
