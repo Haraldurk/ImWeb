@@ -188,6 +188,9 @@ async function main() {
   const presetMgr = new PresetManager(ps, ctrl);
   await presetMgr.init();
 
+  // MIDI Program Change → preset recall (PC 0–127 maps to preset index)
+  ctrl.onMIDIPC = pcNum => presetMgr.activatePreset(pcNum);
+
   // Wire tableManager into ParameterSystem so controller setNormalized() applies curves
   setTableManager(tableManager);
   await tableManager.init(await openDB());
@@ -1382,6 +1385,7 @@ async function main() {
   let autoCapTimer = 0;
   let scanTimer = 0;
   let scanDir = 1; // +1 fwd, -1 back (for ping-pong)
+  let strobePhase = 0; // 0–1 phase within one strobe cycle
 
   function render(now) {
     requestAnimationFrame(render);
@@ -1495,8 +1499,19 @@ async function main() {
       warpMaps,
     };
 
+    // Stroboscope: on "off" phase, freeze output (skip pipeline, blit prev)
+    const strobeOn   = ps.get('effect.strobe').value;
+    const strobeRate = ps.get('effect.stroberate').value;
+    const strobeDuty = ps.get('effect.strobeduty').value / 100;
+    if (strobeOn && strobeRate > 0) {
+      strobePhase = (strobePhase + dt * strobeRate) % 1;
+    }
+    const strobeFreeze = strobeOn && strobePhase >= strobeDuty;
+
     // Run compositing pipeline
-    pipeline.render(inputs, ps, dt);
+    if (!strobeFreeze) {
+      pipeline.render(inputs, ps, dt);
+    }
 
     // Capture output into video delay ring buffer
     videoDelay.capture(pipeline.prev.texture);

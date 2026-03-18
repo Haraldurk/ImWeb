@@ -607,6 +607,14 @@ export function registerCoreParameters(ps) {
   ps.register({ id: 'effect.bloomthresh',label:'BloomThresh',group: 'effect',
     min: 0, max: 100, value: 70, unit: '%' });
 
+  // ── Stroboscope ───────────────────────────────────────────────────────────
+  ps.register({ id: 'effect.strobe',     label: 'Strobe',     group: 'effect',
+    type: PARAM_TYPE.TOGGLE, value: 0, feedbackVisible: true });
+  ps.register({ id: 'effect.stroberate', label: 'StrobeRate', group: 'effect',
+    min: 0.5, max: 60, value: 8, unit: 'Hz' });
+  ps.register({ id: 'effect.strobeduty', label: 'StrobeDuty', group: 'effect',
+    min: 1, max: 99, value: 50, unit: '%' });
+
   // ── Film Grain / Scanlines ────────────────────────────────────────────────
   ps.register({ id: 'effect.grain',      label: 'FilmGrain',  group: 'effect',
     min: 0, max: 100, value: 0, unit: '%' });

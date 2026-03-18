@@ -29,6 +29,10 @@ export class ControllerManager {
     this._midiClockTimes    = []; // timestamps of recent 0xF8 messages
     this._midiClockCallback = null; // called with derived bpm
 
+    // MIDI Program Change → preset recall
+    // Set to a function(pcNumber) to receive PC messages globally
+    this.onMIDIPC = null;
+
     this._initKeyboard();
     this._initMouse();
     this._initMIDI();
@@ -322,9 +326,15 @@ export class ControllerManager {
           else if (p.type === 'trigger') { if (data2 > 0) p.trigger(); }
           else p.setNormalized(data2 > 0 ? data2 / 127 : 0);
         } else if (type === 0xC0 && c.type === 'midi-pc') {
+          if (this.onMIDIPC) this.onMIDIPC(data1); // global PC callback (preset recall)
           p.value = data1;
         }
       });
+
+      // Global MIDI PC callback (fires for any PC message regardless of param mapping)
+      if (type === 0xC0 && this.onMIDIPC) {
+        this.onMIDIPC(data1);
+      }
 
       // Show MIDI activity
       const el = document.getElementById('status-midi');
