@@ -20,6 +20,7 @@ import {
   VERT, KEYER, DISPLACE, BLEND, FEEDBACK,
   TRANSFERMODE, COLORSHIFT, NOISE_GEN, INTERLACE, MIRROR, SOLID_COLOR, WARP, FADE, PASSTHROUGH,
   BUFFER_TRANSFORM, INTERP,
+  PIXELATE, EDGE, RGBSHIFT, POSTERIZE, SOLARIZE,
 } from '../shaders/index.js';
 
 export class Pipeline {
@@ -196,8 +197,57 @@ export class Pipeline {
       });
     }
 
+    // ── Pixelate ──────────────────────────────────────────────────────────
+    let pixelated = shifted;
+    const pixAmt = p.get('effect.pixelate').value;
+    if (pixAmt > 1) {
+      pixelated = this._pass(this.m.pixelate, {
+        uTexture: shifted, uAmount: pixAmt,
+        uResolution: new THREE.Vector2(this.width, this.height),
+      });
+    }
+
+    // ── Edge detect ───────────────────────────────────────────────────────
+    let edged = pixelated;
+    const edgeAmt = p.get('effect.edge').value / 100;
+    if (edgeAmt > 0) {
+      edged = this._pass(this.m.edge, {
+        uTexture: pixelated, uAmount: edgeAmt,
+        uInvert: p.get('effect.edge_inv').value,
+        uResolution: new THREE.Vector2(this.width, this.height),
+      });
+    }
+
+    // ── RGB shift ─────────────────────────────────────────────────────────
+    let rgbShifted = edged;
+    const rgbAmt = p.get('effect.rgbshift').value / 100;
+    if (rgbAmt > 0) {
+      rgbShifted = this._pass(this.m.rgbshift, {
+        uTexture: edged, uAmount: rgbAmt * 0.05,
+        uAngle: p.get('effect.rgbangle').value * Math.PI / 180,
+      });
+    }
+
+    // ── Posterize ─────────────────────────────────────────────────────────
+    let posterized = rgbShifted;
+    const postLvl = p.get('effect.posterize').value;
+    if (postLvl < 32) {
+      posterized = this._pass(this.m.posterize, {
+        uTexture: rgbShifted, uLevels: postLvl,
+      });
+    }
+
+    // ── Solarize ──────────────────────────────────────────────────────────
+    let solarized = posterized;
+    const solThresh = p.get('effect.solarize').value / 100;
+    if (solThresh < 1) {
+      solarized = this._pass(this.m.solarize, {
+        uTexture: posterized, uThreshold: solThresh,
+      });
+    }
+
     // ── Interlace ─────────────────────────────────────────────────────────
-    let interlaced = shifted;
+    let interlaced = solarized;
     const il = p.get('output.interlace').value;
     if (il > 0) {
       interlaced = this._pass(this.m.interlace, {
@@ -410,6 +460,16 @@ export class Pipeline {
         uResolution: { value: new THREE.Vector2(1280, 720) },
         uMode:       { value: 0 },
       }),
+      pixelate:  this._mat(PIXELATE, {
+        uAmount: { value: 1 }, uResolution: { value: new THREE.Vector2(1280, 720) },
+      }),
+      edge:      this._mat(EDGE, {
+        uAmount: { value: 0 }, uInvert: { value: 0 },
+        uResolution: { value: new THREE.Vector2(1280, 720) },
+      }),
+      rgbshift:  this._mat(RGBSHIFT, { uAmount: { value: 0 }, uAngle: { value: 0 } }),
+      posterize: this._mat(POSTERIZE, { uLevels: { value: 32 } }),
+      solarize:  this._mat(SOLARIZE,  { uThreshold: { value: 1 } }),
     };
   }
 }

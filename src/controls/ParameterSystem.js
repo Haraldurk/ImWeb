@@ -10,6 +10,10 @@
  *   → Parameter.value → onChange callbacks → render update
  */
 
+// Set by main.js after TableManager is initialised
+let _tableManager = null;
+export function setTableManager(tm) { _tableManager = tm; }
+
 export const PARAM_TYPE = {
   CONTINUOUS: 'continuous', // floating point in [min, max]
   TOGGLE:     'toggle',     // 0 | 1
@@ -235,7 +239,10 @@ export class ParameterSystem extends EventTarget {
 
   setNormalized(id, n, table = null) {
     const p = this.params.get(id);
-    if (p) p.setNormalized(n, table);
+    if (!p) return;
+    // Resolve table by name if the param has one assigned and none provided directly
+    const resolved = table ?? (p.table && _tableManager ? _tableManager.get(p.table) : null);
+    p.setNormalized(n, resolved);
   }
 
   toggle(id)  { this.params.get(id)?.toggle(); }
@@ -487,6 +494,22 @@ export function registerCoreParameters(ps) {
   // ── Interpolation ─────────────────────────────────────────────────────────
   ps.register({ id: 'output.interp', label: 'Interpolation', group: 'output',
     type: PARAM_TYPE.SELECT, options: ['none', 'linear', 'bicubic'], value: 0 });
+
+  // ── Effects ───────────────────────────────────────────────────────────────
+  ps.register({ id: 'effect.pixelate',  label: 'Pixelate',   group: 'effect',
+    min: 1, max: 200, value: 1, unit: 'px', feedbackVisible: false });
+  ps.register({ id: 'effect.edge',      label: 'Edge',       group: 'effect',
+    min: 0, max: 100, value: 0, unit: '%' });
+  ps.register({ id: 'effect.edge_inv',  label: 'EdgeInvert', group: 'effect',
+    type: PARAM_TYPE.TOGGLE, value: 0 });
+  ps.register({ id: 'effect.rgbshift',  label: 'RGB Shift',  group: 'effect',
+    min: 0, max: 100, value: 0, unit: '%' });
+  ps.register({ id: 'effect.rgbangle',  label: 'RGB Angle',  group: 'effect',
+    min: 0, max: 360, value: 0, unit: '°' });
+  ps.register({ id: 'effect.posterize', label: 'Posterize',  group: 'effect',
+    min: 2, max: 32, value: 32, step: 1 });
+  ps.register({ id: 'effect.solarize',  label: 'Solarize',   group: 'effect',
+    min: 0, max: 100, value: 100, unit: '%' });
 
   return ps;
 }

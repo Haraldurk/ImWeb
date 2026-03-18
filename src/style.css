@@ -520,6 +520,30 @@ button {
   font-family: var(--mono);
 }
 
+/* ── TABLES EDITOR ───────────────────────────────────────────────────────── */
+
+.table-list-row {
+  display: flex;
+  align-items: center;
+  padding: 3px 8px;
+  border-radius: 3px;
+  cursor: pointer;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-1);
+}
+.table-list-row:hover  { background: var(--bg-4); }
+.table-list-row.active { background: var(--bg-4); color: var(--accent); }
+
+#table-editor {
+  display: block;
+  width: 100%;
+  cursor: crosshair;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  margin: 6px 0;
+}
+
 /* ── CLIPS LIST ──────────────────────────────────────────────────────────── */
 
 #btn-add-clip {

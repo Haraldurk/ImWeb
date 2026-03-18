@@ -15,7 +15,8 @@
  */
 
 import * as THREE from 'three';
-import { ParameterSystem, registerCoreParameters } from './controls/ParameterSystem.js';
+import { ParameterSystem, registerCoreParameters, setTableManager } from './controls/ParameterSystem.js';
+import { tableManager } from './state/TableManager.js';
 import { ControllerManager } from './controls/ControllerManager.js';
 import { CameraInput }    from './inputs/CameraInput.js';
 import { MovieInput }     from './inputs/MovieInput.js';
@@ -24,7 +25,7 @@ import { DrawLayer }      from './inputs/DrawLayer.js';
 import { buildWarpMaps }  from './inputs/WarpMaps.js';
 import { SceneManager } from './scene3d/SceneManager.js';
 import { Pipeline } from './core/Pipeline.js';
-import { PresetManager } from './state/Preset.js';
+import { PresetManager, openDB } from './state/Preset.js';
 import {
   initTabs,
   buildLayerButtons,
@@ -36,6 +37,7 @@ import {
   FeedbackOverlay,
   PresetsPanel,
   FPSDisplay,
+  TablesEditor,
 } from './ui/UI.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -143,15 +145,19 @@ async function main() {
   ps.set('layer.bg', 3); // Color
   ps.set('layer.ds', 4); // Noise
 
-  // ── 6. Preset manager ─────────────────────────────────────────────────────
+  // ── 6. Preset manager + Table manager ────────────────────────────────────
 
   const presetMgr = new PresetManager(ps, ctrl);
   await presetMgr.init();
 
+  // Wire tableManager into ParameterSystem so controller setNormalized() applies curves
+  setTableManager(tableManager);
+  await tableManager.init(await openDB());
+
   // ── 7. UI ─────────────────────────────────────────────────────────────────
 
   initTabs();
-  const contextMenu = new ContextMenu(ps, ctrl, presetMgr);
+  const contextMenu = new ContextMenu(ps, ctrl, presetMgr, tableManager);
   buildLayerButtons(ps, contextMenu);
   buildMappingPanels(ps, contextMenu);
   buildGeometryButtons(ps, scene3d);
@@ -160,7 +166,8 @@ async function main() {
   const signalPath  = new SignalPath(ps);
   const feedbackOl  = new FeedbackOverlay(ps);
   const presetsPanel = new PresetsPanel(presetMgr);
-  const fpsDisplay  = new FPSDisplay();
+  const fpsDisplay    = new FPSDisplay();
+  const tablesEditor  = new TablesEditor(tableManager);
 
   // ── Camera controls ───────────────────────────────────────────────────────
 

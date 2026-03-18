@@ -224,6 +224,7 @@ export function buildMappingPanels(ps, contextMenu) {
     'camera3d-params': ps.getGroup('scene3d').filter(p => p.id.includes('cam')),
     'material-params': ps.getGroup('scene3d').filter(p => p.id.includes('mat') || p.id.includes('wire') || p.id.includes('light')),
     'draw-params':     ps.getGroup('draw'),
+    'effect-params':   ps.getGroup('effect'),
   };
 
   Object.entries(sections).forEach(([elId, params]) => {
@@ -444,12 +445,14 @@ export class SignalPath {
 // ── Context menu for parameter controller assignment ───────────────────────────
 
 export class ContextMenu {
-  constructor(ps, controllerManager, presetManager = null) {
+  constructor(ps, controllerManager, presetManager = null, tableManager = null) {
     this.ps      = ps;
     this.ctrl    = controllerManager;
     this.presets = presetManager;
+    this.tables  = tableManager;
     this.el      = document.getElementById('param-context-menu');
     this._currentParam = null;
+    this._tablePopup   = null;
     this._wire();
   }
 
@@ -518,14 +521,68 @@ export class ContextMenu {
       btn.addEventListener('click', () => {
         if (!this._currentParam) return;
         const action = btn.dataset.action;
-        if (action === 'invert') this._currentParam.invert = !this._currentParam.invert;
+        if (action === 'invert') {
+          this._currentParam.invert = !this._currentParam.invert;
+          this.hide();
+        }
         if (action === 'show') {
           this._currentParam.feedbackVisible = !this._currentParam.feedbackVisible;
           this.ps.dispatchEvent(new CustomEvent('feedbackToggled', { detail: this._currentParam }));
+          this.hide();
         }
-        this.hide();
+        if (action === 'table') {
+          this._showTablePicker(btn);
+        }
       });
     });
+  }
+
+  _showTablePicker(anchorBtn) {
+    // Remove existing popup
+    this._tablePopup?.remove();
+
+    const popup = document.createElement('div');
+    popup.className = 'table-picker';
+    document.body.appendChild(popup);
+    this._tablePopup = popup;
+
+    const names = this.tables ? this.tables.getNames() : [];
+
+    // "None" option
+    const noneBtn = document.createElement('button');
+    noneBtn.className = 'menu-item' + (!this._currentParam?.table ? ' active' : '');
+    noneBtn.textContent = '— None —';
+    noneBtn.addEventListener('click', () => {
+      if (this._currentParam) this._currentParam.table = null;
+      popup.remove(); this.hide();
+    });
+    popup.appendChild(noneBtn);
+
+    names.forEach(name => {
+      const btn = document.createElement('button');
+      btn.className = 'menu-item' + (this._currentParam?.table === name ? ' active' : '');
+      btn.textContent = name;
+      btn.addEventListener('click', () => {
+        if (this._currentParam) this._currentParam.table = name;
+        popup.remove(); this.hide();
+      });
+      popup.appendChild(btn);
+    });
+
+    // Position next to anchor
+    const r = anchorBtn.getBoundingClientRect();
+    popup.style.cssText = `position:fixed;left:${r.right + 4}px;top:${r.top}px;z-index:3000;
+      background:var(--bg-3);border:1px solid var(--border-hi);border-radius:4px;padding:4px;
+      box-shadow:0 4px 12px rgba(0,0,0,.5);min-width:110px;`;
+
+    // Close on outside click
+    const closeHandler = e => {
+      if (!popup.contains(e.target) && e.target !== anchorBtn) {
+        popup.remove();
+        document.removeEventListener('click', closeHandler, true);
+      }
+    };
+    setTimeout(() => document.addEventListener('click', closeHandler, true), 0);
   }
 }
 
@@ -658,6 +715,173 @@ export class PresetsPanel {
   _wireNav() {
     document.getElementById('btn-preset-prev')?.addEventListener('click', () => this.pm.prevPreset());
     document.getElementById('btn-preset-next')?.addEventListener('click', () => this.pm.nextPreset());
+  }
+}
+
+// ── Tables editor ────────────────────────────────────────────────────────────
+
+export class TablesEditor {
+  constructor(tableManager) {
+    this.tm       = tableManager;
+    this.canvas   = document.getElementById('table-editor');
+    this.listEl   = document.getElementById('tables-list');
+    this._current = null;  // currently selected table name
+    this._drawing = false;
+
+    if (!this.canvas) return;
+    this.ctx = this.canvas.getContext('2d');
+    this._buildList();
+    this._wireCanvas();
+    this.tm.addEventListener('change', () => this._buildList());
+  }
+
+  // ── List of tables ──────────────────────────────────────────────────────
+
+  _buildList() {
+    if (!this.listEl) return;
+    this.listEl.innerHTML = '';
+
+    this.tm.getNames().forEach(name => {
+      const row = document.createElement('div');
+      row.className = 'table-list-row' + (name === this._current ? ' active' : '');
+
+      const lbl = document.createElement('span');
+      lbl.textContent = name;
+      lbl.style.cssText = 'flex:1;font-size:11px;cursor:pointer;';
+      lbl.addEventListener('click', () => this._select(name));
+
+      row.appendChild(lbl);
+
+      if (!this.tm.isBuiltin(name)) {
+        const del = document.createElement('button');
+        del.textContent = '✕';
+        del.style.cssText = 'font-size:10px;padding:0 4px;background:none;border:none;color:var(--text-2);cursor:pointer;';
+        del.title = 'Delete table';
+        del.addEventListener('click', e => {
+          e.stopPropagation();
+          if (this._current === name) this._current = null;
+          this.tm.delete(name);
+        });
+        row.appendChild(del);
+      }
+
+      this.listEl.appendChild(row);
+    });
+
+    // "New table" button
+    const newBtn = document.createElement('button');
+    newBtn.className = 'import-btn';
+    newBtn.textContent = '+ New Table';
+    newBtn.style.cssText = 'margin:6px 0;width:100%;';
+    newBtn.addEventListener('click', () => {
+      const name = prompt('Table name:', `user-${Date.now().toString(36)}`);
+      if (!name) return;
+      // Start with linear curve
+      const pts = Array.from({ length: 256 }, (_, i) => i / 255);
+      this.tm.set(name, pts);
+      this._select(name);
+    });
+    this.listEl.appendChild(newBtn);
+
+    // Re-select current
+    if (this._current) this._drawCurve(this._current);
+  }
+
+  _select(name) {
+    this._current = name;
+    this._buildList();
+    this._drawCurve(name);
+  }
+
+  // ── Canvas drawing ───────────────────────────────────────────────────────
+
+  _drawCurve(name) {
+    if (!this.ctx) return;
+    const W = this.canvas.width;
+    const H = this.canvas.height;
+    const curve = this.tm.get(name);
+
+    this.ctx.clearRect(0, 0, W, H);
+
+    // Background
+    this.ctx.fillStyle = '#0d0d14';
+    this.ctx.fillRect(0, 0, W, H);
+
+    // Grid
+    this.ctx.strokeStyle = '#1e1e2e';
+    this.ctx.lineWidth = 1;
+    for (let i = 1; i < 4; i++) {
+      const x = Math.round(W * i / 4) + 0.5;
+      const y = Math.round(H * i / 4) + 0.5;
+      this.ctx.beginPath(); this.ctx.moveTo(x, 0); this.ctx.lineTo(x, H); this.ctx.stroke();
+      this.ctx.beginPath(); this.ctx.moveTo(0, y); this.ctx.lineTo(W, y); this.ctx.stroke();
+    }
+
+    // Diagonal reference (linear)
+    this.ctx.strokeStyle = '#282838';
+    this.ctx.lineWidth = 1;
+    this.ctx.beginPath(); this.ctx.moveTo(0, H); this.ctx.lineTo(W, 0); this.ctx.stroke();
+
+    if (!curve) return;
+
+    // Curve
+    this.ctx.strokeStyle = '#e8c840';
+    this.ctx.lineWidth = 1.5;
+    this.ctx.beginPath();
+    for (let i = 0; i < 256; i++) {
+      const x = (i / 255) * W;
+      const y = (1 - curve.points[i]) * H;
+      i === 0 ? this.ctx.moveTo(x, y) : this.ctx.lineTo(x, y);
+    }
+    this.ctx.stroke();
+  }
+
+  _wireCanvas() {
+    const W = this.canvas.width;
+    const H = this.canvas.height;
+
+    const paint = e => {
+      if (!this._current || this.tm.isBuiltin(this._current)) return;
+      const r  = this.canvas.getBoundingClientRect();
+      const nx = (e.clientX - r.left) / r.width;
+      const ny = 1 - (e.clientY - r.top)  / r.height;
+      const ix = Math.round(nx * 255);
+      const iy = Math.max(0, Math.min(1, ny));
+      if (ix < 0 || ix > 255) return;
+
+      const curve = this.tm.get(this._current);
+      if (!curve) return;
+
+      // Smooth fill between last painted index and current (avoid gaps on fast drag)
+      if (this._lastPaintIdx !== null) {
+        const from = Math.min(this._lastPaintIdx, ix);
+        const to   = Math.max(this._lastPaintIdx, ix);
+        for (let i = from; i <= to; i++) {
+          const t = to === from ? 1 : (i - from) / (to - from);
+          curve.points[i] = this._lastPaintVal + t * (iy - this._lastPaintVal);
+        }
+      } else {
+        curve.points[ix] = iy;
+      }
+      this._lastPaintIdx = ix;
+      this._lastPaintVal = iy;
+
+      this.tm.set(this._current, curve); // triggers 'change' → persist
+      this._drawCurve(this._current);
+    };
+
+    this.canvas.addEventListener('mousedown', e => {
+      this._drawing = true;
+      this._lastPaintIdx = null;
+      this._lastPaintVal = null;
+      paint(e);
+    });
+    this.canvas.addEventListener('mousemove', e => { if (this._drawing) paint(e); });
+    window.addEventListener('mouseup', () => {
+      this._drawing = false;
+      this._lastPaintIdx = null;
+    });
+    this.canvas.addEventListener('contextmenu', e => e.preventDefault());
   }
 }
 

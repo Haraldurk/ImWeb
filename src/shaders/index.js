@@ -383,6 +383,104 @@ export const INTERP = /* glsl */ `
 // uScale: zoom factor (1 = identity, 2 = 2× zoom in)
 // WGSL: equivalent textureLoad with computed coords
 
+// ── Pixelate / Mosaic ─────────────────────────────────────────────────────────
+// uAmount: pixel block size in pixels (1 = no effect, 2–200)
+// uResolution: output size in pixels
+
+export const PIXELATE = /* glsl */ `
+  uniform sampler2D uTexture;
+  uniform float uAmount;
+  uniform vec2  uResolution;
+  varying vec2 vUv;
+  void main() {
+    if (uAmount <= 1.0) { gl_FragColor = texture2D(uTexture, vUv); return; }
+    vec2 blockSize = vec2(uAmount) / uResolution;
+    vec2 snapped   = floor(vUv / blockSize) * blockSize + blockSize * 0.5;
+    gl_FragColor   = texture2D(uTexture, clamp(snapped, 0.0, 1.0));
+  }
+`;
+
+// ── Edge detection (Sobel) ────────────────────────────────────────────────────
+// uAmount: strength 0–1; uInvert: show edges on black (0) or white (1) bg
+
+export const EDGE = /* glsl */ `
+  uniform sampler2D uTexture;
+  uniform float uAmount;
+  uniform int   uInvert;
+  uniform vec2  uResolution;
+  varying vec2 vUv;
+
+  float luma(vec3 c) { return dot(c, vec3(0.2126, 0.7152, 0.0722)); }
+
+  void main() {
+    if (uAmount == 0.0) { gl_FragColor = texture2D(uTexture, vUv); return; }
+    vec2 px = 1.0 / uResolution;
+    float tl = luma(texture2D(uTexture, vUv + vec2(-px.x,  px.y)).rgb);
+    float t  = luma(texture2D(uTexture, vUv + vec2( 0.0,   px.y)).rgb);
+    float tr = luma(texture2D(uTexture, vUv + vec2( px.x,  px.y)).rgb);
+    float l  = luma(texture2D(uTexture, vUv + vec2(-px.x,  0.0 )).rgb);
+    float r  = luma(texture2D(uTexture, vUv + vec2( px.x,  0.0 )).rgb);
+    float bl = luma(texture2D(uTexture, vUv + vec2(-px.x, -px.y)).rgb);
+    float b  = luma(texture2D(uTexture, vUv + vec2( 0.0,  -px.y)).rgb);
+    float br = luma(texture2D(uTexture, vUv + vec2( px.x, -px.y)).rgb);
+    float gx = -tl - 2.0*l - bl + tr + 2.0*r + br;
+    float gy = -tl - 2.0*t - tr + bl + 2.0*b + br;
+    float edge = clamp(sqrt(gx*gx + gy*gy) * uAmount * 4.0, 0.0, 1.0);
+    float v    = uInvert == 1 ? (1.0 - edge) : edge;
+    vec4 orig  = texture2D(uTexture, vUv);
+    gl_FragColor = mix(orig, vec4(vec3(v), orig.a), uAmount);
+  }
+`;
+
+// ── RGB Shift (chromatic aberration) ──────────────────────────────────────────
+// uAmount: shift in UV units (0–0.05); uAngle: direction in radians
+
+export const RGBSHIFT = /* glsl */ `
+  uniform sampler2D uTexture;
+  uniform float uAmount;
+  uniform float uAngle;
+  varying vec2 vUv;
+  void main() {
+    if (uAmount == 0.0) { gl_FragColor = texture2D(uTexture, vUv); return; }
+    vec2 dir = vec2(cos(uAngle), sin(uAngle)) * uAmount;
+    float r  = texture2D(uTexture, clamp(vUv + dir,        0.0, 1.0)).r;
+    float g  = texture2D(uTexture, vUv).g;
+    float b  = texture2D(uTexture, clamp(vUv - dir,        0.0, 1.0)).b;
+    float a  = texture2D(uTexture, vUv).a;
+    gl_FragColor = vec4(r, g, b, a);
+  }
+`;
+
+// ── Posterize ─────────────────────────────────────────────────────────────────
+// uLevels: number of colour levels per channel (2–16)
+
+export const POSTERIZE = /* glsl */ `
+  uniform sampler2D uTexture;
+  uniform float uLevels;
+  varying vec2 vUv;
+  void main() {
+    vec4 c = texture2D(uTexture, vUv);
+    if (uLevels >= 255.0) { gl_FragColor = c; return; }
+    float lvl = max(uLevels, 2.0);
+    gl_FragColor = vec4(floor(c.rgb * lvl) / (lvl - 1.0), c.a);
+  }
+`;
+
+// ── Solarize ──────────────────────────────────────────────────────────────────
+// uThreshold: invert values above this luminance (0–1)
+
+export const SOLARIZE = /* glsl */ `
+  uniform sampler2D uTexture;
+  uniform float uThreshold;
+  varying vec2 vUv;
+  float luma(vec3 c) { return dot(c, vec3(0.2126, 0.7152, 0.0722)); }
+  void main() {
+    vec4 c = texture2D(uTexture, vUv);
+    float l = luma(c.rgb);
+    gl_FragColor = l > uThreshold ? vec4(1.0 - c.rgb, c.a) : c;
+  }
+`;
+
 export const BUFFER_TRANSFORM = /* glsl */ `
   uniform sampler2D uTexture;
   uniform float uPanX;
