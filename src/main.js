@@ -18,6 +18,7 @@ import * as THREE from 'three';
 import { ParameterSystem, registerCoreParameters, setTableManager } from './controls/ParameterSystem.js';
 import { tableManager } from './state/TableManager.js';
 import { ControllerManager } from './controls/ControllerManager.js';
+import { Automation } from './controls/Automation.js';
 import { CameraInput }    from './inputs/CameraInput.js';
 import { MovieInput }     from './inputs/MovieInput.js';
 import { StillsBuffer }   from './inputs/StillsBuffer.js';
@@ -82,6 +83,7 @@ async function main() {
   // ── 3. Controllers ────────────────────────────────────────────────────────
 
   const ctrl = new ControllerManager(ps);
+  const automation = new Automation(ps);
 
   // ── 4. Input sources ──────────────────────────────────────────────────────
 
@@ -316,6 +318,71 @@ async function main() {
     ioRow.appendChild(btnImport);
     ioRow.appendChild(btnRandomize);
     presetsSection.appendChild(ioRow);
+
+    // Automation row
+    const autoRow2 = document.createElement('div');
+    autoRow2.style.cssText = 'display:flex;gap:4px;padding:4px 10px 8px;flex-wrap:wrap;align-items:center;';
+
+    const autoLabel = document.createElement('span');
+    autoLabel.textContent = 'Automation:';
+    autoLabel.style.cssText = 'font-size:11px;color:var(--text-2);';
+    autoRow2.appendChild(autoLabel);
+
+    const btnAutoRec = document.createElement('button');
+    btnAutoRec.className = 'import-btn';
+    btnAutoRec.textContent = '⏺ Rec';
+    btnAutoRec.title = 'Record parameter movements';
+    btnAutoRec.addEventListener('click', () => {
+      if (automation.recording) {
+        automation.stopRecord();
+        btnAutoRec.classList.remove('active');
+        btnAutoRec.textContent = '⏺ Rec';
+        btnAutoPlay.disabled = false;
+        btnAutoInfo.textContent = `${automation.duration.toFixed(1)}s / ${automation.eventCount} events`;
+      } else {
+        automation.startRecord();
+        btnAutoRec.classList.add('active');
+        btnAutoRec.textContent = '⏹ Stop';
+        btnAutoPlay.disabled = true;
+        btnAutoInfo.textContent = 'Recording…';
+      }
+    });
+
+    const btnAutoPlay = document.createElement('button');
+    btnAutoPlay.className = 'import-btn';
+    btnAutoPlay.textContent = '▶ Play';
+    btnAutoPlay.title = 'Loop recorded automation';
+    btnAutoPlay.addEventListener('click', () => {
+      if (automation.playing) {
+        automation.stop();
+        btnAutoPlay.classList.remove('active');
+        btnAutoPlay.textContent = '▶ Play';
+      } else {
+        automation.play();
+        btnAutoPlay.classList.add('active');
+        btnAutoPlay.textContent = '⏹ Stop';
+      }
+    });
+
+    const btnAutoClear = document.createElement('button');
+    btnAutoClear.className = 'import-btn';
+    btnAutoClear.textContent = '✕ Clear';
+    btnAutoClear.addEventListener('click', () => {
+      automation.clear();
+      btnAutoPlay.classList.remove('active');
+      btnAutoPlay.textContent = '▶ Play';
+      btnAutoInfo.textContent = 'No clip';
+    });
+
+    const btnAutoInfo = document.createElement('span');
+    btnAutoInfo.textContent = 'No clip';
+    btnAutoInfo.style.cssText = 'font-size:10px;color:var(--text-2);margin-left:4px;';
+
+    autoRow2.appendChild(btnAutoRec);
+    autoRow2.appendChild(btnAutoPlay);
+    autoRow2.appendChild(btnAutoClear);
+    autoRow2.appendChild(btnAutoInfo);
+    presetsSection.appendChild(autoRow2);
   })();
 
   // ── Camera controls ───────────────────────────────────────────────────────
@@ -1166,6 +1233,9 @@ async function main() {
 
     // Tick preset morph animation
     presetMgr.tickMorph(dt);
+
+    // Tick automation playback
+    automation.tick(dt);
 
     // Update camera texture
     camera3d.tick();
