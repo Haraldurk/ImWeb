@@ -62,9 +62,14 @@ export class Pipeline {
     const bgTex  = this._resolveSource(inputs, p.get('layer.bg').value);
     const dsTex  = this._resolveSource(inputs, p.get('layer.ds').value);
 
-    // Apply mirror to camera source if needed
+    // Apply mirror to camera or movie source if needed
     let workingFG = fgTex;
-    if (p.get('mirror.camera').value && inputs.camera) {
+    const fgIdx = p.get('layer.fg').value;
+    if (p.get('mirror.camera').value && fgIdx === 0 && inputs.camera) {
+      workingFG = this._pass(this.m.mirror, {
+        uTexture: fgTex, uFlipH: 1, uFlipV: 0,
+      });
+    } else if (p.get('movie.mirror').value && fgIdx === 1 && inputs.movie) {
       workingFG = this._pass(this.m.mirror, {
         uTexture: fgTex, uFlipH: 1, uFlipV: 0,
       });

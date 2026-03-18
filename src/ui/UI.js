@@ -418,7 +418,10 @@ export class ContextMenu {
         if (!this._currentParam) return;
         const action = btn.dataset.action;
         if (action === 'invert') this._currentParam.invert = !this._currentParam.invert;
-        if (action === 'show')   this._currentParam.feedbackVisible = !this._currentParam.feedbackVisible;
+        if (action === 'show') {
+          this._currentParam.feedbackVisible = !this._currentParam.feedbackVisible;
+          this.ps.dispatchEvent(new CustomEvent('feedbackToggled', { detail: this._currentParam }));
+        }
         this.hide();
       });
     });
@@ -432,15 +435,37 @@ export class FeedbackOverlay {
     this.ps = ps;
     this.el = document.getElementById('feedback-overlay');
     this.items = new Map(); // paramId → element
+    this._nextY = 8;       // auto-stagger Y for default positions
 
+    // Add initially visible items
     ps.getAll().forEach(p => {
       if (!p.feedbackVisible) return;
       this._addItem(p);
+    });
+
+    // Wire value updates for all params (even hidden ones — they may become visible)
+    ps.getAll().forEach(p => {
       p.onChange(() => this._updateItem(p));
+    });
+
+    // Listen for feedbackVisible toggling from context menu
+    ps.addEventListener('feedbackToggled', e => {
+      const p = e.detail;
+      if (p.feedbackVisible && !this.items.has(p.id)) {
+        this._addItem(p);
+      } else if (!p.feedbackVisible && this.items.has(p.id)) {
+        this._removeItem(p);
+      }
     });
   }
 
   _addItem(p) {
+    // Auto-stagger if position is still the default
+    if (p.feedbackPos.x === 20 && p.feedbackPos.y === 60) {
+      p.feedbackPos = { x: 8, y: this._nextY };
+    }
+    this._nextY += 18;
+
     const el = document.createElement('div');
     el.className = 'feedback-item';
     el.style.left = `${p.feedbackPos.x}px`;
@@ -449,6 +474,14 @@ export class FeedbackOverlay {
     this.el.appendChild(el);
     this.items.set(p.id, el);
     this._makeDraggable(el, p);
+  }
+
+  _removeItem(p) {
+    const el = this.items.get(p.id);
+    if (el) {
+      el.remove();
+      this.items.delete(p.id);
+    }
   }
 
   _updateItem(p) {
@@ -461,15 +494,19 @@ export class FeedbackOverlay {
     el.addEventListener('mousedown', e => {
       if (e.button !== 0) return;
       dragging = true;
-      ox = e.clientX - el.offsetLeft;
-      oy = e.clientY - el.offsetTop;
+      const rect = el.getBoundingClientRect();
+      const parentRect = this.el.getBoundingClientRect();
+      ox = e.clientX - (rect.left - parentRect.left);
+      oy = e.clientY - (rect.top  - parentRect.top);
       e.stopPropagation();
     });
     window.addEventListener('mousemove', e => {
       if (!dragging) return;
-      el.style.left = `${e.clientX - ox}px`;
-      el.style.top  = `${e.clientY - oy}px`;
-      p.feedbackPos = { x: e.clientX - ox, y: e.clientY - oy };
+      const x = e.clientX - ox;
+      const y = e.clientY - oy;
+      el.style.left = `${x}px`;
+      el.style.top  = `${y}px`;
+      p.feedbackPos = { x, y };
     });
     window.addEventListener('mouseup', () => { dragging = false; });
   }

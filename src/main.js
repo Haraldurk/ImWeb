@@ -18,6 +18,7 @@ import * as THREE from 'three';
 import { ParameterSystem, registerCoreParameters } from './controls/ParameterSystem.js';
 import { ControllerManager } from './controls/ControllerManager.js';
 import { CameraInput } from './inputs/CameraInput.js';
+import { MovieInput }  from './inputs/MovieInput.js';
 import { SceneManager } from './scene3d/SceneManager.js';
 import { Pipeline } from './core/Pipeline.js';
 import { PresetManager } from './state/Preset.js';
@@ -77,6 +78,8 @@ async function main() {
 
   const camera3d = new CameraInput();
   await camera3d.init();
+
+  const movieInput = new MovieInput();
 
   const scene3d = new SceneManager(renderer, W, H);
 
@@ -168,10 +171,70 @@ async function main() {
     }
   });
 
+  // ── Clip management UI ──────────────────────────────────────────────────
+
+  const clipsList = document.getElementById('clips-list');
+  const btnAddClip = document.getElementById('btn-add-clip');
+
+  function refreshClipsList() {
+    if (!clipsList) return;
+    clipsList.innerHTML = '';
+    movieInput.clips.forEach((clip, i) => {
+      const item = document.createElement('div');
+      item.className = `clip-item ${i === movieInput.currentIndex ? 'active' : ''}`;
+      item.innerHTML = `<span>${i}</span><span style="flex:1;overflow:hidden;text-overflow:ellipsis">${clip.name}</span><span style="color:var(--text-2)">${clip.duration.toFixed(1)}s</span>`;
+      item.addEventListener('click', () => {
+        movieInput.selectClip(i);
+        if (ps.get('movie.active').value) {
+          clip.video.play().catch(() => {});
+        }
+        refreshClipsList();
+      });
+      item.addEventListener('contextmenu', e => {
+        e.preventDefault();
+        movieInput.removeClip(i);
+        refreshClipsList();
+      });
+      clipsList.appendChild(item);
+    });
+  }
+
+  btnAddClip?.addEventListener('click', () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'video/*,.mp4,.webm,.mov,.avi,.mkv';
+    input.multiple = true;
+    input.onchange = async e => {
+      for (const file of e.target.files) {
+        try {
+          await movieInput.addClip(file);
+        } catch (err) {
+          console.error('[Movie] Failed to load:', err);
+        }
+      }
+      refreshClipsList();
+      // Auto-activate movie if a clip was loaded
+      if (movieInput.clips.length > 0 && !ps.get('movie.active').value) {
+        ps.set('movie.active', 1);
+      }
+    };
+    input.click();
+  });
+
+  // Movie toggle
+  ps.get('movie.active').onChange(v => {
+    movieInput.active = !!v;
+    if (v && movieInput.currentClip) {
+      movieInput.currentClip.video.play().catch(() => {});
+      ps.set('layer.fg', 1); // 1 = Movie
+    } else if (!v && movieInput.currentClip) {
+      movieInput.currentClip.video.pause();
+    }
+  });
+
   // 3D scene toggle
   ps.get('scene3d.active').onChange(v => {
     if (v && !ps.get('camera.active').value) {
-      // Auto-route 3D to FG if camera not active
       ps.set('layer.fg', 5); // 5 = '3D Scene'
     }
   });
@@ -281,6 +344,9 @@ async function main() {
     // Update camera texture
     camera3d.tick();
 
+    // Update movie clip
+    movieInput.tick(ps);
+
     // Update noise every 2 frames
     if (frameCount % 2 === 0) updateNoise();
 
@@ -292,7 +358,7 @@ async function main() {
     // Assemble input sources
     const inputs = {
       camera:  camera3d.active ? camera3d.currentTexture : null,
-      movie:   null, // MovieInput wired in Phase 2
+      movie:   movieInput.active ? movieInput.currentTexture : null,
       buffer:  null, // BufferInput wired in Phase 2
       scene3d: ps.get('scene3d.active').value ? scene3d.texture : null,
       color:   colorTexture,
