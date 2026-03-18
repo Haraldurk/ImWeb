@@ -280,9 +280,9 @@ export function registerCoreParameters(ps) {
   const SOURCES = ['Camera', 'Movie', 'Buffer', 'Color', 'Noise', '3D Scene', 'Draw', 'Output'];
 
   ps.register({ id: 'layer.fg', label: 'Foreground', group: 'layers',
-    type: PARAM_TYPE.SELECT, options: SOURCES, value: 0, feedbackVisible: true });
+    type: PARAM_TYPE.SELECT, options: SOURCES, value: 3, feedbackVisible: true }); // default: Color
   ps.register({ id: 'layer.bg', label: 'Background', group: 'layers',
-    type: PARAM_TYPE.SELECT, options: SOURCES, value: 3, feedbackVisible: true });
+    type: PARAM_TYPE.SELECT, options: SOURCES, value: 3, feedbackVisible: true }); // default: Color
   ps.register({ id: 'layer.ds', label: 'DisplaceSrc', group: 'layers',
     type: PARAM_TYPE.SELECT, options: [...SOURCES, 'Sound'], value: 4, feedbackVisible: true });
 

@@ -118,6 +118,12 @@ async function main() {
 
   const pipeline = new Pipeline(renderer, W, H);
 
+  // Default startup state: FG=Color, BG=Color, DS=Noise
+  // Camera (index 0) is only routed when actually started
+  ps.set('layer.fg', 3); // Color
+  ps.set('layer.bg', 3); // Color
+  ps.set('layer.ds', 4); // Noise
+
   // ── 6. Preset manager ─────────────────────────────────────────────────────
 
   const presetMgr = new PresetManager(ps, ctrl);
@@ -150,11 +156,15 @@ async function main() {
       if (ok) {
         btnCameraOn.textContent = '■ Stop Camera';
         ps.set('camera.active', 1);
+        // Route camera to FG automatically
+        ps.set('layer.fg', 0); // 0 = Camera
       }
     } else {
       camera3d.stop();
       btnCameraOn.textContent = '▶ Start Camera';
       ps.set('camera.active', 0);
+      // Fall back to color when camera stops
+      ps.set('layer.fg', 3); // 3 = Color
     }
   });
 
