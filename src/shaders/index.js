@@ -752,3 +752,46 @@ export const FEEDBACK_ROTATE = /* glsl */ `
     gl_FragColor = texture2D(uTexture, uv);
   }
 `;
+
+// ─── Quad Mirror ───────────────────────────────────────────────────────────────
+// 4-way symmetry: folds UV into the top-left quadrant and mirrors all four.
+// uMode: 0=quad 4-way, 1=diagonal (top-left triangle reflected to all 4 triangles)
+export const QUAD_MIRROR = /* glsl */ `
+  uniform sampler2D uTexture;
+  uniform float uMode;
+  varying vec2 vUv;
+
+  void main() {
+    vec2 uv = vUv;
+
+    if (uMode < 0.5) {
+      // 4-way: fold into top-left quadrant
+      vec2 f = abs(uv * 2.0 - 1.0);
+      uv = f * 0.5;
+    } else {
+      // Diagonal: fold along both diagonals
+      if (uv.x + uv.y > 1.0) uv = 1.0 - uv;
+      if (uv.x > uv.y)       uv = vec2(uv.y, uv.x);
+      uv = uv * 2.0;
+    }
+
+    gl_FragColor = texture2D(uTexture, clamp(uv, 0.0, 1.0));
+  }
+`;
+
+// ─── Levels ───────────────────────────────────────────────────────────────────
+// Adjusts black point, white point, gamma (lift-gamma-gain style).
+export const LEVELS = /* glsl */ `
+  uniform sampler2D uTexture;
+  uniform float uBlack;  // 0–1 input black point
+  uniform float uWhite;  // 0–1 input white point
+  uniform float uGamma;  // gamma (1=neutral, <1=lighten, >1=darken)
+  varying vec2 vUv;
+
+  void main() {
+    vec4 col = texture2D(uTexture, vUv);
+    vec3 c = clamp((col.rgb - uBlack) / max(uWhite - uBlack, 0.001), 0.0, 1.0);
+    c = pow(c, vec3(1.0 / max(uGamma, 0.001)));
+    gl_FragColor = vec4(c, col.a);
+  }
+`;

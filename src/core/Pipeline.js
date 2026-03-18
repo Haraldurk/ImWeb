@@ -22,7 +22,7 @@ import {
   BUFFER_TRANSFORM, INTERP,
   PIXELATE, EDGE, RGBSHIFT, POSTERIZE, SOLARIZE, COLOR_CORRECT, CHROMA_KEY,
   VIGNETTE, BLOOM_EXTRACT, BLOOM_BLUR, BLOOM_COMPOSITE, KALEIDOSCOPE, PIXEL_SORT,
-  FILM_GRAIN, FEEDBACK_ROTATE,
+  FILM_GRAIN, FEEDBACK_ROTATE, QUAD_MIRROR, LEVELS,
 } from '../shaders/index.js';
 
 export class Pipeline {
@@ -297,12 +297,22 @@ export class Pipeline {
       });
     }
 
+    // ── Quad Mirror ───────────────────────────────────────────────────────
+    let mirrored = kaleided;
+    const qmMode = p.get('effect.quadmirror').value;
+    if (qmMode > 0) {
+      mirrored = this._pass(this.m.quadmirror, {
+        uTexture: kaleided,
+        uMode:    qmMode - 1, // 1=quad→0, 2=diagonal→1
+      });
+    }
+
     // ── Posterize ─────────────────────────────────────────────────────────
-    let posterized = kaleided;
+    let posterized = mirrored;
     const postLvl = p.get('effect.posterize').value;
     if (postLvl < 32) {
       posterized = this._pass(this.m.posterize, {
-        uTexture: kaleided, uLevels: postLvl,
+        uTexture: mirrored, uLevels: postLvl,
       });
     }
 
@@ -342,14 +352,28 @@ export class Pipeline {
       });
     }
 
+    // ── Levels ────────────────────────────────────────────────────────────
+    let leveled = bloomed;
+    const lvBlack = p.get('effect.lvblack').value / 100;
+    const lvWhite = p.get('effect.lvwhite').value / 100;
+    const lvGamma = p.get('effect.lvgamma').value / 100;
+    if (lvBlack > 0 || lvWhite < 100 || lvGamma !== 1) {
+      leveled = this._pass(this.m.levels, {
+        uTexture: bloomed,
+        uBlack:   lvBlack,
+        uWhite:   Math.max(lvBlack + 0.001, lvWhite),
+        uGamma:   Math.max(0.1, lvGamma),
+      });
+    }
+
     // ── Pixel Sort ────────────────────────────────────────────────────────
-    let pixsorted = bloomed;
+    let pixsorted = leveled;
     const psortAmt = p.get('effect.pixelsort').value / 100;
     if (psortAmt > 0) {
       const res = new THREE.Vector2(this.width, this.height);
       this.m.pixelsort.uniforms.uResolution.value.copy(res);
       pixsorted = this._pass(this.m.pixelsort, {
-        uTexture:   bloomed,
+        uTexture:   leveled,
         uThreshold: p.get('effect.psortthresh').value / 100,
         uLength:    p.get('effect.psortlen').value * psortAmt,
         uDirection: p.get('effect.psortdir').value,
@@ -712,6 +736,12 @@ export class Pipeline {
       feedbackRotate: this._mat(FEEDBACK_ROTATE, {
         uAngle: { value: 0 },
         uZoom:  { value: 1 },
+      }),
+      quadmirror: this._mat(QUAD_MIRROR, { uMode: { value: 0 } }),
+      levels:     this._mat(LEVELS, {
+        uBlack: { value: 0 },
+        uWhite: { value: 1 },
+        uGamma: { value: 1 },
       }),
     };
   }

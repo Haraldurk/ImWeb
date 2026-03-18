@@ -607,6 +607,18 @@ export function registerCoreParameters(ps) {
   ps.register({ id: 'effect.bloomthresh',label:'BloomThresh',group: 'effect',
     min: 0, max: 100, value: 70, unit: '%' });
 
+  // ── Levels ────────────────────────────────────────────────────────────────
+  ps.register({ id: 'effect.lvblack',  label: 'LvBlack',    group: 'effect',
+    min: 0, max: 100, value: 0, unit: '%' });
+  ps.register({ id: 'effect.lvwhite',  label: 'LvWhite',    group: 'effect',
+    min: 0, max: 100, value: 100, unit: '%' });
+  ps.register({ id: 'effect.lvgamma',  label: 'LvGamma',    group: 'effect',
+    min: 10, max: 400, value: 100, unit: '%' });
+
+  // ── Quad Mirror ───────────────────────────────────────────────────────────
+  ps.register({ id: 'effect.quadmirror', label: 'QuadMirror', group: 'effect',
+    type: PARAM_TYPE.SELECT, options: ['Off','4-Way','Diagonal'], value: 0 });
+
   // ── Stroboscope ───────────────────────────────────────────────────────────
   ps.register({ id: 'effect.strobe',     label: 'Strobe',     group: 'effect',
     type: PARAM_TYPE.TOGGLE, value: 0, feedbackVisible: true });

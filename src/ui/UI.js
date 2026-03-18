@@ -414,6 +414,7 @@ export class SignalPath {
       'output.colorshift','output.fade',
       'effect.pixelate','effect.edge','effect.rgbshift','effect.kaleidoscope','effect.posterize','effect.solarize',
       'effect.vignette','effect.bloom','effect.pixelsort','effect.grain','effect.scanlines','effect.strobe',
+      'effect.quadmirror','effect.lvblack','effect.lvwhite','effect.lvgamma',
       'fg.hue','fg.sat','fg.bright','bg.hue','bg.sat','bg.bright',
       'keyer.chroma',
     ].forEach(id => {
@@ -450,7 +451,9 @@ export class SignalPath {
     const kaleOn    = p.get('effect.kaleidoscope').value >= 2;
     const psortOn   = p.get('effect.pixelsort').value > 0;
     const grainOn   = p.get('effect.grain').value > 0 || p.get('effect.scanlines').value > 0;
-    const strobeOn2  = p.get('effect.strobe').value;
+    const strobeOn2   = p.get('effect.strobe').value;
+    const qmOn        = p.get('effect.quadmirror').value > 0;
+    const levelsOn    = p.get('effect.lvblack').value > 0 || p.get('effect.lvwhite').value < 100 || p.get('effect.lvgamma').value !== 100;
     const postOn    = p.get('effect.posterize').value < 32;
     const solOn     = p.get('effect.solarize').value < 100;
 
@@ -472,11 +475,13 @@ export class SignalPath {
       ...(pixOn  ? [{ label: 'pixel',   type: 'active' }] : []),
       ...(edgeOn ? [{ label: 'edge',    type: 'active' }] : []),
       ...(rgbOn  ? [{ label: 'rgb»',    type: 'active' }] : []),
-      ...(kaleOn ? [{ label: 'kale',    type: 'active' }] : []),
-      ...(postOn ? [{ label: 'poster',  type: 'active' }] : []),
+      ...(kaleOn   ? [{ label: 'kale',   type: 'active' }] : []),
+      ...(qmOn     ? [{ label: 'mirror', type: 'active' }] : []),
+      ...(postOn   ? [{ label: 'poster', type: 'active' }] : []),
       ...(solOn  ? [{ label: 'solar',   type: 'active' }] : []),
-      ...(vigOn  ? [{ label: 'vign',    type: 'active' }] : []),
-      ...(bloomOn ? [{ label: 'bloom',   type: 'active' }] : []),
+      ...(vigOn    ? [{ label: 'vign',   type: 'active' }] : []),
+      ...(bloomOn  ? [{ label: 'bloom',  type: 'active' }] : []),
+      ...(levelsOn ? [{ label: 'levels', type: 'active' }] : []),
       ...(psortOn ? [{ label: 'psort',  type: 'active' }] : []),
       ...(grainOn  ? [{ label: 'grain',   type: 'active' }] : []),
       ...(strobeOn2? [{ label: 'strobe', type: 'active' }] : []),
