@@ -197,6 +197,8 @@ export class PresetManager extends EventTarget {
     } else if (ds?.values) {
       this.ps.restoreState(ds.values);
       this.ctrl.retriggerLFOs();
+      // Send MIDI feedback to motorized faders
+      this.ps.getAll().forEach(p => this.ctrl.sendParamFeedback(p));
     }
 
     // Update UI
