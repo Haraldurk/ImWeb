@@ -1301,6 +1301,9 @@ async function main() {
     lastTime = now;
     frameCount++;
 
+    // Tick slew (parameter lag/smoothing)
+    ps.tickSlew(dt);
+
     // Tick controllers (LFOs, random, etc.)
     ctrl.tick(dt);
 

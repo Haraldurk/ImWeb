@@ -38,6 +38,7 @@ export class Parameter {
     this.step    = config.step  ?? null;   // optional snap step
 
     this._value  = config.value ?? this.min;
+    this._target = this._value; // slew target
     this.defaultValue = this._value;
 
     // Controller assignment — set by ControllerManager
@@ -48,6 +49,7 @@ export class Parameter {
     // Flags
     this.invert          = false;
     this.cycle           = false;   // for SELECT: cycle on trigger
+    this.slew            = 0;       // 0=instant, 0.001–1.0 seconds (lag time)
     this.feedbackVisible = config.feedbackVisible ?? false;
     this.feedbackPos     = config.feedbackPos ?? { x: 20, y: 60 };
 
@@ -103,8 +105,22 @@ export class Parameter {
     } else if (this.type === PARAM_TYPE.SELECT) {
       this.value = Math.round(applied * ((this.options?.length ?? 1) - 1));
     } else {
-      this.value = this.min + applied * (this.max - this.min);
+      const target = this.min + applied * (this.max - this.min);
+      if (this.slew > 0) {
+        this._target = target; // defer to tickSlew
+      } else {
+        this.value = target;
+      }
     }
+  }
+
+  /** Called each frame with dt in seconds. Advances slewed params. */
+  tickSlew(dt) {
+    if (this.slew <= 0 || this.type !== PARAM_TYPE.CONTINUOUS) return;
+    if (this._target === this._value) return;
+    // Exponential lag: approach target at rate 1/slew per second
+    const alpha = Math.min(1, dt / Math.max(0.001, this.slew));
+    this.value  = this._value + (this._target - this._value) * alpha;
   }
 
   toggle() {
@@ -184,6 +200,7 @@ export class Parameter {
       table:       this.table,
       invert:      this.invert,
       cycle:       this.cycle,
+      slew:        this.slew,
       feedbackVisible: this.feedbackVisible,
       feedbackPos: { ...this.feedbackPos },
     };
@@ -195,6 +212,7 @@ export class Parameter {
     if (data.table       !== undefined) this.table = data.table;
     if (data.invert      !== undefined) this.invert = data.invert;
     if (data.cycle       !== undefined) this.cycle = data.cycle;
+    if (data.slew        !== undefined) this.slew = data.slew;
     if (data.feedbackVisible !== undefined) this.feedbackVisible = data.feedbackVisible;
     if (data.feedbackPos !== undefined) this.feedbackPos = data.feedbackPos;
   }
@@ -248,6 +266,11 @@ export class ParameterSystem extends EventTarget {
 
   toggle(id)  { this.params.get(id)?.toggle(); }
   trigger(id) { this.params.get(id)?.trigger(); }
+
+  /** Advance all slewed parameters. Call once per frame. */
+  tickSlew(dt) {
+    this.params.forEach(p => p.tickSlew(dt));
+  }
 
   // ── State snapshots ──────────────────────────────────────────────────────
 
