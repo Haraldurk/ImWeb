@@ -7,7 +7,7 @@
 
 // ── Shared vertex shader (used by all passes) ─────────────────────────────────
 
-export const VERT = /* glsl */`
+export const VERT = /* glsl */ `
   varying vec2 vUv;
   void main() {
     vUv = uv;
@@ -17,7 +17,7 @@ export const VERT = /* glsl */`
 
 // ── Passthrough ───────────────────────────────────────────────────────────────
 
-export const PASSTHROUGH = /* glsl */`
+export const PASSTHROUGH = /* glsl */ `
   uniform sampler2D uTexture;
   varying vec2 vUv;
   void main() {
@@ -32,7 +32,7 @@ export const PASSTHROUGH = /* glsl */`
 // WGSL equivalent would use @fragment with textureLoad/textureSample
 // and the same luminance logic.
 
-export const KEYER = /* glsl */`
+export const KEYER = /* glsl */ `
   uniform sampler2D uFG;          // Foreground input
   uniform sampler2D uBG;          // Background input
   uniform float uKeyWhite;        // 0–1: luminance threshold for FG visible (high)
@@ -44,8 +44,8 @@ export const KEYER = /* glsl */`
 
   varying vec2 vUv;
 
-  float luminance(vec3 c) {
-    return dot(c, vec3(0.2126, 0.7152, 0.0722));
+  float luma(vec3 c) {
+      return dot(c, vec3(0.2126, 0.7152, 0.0722));
   }
 
   void main() {
@@ -64,7 +64,7 @@ export const KEYER = /* glsl */`
       alpha = uAlphaInvert == 1 ? (1.0 - fg.a) : fg.a;
     } else {
       // Luminance keying
-      float luma = luminance(fg.rgb);
+      float lumaVal = luma(fg.rgb);
       float lo = uKeyBlack;
       float hi = uKeyWhite;
       float soft = max(uKeySoftness, 0.001);
@@ -88,7 +88,7 @@ export const KEYER = /* glsl */`
 // DisplaceAngle rotates the displacement direction.
 // DisplaceOffset shifts the mapping center.
 
-export const DISPLACE = /* glsl */`
+export const DISPLACE = /* glsl */ `
   uniform sampler2D uFG;
   uniform sampler2D uDS;          // DisplaceSrc
   uniform float uAmount;          // 0–1 displacement strength
@@ -128,7 +128,7 @@ export const DISPLACE = /* glsl */`
 // ── Blend (50/50 mix with previous frame) ────────────────────────────────────
 // Creates motion blur / persistence / ghosting effect.
 
-export const BLEND = /* glsl */`
+export const BLEND = /* glsl */ `
   uniform sampler2D uCurrent;     // current frame
   uniform sampler2D uPrev;        // previous output frame
   uniform int       uActive;      // 0=off, 1=on
@@ -147,7 +147,7 @@ export const BLEND = /* glsl */`
 // ── Feedback ──────────────────────────────────────────────────────────────────
 // Offsets and scales the output before feeding back as a source.
 
-export const FEEDBACK = /* glsl */`
+export const FEEDBACK = /* glsl */ `
   uniform sampler2D uOutput;
   uniform float uHorOffset;       // −1–1 horizontal offset in UV space
   uniform float uVerOffset;       // −1–1 vertical offset
@@ -177,7 +177,7 @@ export const FEEDBACK = /* glsl */`
 // Bitwise pixel operations between FG and BG.
 // Note: true bitwise ops on floats require encoding to uint8.
 
-export const TRANSFERMODE = /* glsl */`
+export const TRANSFERMODE = /* glsl */ `
   uniform sampler2D uFG;
   uniform sampler2D uBG;
   uniform int       uMode;        // 0=copy, 1=xor, 2=or, 3=and
@@ -217,7 +217,7 @@ export const TRANSFERMODE = /* glsl */`
 // ── Color Shift ───────────────────────────────────────────────────────────────
 // Global hue rotation. Unusual/unpredictable — as per the original.
 
-export const COLORSHIFT = /* glsl */`
+export const COLORSHIFT = /* glsl */ `
   uniform sampler2D uTexture;
   uniform float uShift;           // 0–1, amount of hue shift
 
@@ -251,7 +251,7 @@ export const COLORSHIFT = /* glsl */`
 // Three built-in noise textures matching ImOs9's rand1/2/3.
 // Type 0 = pixel noise, 1 = horizontal bands, 2 = vertical bands.
 
-export const NOISE_GEN = /* glsl */`
+export const NOISE_GEN = /* glsl */ `
   uniform float uTime;
   uniform int   uType;   // 0=pixel, 1=horiz, 2=vert
   varying vec2 vUv;
@@ -276,7 +276,7 @@ export const NOISE_GEN = /* glsl */`
 // ── Interlace effect ──────────────────────────────────────────────────────────
 // Skips scan lines for a CRT/interlaced look (also a speed optimization).
 
-export const INTERLACE = /* glsl */`
+export const INTERLACE = /* glsl */ `
   uniform sampler2D uTexture;
   uniform float uResY;
   uniform float uAmount;          // 0 = off, 1+ = lines to skip
@@ -304,7 +304,7 @@ export const INTERLACE = /* glsl */`
 
 // ── Mirror ────────────────────────────────────────────────────────────────────
 
-export const MIRROR = /* glsl */`
+export const MIRROR = /* glsl */ `
   uniform sampler2D uTexture;
   uniform int uFlipH;
   uniform int uFlipV;
@@ -320,7 +320,7 @@ export const MIRROR = /* glsl */`
 
 // ── Solid color (HSV→RGB) ─────────────────────────────────────────────────────
 
-export const SOLID_COLOR = /* glsl */`
+export const SOLID_COLOR = /* glsl */ `
   uniform float uHue;       // 0–1
   uniform float uSat;       // 0–1
   uniform float uVal;       // 0–1
@@ -341,7 +341,7 @@ export const SOLID_COLOR = /* glsl */`
 // Reads from a stored warp displacement map texture.
 // The warp map texture encodes (dx, dy) in RG channels.
 
-export const WARP = /* glsl */`
+export const WARP = /* glsl */ `
   uniform sampler2D uFG;
   uniform sampler2D uWarpMap;     // RG = displacement vector, encoded 0–1 (0.5=center)
   uniform float uStrength;        // 0–1
@@ -362,7 +362,7 @@ export const WARP = /* glsl */`
 
 // ── Fade ─────────────────────────────────────────────────────────────────────
 
-export const FADE = /* glsl */`
+export const FADE = /* glsl */ `
   uniform sampler2D uTexture;
   uniform float uAmount;   // 0=full black, 1=full image
   varying vec2 vUv;
