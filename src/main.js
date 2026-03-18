@@ -17,8 +17,9 @@
 import * as THREE from 'three';
 import { ParameterSystem, registerCoreParameters } from './controls/ParameterSystem.js';
 import { ControllerManager } from './controls/ControllerManager.js';
-import { CameraInput } from './inputs/CameraInput.js';
-import { MovieInput }  from './inputs/MovieInput.js';
+import { CameraInput }    from './inputs/CameraInput.js';
+import { MovieInput }     from './inputs/MovieInput.js';
+import { StillsBuffer }   from './inputs/StillsBuffer.js';
 import { SceneManager } from './scene3d/SceneManager.js';
 import { Pipeline } from './core/Pipeline.js';
 import { PresetManager } from './state/Preset.js';
@@ -39,7 +40,7 @@ import {
 // ─────────────────────────────────────────────────────────────────────────────
 
 async function main() {
-  console.log('%cImWeb v0.1', 'color:#e8c840;font-weight:bold;font-size:14px');
+  console.log('%cImWeb v0.2', 'color:#e8c840;font-weight:bold;font-size:14px');
 
   // ── 1. Canvas & renderer ──────────────────────────────────────────────────
 
@@ -80,6 +81,8 @@ async function main() {
   await camera3d.init();
 
   const movieInput = new MovieInput();
+
+  const stillsBuffer = new StillsBuffer(renderer, W, H);
 
   const scene3d = new SceneManager(renderer, W, H);
 
@@ -239,6 +242,114 @@ async function main() {
     }
   });
 
+  // ── Buffer capture triggers ───────────────────────────────────────────────
+
+  ps.get('buffer.cap_screen').onTrigger(() => {
+    stillsBuffer.capture(pipeline.prev.texture);
+    refreshBufferGrid();
+  });
+
+  ps.get('buffer.cap_video').onTrigger(() => {
+    if (camera3d.active && camera3d.currentTexture) {
+      stillsBuffer.capture(camera3d.currentTexture);
+      refreshBufferGrid();
+    }
+  });
+
+  ps.get('buffer.cap_movie').onTrigger(() => {
+    if (movieInput.active && movieInput.currentTexture) {
+      stillsBuffer.capture(movieInput.currentTexture);
+      refreshBufferGrid();
+    }
+  });
+
+  ps.get('buffer.capture').onTrigger(() => {
+    stillsBuffer.capture(pipeline.prev.texture);
+    refreshBufferGrid();
+  });
+
+  // ── Buffer tab UI ─────────────────────────────────────────────────────────
+
+  const FRAME_COUNT  = 16; // mirrors StillsBuffer constant
+  const bufferCanvas = document.getElementById('buffer-canvas');
+  const bufferCtx    = bufferCanvas?.getContext('2d');
+  const BCOLS = 4;
+  const CELL_W = bufferCanvas ? bufferCanvas.width  / BCOLS : 80;
+  const CELL_H = bufferCanvas ? bufferCanvas.height / BCOLS : 60;
+
+  function refreshBufferGrid() {
+    if (!bufferCtx) return;
+    bufferCtx.clearRect(0, 0, bufferCanvas.width, bufferCanvas.height);
+    for (let i = 0; i < FRAME_COUNT; i++) {
+      const col = i % BCOLS;
+      const row = Math.floor(i / BCOLS);
+      const x   = col * CELL_W;
+      const y   = row * CELL_H;
+      const isRead  = i === stillsBuffer.readIndex;
+      const isWrite = i === ((stillsBuffer.writeIndex - 1 + FRAME_COUNT) % FRAME_COUNT) &&
+                      stillsBuffer._hasFrame[i];
+
+      // Cell background
+      bufferCtx.fillStyle = isRead ? '#2a2a3a' : '#111118';
+      bufferCtx.fillRect(x, y, CELL_W - 1, CELL_H - 1);
+
+      // Thumbnail
+      if (stillsBuffer._hasFrame[i]) {
+        bufferCtx.drawImage(
+          stillsBuffer.thumbnailCanvases[i],
+          x, y + Math.floor((CELL_H - 45) / 2), CELL_W - 1, 45,
+        );
+      }
+
+      // Frame index label
+      bufferCtx.fillStyle = isRead ? '#e8c840' : isWrite ? '#60a0e0' : '#404050';
+      bufferCtx.font = '9px monospace';
+      bufferCtx.fillText(`${i}`, x + 3, y + 10);
+
+      // Write-head marker
+      if (i === stillsBuffer.writeIndex) {
+        bufferCtx.strokeStyle = '#60a0e0';
+        bufferCtx.lineWidth = 1;
+        bufferCtx.strokeRect(x + 0.5, y + 0.5, CELL_W - 2, CELL_H - 2);
+      }
+    }
+  }
+
+  // Capture buttons
+  const bufCapRow = document.createElement('div');
+  bufCapRow.style.cssText = 'display:flex;gap:6px;padding:8px 10px 0;flex-wrap:wrap;';
+  [
+    ['Screen→Buf', 'buffer.cap_screen'],
+    ['Video→Buf',  'buffer.cap_video'],
+    ['Movie→Buf',  'buffer.cap_movie'],
+  ].forEach(([label, id]) => {
+    const btn = document.createElement('button');
+    btn.className = 'import-btn';
+    btn.textContent = label;
+    btn.addEventListener('click', () => ps.trigger(id));
+    bufCapRow.appendChild(btn);
+  });
+
+  const bufferSection = document.querySelector('#tab-buffer .panel-section');
+  if (bufferSection) {
+    bufferSection.insertBefore(bufCapRow, bufferCanvas?.nextSibling ?? null);
+  }
+
+  // Click to select frame
+  bufferCanvas?.addEventListener('click', e => {
+    const rect = bufferCanvas.getBoundingClientRect();
+    const mx   = (e.clientX - rect.left) * (bufferCanvas.width  / rect.width);
+    const my   = (e.clientY - rect.top)  * (bufferCanvas.height / rect.height);
+    const idx  = Math.floor(my / CELL_H) * BCOLS + Math.floor(mx / CELL_W);
+    if (idx >= 0 && idx < 16) {
+      ps.set('buffer.fs1', idx);
+      refreshBufferGrid();
+    }
+  });
+
+  ps.get('buffer.fs1').onChange(refreshBufferGrid);
+  refreshBufferGrid();
+
   // ── Record button ─────────────────────────────────────────────────────────
 
   let mediaRecorder = null;
@@ -323,6 +434,7 @@ async function main() {
     renderer.setSize(W, H);
     pipeline.resize(W, H);
     scene3d.resize(W, H);
+    stillsBuffer.resize(W, H);
   });
   resizeObserver.observe(canvas.parentElement);
 
@@ -347,6 +459,9 @@ async function main() {
     // Update movie clip
     movieInput.tick(ps);
 
+    // Tick stills buffer (reads fs1 → readIndex)
+    stillsBuffer.tick(ps);
+
     // Update noise every 2 frames
     if (frameCount % 2 === 0) updateNoise();
 
@@ -359,7 +474,7 @@ async function main() {
     const inputs = {
       camera:  camera3d.active ? camera3d.currentTexture : null,
       movie:   movieInput.active ? movieInput.currentTexture : null,
-      buffer:  null, // BufferInput wired in Phase 2
+      buffer:  stillsBuffer.texture,
       scene3d: ps.get('scene3d.active').value ? scene3d.texture : null,
       color:   colorTexture,
       noise:   noiseTexture,

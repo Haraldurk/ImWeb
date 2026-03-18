@@ -323,3 +323,20 @@ export const FADE = /* glsl */ `
     gl_FragColor = texture2D(uTexture, vUv) * uAmount;
   }
 `;
+
+// ── Buffer pan / zoom ─────────────────────────────────────────────────────────
+// uPanX/uPanY: offset from center in UV units (-0.5..0.5; 0 = centered)
+// uScale: zoom factor (1 = identity, 2 = 2× zoom in)
+// WGSL: equivalent textureLoad with computed coords
+
+export const BUFFER_TRANSFORM = /* glsl */ `
+  uniform sampler2D uTexture;
+  uniform float uPanX;
+  uniform float uPanY;
+  uniform float uScale;
+  varying vec2 vUv;
+  void main() {
+    vec2 uv = (vUv - 0.5 - vec2(uPanX, uPanY)) / max(uScale, 0.001) + 0.5;
+    gl_FragColor = texture2D(uTexture, uv);
+  }
+`;

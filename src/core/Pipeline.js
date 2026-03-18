@@ -18,7 +18,8 @@
 import * as THREE from 'three';
 import {
   VERT, KEYER, DISPLACE, BLEND, FEEDBACK,
-  TRANSFERMODE, COLORSHIFT, NOISE_GEN, INTERLACE, MIRROR, SOLID_COLOR, WARP, FADE, PASSTHROUGH
+  TRANSFERMODE, COLORSHIFT, NOISE_GEN, INTERLACE, MIRROR, SOLID_COLOR, WARP, FADE, PASSTHROUGH,
+  BUFFER_TRANSFORM,
 } from '../shaders/index.js';
 
 export class Pipeline {
@@ -57,19 +58,35 @@ export class Pipeline {
     this._noiseTime += dt;
     const p = params;
 
-    // Resolve input textures
-    const fgTex  = this._resolveSource(inputs, p.get('layer.fg').value);
-    const bgTex  = this._resolveSource(inputs, p.get('layer.bg').value);
-    const dsTex  = this._resolveSource(inputs, p.get('layer.ds').value);
+    // Pre-process buffer source with pan/scale transform
+    let processedInputs = inputs;
+    if (inputs.buffer) {
+      const panX  = (p.get('buffer.panX').value / 100) - 0.5;
+      const panY  = (p.get('buffer.panY').value / 100) - 0.5;
+      const scale = p.get('buffer.scale').value;
+      const bufTex = this._pass(this.m.bufferTransform, {
+        uTexture: inputs.buffer, uPanX: panX, uPanY: panY, uScale: scale,
+      });
+      processedInputs = { ...inputs, buffer: bufTex };
+    }
 
-    // Apply mirror to camera or movie source if needed
+    // Resolve input textures
+    const fgIdx  = p.get('layer.fg').value;
+    const fgTex  = this._resolveSource(processedInputs, fgIdx);
+    const bgTex  = this._resolveSource(processedInputs, p.get('layer.bg').value);
+    const dsTex  = this._resolveSource(processedInputs, p.get('layer.ds').value);
+
+    // Apply mirror to camera, movie, or buffer source if needed
     let workingFG = fgTex;
-    const fgIdx = p.get('layer.fg').value;
     if (p.get('mirror.camera').value && fgIdx === 0 && inputs.camera) {
       workingFG = this._pass(this.m.mirror, {
         uTexture: fgTex, uFlipH: 1, uFlipV: 0,
       });
     } else if (p.get('movie.mirror').value && fgIdx === 1 && inputs.movie) {
+      workingFG = this._pass(this.m.mirror, {
+        uTexture: fgTex, uFlipH: 1, uFlipV: 0,
+      });
+    } else if (p.get('mirror.buffer').value && fgIdx === 2 && processedInputs.buffer) {
       workingFG = this._pass(this.m.mirror, {
         uTexture: fgTex, uFlipH: 1, uFlipV: 0,
       });
@@ -344,6 +361,11 @@ export class Pipeline {
       }),
       noise:       this._mat(NOISE_GEN, {
         uTime: { value: 0 }, uType: { value: 0 },
+      }),
+      bufferTransform: this._mat(BUFFER_TRANSFORM, {
+        uPanX:  { value: 0 },
+        uPanY:  { value: 0 },
+        uScale: { value: 1 },
       }),
     };
   }
