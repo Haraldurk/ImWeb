@@ -785,6 +785,50 @@ async function main() {
       sizeRow.appendChild(btn);
     });
 
+    // ── Scan controls ────────────────────────────────────────────────────
+    const scanRow = document.createElement('div');
+    scanRow.style.cssText = 'display:flex;align-items:center;gap:6px;padding:0 10px 4px;flex-wrap:wrap;';
+
+    const scanParam = ps.get('buffer.scan');
+    const btnScan = document.createElement('button');
+    btnScan.className = 'import-btn';
+    btnScan.textContent = '▶ Scan';
+    btnScan.classList.toggle('active', !!scanParam.value);
+    btnScan.addEventListener('click', () => {
+      ps.toggle('buffer.scan');
+      btnScan.classList.toggle('active', !!ps.get('buffer.scan').value);
+    });
+    scanRow.appendChild(btnScan);
+
+    const scanDirParam = ps.get('buffer.scandir');
+    scanDirParam.options.forEach((opt, i) => {
+      const btn = document.createElement('button');
+      btn.className = 'source-btn';
+      btn.textContent = opt;
+      btn.classList.toggle('active', i === scanDirParam.value);
+      btn.addEventListener('click', () => {
+        scanDirParam.value = i;
+        scanRow.querySelectorAll('.source-btn').forEach((b, j) => b.classList.toggle('active', j === i));
+      });
+      scanRow.appendChild(btn);
+    });
+
+    const scanRateInput = document.createElement('input');
+    scanRateInput.type = 'number';
+    scanRateInput.min = '0.1'; scanRateInput.max = '60'; scanRateInput.step = '0.5';
+    scanRateInput.value = ps.get('buffer.scanrate').value;
+    scanRateInput.title = 'Scan rate (fps)';
+    scanRateInput.style.cssText = 'width:40px;font-size:11px;background:var(--bg-4);border:1px solid var(--border);color:var(--text-1);padding:2px 4px;border-radius:3px;';
+    scanRateInput.addEventListener('input', () => {
+      const v = parseFloat(scanRateInput.value);
+      if (!isNaN(v)) ps.set('buffer.scanrate', v);
+    });
+    const scanFpsLbl = document.createElement('span');
+    scanFpsLbl.textContent = 'fps';
+    scanFpsLbl.style.cssText = 'font-size:11px;color:var(--text-2);';
+    scanRow.appendChild(scanRateInput);
+    scanRow.appendChild(scanFpsLbl);
+
     // BG freeze buttons
     const bgRow = document.createElement('div');
     bgRow.style.cssText = 'display:flex;gap:6px;padding:0 10px 8px;';
@@ -798,6 +842,7 @@ async function main() {
 
     // Insert before the canvas
     bufferSection.insertBefore(bgRow,    bufferCanvas ?? null);
+    bufferSection.insertBefore(scanRow,  bufferCanvas ?? null);
     bufferSection.insertBefore(sizeRow,  bufferCanvas ?? null);
     bufferSection.insertBefore(autoRow,  bufferCanvas ?? null);
     bufferSection.insertBefore(capRow,   bufferCanvas ?? null);
@@ -912,6 +957,8 @@ async function main() {
   let lastTime = performance.now();
   let frameCount = 0;
   let autoCapTimer = 0;
+  let scanTimer = 0;
+  let scanDir = 1; // +1 fwd, -1 back (for ping-pong)
 
   function render(now) {
     requestAnimationFrame(render);
@@ -931,6 +978,29 @@ async function main() {
 
     // Tick stills buffer (reads fs1 → readIndex)
     stillsBuffer.tick(ps);
+
+    // Buffer frame scan
+    if (ps.get('buffer.scan').value) {
+      scanTimer += dt;
+      const rate = Math.max(0.01, ps.get('buffer.scanrate').value);
+      if (scanTimer >= 1 / rate) {
+        scanTimer = 0;
+        const n   = stillsBuffer.frameCount;
+        const dir = ps.get('buffer.scandir').value;
+        const cur = ps.get('buffer.fs1').value;
+        if (dir === 0) { // forward
+          ps.set('buffer.fs1', (cur + 1) % n);
+        } else if (dir === 1) { // backward
+          ps.set('buffer.fs1', (cur - 1 + n) % n);
+        } else { // ping-pong
+          const next = cur + scanDir;
+          if (next >= n - 1 || next <= 0) scanDir = -scanDir;
+          ps.set('buffer.fs1', Math.max(0, Math.min(n - 1, next)));
+        }
+      }
+    } else {
+      scanTimer = 0;
+    }
 
     // Auto-capture into buffer at buffer.rate fps
     if (ps.get('buffer.auto').value) {

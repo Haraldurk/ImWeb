@@ -521,6 +521,9 @@ export class ContextMenu {
         } else if (type === 'midi-cc') {
           const cc = parseInt(prompt('MIDI CC number (0–127):', '7'));
           if (!isNaN(cc)) this.ctrl.assign(this._currentParam.id, { type: 'midi-cc', cc });
+        } else if (type === 'midi-note') {
+          const note = parseInt(prompt('MIDI Note number (0–127, e.g. 60=C4):', '60'));
+          if (!isNaN(note)) this.ctrl.assign(this._currentParam.id, { type: 'midi-note', note });
         } else if (type.startsWith('lfo-')) {
           const hzStr = prompt('LFO Hz (or "1/2", "1", "2", "4" beat divs):', '0.5');
           if (hzStr === null) { this.hide(); return; }

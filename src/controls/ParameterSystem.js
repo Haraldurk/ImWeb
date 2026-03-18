@@ -396,6 +396,12 @@ export function registerCoreParameters(ps) {
     min: 0, max: 15, value: 0, step: 1 });
   ps.register({ id: 'buffer.fs3',   label: 'FrameSelect 3', group: 'buffer',
     min: 0, max: 15, value: 0, step: 1 });
+  ps.register({ id: 'buffer.scan',      label: 'ScanFrames', group: 'buffer',
+    type: PARAM_TYPE.TOGGLE, value: 0 });
+  ps.register({ id: 'buffer.scanrate',  label: 'ScanRate',   group: 'buffer',
+    min: 0.1, max: 60, value: 8, unit: 'fps' });
+  ps.register({ id: 'buffer.scandir',   label: 'ScanDir',    group: 'buffer',
+    type: PARAM_TYPE.SELECT, options: ['→ Fwd','← Back','↔ Ping'], value: 0 });
   ps.register({ id: 'buffer.cap_screen', label: 'Screen→Buffer', group: 'buffer',
     type: PARAM_TYPE.TRIGGER });
   ps.register({ id: 'buffer.cap_video',  label: 'Video→Buffer',  group: 'buffer',
