@@ -507,7 +507,8 @@ async function main() {
     movieInput.clips.forEach((clip, i) => {
       const item = document.createElement('div');
       item.className = `clip-item ${i === movieInput.currentIndex ? 'active' : ''}`;
-      item.innerHTML = `<span>${i}</span><span style="flex:1;overflow:hidden;text-overflow:ellipsis">${clip.name}</span><span style="color:var(--text-2)">${clip.duration.toFixed(1)}s</span>`;
+      const shortcut = i < 8 ? `<kbd style="font-size:9px;background:var(--bg-4);border:1px solid var(--border);border-radius:2px;padding:0 3px;">⇧${i+1}</kbd>` : '';
+      item.innerHTML = `${shortcut}<span style="flex:1;overflow:hidden;text-overflow:ellipsis">${clip.name}</span><span style="color:var(--text-2)">${clip.duration.toFixed(1)}s</span>`;
       item.addEventListener('click', () => {
         movieInput.selectClip(i);
         if (ps.get('movie.active').value) {
@@ -1430,6 +1431,16 @@ void main() {
     if (e.key === 'm' && !e.metaKey) { e.preventDefault(); ps.toggle('movie.active'); }
     // t = Tap tempo
     if (e.key === 't' && !e.metaKey) { e.preventDefault(); ps.trigger('global.tap'); }
+    // 1–8 = Select clip (when Shift is held, select clip N-1)
+    if (e.shiftKey && !e.metaKey && /^Digit[1-8]$/.test(e.code)) {
+      const idx = parseInt(e.code.replace('Digit', '')) - 1;
+      if (idx < movieInput.clips.length) {
+        movieInput.selectClip(idx);
+        if (ps.get('movie.active').value) movieInput.clips[idx]?.video.play().catch(() => {});
+        refreshClipsList();
+        e.preventDefault();
+      }
+    }
     // f = Fullscreen
     if (e.key === 'f' && !e.metaKey) { e.preventDefault(); toggleFullscreen(); }
     // ? = Keyboard help
