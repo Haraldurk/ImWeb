@@ -58,6 +58,7 @@ export class Parameter {
 
     this._listeners        = new Set();
     this._triggerListeners = new Set();
+    this.locked            = false; // when true, value cannot be changed by UI/controllers
   }
 
   // ── Value access ────────────────────────────────────────────────────────
@@ -65,6 +66,7 @@ export class Parameter {
   get value() { return this._value; }
 
   set value(v) {
+    if (this.locked) return;
     let clamped;
     if (this.type === PARAM_TYPE.TOGGLE) {
       clamped = v ? 1 : 0;

@@ -58,7 +58,7 @@ export function buildParamRow(param, contextMenu) {
     const range = param.max - param.min;
 
     row.addEventListener('mousedown', e => {
-      if (e.button !== 0) return;
+      if (e.button !== 0 || param.locked) return;
       dragging = true;
       startX   = e.clientX;
       startVal = param.value;
@@ -77,6 +77,7 @@ export function buildParamRow(param, contextMenu) {
     // Scroll to adjust
     row.addEventListener('wheel', e => {
       e.preventDefault();
+      if (param.locked) return;
       const step = range * 0.01 * (e.shiftKey ? 5 : 1);
       param.value = param.value - Math.sign(e.deltaY) * step;
       updateDisplay();
@@ -702,6 +703,13 @@ export class ContextMenu {
         if (action === 'invert') {
           this._currentParam.invert = !this._currentParam.invert;
           this.hide();
+        }
+        if (action === 'lock') {
+          this._currentParam.locked = !this._currentParam.locked;
+          this.hide();
+          // Visual indicator on param row
+          const row = document.querySelector(`[data-param-id="${this._currentParam.id}"]`);
+          row?.classList.toggle('param-locked', this._currentParam.locked);
         }
         if (action === 'show') {
           this._currentParam.feedbackVisible = !this._currentParam.feedbackVisible;

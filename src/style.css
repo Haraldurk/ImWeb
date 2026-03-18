@@ -263,6 +263,8 @@ button {
 }
 .section-header:hover { color: var(--text-1); }
 .section-header.collapsed { color: var(--text-2); opacity: 0.6; }
+.param-row.param-locked { opacity: 0.55; }
+.param-row.param-locked::after { content: '🔒'; font-size: 9px; margin-left: 3px; }
 .section-header.collapsed::after { content: ' ▸'; }
 .section-header:not(.collapsed)::after { content: ' ▾'; }
 .panel-section.collapsed > *:not(.section-header) { display: none !important; }
