@@ -53,6 +53,7 @@
         <button class="tab" data-tab="clips">Clips</button>
         <button class="tab" data-tab="presets">Presets</button>
         <button class="tab" data-tab="tables">Tables</button>
+        <button class="tab" data-tab="glsl">GLSL</button>
       </div>
 
       <!-- MAPPING TAB -->
@@ -199,6 +200,35 @@
           <div class="section-header">Response Curves</div>
           <div id="tables-list"></div>
           <canvas id="table-editor" width="280" height="140"></canvas>
+        </div>
+      </div>
+
+      <!-- GLSL TAB -->
+      <div id="tab-glsl" class="tab-content">
+        <div class="panel-section">
+          <div class="section-header">Live GLSL Effect</div>
+          <div style="padding:4px 8px 0;display:flex;gap:4px;align-items:center;">
+            <button id="btn-glsl-apply" class="import-btn" style="flex:1">▶ Apply</button>
+            <button id="btn-glsl-reset" class="import-btn">↺ Reset</button>
+            <label style="font-size:10px;color:var(--text-2);display:flex;align-items:center;gap:4px;">
+              <input type="checkbox" id="glsl-auto-apply"> Auto
+            </label>
+          </div>
+          <div id="glsl-error" style="padding:4px 8px;font-size:10px;color:#e84040;display:none;white-space:pre-wrap;font-family:monospace;"></div>
+          <textarea id="glsl-editor" spellcheck="false" autocomplete="off"
+            style="display:block;width:100%;height:280px;resize:vertical;background:#0a0a0e;color:#c8c8d8;
+                   font-family:monospace;font-size:11px;border:1px solid var(--border);padding:6px;
+                   box-sizing:border-box;outline:none;tab-size:2;"
+          >// Available uniforms:
+//   sampler2D uTexture  — current frame
+//   float     uTime     — seconds
+//   vec2      uResolution
+//   varying vec2 vUv    — 0..1 UV coords
+
+void main() {
+  vec4 col = texture2D(uTexture, vUv);
+  gl_FragColor = col;
+}</textarea>
         </div>
       </div>
     </div>

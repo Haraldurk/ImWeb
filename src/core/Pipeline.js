@@ -53,6 +53,11 @@ export class Pipeline {
 
     // Noise textures (updated each frame)
     this._noiseTime = 0;
+
+    // Live GLSL custom effect (hot-swappable)
+    this._customMat    = null;  // set by setCustomShader()
+    this._customError  = null;  // last compile error string, or null
+    this._customActive = false; // whether to run the custom pass
   }
 
   // ── Public: render one frame ──────────────────────────────────────────────
@@ -383,21 +388,88 @@ export class Pipeline {
       });
     }
 
+    // ── Custom GLSL pass ──────────────────────────────────────────────────
+    let customOut = faded;
+    if (this._customActive && this._customMat) {
+      this._customMat.uniforms.uTexture.value    = faded;
+      this._customMat.uniforms.uTime.value       = this._noiseTime;
+      this._customMat.uniforms.uResolution.value.set(this.width, this.height);
+      customOut = this._pass(this._customMat, {
+        uTexture:    faded,
+        uTime:       this._noiseTime,
+        uResolution: new THREE.Vector2(this.width, this.height),
+      });
+    }
+
     // Final blit — optionally through bicubic interpolation
     const interpMode = p.get('output.interp').value;
     if (interpMode > 0) {
       this.m.interp.uniforms.uResolution.value.set(this.width, this.height);
       this.m.interp.uniforms.uMode.value = interpMode;
-      this.m.interp.uniforms.uTexture.value = faded;
+      this.m.interp.uniforms.uTexture.value = customOut;
       this._quad.material = this.m.interp;
       this.renderer.setRenderTarget(null);
       this.renderer.render(this._scene, this._camera);
     } else {
-      this._blit(faded);
+      this._blit(customOut);
     }
 
     // Save to prev buffer
-    this._copyToPrev(faded);
+    this._copyToPrev(customOut);
+  }
+
+  // ── Live GLSL custom shader ───────────────────────────────────────────────
+
+  /**
+   * Compile and install a custom fragment shader.
+   * Returns null on success, or an error string on compile failure.
+   * The shader receives: uTexture (sampler2D), uTime (float), uResolution (vec2),
+   * and the standard vUv varying.
+   */
+  setCustomShader(fragmentSrc) {
+    // Build a test material to detect compile errors via WebGL
+    const mat = new THREE.ShaderMaterial({
+      uniforms: {
+        uTexture:    { value: null },
+        uTime:       { value: 0 },
+        uResolution: { value: new THREE.Vector2(this.width, this.height) },
+      },
+      vertexShader:   VERT,
+      fragmentShader: fragmentSrc,
+      depthTest:  false,
+      depthWrite: false,
+    });
+
+    // Force compile by doing a dummy pass and reading gl error
+    try {
+      const gl = this.renderer.getContext();
+      const prog = this.renderer.getContext().getProgramInfoLog; // probe
+      // Force Three.js to compile it
+      this._quad.material = mat;
+      this.renderer.compile(this._scene, this._camera);
+      const info = this.renderer.info.programs?.find(p =>
+        p.fragmentShader === mat.fragmentShader
+      );
+      // Check WebGL error
+      const err = gl.getError();
+      if (err !== 0) throw new Error(`WebGL error: ${err}`);
+    } catch (e) {
+      mat.dispose();
+      this._customError  = e.message;
+      this._customActive = false;
+      return this._customError;
+    }
+
+    // Dispose old custom material
+    this._customMat?.dispose();
+    this._customMat    = mat;
+    this._customActive = true;
+    this._customError  = null;
+    return null;
+  }
+
+  disableCustomShader() {
+    this._customActive = false;
   }
 
   // ── GPU noise generation ──────────────────────────────────────────────────

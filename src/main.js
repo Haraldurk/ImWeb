@@ -1066,6 +1066,58 @@ async function main() {
   ps.get('buffer.fs1').onChange(refreshBufferGrid);
   rebuildBufferGrid();
 
+  // ── Live GLSL Editor ──────────────────────────────────────────────────────
+
+  const glslEditor  = document.getElementById('glsl-editor');
+  const glslError   = document.getElementById('glsl-error');
+  const glslApply   = document.getElementById('btn-glsl-apply');
+  const glslReset   = document.getElementById('btn-glsl-reset');
+  const glslAuto    = document.getElementById('glsl-auto-apply');
+
+  function applyGLSL() {
+    const src = glslEditor?.value;
+    if (!src) return;
+    // Inject the varying declaration if missing (for user convenience)
+    const needsVarying = !src.includes('varying vec2 vUv');
+    const fullSrc = needsVarying
+      ? `varying vec2 vUv;\n${src}`
+      : src;
+    const err = pipeline.setCustomShader(fullSrc);
+    if (glslError) {
+      glslError.style.display = err ? 'block' : 'none';
+      glslError.textContent   = err ?? '';
+    }
+  }
+
+  glslApply?.addEventListener('click', applyGLSL);
+
+  glslReset?.addEventListener('click', () => {
+    pipeline.disableCustomShader();
+    if (glslError) glslError.style.display = 'none';
+    if (glslAuto) glslAuto.checked = false;
+  });
+
+  glslEditor?.addEventListener('input', () => {
+    if (glslAuto?.checked) applyGLSL();
+  });
+
+  // Tab key inserts two spaces in the editor
+  glslEditor?.addEventListener('keydown', e => {
+    if (e.key === 'Tab') {
+      e.preventDefault();
+      const s = glslEditor.selectionStart;
+      const v = glslEditor.value;
+      glslEditor.value = v.slice(0, s) + '  ' + v.slice(glslEditor.selectionEnd);
+      glslEditor.selectionStart = glslEditor.selectionEnd = s + 2;
+      if (glslAuto?.checked) applyGLSL();
+    }
+    // Ctrl+Enter / Cmd+Enter = apply
+    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+      e.preventDefault();
+      applyGLSL();
+    }
+  });
+
   // ── Record button ─────────────────────────────────────────────────────────
 
   let mediaRecorder = null;
