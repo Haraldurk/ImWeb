@@ -1634,6 +1634,18 @@ void main() {
     }
     // f = Fullscreen
     if (e.key === 'f' && !e.metaKey) { e.preventDefault(); toggleFullscreen(); }
+    // Cmd/Ctrl+S = quick-save current state to active preset
+    if ((e.metaKey || e.ctrlKey) && e.key === 's' && !e.target.closest('textarea,input')) {
+      e.preventDefault();
+      presetMgr.saveCurrentPreset().then(() => {
+        const btn = document.getElementById('btn-save-preset');
+        if (btn) {
+          const orig = btn.textContent;
+          btn.textContent = '✓ Saved';
+          setTimeout(() => { btn.textContent = orig; }, 1000);
+        }
+      });
+    }
     // ? = Keyboard help
     if (e.key === '?') { e.preventDefault(); toggleHelpOverlay(); }
     // Escape = exit fullscreen / close overlays
