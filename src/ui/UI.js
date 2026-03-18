@@ -210,6 +210,7 @@ export function buildLayerButtons(ps, contextMenu) {
 
 export function buildMappingPanels(ps, contextMenu) {
   const sections = {
+    'mirror-params':   ps.getGroup('mirror'),
     'keyer-params':    ps.getGroup('keyer'),
     'displace-params': ps.getGroup('displace'),
     'blend-params':    ps.getGroup('blend'),
@@ -353,7 +354,13 @@ export class SignalPath {
     this._render();
 
     // Re-render on layer/effect changes
-    ['layer.fg','layer.bg','layer.ds','keyer.active','displace.amount','blend.active'].forEach(id => {
+    [
+      'layer.fg','layer.bg','layer.ds',
+      'keyer.active','keyer.extkey',
+      'displace.amount',
+      'blend.active','feedback.hor','feedback.ver','feedback.scale',
+      'output.colorshift','output.fade',
+    ].forEach(id => {
       ps.get(id)?.onChange(() => this._render());
     });
   }
@@ -361,12 +368,20 @@ export class SignalPath {
   _render() {
     if (!this.el) return;
     const p = this.ps;
-    const fgSrc = p.get('layer.fg').displayValue;
-    const bgSrc = p.get('layer.bg').displayValue;
-    const dsSrc = p.get('layer.ds').displayValue;
-    const keyerOn   = p.get('keyer.active').value;
-    const displOn   = p.get('displace.amount').value > 0;
-    const blendOn   = p.get('blend.active').value;
+    const fgSrc   = p.get('layer.fg').displayValue;
+    const bgSrc   = p.get('layer.bg').displayValue;
+    const dsSrc   = p.get('layer.ds').displayValue;
+    const keyerOn    = p.get('keyer.active').value;
+    const extKeyOn   = p.get('keyer.extkey').value;
+    const displOn    = p.get('displace.amount').value > 0;
+    const blendOn    = p.get('blend.active').value;
+    const fbOn       = blendOn && (
+      p.get('feedback.hor').value !== 0 ||
+      p.get('feedback.ver').value !== 0 ||
+      p.get('feedback.scale').value !== 0
+    );
+    const csOn    = p.get('output.colorshift').value > 0;
+    const fadeOn  = p.get('output.fade').value > 0;
 
     this.el.innerHTML = '';
 
@@ -374,10 +389,12 @@ export class SignalPath {
       { label: fgSrc,    type: 'source' },
       { label: '/',      type: 'merge' },
       { label: bgSrc,    type: 'source' },
-      keyerOn  ? { label: 'keyer',    type: 'active' }   : { label: 'keyer',    type: 'node' },
+      keyerOn  ? { label: extKeyOn ? 'extkey' : 'keyer', type: 'active' } : { label: 'keyer', type: 'node' },
       displOn  ? { label: 'displace', type: 'active' }   : { label: 'displace', type: 'node' },
       { label: dsSrc,    type: 'source' },
-      blendOn  ? { label: 'blend',    type: 'active' }   : { label: 'blend',    type: 'node' },
+      blendOn  ? { label: fbOn ? 'blend+fb' : 'blend', type: 'active' } : { label: 'blend', type: 'node' },
+      ...(csOn   ? [{ label: 'cshift',  type: 'active' }] : []),
+      ...(fadeOn ? [{ label: 'fade',    type: 'active' }] : []),
       { label: '▶ out',  type: 'active' },
     ];
 
