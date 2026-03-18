@@ -658,6 +658,17 @@ export class ContextMenu {
         } else if (type === 'key') {
           const k = prompt('Press a key character (e.g. a, 1, Enter, ArrowUp):', this._currentParam.controller?.key ?? '');
           if (k) this.ctrl.assign(this._currentParam.id, { type: 'key', key: k.trim() });
+        } else if (type === 'expr') {
+          const p    = this._currentParam;
+          const prev = p.controller?.expr ?? `sin(t) * ${(p.max - p.min) / 2} + ${p.min + (p.max - p.min) / 2}`;
+          const src  = prompt(
+            `Expression controller — result sets param value directly.\n` +
+            `Variables: t (time in seconds)\n` +
+            `Functions: sin cos tan abs floor ceil round mod fract clamp mix pow sqrt noise\n` +
+            `Range: ${p.min} – ${p.max}`,
+            p.controller?.expr ?? prev
+          );
+          if (src !== null) this.ctrl.assign(p.id, { type: 'expr', expr: src.trim() });
         } else {
           this.ctrl.assign(this._currentParam.id, { type });
         }

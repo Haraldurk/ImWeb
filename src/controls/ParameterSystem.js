@@ -174,6 +174,7 @@ export class Parameter {
       'random': 'RND', 'fixed': 'FXD',
       'key': `KEY:${c.key ?? '?'}`, 'nudge': 'NDG',
       'movie-pos': 'MVP', 'osc': 'OSC',
+      'expr': `ƒ(t)`,
     };
     return labels[c.type] ?? c.type.toUpperCase().slice(0, 4);
   }

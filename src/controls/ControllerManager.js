@@ -33,6 +33,10 @@ export class ControllerManager {
     // Set to a function(pcNumber) to receive PC messages globally
     this.onMIDIPC = null;
 
+    // Expression controllers: paramId → { fn: Function, t: 0 }
+    this.exprs = new Map();
+    this._exprTime = 0; // cumulative time in seconds
+
     this._initKeyboard();
     this._initMouse();
     this._initMIDI();
@@ -47,6 +51,19 @@ export class ControllerManager {
     this.lfos.forEach((lfo, paramId) => {
       const v = lfo.tick(dt);
       this.ps.setNormalized(paramId, v);
+    });
+
+    // Tick expression controllers
+    this._exprTime += dt;
+    const t = this._exprTime;
+    this.exprs.forEach((expr, paramId) => {
+      try {
+        const raw = expr.fn(t);
+        if (typeof raw === 'number' && isFinite(raw)) {
+          const p = this.ps.get(paramId);
+          if (p) p.value = raw; // raw is in param's natural range
+        }
+      } catch (_) { /* silent */ }
     });
 
     // Tick random controllers
@@ -103,6 +120,28 @@ export class ControllerManager {
 
     } else if (t === 'fixed') {
       p.setNormalized(controllerConfig.value ?? 0);
+    } else if (t === 'expr') {
+      const src = controllerConfig.expr ?? '0';
+      try {
+        // Build a safe evaluator with common math functions in scope
+        // eslint-disable-next-line no-new-func
+        const fn = new Function('t','sin','cos','tan','abs','floor','ceil','round','mod','fract','clamp','mix','pow','sqrt','noise',
+          `"use strict"; return (${src});`
+        );
+        const bound = t2 => fn(t2,
+          Math.sin, Math.cos, Math.tan, Math.abs,
+          Math.floor, Math.ceil, Math.round,
+          (a,b) => ((a % b) + b) % b,    // mod
+          a => a - Math.floor(a),          // fract
+          (a,lo,hi) => Math.max(lo, Math.min(hi, a)), // clamp
+          (a,b,t3) => a + (b-a)*t3,       // mix
+          Math.pow, Math.sqrt,
+          () => Math.random(),             // noise
+        );
+        this.exprs.set(paramId, { fn: bound });
+      } catch (e) {
+        console.warn(`[Expr] Compile error for ${paramId}: ${e.message}`);
+      }
     } else if (t === 'sound' || t === 'sound-bass' || t === 'sound-mid' || t === 'sound-high') {
       this.enableSound(); // lazy-init audio input on first assignment
     }
@@ -112,6 +151,7 @@ export class ControllerManager {
   _removeController(paramId) {
     this.lfos.delete(paramId);
     this.randoms.delete(paramId);
+    this.exprs.delete(paramId);
   }
 
   // ── Retrigger all LFOs (on DisplayState recall) ───────────────────────────
