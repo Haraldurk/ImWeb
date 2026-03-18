@@ -284,6 +284,33 @@ export class ControllerManager {
     }
   }
 
+  // ── MIDI Output ───────────────────────────────────────────────────────────
+
+  /**
+   * Send a MIDI CC to all connected output ports.
+   * channel: 1–16, cc: 0–127, value: 0–127
+   */
+  sendCC(channel, cc, value) {
+    if (!this.midi) return;
+    const status = 0xB0 | ((channel - 1) & 0x0F);
+    const data   = [status, cc & 0x7F, Math.round(value) & 0x7F];
+    this.midi.outputs.forEach(port => {
+      try { port.send(data); } catch (_) { /* ignore disconnected */ }
+    });
+  }
+
+  /**
+   * Send the current normalized value of a MIDI-CC-mapped parameter back
+   * to its assigned CC (for motorized faders / LED feedback).
+   */
+  sendParamFeedback(param) {
+    if (!param.controller || param.controller.type !== 'midi-cc') return;
+    const cc      = param.controller.cc;
+    const channel = param.controller.channel ?? 1;
+    const val127  = Math.round(param.normalized * 127);
+    this.sendCC(channel, cc, val127);
+  }
+
   // ── MIDI Learn ────────────────────────────────────────────────────────────
 
   startMIDILearn(paramId) {
