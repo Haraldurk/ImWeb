@@ -114,21 +114,49 @@ async function main() {
   ['color1.hue','color1.sat','color1.val'].forEach(id => ps.get(id).onChange(updateColorTexture));
   updateColorTexture();
 
-  // Color2 input — second solid color source
+  // Color2 input — solid or gradient source (between color1 and color2)
   const color2Canvas = document.createElement('canvas');
-  color2Canvas.width = color2Canvas.height = 4;
+  color2Canvas.width = color2Canvas.height = 256;
   const color2Ctx = color2Canvas.getContext('2d');
   const color2Texture = new THREE.CanvasTexture(color2Canvas);
 
   function updateColor2Texture() {
-    const h = ps.get('color2.hue').value / 100;
-    const s = ps.get('color2.sat').value / 100;
-    const v = ps.get('color2.val').value / 100;
-    color2Ctx.fillStyle = hsvToHex(h, s, v);
-    color2Ctx.fillRect(0, 0, 4, 4);
+    const h1 = ps.get('color1.hue').value / 100;
+    const s1 = ps.get('color1.sat').value / 100;
+    const v1 = ps.get('color1.val').value / 100;
+    const h2 = ps.get('color2.hue').value / 100;
+    const s2 = ps.get('color2.sat').value / 100;
+    const v2 = ps.get('color2.val').value / 100;
+    const type = ps.get('color2.type').value;
+    const c1   = hsvToHex(h1, s1, v1);
+    const c2   = hsvToHex(h2, s2, v2);
+    const W    = color2Canvas.width;
+    const H    = color2Canvas.height;
+
+    if (type === 0) { // Solid
+      color2Ctx.fillStyle = c2;
+      color2Ctx.fillRect(0, 0, W, H);
+    } else if (type === 1) { // Horizontal gradient
+      const grad = color2Ctx.createLinearGradient(0, 0, W, 0);
+      grad.addColorStop(0, c1); grad.addColorStop(1, c2);
+      color2Ctx.fillStyle = grad;
+      color2Ctx.fillRect(0, 0, W, H);
+    } else if (type === 2) { // Vertical gradient
+      const grad = color2Ctx.createLinearGradient(0, 0, 0, H);
+      grad.addColorStop(0, c1); grad.addColorStop(1, c2);
+      color2Ctx.fillStyle = grad;
+      color2Ctx.fillRect(0, 0, W, H);
+    } else { // Radial gradient
+      const grad = color2Ctx.createRadialGradient(W/2, H/2, 0, W/2, H/2, W/2);
+      grad.addColorStop(0, c1); grad.addColorStop(1, c2);
+      color2Ctx.fillStyle = grad;
+      color2Ctx.fillRect(0, 0, W, H);
+    }
     color2Texture.needsUpdate = true;
   }
-  ['color2.hue','color2.sat','color2.val'].forEach(id => ps.get(id).onChange(updateColor2Texture));
+  ['color1.hue','color1.sat','color1.val','color2.hue','color2.sat','color2.val','color2.type'].forEach(id =>
+    ps.get(id).onChange(updateColor2Texture)
+  );
   updateColor2Texture();
 
   // Noise texture — generated each frame on GPU via pipeline.generateNoise()
@@ -858,6 +886,44 @@ async function main() {
     if (idx >= 0 && idx < stillsBuffer.frameCount) {
       ps.set('buffer.fs1', idx);
       refreshBufferGrid();
+    }
+  });
+
+  // Right-click on buffer cell → save frame as PNG
+  bufferCanvas?.addEventListener('contextmenu', e => {
+    e.preventDefault();
+    const rect = bufferCanvas.getBoundingClientRect();
+    const { cw, ch } = gridCellSize();
+    const mx  = (e.clientX - rect.left) * (CANVAS_W / rect.width);
+    const my  = (e.clientY - rect.top)  * (bufferCanvas.height / rect.height);
+    const idx = Math.floor(my / ch) * BCOLS + Math.floor(mx / cw);
+    if (idx >= 0 && idx < stillsBuffer.frameCount && stillsBuffer._hasFrame[idx]) {
+      // Read full-res pixels from the frame's render target
+      const rt     = stillsBuffer.frames[idx];
+      const w      = rt.width;
+      const h      = rt.height;
+      const pixels = new Uint8Array(w * h * 4);
+      renderer.readRenderTargetPixels(rt, 0, 0, w, h, pixels);
+
+      // Flip Y and write to a temp canvas
+      const tmpCanvas = document.createElement('canvas');
+      tmpCanvas.width  = w;
+      tmpCanvas.height = h;
+      const tmpCtx    = tmpCanvas.getContext('2d');
+      const imgData   = tmpCtx.createImageData(w, h);
+      for (let row = 0; row < h; row++) {
+        const srcRow = (h - 1 - row) * w * 4;
+        imgData.data.set(pixels.subarray(srcRow, srcRow + w * 4), row * w * 4);
+      }
+      tmpCtx.putImageData(imgData, 0, 0);
+
+      tmpCanvas.toBlob(blob => {
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = `imweb-frame-${idx}.png`;
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+      }, 'image/png');
     }
   });
 

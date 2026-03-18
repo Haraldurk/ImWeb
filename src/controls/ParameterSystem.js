@@ -370,6 +370,9 @@ export function registerCoreParameters(ps) {
     min: 0, max: 100, value: 80 });
   ps.register({ id: 'color2.val', label: 'Val 2',  group: 'color',
     min: 0, max: 100, value: 60 });
+  ps.register({ id: 'color2.type', label: 'Col2 Type', group: 'color',
+    type: PARAM_TYPE.SELECT,
+    options: ['Solid','Grad H','Grad V','Grad R'], value: 0 });
 
   // ── Noise ─────────────────────────────────────────────────────────────────
   ps.register({ id: 'noise.type', label: 'NoiseType', group: 'noise',
