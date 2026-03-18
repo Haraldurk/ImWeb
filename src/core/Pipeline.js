@@ -20,7 +20,7 @@ import {
   VERT, KEYER, DISPLACE, BLEND, FEEDBACK,
   TRANSFERMODE, COLORSHIFT, NOISE_GEN, INTERLACE, MIRROR, SOLID_COLOR, WARP, FADE, PASSTHROUGH,
   BUFFER_TRANSFORM, INTERP,
-  PIXELATE, EDGE, RGBSHIFT, POSTERIZE, SOLARIZE,
+  PIXELATE, EDGE, RGBSHIFT, POSTERIZE, SOLARIZE, COLOR_CORRECT,
 } from '../shaders/index.js';
 
 export class Pipeline {
@@ -77,8 +77,24 @@ export class Pipeline {
     const bgTex  = this._resolveSource(processedInputs, p.get('layer.bg').value);
     const dsTex  = this._resolveSource(processedInputs, p.get('layer.ds').value);
 
+    // Apply per-layer color correction (HSB) to FG and BG
+    const fgHue    = p.get('fg.hue').value    / 360;
+    const fgSat    = p.get('fg.sat').value    / 100;
+    const fgBright = p.get('fg.bright').value / 100;
+    const correctedFG = (fgHue !== 0 || fgSat !== 1 || fgBright !== 1)
+      ? this._pass(this.m.colorcorrect, { uTexture: fgTex, uHue: fgHue, uSat: fgSat, uBright: fgBright })
+      : fgTex;
+
+    const bgHue    = p.get('bg.hue').value    / 360;
+    const bgSat    = p.get('bg.sat').value    / 100;
+    const bgBright = p.get('bg.bright').value / 100;
+    const correctedBG = (bgHue !== 0 || bgSat !== 1 || bgBright !== 1)
+      ? this._pass(this.m.colorcorrect, { uTexture: bgTex, uHue: bgHue, uSat: bgSat, uBright: bgBright })
+      : bgTex;
+
     // Apply mirror to camera, movie, or buffer source if needed
-    let workingFG = fgTex;
+    let workingFG = correctedFG;
+    const bgTexFinal = correctedBG;
     if (p.get('mirror.camera').value && fgIdx === 0 && inputs.camera) {
       workingFG = this._pass(this.m.mirror, {
         uTexture: fgTex, uFlipH: 1, uFlipV: 0,
@@ -105,7 +121,7 @@ export class Pipeline {
 
     if (tm > 0) {
       composite = this._pass(this.m.transfermode, {
-        uFG: workingFG, uBG: bgTex, uMode: tm,
+        uFG: workingFG, uBG: bgTexFinal, uMode: tm,
       });
     } else {
       // Default: FG over BG (keyer decides which wins)
@@ -133,7 +149,7 @@ export class Pipeline {
       const keyedFG = (displAmt > 0 && p.get('keyer.and_displace').value) ? displaced : composite;
       keyed = this._pass(this.m.keyer, {
         uFG:          keyedFG,
-        uBG:          bgTex,
+        uBG:          bgTexFinal,
         uEK:          dsTex,
         uKeyWhite:    p.get('keyer.white').value / 100,
         uKeyBlack:    p.get('keyer.black').value / 100,
@@ -146,7 +162,7 @@ export class Pipeline {
     } else {
       // No keyer — pass FG through
       keyed = this._pass(this.m.keyer, {
-        uFG: displaced, uBG: bgTex, uEK: dsTex,
+        uFG: displaced, uBG: bgTexFinal, uEK: dsTex,
         uKeyWhite: 1, uKeyBlack: 0, uKeySoftness: 0,
         uKeyActive: 0, uAlpha: 0, uAlphaInvert: 0, uExtKey: 0,
       });
@@ -471,6 +487,11 @@ export class Pipeline {
       rgbshift:  this._mat(RGBSHIFT, { uAmount: { value: 0 }, uAngle: { value: 0 } }),
       posterize: this._mat(POSTERIZE, { uLevels: { value: 32 } }),
       solarize:  this._mat(SOLARIZE,  { uThreshold: { value: 1 } }),
+      colorcorrect: this._mat(COLOR_CORRECT, {
+        uHue:    { value: 0 },
+        uSat:    { value: 1 },
+        uBright: { value: 1 },
+      }),
     };
   }
 }

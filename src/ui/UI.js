@@ -226,6 +226,8 @@ export function buildMappingPanels(ps, contextMenu) {
     'material-params': ps.getGroup('scene3d').filter(p => p.id.includes('mat') || p.id.includes('wire') || p.id.includes('light')),
     'draw-params':     ps.getGroup('draw'),
     'text-params':     ps.getGroup('text'),
+    'fg-params':       ps.getGroup('fg'),
+    'bg-params':       ps.getGroup('bg'),
     'effect-params':   ps.getGroup('effect'),
   };
 
@@ -383,6 +385,7 @@ export class SignalPath {
       'blend.active','feedback.hor','feedback.ver','feedback.scale',
       'output.colorshift','output.fade',
       'effect.pixelate','effect.edge','effect.rgbshift','effect.posterize','effect.solarize',
+      'fg.hue','fg.sat','fg.bright','bg.hue','bg.sat','bg.bright',
     ].forEach(id => {
       ps.get(id)?.onChange(() => this._render());
     });
@@ -406,6 +409,8 @@ export class SignalPath {
     );
     const csOn      = p.get('output.colorshift').value > 0;
     const fadeOn    = p.get('output.fade').value > 0;
+    const fgCCon    = p.get('fg.hue').value !== 0 || p.get('fg.sat').value !== 100 || p.get('fg.bright').value !== 100;
+    const bgCCon    = p.get('bg.hue').value !== 0 || p.get('bg.sat').value !== 100 || p.get('bg.bright').value !== 100;
     const pixOn     = p.get('effect.pixelate').value > 1;
     const edgeOn    = p.get('effect.edge').value > 0;
     const rgbOn     = p.get('effect.rgbshift').value > 0;
@@ -416,8 +421,10 @@ export class SignalPath {
 
     const nodes = [
       { label: fgSrc,  type: 'source' },
+      ...(fgCCon ? [{ label: 'fg-cc',  type: 'active' }] : []),
       { label: '/',    type: 'merge' },
       { label: bgSrc,  type: 'source' },
+      ...(bgCCon ? [{ label: 'bg-cc',  type: 'active' }] : []),
       keyerOn  ? { label: extKeyOn ? 'extkey' : 'keyer', type: 'active' } : { label: 'keyer',    type: 'node' },
       displOn  ? { label: 'displace', type: 'active' }  : { label: 'displace',  type: 'node' },
       warpOn   ? { label: 'warp',     type: 'active' }  : null,

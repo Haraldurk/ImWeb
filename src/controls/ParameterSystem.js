@@ -505,6 +505,20 @@ export function registerCoreParameters(ps) {
   ps.register({ id: 'output.interp', label: 'Interpolation', group: 'output',
     type: PARAM_TYPE.SELECT, options: ['none', 'linear', 'bicubic'], value: 0 });
 
+  // ── Per-layer color correction ────────────────────────────────────────────
+  ps.register({ id: 'fg.hue',    label: 'FG Hue',    group: 'fg',
+    min: -180, max: 180, value: 0, unit: '°' });
+  ps.register({ id: 'fg.sat',    label: 'FG Sat',    group: 'fg',
+    min: 0, max: 200, value: 100, unit: '%' });
+  ps.register({ id: 'fg.bright', label: 'FG Bright', group: 'fg',
+    min: 0, max: 200, value: 100, unit: '%' });
+  ps.register({ id: 'bg.hue',    label: 'BG Hue',    group: 'bg',
+    min: -180, max: 180, value: 0, unit: '°' });
+  ps.register({ id: 'bg.sat',    label: 'BG Sat',    group: 'bg',
+    min: 0, max: 200, value: 100, unit: '%' });
+  ps.register({ id: 'bg.bright', label: 'BG Bright', group: 'bg',
+    min: 0, max: 200, value: 100, unit: '%' });
+
   // ── Effects ───────────────────────────────────────────────────────────────
   ps.register({ id: 'effect.pixelate',  label: 'Pixelate',   group: 'effect',
     min: 1, max: 200, value: 1, unit: 'px', feedbackVisible: false });
