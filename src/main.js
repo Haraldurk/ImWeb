@@ -547,6 +547,41 @@ async function main() {
     input.click();
   });
 
+  // ── Drag-and-drop: video → clip, image → stills buffer ───────────────────
+
+  document.body.addEventListener('dragover', e => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
+  });
+
+  document.body.addEventListener('drop', async e => {
+    e.preventDefault();
+    const files = Array.from(e.dataTransfer.files);
+    for (const file of files) {
+      if (file.type.startsWith('video/') || /\.(mp4|webm|mov|avi|mkv)$/i.test(file.name)) {
+        try {
+          await movieInput.addClip(file);
+          refreshClipsList();
+          if (!ps.get('movie.active').value) ps.set('movie.active', 1);
+        } catch (err) { console.error('[DnD] video load failed:', err); }
+      } else if (file.type.startsWith('image/') || /\.(png|jpg|jpeg|gif|bmp|webp)$/i.test(file.name)) {
+        try {
+          const bitmap = await createImageBitmap(file);
+          const cvs    = document.createElement('canvas');
+          cvs.width    = bitmap.width;
+          cvs.height   = bitmap.height;
+          cvs.getContext('2d').drawImage(bitmap, 0, 0);
+          bitmap.close();
+          const tex = new THREE.CanvasTexture(cvs);
+          tex.minFilter = THREE.LinearFilter;
+          tex.magFilter = THREE.LinearFilter;
+          stillsBuffer.capture(tex);
+          tex.dispose();
+        } catch (err) { console.error('[DnD] image load failed:', err); }
+      }
+    }
+  });
+
   // Movie toggle
   ps.get('movie.active').onChange(v => {
     movieInput.active = !!v;
