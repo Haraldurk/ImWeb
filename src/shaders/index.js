@@ -481,6 +481,39 @@ export const SOLARIZE = /* glsl */ `
   }
 `;
 
+export const CHROMA_KEY = /* glsl */ `
+  uniform sampler2D uFG;
+  uniform sampler2D uBG;
+  uniform float uKeyHue;       // 0-1 target hue
+  uniform float uKeyRange;     // 0-1 half-width of hue range
+  uniform float uKeySoftness;  // 0-1 feather
+  uniform int   uKeyActive;    // 0 = bypass
+  varying vec2 vUv;
+
+  vec3 rgb2hsv(vec3 c) {
+    vec4 K = vec4(0.0, -1.0/3.0, 2.0/3.0, -1.0);
+    vec4 p = mix(vec4(c.bg, K.wz), vec4(c.gb, K.xy), step(c.b, c.g));
+    vec4 q = mix(vec4(p.xyw, c.r), vec4(c.r, p.yzx), step(p.x, c.r));
+    float d = q.x - min(q.w, q.y);
+    return vec3(abs(q.z + (q.w - q.y) / (6.0*d + 1e-10)), d / (q.x + 1e-10), q.x);
+  }
+
+  void main() {
+    vec4 fg = texture2D(uFG, vUv);
+    vec4 bg = texture2D(uBG, vUv);
+    if (uKeyActive == 0) { gl_FragColor = fg; return; }
+
+    vec3 hsv = rgb2hsv(fg.rgb);
+    // Hue distance: 0 = exact match, 1 = opposite side of wheel
+    float hueDist = abs(fract(hsv.x - uKeyHue + 0.5) - 0.5) * 2.0;
+    // Alpha: 1 = keep FG, 0 = show BG (keyed out)
+    float alpha = smoothstep(uKeyRange, uKeyRange + max(uKeySoftness, 0.001), hueDist);
+    // Desaturated areas are not keyed out
+    alpha = max(alpha, 1.0 - clamp(hsv.y * 4.0, 0.0, 1.0));
+    gl_FragColor = mix(bg, fg, clamp(alpha, 0.0, 1.0));
+  }
+`;
+
 export const COLOR_CORRECT = /* glsl */ `
   uniform sampler2D uTexture;
   uniform float uHue;    // hue shift in turns (-0.5 to 0.5)

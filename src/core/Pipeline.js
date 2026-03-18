@@ -20,7 +20,7 @@ import {
   VERT, KEYER, DISPLACE, BLEND, FEEDBACK,
   TRANSFERMODE, COLORSHIFT, NOISE_GEN, INTERLACE, MIRROR, SOLID_COLOR, WARP, FADE, PASSTHROUGH,
   BUFFER_TRANSFORM, INTERP,
-  PIXELATE, EDGE, RGBSHIFT, POSTERIZE, SOLARIZE, COLOR_CORRECT,
+  PIXELATE, EDGE, RGBSHIFT, POSTERIZE, SOLARIZE, COLOR_CORRECT, CHROMA_KEY,
 } from '../shaders/index.js';
 
 export class Pipeline {
@@ -168,12 +168,25 @@ export class Pipeline {
       });
     }
 
+    // ── Chroma Key (runs after luma keyer) ───────────────────────────────
+    let chromaKeyed = keyed;
+    if (p.get('keyer.chroma').value) {
+      chromaKeyed = this._pass(this.m.chromakey, {
+        uFG:          keyed,
+        uBG:          bgTexFinal,
+        uKeyHue:      p.get('keyer.chromahue').value  / 360,
+        uKeyRange:    p.get('keyer.chromarange').value / 100,
+        uKeySoftness: p.get('keyer.chromasoft').value  / 100,
+        uKeyActive:   1,
+      });
+    }
+
     // ── WarpMap ───────────────────────────────────────────────────────────
-    let warped = keyed;
+    let warped = chromaKeyed;
     const warpIdx = p.get('displace.warp').value;
     if (warpIdx > 0 && inputs.warpMaps?.[warpIdx - 1]) {
       warped = this._pass(this.m.warp, {
-        uFG:       keyed,
+        uFG:       chromaKeyed,
         uWarpMap:  inputs.warpMaps[warpIdx - 1],
         uStrength: displAmt,
       });
@@ -491,6 +504,12 @@ export class Pipeline {
         uHue:    { value: 0 },
         uSat:    { value: 1 },
         uBright: { value: 1 },
+      }),
+      chromakey: this._mat(CHROMA_KEY, {
+        uKeyHue:      { value: 0.33 },
+        uKeyRange:    { value: 0.15 },
+        uKeySoftness: { value: 0.08 },
+        uKeyActive:   { value: 0 },
       }),
     };
   }

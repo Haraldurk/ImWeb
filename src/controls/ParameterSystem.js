@@ -312,6 +312,14 @@ export function registerCoreParameters(ps) {
     type: PARAM_TYPE.TOGGLE, value: 0 });
   ps.register({ id: 'keyer.alpha_inv',  label: 'Invert Alpha',  group: 'keyer',
     type: PARAM_TYPE.TOGGLE, value: 0 });
+  ps.register({ id: 'keyer.chroma',     label: 'Chroma Key',    group: 'keyer',
+    type: PARAM_TYPE.TOGGLE, value: 0, feedbackVisible: true });
+  ps.register({ id: 'keyer.chromahue',  label: 'Chroma Hue',    group: 'keyer',
+    min: 0, max: 360, value: 120, unit: '°' }); // default: green
+  ps.register({ id: 'keyer.chromarange',label: 'Chroma Range',  group: 'keyer',
+    min: 0, max: 100, value: 20, unit: '%' });
+  ps.register({ id: 'keyer.chromasoft', label: 'Chroma Soft',   group: 'keyer',
+    min: 0, max: 100, value: 10, unit: '%' });
 
   // ── Displacement ──────────────────────────────────────────────────────────
   ps.register({ id: 'displace.amount',  label: 'Displace',      group: 'displace',

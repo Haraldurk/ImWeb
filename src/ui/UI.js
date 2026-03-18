@@ -386,6 +386,7 @@ export class SignalPath {
       'output.colorshift','output.fade',
       'effect.pixelate','effect.edge','effect.rgbshift','effect.posterize','effect.solarize',
       'fg.hue','fg.sat','fg.bright','bg.hue','bg.sat','bg.bright',
+      'keyer.chroma',
     ].forEach(id => {
       ps.get(id)?.onChange(() => this._render());
     });
@@ -411,6 +412,7 @@ export class SignalPath {
     const fadeOn    = p.get('output.fade').value > 0;
     const fgCCon    = p.get('fg.hue').value !== 0 || p.get('fg.sat').value !== 100 || p.get('fg.bright').value !== 100;
     const bgCCon    = p.get('bg.hue').value !== 0 || p.get('bg.sat').value !== 100 || p.get('bg.bright').value !== 100;
+    const chromaOn  = p.get('keyer.chroma').value;
     const pixOn     = p.get('effect.pixelate').value > 1;
     const edgeOn    = p.get('effect.edge').value > 0;
     const rgbOn     = p.get('effect.rgbshift').value > 0;
@@ -426,6 +428,7 @@ export class SignalPath {
       { label: bgSrc,  type: 'source' },
       ...(bgCCon ? [{ label: 'bg-cc',  type: 'active' }] : []),
       keyerOn  ? { label: extKeyOn ? 'extkey' : 'keyer', type: 'active' } : { label: 'keyer',    type: 'node' },
+      ...(chromaOn ? [{ label: 'chroma', type: 'active' }] : []),
       displOn  ? { label: 'displace', type: 'active' }  : { label: 'displace',  type: 'node' },
       warpOn   ? { label: 'warp',     type: 'active' }  : null,
       { label: dsSrc,  type: 'source' },
