@@ -505,6 +505,12 @@ export function registerCoreParameters(ps) {
   ps.register({ id: 'output.interp', label: 'Interpolation', group: 'output',
     type: PARAM_TYPE.SELECT, options: ['none', 'linear', 'bicubic'], value: 0 });
 
+  // ── Global BPM / Tap Tempo ────────────────────────────────────────────────
+  ps.register({ id: 'global.bpm',  label: 'BPM',       group: 'global',
+    min: 20, max: 300, value: 120, unit: 'bpm' });
+  ps.register({ id: 'global.tap',  label: 'Tap Tempo', group: 'global',
+    type: PARAM_TYPE.TRIGGER });
+
   // ── Per-layer color correction ────────────────────────────────────────────
   ps.register({ id: 'fg.hue',    label: 'FG Hue',    group: 'fg',
     min: -180, max: 180, value: 0, unit: '°' });

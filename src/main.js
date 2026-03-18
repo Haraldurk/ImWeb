@@ -158,6 +158,35 @@ async function main() {
   setTableManager(tableManager);
   await tableManager.init(await openDB());
 
+  // ── BPM / Tap Tempo ───────────────────────────────────────────────────────
+  const bpmEl = document.getElementById('status-bpm');
+  ps.get('global.bpm').onChange(bpm => {
+    ctrl.syncBPM(bpm);
+    if (bpmEl) bpmEl.textContent = `${Math.round(bpm)} bpm`;
+  });
+  // Click BPM indicator = tap tempo
+  bpmEl?.addEventListener('click', () => ps.trigger('global.tap'));
+
+  const _tapTimes = [];
+  ps.get('global.tap').onTrigger(() => {
+    const now = performance.now();
+    _tapTimes.push(now);
+    if (_tapTimes.length > 5) _tapTimes.shift();
+    if (_tapTimes.length >= 2) {
+      let sum = 0;
+      for (let i = 1; i < _tapTimes.length; i++) sum += _tapTimes[i] - _tapTimes[i - 1];
+      const avgMs  = sum / (_tapTimes.length - 1);
+      const newBpm = Math.round(60000 / avgMs);
+      ps.set('global.bpm', Math.max(20, Math.min(300, newBpm)));
+    }
+    // Reset if gap > 3 seconds
+    setTimeout(() => {
+      if (_tapTimes.length && performance.now() - _tapTimes[_tapTimes.length - 1] > 3000) {
+        _tapTimes.length = 0;
+      }
+    }, 3100);
+  });
+
   // ── 7. UI ─────────────────────────────────────────────────────────────────
 
   initTabs();
