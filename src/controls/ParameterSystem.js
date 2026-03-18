@@ -310,7 +310,7 @@ export class ParameterSystem extends EventTarget {
 export function registerCoreParameters(ps) {
 
   // ── Layer source selection ────────────────────────────────────────────────
-  const SOURCES = ['Camera', 'Movie', 'Buffer', 'Color', 'Noise', '3D Scene', 'Draw', 'Output', 'BG1', 'BG2', 'Color2', 'Text', 'Sound', 'Delay'];
+  const SOURCES = ['Camera', 'Movie', 'Buffer', 'Color', 'Noise', '3D Scene', 'Draw', 'Output', 'BG1', 'BG2', 'Color2', 'Text', 'Sound', 'Delay', 'Scope'];
 
   ps.register({ id: 'layer.fg', label: 'Foreground', group: 'layers',
     type: PARAM_TYPE.SELECT, options: SOURCES, value: 3, feedbackVisible: true }); // default: Color
@@ -628,6 +628,16 @@ export function registerCoreParameters(ps) {
   // ── Video Delay Line ──────────────────────────────────────────────────────
   ps.register({ id: 'delay.frames', label: 'DelayFrames', group: 'delay',
     min: 1, max: 30, value: 5, step: 1 });
+
+  // ── Vectorscope ───────────────────────────────────────────────────────────
+  ps.register({ id: 'vectorscope.mode',  label: 'VScope Mode',  group: 'vectorscope',
+    type: PARAM_TYPE.SELECT, options: ['Lissajous','Waveform','FFT'], value: 0 });
+  ps.register({ id: 'vectorscope.gain',  label: 'VScope Gain',  group: 'vectorscope',
+    min: 1, max: 200, value: 100, unit: '%' });
+  ps.register({ id: 'vectorscope.decay', label: 'VScope Decay', group: 'vectorscope',
+    min: 0, max: 99, value: 60, unit: '%' });
+  ps.register({ id: 'vectorscope.color', label: 'VScope Color', group: 'vectorscope',
+    type: PARAM_TYPE.SELECT, options: ['Green','Cyan','Red','Gold'], value: 0 });
 
   return ps;
 }
