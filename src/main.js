@@ -254,6 +254,14 @@ async function main() {
   buildMappingPanels(ps, contextMenu);
   buildGeometryButtons(ps, scene3d);
 
+  // ── Collapsible section headers ───────────────────────────────────────────
+  document.querySelectorAll('.section-header').forEach(hdr => {
+    hdr.addEventListener('click', () => {
+      hdr.closest('.panel-section')?.classList.toggle('collapsed');
+      hdr.classList.toggle('collapsed');
+    });
+  });
+
   const stateDots   = new StateDots(presetMgr);
   const signalPath  = new SignalPath(ps);
   const feedbackOl  = new FeedbackOverlay(ps);

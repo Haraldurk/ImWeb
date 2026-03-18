@@ -262,6 +262,10 @@ button {
   cursor: pointer;
 }
 .section-header:hover { color: var(--text-1); }
+.section-header.collapsed { color: var(--text-2); opacity: 0.6; }
+.section-header.collapsed::after { content: ' ▸'; }
+.section-header:not(.collapsed)::after { content: ' ▾'; }
+.panel-section.collapsed > *:not(.section-header) { display: none !important; }
 
 /* ── LAYER SOURCE BUTTONS ────────────────────────────────────────────────── */
 

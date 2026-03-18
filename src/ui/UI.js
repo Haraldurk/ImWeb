@@ -257,6 +257,12 @@ export function buildMappingPanels(ps, contextMenu) {
     'fg-params':       ps.getGroup('fg'),
     'bg-params':       ps.getGroup('bg'),
     'effect-params':   ps.getGroup('effect'),
+    'global-params':       ps.getGroup('global'),
+    'particle-params':     ps.getGroup('particle'),
+    'delay-params':        ps.getGroup('delay'),
+    'vectorscope-params':  ps.getGroup('vectorscope'),
+    'slitscan-params':     ps.getGroup('slitscan'),
+    'layer-params':        ps.getGroup('layers'),
   };
 
   Object.entries(sections).forEach(([elId, params]) => {
