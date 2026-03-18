@@ -94,7 +94,7 @@ export class ControllerManager {
 
     } else if (t === 'fixed') {
       p.setNormalized(controllerConfig.value ?? 0);
-    } else if (t === 'sound') {
+    } else if (t === 'sound' || t === 'sound-bass' || t === 'sound-mid' || t === 'sound-high') {
       this.enableSound(); // lazy-init audio input on first assignment
     }
     // mouse, midi, key are handled reactively in their event handlers
@@ -363,27 +363,47 @@ export class ControllerManager {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
       const source  = ctx.createMediaStreamSource(stream);
       const analyser = ctx.createAnalyser();
-      analyser.fftSize = 256;
+      analyser.fftSize = 512; // 256 bins
       source.connect(analyser);
-      const buf = new Float32Array(analyser.frequencyBinCount);
+      const timeBuf = new Float32Array(analyser.fftSize);
+      const freqBuf = new Uint8Array(analyser.frequencyBinCount); // 256 bins
 
       this.sound = {
-        ctx, analyser, buf,
-        level: 0,
+        ctx, analyser, timeBuf, freqBuf,
+        level: 0, bass: 0, mid: 0, high: 0,
         tick() {
-          analyser.getFloatTimeDomainData(buf);
+          analyser.getFloatTimeDomainData(timeBuf);
           let rms = 0;
-          for (let i = 0; i < buf.length; i++) rms += buf[i] * buf[i];
-          this.level = Math.sqrt(rms / buf.length);
+          for (let i = 0; i < timeBuf.length; i++) rms += timeBuf[i] * timeBuf[i];
+          this.level = Math.sqrt(rms / timeBuf.length);
+
+          analyser.getByteFrequencyData(freqBuf);
+          const N = freqBuf.length;
+          // Bass: 0-10% of bins (~0-1kHz for 44kHz sample rate)
+          const bassEnd = Math.floor(N * 0.04);
+          const midEnd  = Math.floor(N * 0.25);
+          let b = 0, m = 0, h = 0;
+          for (let i = 0; i < bassEnd; i++) b += freqBuf[i];
+          for (let i = bassEnd; i < midEnd; i++) m += freqBuf[i];
+          for (let i = midEnd; i < N; i++) h += freqBuf[i];
+          this.bass = Math.min(1, (b / bassEnd) / 200);
+          this.mid  = Math.min(1, (m / (midEnd - bassEnd)) / 160);
+          this.high = Math.min(1, (h / (N - midEnd)) / 120);
         }
       };
 
       // Wire sound-assigned params
       setInterval(() => {
         if (!this.sound) return;
-        const level = Math.min(1, this.sound.level * 4);
+        const s = this.sound;
+        const level = Math.min(1, s.level * 4);
         this.ps.getAll().forEach(p => {
-          if (p.controller?.type === 'sound') p.setNormalized(level);
+          if (!p.controller) return;
+          const t = p.controller.type;
+          if (t === 'sound')      p.setNormalized(level);
+          if (t === 'sound-bass') p.setNormalized(s.bass);
+          if (t === 'sound-mid')  p.setNormalized(s.mid);
+          if (t === 'sound-high') p.setNormalized(s.high);
         });
       }, 16);
 
