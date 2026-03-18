@@ -48,6 +48,10 @@ export class StillsBuffer {
       generateMipmaps: false,
     });
 
+    // Two persistent named background slots (screen.bg1 / screen.bg2)
+    this._bgSlots    = [this._makeTarget(width, height), this._makeTarget(width, height)];
+    this._bgHasFrame = [false, false];
+
     // Internal passthrough blit (no dependency on Pipeline)
     this._mat    = new THREE.ShaderMaterial({
       uniforms:       { uTexture: { value: null } },
@@ -109,15 +113,32 @@ export class StillsBuffer {
     return this._hasFrame[last] ? this.frames[last].texture : null;
   }
 
+  /** Capture tex into a named background slot (0 = bg1, 1 = bg2). */
+  captureBG(idx, tex) {
+    if (!tex || idx < 0 || idx > 1) return;
+    this._mat.uniforms.uTexture.value = tex;
+    this.renderer.setRenderTarget(this._bgSlots[idx]);
+    this.renderer.render(this._scene, this._camera);
+    this.renderer.setRenderTarget(null);
+    this._bgHasFrame[idx] = true;
+  }
+
+  /** Returns the texture for background slot idx, or null if not yet captured. */
+  bgTexture(idx) {
+    return this._bgHasFrame[idx] ? this._bgSlots[idx].texture : null;
+  }
+
   resize(w, h) {
     this.width  = w;
     this.height = h;
     this.frames.forEach(f => f.setSize(w, h));
+    this._bgSlots.forEach(f => f.setSize(w, h));
     // Thumbnails become stale but remain visible until re-captured
   }
 
   dispose() {
     this.frames.forEach(f => f.dispose());
+    this._bgSlots.forEach(f => f.dispose());
     this._thumbTarget.dispose();
     this._mat.dispose();
   }

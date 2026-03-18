@@ -145,7 +145,7 @@ export function buildParamRow(param, contextMenu) {
 // ── Layer source button matrix ────────────────────────────────────────────────
 
 // Short labels for each source index (matches SOURCES order in ParameterSystem)
-const SOURCE_ABBREV = ['CAM','MOV','BUF','COL','NSE','3D','DRW','OUT','SND'];
+const SOURCE_ABBREV = ['CAM','MOV','BUF','COL','NSE','3D','DRW','OUT','BG1','BG2','SND'];
 
 /**
  * Builds the FG / BG / DS source-selector rows in #layer-params.

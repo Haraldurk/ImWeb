@@ -304,6 +304,9 @@ async function main() {
     refreshBufferGrid();
   });
 
+  ps.get('screen.bg1').onTrigger(() => stillsBuffer.captureBG(0, pipeline.prev.texture));
+  ps.get('screen.bg2').onTrigger(() => stillsBuffer.captureBG(1, pipeline.prev.texture));
+
   // ── Buffer tab UI ─────────────────────────────────────────────────────────
 
   const FRAME_COUNT  = 16; // mirrors StillsBuffer constant
@@ -358,6 +361,8 @@ async function main() {
     ['Screen→Buf', 'buffer.cap_screen'],
     ['Video→Buf',  'buffer.cap_video'],
     ['Movie→Buf',  'buffer.cap_movie'],
+    ['Freeze BG1', 'screen.bg1'],
+    ['Freeze BG2', 'screen.bg2'],
   ].forEach(([label, id]) => {
     const btn = document.createElement('button');
     btn.className = 'import-btn';
@@ -511,6 +516,8 @@ async function main() {
       camera:  camera3d.active ? camera3d.currentTexture : null,
       movie:   movieInput.active ? movieInput.currentTexture : null,
       buffer:  stillsBuffer.texture,
+      bg1:     stillsBuffer.bgTexture(0),
+      bg2:     stillsBuffer.bgTexture(1),
       scene3d: ps.get('scene3d.active').value ? scene3d.texture : null,
       color:   colorTexture,
       noise:   noiseTexture,
