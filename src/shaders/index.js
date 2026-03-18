@@ -690,3 +690,65 @@ export const PIXEL_SORT = /* glsl */ `
     gl_FragColor = best;
   }
 `;
+
+// ─── Film Grain ────────────────────────────────────────────────────────────────
+// Adds animated film grain and optional scanlines overlay.
+// uGrain:     0–1 grain amount
+// uScanlines: 0–1 scanline intensity
+// uTime:      frame time for animated noise
+export const FILM_GRAIN = /* glsl */ `
+  uniform sampler2D uTexture;
+  uniform float uGrain;
+  uniform float uScanlines;
+  uniform float uTime;
+  varying vec2 vUv;
+
+  float hash(vec2 p) {
+    p = fract(p * vec2(443.897, 441.423));
+    p += dot(p, p + 19.19);
+    return fract(p.x * p.y);
+  }
+
+  void main() {
+    vec4 col = texture2D(uTexture, vUv);
+
+    // Grain
+    if (uGrain > 0.0) {
+      float n = hash(vUv + fract(uTime * 0.017));
+      n = (n - 0.5) * 2.0; // centre around 0
+      col.rgb += n * uGrain * 0.25;
+    }
+
+    // Scanlines
+    if (uScanlines > 0.0) {
+      float line = sin(vUv.y * 400.0) * 0.5 + 0.5;
+      float mask = 1.0 - uScanlines * (1.0 - line) * 0.4;
+      col.rgb *= mask;
+    }
+
+    gl_FragColor = vec4(clamp(col.rgb, 0.0, 1.0), col.a);
+  }
+`;
+
+// ─── Feedback Rotate/Zoom ─────────────────────────────────────────────────────
+// Applies a centred rotation and/or zoom to the feedback (prev) texture
+// before it is blended, creating spiral and vortex effects.
+// uAngle: rotation in turns (0–1 = 0–360°)
+// uZoom:  zoom factor centred on 0.5,0.5 (1=no change, >1=zoom in, <1=zoom out)
+export const FEEDBACK_ROTATE = /* glsl */ `
+  uniform sampler2D uTexture;
+  uniform float uAngle;  // turns
+  uniform float uZoom;
+  varying vec2 vUv;
+
+  void main() {
+    float a   = uAngle * 6.28318530718;
+    float ca  = cos(a);
+    float sa  = sin(a);
+    vec2  uv  = vUv - 0.5;
+    uv = vec2(ca * uv.x - sa * uv.y, sa * uv.x + ca * uv.y);
+    float z   = max(0.001, uZoom);
+    uv  = uv / z + 0.5;
+    gl_FragColor = texture2D(uTexture, uv);
+  }
+`;

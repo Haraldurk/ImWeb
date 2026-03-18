@@ -22,6 +22,7 @@ import {
   BUFFER_TRANSFORM, INTERP,
   PIXELATE, EDGE, RGBSHIFT, POSTERIZE, SOLARIZE, COLOR_CORRECT, CHROMA_KEY,
   VIGNETTE, BLOOM_EXTRACT, BLOOM_BLUR, BLOOM_COMPOSITE, KALEIDOSCOPE, PIXEL_SORT,
+  FILM_GRAIN, FEEDBACK_ROTATE,
 } from '../shaders/index.js';
 
 export class Pipeline {
@@ -209,13 +210,23 @@ export class Pipeline {
     let blended = warped;
     if (p.get('blend.active').value) {
       // Apply feedback offset/scale to prev frame before blending
-      const fbHor   = p.get('feedback.hor').value   / 100;
-      const fbVer   = p.get('feedback.ver').value   / 100;
-      const fbScale = p.get('feedback.scale').value / 50;
+      const fbHor    = p.get('feedback.hor').value   / 100;
+      const fbVer    = p.get('feedback.ver').value   / 100;
+      const fbScale  = p.get('feedback.scale').value / 50;
+      const fbAngle  = p.get('feedback.rotate').value / 100;
+      const fbZoom   = p.get('feedback.zoom').value   / 100 + 1; // 0→1x, 100→2x
       let prevTex = this.prev.texture;
+      // Apply rotate/zoom first (centred), then offset/scale (pan)
+      if (fbAngle !== 0 || fbZoom !== 1) {
+        prevTex = this._pass(this.m.feedbackRotate, {
+          uTexture: prevTex,
+          uAngle:   fbAngle,
+          uZoom:    fbZoom,
+        });
+      }
       if (fbHor !== 0 || fbVer !== 0 || fbScale !== 0) {
         prevTex = this._pass(this.m.feedback, {
-          uOutput:     this.prev.texture,
+          uOutput:     prevTex,
           uHorOffset:  fbHor,
           uVerOffset:  fbVer,
           uScale:      fbScale,
@@ -341,12 +352,25 @@ export class Pipeline {
       });
     }
 
+    // ── Film Grain ────────────────────────────────────────────────────────
+    let grained = pixsorted;
+    const grainAmt = p.get('effect.grain').value / 100;
+    const scanAmt  = p.get('effect.scanlines').value / 100;
+    if (grainAmt > 0 || scanAmt > 0) {
+      grained = this._pass(this.m.filmgrain, {
+        uTexture:   pixsorted,
+        uGrain:     grainAmt,
+        uScanlines: scanAmt,
+        uTime:      this._noiseTime,
+      });
+    }
+
     // ── Interlace ─────────────────────────────────────────────────────────
-    let interlaced = pixsorted;
+    let interlaced = grained;
     const il = p.get('output.interlace').value;
     if (il > 0) {
       interlaced = this._pass(this.m.interlace, {
-        uTexture: pixsorted, uResY: this.height, uAmount: il, uTime: this._noiseTime,
+        uTexture: grained, uResY: this.height, uAmount: il, uTime: this._noiseTime,
       });
     }
 
@@ -605,6 +629,15 @@ export class Pipeline {
         uLength:     { value: 64 },
         uDirection:  { value: 0 },
         uMode:       { value: 0 },
+      }),
+      filmgrain: this._mat(FILM_GRAIN, {
+        uGrain:     { value: 0 },
+        uScanlines: { value: 0 },
+        uTime:      { value: 0 },
+      }),
+      feedbackRotate: this._mat(FEEDBACK_ROTATE, {
+        uAngle: { value: 0 },
+        uZoom:  { value: 1 },
       }),
     };
   }

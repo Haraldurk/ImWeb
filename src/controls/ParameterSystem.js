@@ -369,6 +369,10 @@ export function registerCoreParameters(ps) {
     min: -100, max: 100, value: 0, unit: 'px' });
   ps.register({ id: 'feedback.scale',   label: 'FBScale',       group: 'blend',
     min: -50, max: 50, value: 0 });
+  ps.register({ id: 'feedback.rotate',  label: 'FBRotate',      group: 'blend',
+    min: -100, max: 100, value: 0, unit: '°' });
+  ps.register({ id: 'feedback.zoom',    label: 'FBZoom',        group: 'blend',
+    min: -50, max: 100, value: 0, unit: '%' });
   ps.register({ id: 'output.colorshift',label: 'ColorShift',    group: 'blend',
     min: 0, max: 100, value: 0 });
   ps.register({ id: 'output.transfer',  label: 'TransferMode',  group: 'blend',
@@ -602,6 +606,12 @@ export function registerCoreParameters(ps) {
     min: 0, max: 100, value: 0, unit: '%' });
   ps.register({ id: 'effect.bloomthresh',label:'BloomThresh',group: 'effect',
     min: 0, max: 100, value: 70, unit: '%' });
+
+  // ── Film Grain / Scanlines ────────────────────────────────────────────────
+  ps.register({ id: 'effect.grain',      label: 'FilmGrain',  group: 'effect',
+    min: 0, max: 100, value: 0, unit: '%' });
+  ps.register({ id: 'effect.scanlines',  label: 'Scanlines',  group: 'effect',
+    min: 0, max: 100, value: 0, unit: '%' });
 
   // ── Pixel Sort ────────────────────────────────────────────────────────────
   ps.register({ id: 'effect.pixelsort',   label: 'PixSort',    group: 'effect',
