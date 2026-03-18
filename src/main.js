@@ -1241,15 +1241,48 @@ async function main() {
   document.getElementById('btn-fullscreen')?.addEventListener('click', toggleFullscreen);
   canvas.addEventListener('dblclick', toggleFullscreen);
 
+  // ── Resolution control ────────────────────────────────────────────────────
+
+  const RENDER_RESOLUTIONS = {
+    0: null,             // Display size (tracks container)
+    1: [1280, 720],      // 720p
+    2: [1920, 1080],     // 1080p
+    3: [960, 540],       // 540p
+    4: null,             // Quarter (½ of display)
+  };
+
+  function applyResolution(idx) {
+    const preset = RENDER_RESOLUTIONS[idx];
+    let rW, rH;
+    if (idx === 4) {
+      // Quarter of display size
+      rW = Math.max(320, Math.round(canvas.parentElement.clientWidth  / 2));
+      rH = Math.max(180, Math.round(canvas.parentElement.clientHeight / 2));
+    } else if (preset) {
+      [rW, rH] = preset;
+    } else {
+      rW = canvas.parentElement.clientWidth;
+      rH = canvas.parentElement.clientHeight;
+    }
+    W = rW; H = rH;
+    renderer.setSize(rW, rH);
+    renderer.domElement.style.width  = '100%';
+    renderer.domElement.style.height = '100%';
+    pipeline.resize(rW, rH);
+    scene3d.resize(rW, rH);
+    stillsBuffer.resize(rW, rH);
+  }
+
+  ps.get('output.resolution').onChange(idx => applyResolution(idx));
+
   // ── Resize handler ────────────────────────────────────────────────────────
 
   const resizeObserver = new ResizeObserver(() => {
-    W = canvas.parentElement.clientWidth;
-    H = canvas.parentElement.clientHeight;
-    renderer.setSize(W, H);
-    pipeline.resize(W, H);
-    scene3d.resize(W, H);
-    stillsBuffer.resize(W, H);
+    const idx = ps.get('output.resolution').value;
+    if (idx === 0 || idx === 4) {
+      applyResolution(idx);
+    }
+    // Fixed resolutions don't change with container size
   });
   resizeObserver.observe(canvas.parentElement);
 
