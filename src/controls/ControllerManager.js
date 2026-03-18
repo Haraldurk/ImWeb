@@ -85,8 +85,10 @@ export class ControllerManager {
 
     } else if (t === 'fixed') {
       p.setNormalized(controllerConfig.value ?? 0);
+    } else if (t === 'sound') {
+      this.enableSound(); // lazy-init audio input on first assignment
     }
-    // mouse, midi, sound, key are handled reactively in their event handlers
+    // mouse, midi, key are handled reactively in their event handlers
   }
 
   _removeController(paramId) {

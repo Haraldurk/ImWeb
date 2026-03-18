@@ -160,14 +160,28 @@ export class Pipeline {
       });
     }
 
-    // ── Blend (with previous frame) ───────────────────────────────────────
+    // ── Blend (with previous frame, optionally feedback-shifted) ─────────
     let blended = warped;
     if (p.get('blend.active').value) {
+      // Apply feedback offset/scale to prev frame before blending
+      const fbHor   = p.get('feedback.hor').value   / 100;
+      const fbVer   = p.get('feedback.ver').value   / 100;
+      const fbScale = p.get('feedback.scale').value / 50;
+      let prevTex = this.prev.texture;
+      if (fbHor !== 0 || fbVer !== 0 || fbScale !== 0) {
+        prevTex = this._pass(this.m.feedback, {
+          uOutput:     this.prev.texture,
+          uHorOffset:  fbHor,
+          uVerOffset:  fbVer,
+          uScale:      fbScale,
+          uResolution: new THREE.Vector2(this.width, this.height),
+        });
+      }
       blended = this._pass(this.m.blend, {
         uCurrent: warped,
-        uPrev:    this.prev.texture,
+        uPrev:    prevTex,
         uActive:  1,
-        uAmount:  0.5,
+        uAmount:  p.get('blend.amount').value / 100,
       });
     }
 

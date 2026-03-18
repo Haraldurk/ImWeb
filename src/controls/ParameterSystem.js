@@ -320,6 +320,8 @@ export function registerCoreParameters(ps) {
   // ── Blend & Feedback ──────────────────────────────────────────────────────
   ps.register({ id: 'blend.active',     label: 'Blend',         group: 'blend',
     type: PARAM_TYPE.TOGGLE, value: 0, feedbackVisible: true });
+  ps.register({ id: 'blend.amount',     label: 'BlendAmount',   group: 'blend',
+    min: 0, max: 100, value: 50, unit: '%', feedbackVisible: true });
   ps.register({ id: 'feedback.hor',     label: 'HorFBOffset',   group: 'blend',
     min: -100, max: 100, value: 0, unit: 'px' });
   ps.register({ id: 'feedback.ver',     label: 'VerFBOffset',   group: 'blend',
