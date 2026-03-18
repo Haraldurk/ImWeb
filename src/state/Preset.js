@@ -141,6 +141,12 @@ export class PresetManager extends EventTarget {
     this.currentIdx  = 0;
     this._fadePresets = true;
     this._fadeTimeoutId = null;
+
+    // Morph animation state
+    this._morphFrom   = null; // { paramId: value } snapshot of source state
+    this._morphTo     = null; // { paramId: value } snapshot of target state
+    this._morphT      = 0;   // 0→1 progress
+    this._morphActive = false;
   }
 
   async init() {
@@ -172,16 +178,23 @@ export class PresetManager extends EventTarget {
     // Restore controller assignments
     if (p.controllers) {
       this.ps.deserializeControllers(p.controllers);
-      // Re-wire controller instances
       Object.entries(p.controllers).forEach(([paramId, config]) => {
         if (config.controller) this.ctrl.assign(paramId, config.controller);
       });
     }
 
-    // Restore active display state
+    // Get target state values
     const stateIdx = p.activeState ?? 0;
     const ds = p.getState(stateIdx);
-    if (ds?.values) {
+
+    if (ds?.values && fade && this.ps.get('global.morphspeed')?.value > 0) {
+      // Start a morph animation instead of snapping
+      this._morphFrom   = this.ps.captureState();
+      this._morphTo     = { ...ds.values };
+      this._morphT      = 0;
+      this._morphActive = true;
+      this.ps.set('global.morph', 0);
+    } else if (ds?.values) {
       this.ps.restoreState(ds.values);
       this.ctrl.retriggerLFOs();
     }
@@ -193,6 +206,39 @@ export class PresetManager extends EventTarget {
     this.dispatchEvent(new CustomEvent('presetActivated', {
       detail: { index, preset: p }
     }));
+  }
+
+  /**
+   * Called from the render loop. Advances morph animation.
+   * dt: delta time in seconds.
+   */
+  tickMorph(dt) {
+    if (!this._morphActive) return;
+    const speed = this.ps.get('global.morphspeed')?.value ?? 2;
+    this._morphT = Math.min(1, this._morphT + dt / speed);
+    // Smooth step
+    const t = this._morphT * this._morphT * (3 - 2 * this._morphT);
+    this.ps.set('global.morph', Math.round(t * 100));
+
+    // Lerp all continuous params between from and to
+    const SKIP_TYPES = new Set(['toggle', 'trigger', 'select']);
+    this.ps.getAll().forEach(p => {
+      if (SKIP_TYPES.has(p.type)) return;
+      if (p.controller) return; // don't override active controllers
+      const from = this._morphFrom?.[p.id] ?? p.value;
+      const to   = this._morphTo?.[p.id]   ?? p.value;
+      if (from === to) return;
+      p.value = from + (to - from) * t;
+    });
+
+    if (this._morphT >= 1) {
+      // Snap to final state and clean up
+      if (this._morphTo) this.ps.restoreState(this._morphTo);
+      this.ctrl.retriggerLFOs();
+      this._morphActive = false;
+      this._morphFrom   = null;
+      this._morphTo     = null;
+    }
   }
 
   async saveCurrentState(stateIndex = null) {

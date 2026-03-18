@@ -1164,6 +1164,9 @@ async function main() {
     // Tick controllers (LFOs, random, etc.)
     ctrl.tick(dt);
 
+    // Tick preset morph animation
+    presetMgr.tickMorph(dt);
+
     // Update camera texture
     camera3d.tick();
 
