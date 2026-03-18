@@ -108,7 +108,9 @@ export class Parameter {
   }
 
   trigger() {
-    if (this.type === PARAM_TYPE.TRIGGER) this.value = 1;
+    if (this.type !== PARAM_TYPE.TRIGGER) return;
+    this._value = 0; // ensure changed=true so listeners always fire
+    this.value = 1;
   }
 
   cycleNext() {
