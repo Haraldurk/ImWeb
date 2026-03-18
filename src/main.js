@@ -124,6 +124,11 @@ async function main() {
   // Noise texture — generated each frame on GPU via pipeline.generateNoise()
   let noiseTexture = null; // set in render loop after first pipeline call
 
+  // Sound level texture — 1×1 greyscale, used when DS source = Sound
+  const soundData    = new Uint8Array([0, 0, 0, 255]);
+  const soundTexture = new THREE.DataTexture(soundData, 1, 1, THREE.RGBAFormat);
+  soundTexture.needsUpdate = true;
+
   // ── 5. Pipeline ───────────────────────────────────────────────────────────
 
   const pipeline = new Pipeline(renderer, W, H);
@@ -509,6 +514,13 @@ async function main() {
     // Tick stills buffer (reads fs1 → readIndex)
     stillsBuffer.tick(ps);
 
+    // Update sound level texture
+    if (ctrl.sound) {
+      const lvl = Math.round(Math.min(1, ctrl.sound.level * 4) * 255);
+      soundData[0] = soundData[1] = soundData[2] = lvl;
+      soundTexture.needsUpdate = true;
+    }
+
     // Generate GPU noise every 2 frames
     if (frameCount % 2 === 0) {
       noiseTexture = pipeline.generateNoise(
@@ -532,6 +544,7 @@ async function main() {
       scene3d: ps.get('scene3d.active').value ? scene3d.texture : null,
       color:   colorTexture,
       color2:  color2Texture,
+      sound:   soundTexture,
       noise:   noiseTexture,
       draw:    null, // DrawLayer wired in Phase 3
       warpMaps: [], // 32 warp map textures, wired in Phase 3

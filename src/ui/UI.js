@@ -145,6 +145,7 @@ export function buildParamRow(param, contextMenu) {
 // ── Layer source button matrix ────────────────────────────────────────────────
 
 // Short labels for each source index (matches SOURCES order in ParameterSystem)
+// Indices match SOURCES order: Camera(0)…Color2(10), Sound(11, DS only)
 const SOURCE_ABBREV = ['CAM','MOV','BUF','COL','NSE','3D','DRW','OUT','BG1','BG2','COL2','SND'];
 
 /**
