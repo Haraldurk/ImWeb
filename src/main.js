@@ -24,6 +24,7 @@ import { MovieInput }     from './inputs/MovieInput.js';
 import { StillsBuffer }   from './inputs/StillsBuffer.js';
 import { VideoDelayLine }    from './inputs/VideoDelayLine.js';
 import { VectorscopeInput }  from './inputs/VectorscopeInput.js';
+import { SlitScanBuffer }    from './inputs/SlitScanBuffer.js';
 import { DrawLayer }      from './inputs/DrawLayer.js';
 import { TextLayer }      from './inputs/TextLayer.js';
 import { buildWarpMaps }  from './inputs/WarpMaps.js';
@@ -97,6 +98,7 @@ async function main() {
   const stillsBuffer  = new StillsBuffer(renderer, W, H);
   const videoDelay    = new VideoDelayLine(renderer, W, H, 30);
   const vectorscope   = new VectorscopeInput();
+  const slitScan      = new SlitScanBuffer(W, H);
   const warpMaps     = buildWarpMaps(); // 8 procedural warp map textures (map1–map8)
   const drawLayer    = new DrawLayer();
   const textLayer    = new TextLayer();
@@ -613,6 +615,9 @@ async function main() {
 
   // Text layer triggers
   ps.get('text.advance').onTrigger(() => textLayer.advance());
+
+  // Slit scan clear trigger
+  ps.get('slitscan.clear').onTrigger(() => slitScan.clear());
 
   // ── Draw tab UI ───────────────────────────────────────────────────────────
 
@@ -1363,6 +1368,7 @@ async function main() {
     scene3d.resize(rW, rH);
     stillsBuffer.resize(rW, rH);
     videoDelay.resize(rW, rH);
+    slitScan.resize(rW, rH);
   }
 
   ps.get('output.resolution').onChange(idx => applyResolution(idx));
@@ -1466,6 +1472,9 @@ async function main() {
     // Tick vectorscope
     vectorscope.tick(ps);
 
+    // Tick slit scan (reads from pipeline.prev render target)
+    slitScan.tick(renderer, pipeline.prev, ps, dt);
+
     // Generate GPU noise every 2 frames
     if (frameCount % 2 === 0) {
       noiseTexture = pipeline.generateNoise(
@@ -1495,7 +1504,8 @@ async function main() {
       draw:    drawLayer.texture,
       text:    textLayer.texture,
       delay:   videoDelay.getTexture(ps.get('delay.frames').value),
-      scope:   vectorscope.texture,
+      scope:    vectorscope.texture,
+      slitscan: slitScan.texture,
       warpMaps,
     };
 
