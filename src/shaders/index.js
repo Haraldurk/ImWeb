@@ -30,12 +30,14 @@ export const PASSTHROUGH = /* glsl */ `
 export const KEYER = /* glsl */ `
   uniform sampler2D uFG;
   uniform sampler2D uBG;
+  uniform sampler2D uEK;       // external key source (DS texture when extkey=1)
   uniform float uKeyWhite;
   uniform float uKeyBlack;
   uniform float uKeySoftness;
   uniform int   uKeyActive;
   uniform int   uAlpha;
   uniform int   uAlphaInvert;
+  uniform int   uExtKey;       // 1 = key on uEK luminance instead of uFG
 
   varying vec2 vUv;
 
@@ -57,8 +59,9 @@ export const KEYER = /* glsl */ `
     if (uAlpha == 1) {
       alpha = uAlphaInvert == 1 ? (1.0 - fg.a) : fg.a;
     } else {
-      float lumaVal = luma(fg.rgb);
-      float soft = max(uKeySoftness, 0.001);
+      vec4 keySrc  = uExtKey == 1 ? texture2D(uEK, vUv) : fg;
+      float lumaVal = luma(keySrc.rgb);
+      float soft    = max(uKeySoftness, 0.001);
       alpha = 1.0 - smoothstep(uKeyWhite - soft, uKeyWhite + soft, lumaVal);
     }
 

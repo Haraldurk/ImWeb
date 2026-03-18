@@ -131,21 +131,23 @@ export class Pipeline {
     if (p.get('keyer.active').value) {
       const keyedFG = (displAmt > 0 && p.get('keyer.and_displace').value) ? displaced : composite;
       keyed = this._pass(this.m.keyer, {
-        uFG:         keyedFG,
-        uBG:         bgTex,
-        uKeyWhite:   p.get('keyer.white').value / 100,
-        uKeyBlack:   p.get('keyer.black').value / 100,
+        uFG:          keyedFG,
+        uBG:          bgTex,
+        uEK:          dsTex,
+        uKeyWhite:    p.get('keyer.white').value / 100,
+        uKeyBlack:    p.get('keyer.black').value / 100,
         uKeySoftness: p.get('keyer.softness').value / 100,
-        uKeyActive:  1,
-        uAlpha:      p.get('keyer.alpha').value,
+        uKeyActive:   1,
+        uAlpha:       p.get('keyer.alpha').value,
         uAlphaInvert: p.get('keyer.alpha_inv').value,
+        uExtKey:      p.get('keyer.extkey').value,
       });
     } else {
-      // No keyer — just mix FG over BG simply
+      // No keyer — pass FG through
       keyed = this._pass(this.m.keyer, {
-        uFG: displaced, uBG: bgTex,
+        uFG: displaced, uBG: bgTex, uEK: dsTex,
         uKeyWhite: 1, uKeyBlack: 0, uKeySoftness: 0,
-        uKeyActive: 0, uAlpha: 0, uAlphaInvert: 0,
+        uKeyActive: 0, uAlpha: 0, uAlphaInvert: 0, uExtKey: 0,
       });
     }
 
@@ -339,6 +341,8 @@ export class Pipeline {
         uKeyActive:   { value: 0 },
         uAlpha:       { value: 0 },
         uAlphaInvert: { value: 0 },
+        uEK:          { value: null },
+        uExtKey:      { value: 0 },
       }),
       displace:    this._mat(DISPLACE, {
         uAmount:     { value: 0 },
