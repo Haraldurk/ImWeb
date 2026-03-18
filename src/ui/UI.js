@@ -631,11 +631,21 @@ export class ContextMenu {
         if (type === 'none') {
           this.ctrl.assign(this._currentParam.id, null);
         } else if (type === 'midi-cc') {
-          const cc = parseInt(prompt('MIDI CC number (0–127):', '7'));
-          if (!isNaN(cc)) this.ctrl.assign(this._currentParam.id, { type: 'midi-cc', cc });
+          const raw = prompt('MIDI CC — enter CC number, or "ch:cc" to filter by channel\n(e.g. "7" or "1:7")', '7');
+          if (raw !== null) {
+            const parts = raw.split(':');
+            const cc = parseInt(parts.length > 1 ? parts[1] : parts[0]);
+            const ch = parts.length > 1 ? parseInt(parts[0]) : 0; // 0 = any channel
+            if (!isNaN(cc)) this.ctrl.assign(this._currentParam.id, { type: 'midi-cc', cc, ...(ch > 0 && { channel: ch }) });
+          }
         } else if (type === 'midi-note') {
-          const note = parseInt(prompt('MIDI Note number (0–127, e.g. 60=C4):', '60'));
-          if (!isNaN(note)) this.ctrl.assign(this._currentParam.id, { type: 'midi-note', note });
+          const raw = prompt('MIDI Note — enter note number, or "ch:note"\n(e.g. "60" or "1:60")', '60');
+          if (raw !== null) {
+            const parts = raw.split(':');
+            const note = parseInt(parts.length > 1 ? parts[1] : parts[0]);
+            const ch   = parts.length > 1 ? parseInt(parts[0]) : 0;
+            if (!isNaN(note)) this.ctrl.assign(this._currentParam.id, { type: 'midi-note', note, ...(ch > 0 && { channel: ch }) });
+          }
         } else if (type.startsWith('lfo-')) {
           const hzStr = prompt(
             'LFO Hz (or beat div: "1/8","1/4","1/2","1","2","4"):\n' +

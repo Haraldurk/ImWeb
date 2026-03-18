@@ -167,7 +167,8 @@ export class Parameter {
     const c = this.controller;
     const labels = {
       'mouse-x': 'MX', 'mouse-y': 'MY',
-      'midi-cc': `CC${c.cc ?? '?'}`,
+      'midi-cc': c.channel ? `${c.channel}:CC${c.cc ?? '?'}` : `CC${c.cc ?? '?'}`,
+      'midi-note': c.channel ? `${c.channel}:N${c.note ?? '?'}` : `N${c.note ?? '?'}`,
       'lfo-sine': 'LFO~', 'lfo-triangle': 'LFO△',
       'lfo-sawtooth': 'LFO⊿', 'lfo-square': 'LFO▭',
       'sound': 'SND', 'sound-bass': 'BAS', 'sound-mid': 'MID', 'sound-high': 'HIG',
