@@ -147,7 +147,7 @@ async function main() {
   // ── 7. UI ─────────────────────────────────────────────────────────────────
 
   initTabs();
-  const contextMenu = new ContextMenu(ps, ctrl);
+  const contextMenu = new ContextMenu(ps, ctrl, presetMgr);
   buildLayerButtons(ps, contextMenu);
   buildMappingPanels(ps, contextMenu);
   buildGeometryButtons(ps, scene3d);

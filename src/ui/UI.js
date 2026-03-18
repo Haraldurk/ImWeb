@@ -443,10 +443,11 @@ export class SignalPath {
 // ── Context menu for parameter controller assignment ───────────────────────────
 
 export class ContextMenu {
-  constructor(ps, controllerManager) {
-    this.ps   = ps;
-    this.ctrl = controllerManager;
-    this.el   = document.getElementById('param-context-menu');
+  constructor(ps, controllerManager, presetManager = null) {
+    this.ps      = ps;
+    this.ctrl    = controllerManager;
+    this.presets = presetManager;
+    this.el      = document.getElementById('param-context-menu');
     this._currentParam = null;
     this._wire();
   }
@@ -507,6 +508,7 @@ export class ContextMenu {
           this.ctrl.assign(this._currentParam.id, { type });
         }
         this.hide();
+        this.presets?.saveCurrentPreset();
       });
     });
 
