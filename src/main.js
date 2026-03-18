@@ -996,10 +996,105 @@ async function main() {
     }
   });
 
+  // ── Parameter search overlay (/ key) ─────────────────────────────────────
+
+  const searchEl  = document.getElementById('param-search');
+  const searchInp = document.getElementById('param-search-input');
+  const searchRes = document.getElementById('param-search-results');
+  let _searchSel  = 0;
+
+  function openParamSearch() {
+    if (!searchEl) return;
+    searchEl.classList.remove('hidden');
+    searchInp.value = '';
+    _searchSel = 0;
+    renderSearchResults('');
+    searchInp.focus();
+  }
+
+  function closeParamSearch() {
+    searchEl?.classList.add('hidden');
+    searchInp?.blur();
+  }
+
+  function renderSearchResults(query) {
+    if (!searchRes) return;
+    const q = query.toLowerCase();
+    const all = ps.getAll().filter(p => {
+      if (!q) return true;
+      return p.id.toLowerCase().includes(q) || p.label.toLowerCase().includes(q);
+    }).slice(0, 20);
+
+    searchRes.innerHTML = '';
+    all.forEach((p, i) => {
+      const item = document.createElement('div');
+      item.className = `psearch-item${i === _searchSel ? ' selected' : ''}`;
+      item.innerHTML = `
+        <span class="pi-id">${p.id}</span>
+        <span class="pi-ctrl">${p.controllerLabel}</span>
+        <span class="pi-val">${p.displayValue}</span>
+      `;
+      item.addEventListener('click', () => { activateSearchResult(p); });
+      item.addEventListener('mouseenter', () => {
+        _searchSel = i;
+        searchRes.querySelectorAll('.psearch-item').forEach((el, j) =>
+          el.classList.toggle('selected', j === i));
+      });
+      searchRes.appendChild(item);
+    });
+
+    return all;
+  }
+
+  function activateSearchResult(p) {
+    // Scroll to the param row and flash it
+    const row = document.querySelector(`.param-row[data-param-id="${p.id}"]`);
+    if (row) {
+      row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      row.style.outline = '1px solid var(--accent)';
+      setTimeout(() => { row.style.outline = ''; }, 1500);
+    }
+    closeParamSearch();
+  }
+
+  searchInp?.addEventListener('input', () => {
+    _searchSel = 0;
+    renderSearchResults(searchInp.value);
+  });
+
+  searchInp?.addEventListener('keydown', e => {
+    const items = searchRes?.querySelectorAll('.psearch-item');
+    if (!items?.length) return;
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      _searchSel = Math.min(_searchSel + 1, items.length - 1);
+      items.forEach((el, j) => el.classList.toggle('selected', j === _searchSel));
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      _searchSel = Math.max(_searchSel - 1, 0);
+      items.forEach((el, j) => el.classList.toggle('selected', j === _searchSel));
+    } else if (e.key === 'Enter') {
+      items[_searchSel]?.click();
+    } else if (e.key === 'Escape') {
+      closeParamSearch();
+    }
+  });
+
+  document.addEventListener('click', e => {
+    if (searchEl && !searchEl.contains(e.target)) closeParamSearch();
+  });
+
   // ── Keyboard shortcuts ────────────────────────────────────────────────────
 
   window.addEventListener('keydown', e => {
     if (e.metaKey || e.ctrlKey) return;
+
+    // / = open parameter search
+    if (e.key === '/' && !e.target.closest('input, textarea')) {
+      e.preventDefault();
+      openParamSearch();
+      return;
+    }
 
     // Numpad shortcuts (ImOs9 style)
     if (e.code === 'NumpadAdd')      { e.preventDefault(); presetMgr.nextPreset(); }
