@@ -545,6 +545,23 @@ export const COLOR_CORRECT = /* glsl */ `
   }
 `;
 
+export const KALEIDOSCOPE = /* glsl */ `
+  uniform sampler2D uTexture;
+  uniform float uSegments;  // number of mirror segments (2-16)
+  uniform float uRotation;  // 0-1 rotation of the pattern
+  varying vec2 vUv;
+  void main() {
+    vec2 uv = vUv - 0.5;
+    float angle = atan(uv.y, uv.x);
+    float r     = length(uv);
+    float seg   = 3.14159265 / max(1.0, uSegments);
+    angle = mod(angle + uRotation * 3.14159265 * 2.0, seg * 2.0);
+    if (angle > seg) angle = seg * 2.0 - angle; // mirror
+    vec2 nuv = vec2(cos(angle), sin(angle)) * r + 0.5;
+    gl_FragColor = texture2D(uTexture, fract(nuv));
+  }
+`;
+
 export const VIGNETTE = /* glsl */ `
   uniform sampler2D uTexture;
   uniform float uAmount;   // 0=none, 1=full black edges
