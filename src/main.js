@@ -297,34 +297,40 @@ async function main() {
 
   const BUFFER_SIZES = [4, 8, 16, 32];
 
-  /** Capture from whichever source buffer.source points to. */
-  function captureFromSource() {
-    const src = ps.get('buffer.source').value;
-    let tex = null;
-    if      (src === 0) tex = pipeline.prev.texture;
-    else if (src === 1) tex = camera3d.active   ? camera3d.currentTexture  : null;
-    else if (src === 2) tex = movieInput.active  ? movieInput.currentTexture : null;
-    else if (src === 3) tex = drawLayer.texture;
-    if (tex) { stillsBuffer.capture(tex); refreshBufferGrid(); }
+  // Per-capture-button pinned target slots (null = auto-advance write head)
+  const captureTargetSlots = { screen: null, camera: null, movie: null, draw: null };
+
+  /** Resolve texture for source key. */
+  function texForSource(src) {
+    if (src === 'screen') return pipeline.prev.texture;
+    if (src === 'camera') return camera3d.active  ? camera3d.currentTexture  : null;
+    if (src === 'movie')  return movieInput.active ? movieInput.currentTexture : null;
+    if (src === 'draw')   return drawLayer.texture;
+    return null;
   }
 
-  // Unified capture trigger — reads buffer.source
-  ps.get('buffer.capture').onTrigger(captureFromSource);
+  /** Capture from src key into its pinned slot (or write head if null). */
+  function captureSource(src) {
+    const tex  = texForSource(src);
+    const slot = captureTargetSlots[src];
+    if (!tex) return;
+    if (slot !== null) stillsBuffer.captureToSlot(tex, slot);
+    else               stillsBuffer.capture(tex);
+    refreshBufferGrid();
+  }
 
-  // Legacy per-source triggers (kept for MIDI mapping)
-  ps.get('buffer.cap_screen').onTrigger(() => {
-    stillsBuffer.capture(pipeline.prev.texture); refreshBufferGrid();
-  });
-  ps.get('buffer.cap_video').onTrigger(() => {
-    if (camera3d.active && camera3d.currentTexture) {
-      stillsBuffer.capture(camera3d.currentTexture); refreshBufferGrid();
-    }
-  });
-  ps.get('buffer.cap_movie').onTrigger(() => {
-    if (movieInput.active && movieInput.currentTexture) {
-      stillsBuffer.capture(movieInput.currentTexture); refreshBufferGrid();
-    }
-  });
+  /** Used by auto-capture and keyboard shortcut C — respects buffer.source SELECT. */
+  function captureFromSource() {
+    const srcIdx = ps.get('buffer.source').value;
+    const keys   = ['screen', 'camera', 'movie', 'draw'];
+    captureSource(keys[srcIdx] ?? 'screen');
+  }
+
+  // Trigger bindings (MIDI-mappable)
+  ps.get('buffer.capture').onTrigger(captureFromSource);
+  ps.get('buffer.cap_screen').onTrigger(() => captureSource('screen'));
+  ps.get('buffer.cap_video').onTrigger(()  => captureSource('camera'));
+  ps.get('buffer.cap_movie').onTrigger(()  => captureSource('movie'));
 
   ps.get('screen.bg1').onTrigger(() => stillsBuffer.captureBG(0, pipeline.prev.texture));
   ps.get('screen.bg2').onTrigger(() => stillsBuffer.captureBG(1, pipeline.prev.texture));
@@ -476,73 +482,164 @@ async function main() {
     refreshBufferGrid();
   }
 
+  // ── Slot picker popup ─────────────────────────────────────────────────────
+  // Shared floating popup used by all capture buttons.
+
+  const slotPickerEl = document.createElement('div');
+  slotPickerEl.className = 'slot-picker hidden';
+  document.body.appendChild(slotPickerEl);
+
+  let _slotPickerCb = null;
+
+  function showSlotPicker(e, currentSlot, onPick) {
+    e.preventDefault();
+    _slotPickerCb = onPick;
+    slotPickerEl.innerHTML = '';
+
+    // "Auto" option — resets to write-head advance
+    const autoBtn = document.createElement('button');
+    autoBtn.className = 'slot-picker-auto' + (currentSlot === null ? ' active' : '');
+    autoBtn.textContent = 'Auto →';
+    autoBtn.title = 'Advance write head (default)';
+    autoBtn.addEventListener('click', () => { onPick(null); hideSlotPicker(); });
+    slotPickerEl.appendChild(autoBtn);
+
+    // Slot grid
+    const grid = document.createElement('div');
+    grid.className = 'slot-picker-grid';
+    for (let i = 0; i < stillsBuffer.frameCount; i++) {
+      const btn = document.createElement('button');
+      btn.className = 'slot-picker-slot'
+        + (stillsBuffer._hasFrame[i] ? ' filled' : '')
+        + (i === currentSlot        ? ' active'  : '');
+      btn.textContent = String(i);
+      btn.title = `Capture always → slot ${i}`;
+      btn.addEventListener('click', () => { onPick(i); hideSlotPicker(); });
+      grid.appendChild(btn);
+    }
+    slotPickerEl.appendChild(grid);
+
+    // Position near the click
+    const x = Math.min(e.clientX, window.innerWidth  - 180);
+    const y = Math.min(e.clientY, window.innerHeight - 200);
+    slotPickerEl.style.left = `${x}px`;
+    slotPickerEl.style.top  = `${y}px`;
+    slotPickerEl.classList.remove('hidden');
+  }
+
+  function hideSlotPicker() {
+    slotPickerEl.classList.add('hidden');
+    _slotPickerCb = null;
+  }
+
+  document.addEventListener('click', e => {
+    if (!slotPickerEl.contains(e.target)) hideSlotPicker();
+  });
+
   // ── Buffer controls toolbar ───────────────────────────────────────────────
 
   const bufferSection = document.querySelector('#tab-buffer .panel-section');
 
   if (bufferSection) {
-    // ── Source selector ──────────────────────────────────────────────────
-    const srcRow = document.createElement('div');
-    srcRow.style.cssText = 'display:flex;align-items:center;gap:6px;padding:8px 10px 4px;flex-wrap:wrap;';
 
+    /**
+     * Build a capture button that:
+     *   left-click  → captureSource(srcKey)
+     *   right-click → open slot picker to pin a target slot
+     * The button label updates to show the pinned slot.
+     */
+    function makeCaptureBtn(label, srcKey) {
+      const btn = document.createElement('button');
+      btn.className = 'import-btn cap-btn';
+
+      function updateLabel() {
+        const slot = captureTargetSlots[srcKey];
+        btn.textContent = slot !== null ? `${label} [${slot}]` : label;
+        btn.classList.toggle('pinned', slot !== null);
+      }
+      updateLabel();
+
+      btn.addEventListener('click', e => {
+        if (e.ctrlKey || e.metaKey) return; // handled by contextmenu
+        captureSource(srcKey);
+      });
+
+      btn.addEventListener('contextmenu', e => {
+        showSlotPicker(e, captureTargetSlots[srcKey], slot => {
+          captureTargetSlots[srcKey] = slot;
+          updateLabel();
+        });
+      });
+
+      return btn;
+    }
+
+    // ── Capture buttons row ───────────────────────────────────────────────
+    const capRow = document.createElement('div');
+    capRow.style.cssText = 'display:flex;gap:4px;padding:8px 10px 4px;flex-wrap:wrap;';
+    capRow.appendChild(makeCaptureBtn('SCR', 'screen'));
+    capRow.appendChild(makeCaptureBtn('CAM', 'camera'));
+    capRow.appendChild(makeCaptureBtn('MOV', 'movie'));
+    capRow.appendChild(makeCaptureBtn('DRW', 'draw'));
+
+    const capHint = document.createElement('span');
+    capHint.textContent = 'right-click to pin slot';
+    capHint.style.cssText = 'font-size:10px;color:var(--text-2);align-self:center;margin-left:4px;';
+    capRow.appendChild(capHint);
+
+    // ── Auto-capture row ──────────────────────────────────────────────────
+    const autoRow = document.createElement('div');
+    autoRow.style.cssText = 'display:flex;align-items:center;gap:6px;padding:0 10px 4px;flex-wrap:wrap;';
+
+    // Source selector for auto-capture
     const srcLabel = document.createElement('span');
-    srcLabel.textContent = 'Source:';
-    srcLabel.style.cssText = 'font-size:11px;color:var(--text-2);min-width:46px;';
-    srcRow.appendChild(srcLabel);
+    srcLabel.textContent = 'Auto src:';
+    srcLabel.style.cssText = 'font-size:11px;color:var(--text-2);';
+    autoRow.appendChild(srcLabel);
 
     const srcParam = ps.get('buffer.source');
     const srcBtns  = [];
     srcParam.options.forEach((opt, i) => {
       const btn = document.createElement('button');
       btn.className = 'source-btn';
-      btn.textContent = opt;
+      btn.textContent = opt.slice(0, 3).toUpperCase();
+      btn.title = opt;
       btn.classList.toggle('active', i === srcParam.value);
       btn.addEventListener('click', () => {
         srcParam.value = i;
         srcBtns.forEach((b, j) => b.classList.toggle('active', j === i));
       });
       srcBtns.push(btn);
-      srcRow.appendChild(btn);
+      autoRow.appendChild(btn);
     });
-
-    // ── Capture + Auto row ───────────────────────────────────────────────
-    const capRow = document.createElement('div');
-    capRow.style.cssText = 'display:flex;align-items:center;gap:6px;padding:0 10px 4px;flex-wrap:wrap;';
-
-    const btnCap = document.createElement('button');
-    btnCap.className = 'import-btn';
-    btnCap.textContent = '→ Capture';
-    btnCap.title = 'Capture from selected source (C)';
-    btnCap.addEventListener('click', captureFromSource);
-    capRow.appendChild(btnCap);
 
     const btnAuto = document.createElement('button');
     btnAuto.className = 'import-btn';
     btnAuto.textContent = '⏺ Auto';
     btnAuto.title = 'Auto-capture continuously';
+    btnAuto.style.marginLeft = '6px';
     btnAuto.classList.toggle('active', !!ps.get('buffer.auto').value);
     btnAuto.addEventListener('click', () => {
       ps.toggle('buffer.auto');
       btnAuto.classList.toggle('active', !!ps.get('buffer.auto').value);
     });
-    capRow.appendChild(btnAuto);
-
-    // Rate knob (displayed inline as a small number input)
-    const rateLabel = document.createElement('span');
-    rateLabel.style.cssText = 'font-size:11px;color:var(--text-2);margin-left:4px;';
-    rateLabel.textContent = 'fps:';
-    capRow.appendChild(rateLabel);
+    autoRow.appendChild(btnAuto);
 
     const rateInput = document.createElement('input');
     rateInput.type = 'number';
     rateInput.min = '0.1'; rateInput.max = '30'; rateInput.step = '0.1';
     rateInput.value = ps.get('buffer.rate').value;
-    rateInput.style.cssText = 'width:44px;font-size:11px;background:var(--bg-4);border:1px solid var(--border);color:var(--text-1);padding:2px 4px;border-radius:3px;';
+    rateInput.title = 'Frames per second';
+    rateInput.style.cssText = 'width:40px;font-size:11px;background:var(--bg-4);border:1px solid var(--border);color:var(--text-1);padding:2px 4px;border-radius:3px;';
     rateInput.addEventListener('input', () => {
       const v = parseFloat(rateInput.value);
       if (!isNaN(v)) ps.set('buffer.rate', v);
     });
-    capRow.appendChild(rateInput);
+    const fpsLbl = document.createElement('span');
+    fpsLbl.textContent = 'fps';
+    fpsLbl.style.cssText = 'font-size:11px;color:var(--text-2);';
+    autoRow.appendChild(rateInput);
+    autoRow.appendChild(fpsLbl);
 
     // ── Size selector ────────────────────────────────────────────────────
     const sizeRow = document.createElement('div');
@@ -582,8 +679,8 @@ async function main() {
     // Insert before the canvas
     bufferSection.insertBefore(bgRow,    bufferCanvas ?? null);
     bufferSection.insertBefore(sizeRow,  bufferCanvas ?? null);
+    bufferSection.insertBefore(autoRow,  bufferCanvas ?? null);
     bufferSection.insertBefore(capRow,   bufferCanvas ?? null);
-    bufferSection.insertBefore(srcRow,   bufferCanvas ?? null);
   }
 
   // Click to select frame

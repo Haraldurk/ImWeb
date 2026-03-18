@@ -147,6 +147,21 @@ export class StillsBuffer {
     return this._hasFrame[last] ? this.frames[last].texture : null;
   }
 
+  /**
+   * Capture a texture into a specific slot without advancing writeIndex.
+   * Useful for pinned-slot capture buttons.
+   */
+  captureToSlot(tex, idx) {
+    if (!tex || idx < 0 || idx >= this.frameCount) return -1;
+    this._mat.uniforms.uTexture.value = tex;
+    this.renderer.setRenderTarget(this.frames[idx]);
+    this.renderer.render(this._scene, this._camera);
+    this._hasFrame[idx] = true;
+    this._updateThumbnail(idx);
+    this.renderer.setRenderTarget(null);
+    return idx;
+  }
+
   /** Capture tex into a named background slot (0 = bg1, 1 = bg2). */
   captureBG(idx, tex) {
     if (!tex || idx < 0 || idx > 1) return;
