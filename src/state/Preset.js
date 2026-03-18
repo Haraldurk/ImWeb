@@ -243,4 +243,32 @@ export class PresetManager extends EventTarget {
   }
 
   getAll() { return this.presets; }
+
+  get currentIndex() { return this.currentIdx; }
+
+  /** Return all preset data for project file export. */
+  async exportAll() {
+    const all = await Preset.loadAll();
+    return all.map(p => p.serialize());
+  }
+
+  /** Replace all presets from imported project data. */
+  async importAll(presetDataArray) {
+    this.presets = [];
+    for (const data of presetDataArray) {
+      const p = Preset.deserialize(data);
+      this.presets[p.index] = p;
+      await p.save();
+    }
+    // Ensure at least slot 0 exists
+    if (!this.presets[0]) {
+      this.presets[0] = new Preset(0);
+      await this.presets[0].save();
+    }
+    this.dispatchEvent(new CustomEvent('presetActivated', { detail: { index: 0 } }));
+  }
+
+  async loadPreset(index) {
+    await this.activatePreset(index, { fade: false });
+  }
 }

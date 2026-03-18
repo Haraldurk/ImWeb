@@ -27,6 +27,8 @@ import { buildWarpMaps }  from './inputs/WarpMaps.js';
 import { SceneManager } from './scene3d/SceneManager.js';
 import { Pipeline } from './core/Pipeline.js';
 import { PresetManager, openDB } from './state/Preset.js';
+import { OSCBridge }    from './io/OSCBridge.js';
+import { ProjectFile }  from './io/ProjectFile.js';
 import {
   initTabs,
   buildLayerButtons,
@@ -170,6 +172,61 @@ async function main() {
   const presetsPanel = new PresetsPanel(presetMgr);
   const fpsDisplay    = new FPSDisplay();
   const tablesEditor  = new TablesEditor(tableManager);
+
+  // ── OSC bridge ────────────────────────────────────────────────────────────
+  const oscBridge  = new OSCBridge(ps, presetMgr);
+  const projectFile = new ProjectFile(ps, presetMgr, tableManager);
+
+  // Click OSC indicator → prompt for WebSocket URL and connect
+  document.getElementById('status-osc')?.addEventListener('click', () => {
+    if (oscBridge.active) {
+      oscBridge.disconnect();
+    } else {
+      const url = prompt('OSC relay WebSocket URL:', 'ws://localhost:8080');
+      if (url) oscBridge.connect(url);
+    }
+  });
+
+  // Export / Import project file buttons in Presets tab
+  (() => {
+    const presetsSection = document.querySelector('#tab-presets .panel-section');
+    if (!presetsSection) return;
+
+    const ioRow = document.createElement('div');
+    ioRow.style.cssText = 'display:flex;gap:6px;padding:8px 10px 4px;flex-wrap:wrap;';
+
+    const btnExport = document.createElement('button');
+    btnExport.className = 'import-btn';
+    btnExport.textContent = '⬇ Export .imweb';
+    btnExport.addEventListener('click', async () => {
+      const name = prompt('Project name:', 'ImWeb Project') ?? 'ImWeb Project';
+      await projectFile.export(name);
+    });
+
+    const btnImport = document.createElement('button');
+    btnImport.className = 'import-btn';
+    btnImport.textContent = '⬆ Import .imweb';
+    btnImport.addEventListener('click', () => {
+      const inp = document.createElement('input');
+      inp.type = 'file';
+      inp.accept = '.imweb,application/json';
+      inp.onchange = async e => {
+        const file = e.target.files[0];
+        if (!file) return;
+        try {
+          const name = await projectFile.import(file);
+          alert(`Loaded: ${name}`);
+        } catch (err) {
+          alert(`Import failed: ${err.message}`);
+        }
+      };
+      inp.click();
+    });
+
+    ioRow.appendChild(btnExport);
+    ioRow.appendChild(btnImport);
+    presetsSection.appendChild(ioRow);
+  })();
 
   // ── Camera controls ───────────────────────────────────────────────────────
 
