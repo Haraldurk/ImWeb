@@ -221,6 +221,13 @@ export class Pipeline {
     this._copyToPrev(faded);
   }
 
+  // ── GPU noise generation ──────────────────────────────────────────────────
+
+  /** Run the NOISE_GEN shader and return the resulting texture. */
+  generateNoise(time, type) {
+    return this._pass(this.m.noise, { uTime: time, uType: type });
+  }
+
   // ── Resize ────────────────────────────────────────────────────────────────
 
   resize(w, h) {
@@ -288,7 +295,7 @@ export class Pipeline {
   }
 
   _resolveSource(inputs, sourceIdx) {
-    const SOURCES = ['camera', 'movie', 'buffer', 'color', 'noise', 'scene3d', 'draw', 'output', 'bg1', 'bg2'];
+    const SOURCES = ['camera', 'movie', 'buffer', 'color', 'noise', 'scene3d', 'draw', 'output', 'bg1', 'bg2', 'color2'];
     const key = SOURCES[sourceIdx] ?? 'color';
 
     if (key === 'camera'  && inputs.camera)  return inputs.camera;
@@ -300,6 +307,7 @@ export class Pipeline {
     if (key === 'noise')                     return inputs.noise ?? this._getNoiseTexture(0);
     if (key === 'bg1'     && inputs.bg1)     return inputs.bg1;
     if (key === 'bg2'     && inputs.bg2)     return inputs.bg2;
+    if (key === 'color2'  && inputs.color2)  return inputs.color2;
     return inputs.color ?? this._getFallbackTexture();
   }
 

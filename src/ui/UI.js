@@ -145,7 +145,7 @@ export function buildParamRow(param, contextMenu) {
 // ── Layer source button matrix ────────────────────────────────────────────────
 
 // Short labels for each source index (matches SOURCES order in ParameterSystem)
-const SOURCE_ABBREV = ['CAM','MOV','BUF','COL','NSE','3D','DRW','OUT','BG1','BG2','SND'];
+const SOURCE_ABBREV = ['CAM','MOV','BUF','COL','NSE','3D','DRW','OUT','BG1','BG2','COL2','SND'];
 
 /**
  * Builds the FG / BG / DS source-selector rows in #layer-params.
@@ -215,6 +215,7 @@ export function buildMappingPanels(ps, contextMenu) {
     'displace-params': ps.getGroup('displace'),
     'blend-params':    ps.getGroup('blend'),
     'color-params':    ps.getGroup('color'),
+    'noise-params':    ps.getGroup('noise'),
     'output-params':   ps.getGroup('output'),
     'buffer-controls': ps.getGroup('buffer'),
     'clip-params':     ps.getGroup('movie'),
@@ -236,6 +237,22 @@ export function buildMappingPanels(ps, contextMenu) {
 export function buildGeometryButtons(ps, sceneManager) {
   const el = document.getElementById('geometry-controls');
   if (!el) return;
+
+  // 3D on/off toggle at top of section
+  const activeParam = ps.get('scene3d.active');
+  const btn3D = document.createElement('button');
+  btn3D.className = 'import-btn';
+  btn3D.style.cssText = 'margin:0 0 8px 0;';
+  const update3DBtn = () => {
+    btn3D.textContent = activeParam.value ? '■ 3D Scene On' : '▶ 3D Scene Off';
+  };
+  update3DBtn();
+  btn3D.addEventListener('click', () => {
+    activeParam.toggle();
+    update3DBtn();
+  });
+  activeParam.onChange(update3DBtn);
+  el.appendChild(btn3D);
 
   const geoParam = ps.get('scene3d.geo');
   const names = geoParam.options;

@@ -277,7 +277,7 @@ export class ParameterSystem extends EventTarget {
 export function registerCoreParameters(ps) {
 
   // ── Layer source selection ────────────────────────────────────────────────
-  const SOURCES = ['Camera', 'Movie', 'Buffer', 'Color', 'Noise', '3D Scene', 'Draw', 'Output', 'BG1', 'BG2'];
+  const SOURCES = ['Camera', 'Movie', 'Buffer', 'Color', 'Noise', '3D Scene', 'Draw', 'Output', 'BG1', 'BG2', 'Color2'];
 
   ps.register({ id: 'layer.fg', label: 'Foreground', group: 'layers',
     type: PARAM_TYPE.SELECT, options: SOURCES, value: 3, feedbackVisible: true }); // default: Color
@@ -353,6 +353,10 @@ export function registerCoreParameters(ps) {
     min: 0, max: 100, value: 80 });
   ps.register({ id: 'color2.val', label: 'Val 2',  group: 'color',
     min: 0, max: 100, value: 60 });
+
+  // ── Noise ─────────────────────────────────────────────────────────────────
+  ps.register({ id: 'noise.type', label: 'NoiseType', group: 'noise',
+    type: PARAM_TYPE.SELECT, options: ['Pixel','H-Lines','V-Lines'], value: 0 });
 
   // ── Mirror ────────────────────────────────────────────────────────────────
   ps.register({ id: 'mirror.camera', label: 'Mirror Cam',    group: 'mirror',

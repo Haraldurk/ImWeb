@@ -104,22 +104,25 @@ async function main() {
   ['color1.hue','color1.sat','color1.val'].forEach(id => ps.get(id).onChange(updateColorTexture));
   updateColorTexture();
 
-  // Noise texture (updated each frame via shader — using canvas for now)
-  const noiseCanvas = document.createElement('canvas');
-  noiseCanvas.width = noiseCanvas.height = 256;
-  const noiseCtx = noiseCanvas.getContext('2d');
-  const noiseTexture = new THREE.CanvasTexture(noiseCanvas);
+  // Color2 input — second solid color source
+  const color2Canvas = document.createElement('canvas');
+  color2Canvas.width = color2Canvas.height = 4;
+  const color2Ctx = color2Canvas.getContext('2d');
+  const color2Texture = new THREE.CanvasTexture(color2Canvas);
 
-  function updateNoise() {
-    const img = noiseCtx.createImageData(256, 256);
-    for (let i = 0; i < img.data.length; i += 4) {
-      const v = Math.random() * 255;
-      img.data[i] = img.data[i+1] = img.data[i+2] = v;
-      img.data[i+3] = 255;
-    }
-    noiseCtx.putImageData(img, 0, 0);
-    noiseTexture.needsUpdate = true;
+  function updateColor2Texture() {
+    const h = ps.get('color2.hue').value / 100;
+    const s = ps.get('color2.sat').value / 100;
+    const v = ps.get('color2.val').value / 100;
+    color2Ctx.fillStyle = hsvToHex(h, s, v);
+    color2Ctx.fillRect(0, 0, 4, 4);
+    color2Texture.needsUpdate = true;
   }
+  ['color2.hue','color2.sat','color2.val'].forEach(id => ps.get(id).onChange(updateColor2Texture));
+  updateColor2Texture();
+
+  // Noise texture — generated each frame on GPU via pipeline.generateNoise()
+  let noiseTexture = null; // set in render loop after first pipeline call
 
   // ── 5. Pipeline ───────────────────────────────────────────────────────────
 
@@ -271,12 +274,15 @@ async function main() {
     }
   });
 
-  // 3D scene toggle
-  ps.get('scene3d.active').onChange(v => {
-    if (v && !ps.get('camera.active').value) {
-      ps.set('layer.fg', 5); // 5 = '3D Scene'
-    }
-  });
+  // Auto-activate / deactivate 3D scene based on layer source selection
+  function sync3DActive() {
+    const fg = ps.get('layer.fg').value;
+    const bg = ps.get('layer.bg').value;
+    const needs3D = fg === 5 || bg === 5;
+    ps.set('scene3d.active', needs3D ? 1 : 0);
+  }
+  ps.get('layer.fg').onChange(sync3DActive);
+  ps.get('layer.bg').onChange(sync3DActive);
 
   // ── Buffer capture triggers ───────────────────────────────────────────────
 
@@ -503,8 +509,13 @@ async function main() {
     // Tick stills buffer (reads fs1 → readIndex)
     stillsBuffer.tick(ps);
 
-    // Update noise every 2 frames
-    if (frameCount % 2 === 0) updateNoise();
+    // Generate GPU noise every 2 frames
+    if (frameCount % 2 === 0) {
+      noiseTexture = pipeline.generateNoise(
+        lastTime / 1000,
+        ps.get('noise.type').value,
+      );
+    }
 
     // Render 3D scene to its render target
     if (ps.get('scene3d.active').value) {
@@ -520,6 +531,7 @@ async function main() {
       bg2:     stillsBuffer.bgTexture(1),
       scene3d: ps.get('scene3d.active').value ? scene3d.texture : null,
       color:   colorTexture,
+      color2:  color2Texture,
       noise:   noiseTexture,
       draw:    null, // DrawLayer wired in Phase 3
       warpMaps: [], // 32 warp map textures, wired in Phase 3
