@@ -163,8 +163,12 @@ button {
   cursor: move;
   pointer-events: all;
   white-space: nowrap;
-  text-shadow: 0 0 8px rgba(0,0,0,0.8);
+  text-shadow: 0 0 8px rgba(0,0,0,0.8), 0 1px 3px rgba(0,0,0,0.9);
   user-select: none;
+  line-height: 1;
+  padding: 1px 4px;
+  border-radius: 2px;
+  background: rgba(0,0,0,0.3);
 }
 
 #video-spy {
