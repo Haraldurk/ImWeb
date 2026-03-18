@@ -254,6 +254,51 @@ button {
 }
 .section-header:hover { color: var(--text-1); }
 
+/* ── LAYER SOURCE BUTTONS ────────────────────────────────────────────────── */
+
+.layer-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-bottom: 1px solid var(--bg-1);
+}
+
+.layer-label {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text-2);
+  min-width: 20px;
+  cursor: default;
+  user-select: none;
+}
+
+.layer-btns {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  flex: 1;
+}
+
+.source-btn {
+  font-family: var(--mono);
+  font-size: 10px;
+  padding: 2px 5px;
+  background: var(--bg-3);
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  color: var(--text-2);
+  cursor: pointer;
+  transition: color 0.08s, border-color 0.08s, background 0.08s;
+  white-space: nowrap;
+}
+.source-btn:hover { color: var(--text-0); border-color: var(--border-hi); }
+.source-btn.active {
+  color: var(--accent);
+  border-color: var(--accent-dim);
+  background: color-mix(in srgb, var(--accent-dim) 40%, var(--bg-3));
+}
+
 /* ── PARAMETER ROW ───────────────────────────────────────────────────────── */
 
 .param-row {
