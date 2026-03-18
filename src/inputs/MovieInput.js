@@ -96,14 +96,30 @@ export class MovieInput {
 
   /**
    * Called each frame from the render loop.
-   * Reads parameter values to control playback.
+   * @param {ParameterSystem} params
+   * @param {number} beatPhase - accumulated beat counter (increases at BPM rate)
    */
-  tick(params) {
+  tick(params, beatPhase = 0) {
     if (!this.active || this._current < 0) return;
 
     const clip = this.clips[this._current];
     if (!clip) return;
     const v = clip.video;
+
+    // BPM sync mode: lock clip position to beat phase
+    const bpmSync = params.get('movie.bpmsync')?.value;
+    if (bpmSync) {
+      const beatLenOptions = [1, 2, 4, 8, 16];
+      const beatLenIdx     = params.get('movie.bpmbeats')?.value ?? 2;
+      const beatLen        = beatLenOptions[beatLenIdx] ?? 4;
+      const phase          = (beatPhase % beatLen) / beatLen; // 0..1
+      const targetT        = phase * clip.duration;
+      if (Math.abs(v.currentTime - targetT) > 0.05) {
+        v.currentTime = targetT;
+      }
+      if (v.readyState >= v.HAVE_CURRENT_DATA) clip.texture.needsUpdate = true;
+      return;
+    }
 
     // Speed control: movie.speed [-1..3], 1 = normal
     const speed = params.get('movie.speed').value;
