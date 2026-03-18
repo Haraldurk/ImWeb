@@ -19,7 +19,7 @@ import * as THREE from 'three';
 import {
   VERT, KEYER, DISPLACE, BLEND, FEEDBACK,
   TRANSFERMODE, COLORSHIFT, NOISE_GEN, INTERLACE, MIRROR, SOLID_COLOR, WARP, FADE, PASSTHROUGH,
-  BUFFER_TRANSFORM,
+  BUFFER_TRANSFORM, INTERP,
 } from '../shaders/index.js';
 
 export class Pipeline {
@@ -214,10 +214,20 @@ export class Pipeline {
       });
     }
 
-    // Blit to screen first (faded texture still valid in ping-pong)
-    this._blit(faded);
+    // Final blit — optionally through bicubic interpolation
+    const interpMode = p.get('output.interp').value;
+    if (interpMode > 0) {
+      this.m.interp.uniforms.uResolution.value.set(this.width, this.height);
+      this.m.interp.uniforms.uMode.value = interpMode;
+      this.m.interp.uniforms.uTexture.value = faded;
+      this._quad.material = this.m.interp;
+      this.renderer.setRenderTarget(null);
+      this.renderer.render(this._scene, this._camera);
+    } else {
+      this._blit(faded);
+    }
 
-    // Then save to prev buffer (safe: _blit already consumed faded)
+    // Save to prev buffer
     this._copyToPrev(faded);
   }
 
@@ -394,6 +404,10 @@ export class Pipeline {
         uPanX:  { value: 0 },
         uPanY:  { value: 0 },
         uScale: { value: 1 },
+      }),
+      interp: this._mat(INTERP, {
+        uResolution: { value: new THREE.Vector2(1280, 720) },
+        uMode:       { value: 0 },
       }),
     };
   }

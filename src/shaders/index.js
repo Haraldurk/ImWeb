@@ -59,10 +59,13 @@ export const KEYER = /* glsl */ `
     if (uAlpha == 1) {
       alpha = uAlphaInvert == 1 ? (1.0 - fg.a) : fg.a;
     } else {
-      vec4 keySrc  = uExtKey == 1 ? texture2D(uEK, vUv) : fg;
+      vec4 keySrc   = uExtKey == 1 ? texture2D(uEK, vUv) : fg;
       float lumaVal = luma(keySrc.rgb);
       float soft    = max(uKeySoftness, 0.001);
-      alpha = 1.0 - smoothstep(uKeyWhite - soft, uKeyWhite + soft, lumaVal);
+      // Pass band between black and white thresholds; soft edges on both
+      float lo = smoothstep(uKeyBlack - soft, uKeyBlack + soft, lumaVal);
+      float hi = 1.0 - smoothstep(uKeyWhite - soft, uKeyWhite + soft, lumaVal);
+      alpha = lo * hi;
     }
 
     gl_FragColor = mix(bg, fg, alpha);
@@ -324,6 +327,54 @@ export const FADE = /* glsl */ `
   varying vec2 vUv;
   void main() {
     gl_FragColor = texture2D(uTexture, vUv) * uAmount;
+  }
+`;
+
+// ── Bicubic interpolation blit ────────────────────────────────────────────────
+// Mitchell-Netravali cubic filter for smooth upscaling on the final blit.
+// uMode: 0=nearest/linear (passthrough), 1=bicubic
+// WGSL: equivalent textureSample with custom filter kernel
+
+export const INTERP = /* glsl */ `
+  uniform sampler2D uTexture;
+  uniform vec2      uResolution; // output resolution
+  uniform int       uMode;       // 0=linear, 1=bicubic
+  varying vec2 vUv;
+
+  vec4 cubic(float v) {
+    vec4 n  = vec4(1.0, 2.0, 3.0, 4.0) - v;
+    vec4 s  = n * n * n;
+    float x = s.x;
+    float y = s.y - 4.0 * s.x;
+    float z = s.z - 4.0 * s.y + 6.0 * s.x;
+    float w = 6.0 - x - y - z;
+    return vec4(x, y, z, w) * (1.0 / 6.0);
+  }
+
+  vec4 textureBicubic(sampler2D tex, vec2 uv, vec2 texSize) {
+    uv = uv * texSize - 0.5;
+    vec2 fxy = fract(uv);
+    uv -= fxy;
+    vec4 xcubic = cubic(fxy.x);
+    vec4 ycubic = cubic(fxy.y);
+    vec4 c = uv.xxyy + vec4(-0.5, 1.5, -0.5, 1.5);
+    vec4 s = vec4(xcubic.xz + xcubic.yw, ycubic.xz + ycubic.yw);
+    vec4 offset = c + vec4(xcubic.yw, ycubic.yw) / s;
+    vec4 sample0 = texture2D(tex, vec2(offset.x, offset.z) / texSize);
+    vec4 sample1 = texture2D(tex, vec2(offset.y, offset.z) / texSize);
+    vec4 sample2 = texture2D(tex, vec2(offset.x, offset.w) / texSize);
+    vec4 sample3 = texture2D(tex, vec2(offset.y, offset.w) / texSize);
+    float sx = s.x / (s.x + s.y);
+    float sy = s.z / (s.z + s.w);
+    return mix(mix(sample3, sample2, sx), mix(sample1, sample0, sx), sy);
+  }
+
+  void main() {
+    if (uMode == 1) {
+      gl_FragColor = textureBicubic(uTexture, vUv, uResolution);
+    } else {
+      gl_FragColor = texture2D(uTexture, vUv);
+    }
   }
 `;
 
