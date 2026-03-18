@@ -20,6 +20,7 @@ import { ControllerManager } from './controls/ControllerManager.js';
 import { CameraInput }    from './inputs/CameraInput.js';
 import { MovieInput }     from './inputs/MovieInput.js';
 import { StillsBuffer }   from './inputs/StillsBuffer.js';
+import { buildWarpMaps }  from './inputs/WarpMaps.js';
 import { SceneManager } from './scene3d/SceneManager.js';
 import { Pipeline } from './core/Pipeline.js';
 import { PresetManager } from './state/Preset.js';
@@ -84,6 +85,7 @@ async function main() {
   const movieInput = new MovieInput();
 
   const stillsBuffer = new StillsBuffer(renderer, W, H);
+  const warpMaps     = buildWarpMaps(); // 8 procedural warp map textures (map1–map8)
 
   const scene3d = new SceneManager(renderer, W, H);
 
@@ -547,7 +549,7 @@ async function main() {
       sound:   soundTexture,
       noise:   noiseTexture,
       draw:    null, // DrawLayer wired in Phase 3
-      warpMaps: [], // 32 warp map textures, wired in Phase 3
+      warpMaps,
     };
 
     // Run compositing pipeline

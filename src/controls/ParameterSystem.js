@@ -314,8 +314,8 @@ export function registerCoreParameters(ps) {
   ps.register({ id: 'displace.rotateg', label: 'RotateGrey',    group: 'displace',
     type: PARAM_TYPE.TOGGLE, value: 0 });
   ps.register({ id: 'displace.warp',    label: 'WarpMode',      group: 'displace',
-    min: 0, max: 32, value: 0, type: PARAM_TYPE.SELECT,
-    options: Array.from({ length: 33 }, (_, i) => i === 0 ? 'off' : `map${i}`) });
+    min: 0, max: 8, value: 0, type: PARAM_TYPE.SELECT,
+    options: ['off','H-Wave','V-Wave','Radial','Spiral','Shear','Pinch','Turb','Rings'] });
 
   // ── Blend & Feedback ──────────────────────────────────────────────────────
   ps.register({ id: 'blend.active',     label: 'Blend',         group: 'blend',
