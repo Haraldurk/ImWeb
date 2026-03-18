@@ -1388,6 +1388,7 @@ async function main() {
       camera:  camera3d.active ? camera3d.currentTexture : null,
       movie:   movieInput.active ? movieInput.currentTexture : null,
       buffer:  stillsBuffer.texture,
+      buffer2: stillsBuffer.texture2,
       bg1:     stillsBuffer.bgTexture(0),
       bg2:     stillsBuffer.bgTexture(1),
       scene3d: ps.get('scene3d.active').value ? scene3d.texture : null,

@@ -72,6 +72,18 @@ export class Pipeline {
       processedInputs = { ...inputs, buffer: bufTex };
     }
 
+    // Frame blend (mix fs1 and fs2)
+    const frameBlendAmt = p.get('buffer.frameblend').value / 100;
+    if (frameBlendAmt > 0 && inputs.buffer2) {
+      const blended = this._pass(this.m.blend, {
+        uCurrent: inputs.buffer ?? this._getFallbackTexture(),
+        uPrev:    inputs.buffer2,
+        uActive:  1,
+        uAmount:  frameBlendAmt,
+      });
+      processedInputs = { ...processedInputs, buffer: blended };
+    }
+
     // Resolve input textures
     const fgIdx  = p.get('layer.fg').value;
     const fgTex  = this._resolveSource(processedInputs, fgIdx);

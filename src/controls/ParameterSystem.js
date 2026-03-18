@@ -429,6 +429,8 @@ export function registerCoreParameters(ps) {
     min: 0, max: 15, value: 0, step: 1 });
   ps.register({ id: 'buffer.fs2',   label: 'FrameSelect 2', group: 'buffer',
     min: 0, max: 15, value: 0, step: 1 });
+  ps.register({ id: 'buffer.frameblend', label: 'FrameBlend', group: 'buffer',
+    min: 0, max: 100, value: 0, unit: '%' });
   ps.register({ id: 'buffer.fs3',   label: 'FrameSelect 3', group: 'buffer',
     min: 0, max: 15, value: 0, step: 1 });
   ps.register({ id: 'buffer.scan',      label: 'ScanFrames', group: 'buffer',

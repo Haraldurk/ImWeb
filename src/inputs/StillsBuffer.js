@@ -29,6 +29,7 @@ export class StillsBuffer {
     this.thumbnailCanvases = [];
     this.writeIndex        = 0;
     this.readIndex         = 0;
+    this.read2Index        = 0; // for fs2 / frame blend
 
     // Small render target for cheap CPU readback
     this._thumbTarget = new THREE.WebGLRenderTarget(THUMB_W, THUMB_H, {
@@ -125,11 +126,13 @@ export class StillsBuffer {
 
   /**
    * Called each frame from the render loop.
-   * Reads buffer.fs1 to select which frame to expose as texture.
+   * Reads buffer.fs1 and fs2 to select frames for blend.
    */
   tick(ps) {
     const fs1 = Math.round(ps.get('buffer.fs1').value);
-    this.readIndex = Math.max(0, Math.min(this.frameCount - 1, fs1));
+    this.readIndex  = Math.max(0, Math.min(this.frameCount - 1, fs1));
+    const fs2 = Math.round(ps.get('buffer.fs2').value);
+    this.read2Index = Math.max(0, Math.min(this.frameCount - 1, fs2));
   }
 
   // ── Texture access ────────────────────────────────────────────────────────
@@ -145,6 +148,14 @@ export class StillsBuffer {
     // Fall back to most recently written frame
     const last = (this.writeIndex - 1 + this.frameCount) % this.frameCount;
     return this._hasFrame[last] ? this.frames[last].texture : null;
+  }
+
+  /** The second frame texture (for blending fs1→fs2). */
+  get texture2() {
+    if (this._hasFrame[this.read2Index]) {
+      return this.frames[this.read2Index].texture;
+    }
+    return null;
   }
 
   /**
