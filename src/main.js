@@ -293,34 +293,52 @@ async function main() {
   ps.get('layer.fg').onChange(sync3DActive);
   ps.get('layer.bg').onChange(sync3DActive);
 
-  // ── Buffer capture triggers ───────────────────────────────────────────────
+  // ── Buffer capture helpers ────────────────────────────────────────────────
 
+  const BUFFER_SIZES = [4, 8, 16, 32];
+
+  /** Capture from whichever source buffer.source points to. */
+  function captureFromSource() {
+    const src = ps.get('buffer.source').value;
+    let tex = null;
+    if      (src === 0) tex = pipeline.prev.texture;
+    else if (src === 1) tex = camera3d.active   ? camera3d.currentTexture  : null;
+    else if (src === 2) tex = movieInput.active  ? movieInput.currentTexture : null;
+    else if (src === 3) tex = drawLayer.texture;
+    if (tex) { stillsBuffer.capture(tex); refreshBufferGrid(); }
+  }
+
+  // Unified capture trigger — reads buffer.source
+  ps.get('buffer.capture').onTrigger(captureFromSource);
+
+  // Legacy per-source triggers (kept for MIDI mapping)
   ps.get('buffer.cap_screen').onTrigger(() => {
-    stillsBuffer.capture(pipeline.prev.texture);
-    refreshBufferGrid();
+    stillsBuffer.capture(pipeline.prev.texture); refreshBufferGrid();
   });
-
   ps.get('buffer.cap_video').onTrigger(() => {
     if (camera3d.active && camera3d.currentTexture) {
-      stillsBuffer.capture(camera3d.currentTexture);
-      refreshBufferGrid();
+      stillsBuffer.capture(camera3d.currentTexture); refreshBufferGrid();
     }
   });
-
   ps.get('buffer.cap_movie').onTrigger(() => {
     if (movieInput.active && movieInput.currentTexture) {
-      stillsBuffer.capture(movieInput.currentTexture);
-      refreshBufferGrid();
+      stillsBuffer.capture(movieInput.currentTexture); refreshBufferGrid();
     }
-  });
-
-  ps.get('buffer.capture').onTrigger(() => {
-    stillsBuffer.capture(pipeline.prev.texture);
-    refreshBufferGrid();
   });
 
   ps.get('screen.bg1').onTrigger(() => stillsBuffer.captureBG(0, pipeline.prev.texture));
   ps.get('screen.bg2').onTrigger(() => stillsBuffer.captureBG(1, pipeline.prev.texture));
+
+  // Buffer size change — resize slot array, rebuild grid
+  ps.get('buffer.size').onChange(idx => {
+    const n = BUFFER_SIZES[idx] ?? 16;
+    stillsBuffer.setFrameCount(n);
+    // Clamp fs1 max to new size
+    const fs1 = ps.get('buffer.fs1');
+    fs1.max = n - 1;
+    fs1.value = Math.min(fs1.value, n - 1);
+    rebuildBufferGrid();
+  });
 
   // Draw layer triggers
   ps.get('draw.clear').onTrigger(() => drawLayer.clear());
@@ -396,34 +414,43 @@ async function main() {
 
   // ── Buffer tab UI ─────────────────────────────────────────────────────────
 
-  const FRAME_COUNT  = 16; // mirrors StillsBuffer constant
-  const bufferCanvas = document.getElementById('buffer-canvas');
-  const bufferCtx    = bufferCanvas?.getContext('2d');
-  const BCOLS = 4;
-  const CELL_W = bufferCanvas ? bufferCanvas.width  / BCOLS : 80;
-  const CELL_H = bufferCanvas ? bufferCanvas.height / BCOLS : 60;
+  const bufferCanvas  = document.getElementById('buffer-canvas');
+  const bufferCtx     = bufferCanvas?.getContext('2d');
+  const CANVAS_W      = bufferCanvas?.width  ?? 320;
+  const CANVAS_H      = bufferCanvas?.height ?? 240;
+  const BCOLS         = 4; // always 4 columns; rows scale with frame count
+
+  // Computed per refresh based on current frameCount
+  function gridCellSize() {
+    const rows = Math.ceil(stillsBuffer.frameCount / BCOLS);
+    return { cw: CANVAS_W / BCOLS, ch: CANVAS_H / rows };
+  }
 
   function refreshBufferGrid() {
     if (!bufferCtx) return;
-    bufferCtx.clearRect(0, 0, bufferCanvas.width, bufferCanvas.height);
-    for (let i = 0; i < FRAME_COUNT; i++) {
+    const { cw, ch } = gridCellSize();
+    const n = stillsBuffer.frameCount;
+
+    bufferCtx.clearRect(0, 0, CANVAS_W, CANVAS_H);
+
+    for (let i = 0; i < n; i++) {
       const col = i % BCOLS;
       const row = Math.floor(i / BCOLS);
-      const x   = col * CELL_W;
-      const y   = row * CELL_H;
+      const x   = col * cw;
+      const y   = row * ch;
       const isRead  = i === stillsBuffer.readIndex;
-      const isWrite = i === ((stillsBuffer.writeIndex - 1 + FRAME_COUNT) % FRAME_COUNT) &&
-                      stillsBuffer._hasFrame[i];
+      const isWrite = i === ((stillsBuffer.writeIndex - 1 + n) % n) && stillsBuffer._hasFrame[i];
 
       // Cell background
       bufferCtx.fillStyle = isRead ? '#2a2a3a' : '#111118';
-      bufferCtx.fillRect(x, y, CELL_W - 1, CELL_H - 1);
+      bufferCtx.fillRect(x, y, cw - 1, ch - 1);
 
       // Thumbnail
       if (stillsBuffer._hasFrame[i]) {
+        const thumbH = Math.min(ch - 2, 45 * (cw / 80));
         bufferCtx.drawImage(
           stillsBuffer.thumbnailCanvases[i],
-          x, y + Math.floor((CELL_H - 45) / 2), CELL_W - 1, 45,
+          x, y + Math.floor((ch - thumbH) / 2), cw - 1, thumbH,
         );
       }
 
@@ -436,47 +463,144 @@ async function main() {
       if (i === stillsBuffer.writeIndex) {
         bufferCtx.strokeStyle = '#60a0e0';
         bufferCtx.lineWidth = 1;
-        bufferCtx.strokeRect(x + 0.5, y + 0.5, CELL_W - 2, CELL_H - 2);
+        bufferCtx.strokeRect(x + 0.5, y + 0.5, cw - 2, ch - 2);
       }
     }
   }
 
-  // Capture buttons
-  const bufCapRow = document.createElement('div');
-  bufCapRow.style.cssText = 'display:flex;gap:6px;padding:8px 10px 0;flex-wrap:wrap;';
-  [
-    ['Screen→Buf', 'buffer.cap_screen'],
-    ['Video→Buf',  'buffer.cap_video'],
-    ['Movie→Buf',  'buffer.cap_movie'],
-    ['Freeze BG1', 'screen.bg1'],
-    ['Freeze BG2', 'screen.bg2'],
-  ].forEach(([label, id]) => {
-    const btn = document.createElement('button');
-    btn.className = 'import-btn';
-    btn.textContent = label;
-    btn.addEventListener('click', () => ps.trigger(id));
-    bufCapRow.appendChild(btn);
-  });
+  /** Rebuild grid canvas size when slot count changes. */
+  function rebuildBufferGrid() {
+    if (!bufferCanvas) return;
+    const rows = Math.ceil(stillsBuffer.frameCount / BCOLS);
+    bufferCanvas.height = rows * (CANVAS_W / BCOLS); // keep cell aspect ~4:3
+    refreshBufferGrid();
+  }
+
+  // ── Buffer controls toolbar ───────────────────────────────────────────────
 
   const bufferSection = document.querySelector('#tab-buffer .panel-section');
+
   if (bufferSection) {
-    bufferSection.insertBefore(bufCapRow, bufferCanvas?.nextSibling ?? null);
+    // ── Source selector ──────────────────────────────────────────────────
+    const srcRow = document.createElement('div');
+    srcRow.style.cssText = 'display:flex;align-items:center;gap:6px;padding:8px 10px 4px;flex-wrap:wrap;';
+
+    const srcLabel = document.createElement('span');
+    srcLabel.textContent = 'Source:';
+    srcLabel.style.cssText = 'font-size:11px;color:var(--text-2);min-width:46px;';
+    srcRow.appendChild(srcLabel);
+
+    const srcParam = ps.get('buffer.source');
+    const srcBtns  = [];
+    srcParam.options.forEach((opt, i) => {
+      const btn = document.createElement('button');
+      btn.className = 'source-btn';
+      btn.textContent = opt;
+      btn.classList.toggle('active', i === srcParam.value);
+      btn.addEventListener('click', () => {
+        srcParam.value = i;
+        srcBtns.forEach((b, j) => b.classList.toggle('active', j === i));
+      });
+      srcBtns.push(btn);
+      srcRow.appendChild(btn);
+    });
+
+    // ── Capture + Auto row ───────────────────────────────────────────────
+    const capRow = document.createElement('div');
+    capRow.style.cssText = 'display:flex;align-items:center;gap:6px;padding:0 10px 4px;flex-wrap:wrap;';
+
+    const btnCap = document.createElement('button');
+    btnCap.className = 'import-btn';
+    btnCap.textContent = '→ Capture';
+    btnCap.title = 'Capture from selected source (C)';
+    btnCap.addEventListener('click', captureFromSource);
+    capRow.appendChild(btnCap);
+
+    const btnAuto = document.createElement('button');
+    btnAuto.className = 'import-btn';
+    btnAuto.textContent = '⏺ Auto';
+    btnAuto.title = 'Auto-capture continuously';
+    btnAuto.classList.toggle('active', !!ps.get('buffer.auto').value);
+    btnAuto.addEventListener('click', () => {
+      ps.toggle('buffer.auto');
+      btnAuto.classList.toggle('active', !!ps.get('buffer.auto').value);
+    });
+    capRow.appendChild(btnAuto);
+
+    // Rate knob (displayed inline as a small number input)
+    const rateLabel = document.createElement('span');
+    rateLabel.style.cssText = 'font-size:11px;color:var(--text-2);margin-left:4px;';
+    rateLabel.textContent = 'fps:';
+    capRow.appendChild(rateLabel);
+
+    const rateInput = document.createElement('input');
+    rateInput.type = 'number';
+    rateInput.min = '0.1'; rateInput.max = '30'; rateInput.step = '0.1';
+    rateInput.value = ps.get('buffer.rate').value;
+    rateInput.style.cssText = 'width:44px;font-size:11px;background:var(--bg-4);border:1px solid var(--border);color:var(--text-1);padding:2px 4px;border-radius:3px;';
+    rateInput.addEventListener('input', () => {
+      const v = parseFloat(rateInput.value);
+      if (!isNaN(v)) ps.set('buffer.rate', v);
+    });
+    capRow.appendChild(rateInput);
+
+    // ── Size selector ────────────────────────────────────────────────────
+    const sizeRow = document.createElement('div');
+    sizeRow.style.cssText = 'display:flex;align-items:center;gap:6px;padding:0 10px 6px;flex-wrap:wrap;';
+
+    const sizeLabel = document.createElement('span');
+    sizeLabel.textContent = 'Slots:';
+    sizeLabel.style.cssText = 'font-size:11px;color:var(--text-2);min-width:36px;';
+    sizeRow.appendChild(sizeLabel);
+
+    const sizeParam = ps.get('buffer.size');
+    const sizeBtns  = [];
+    BUFFER_SIZES.forEach((n, i) => {
+      const btn = document.createElement('button');
+      btn.className = 'source-btn';
+      btn.textContent = String(n);
+      btn.classList.toggle('active', i === sizeParam.value);
+      btn.addEventListener('click', () => {
+        sizeParam.value = i;
+        sizeBtns.forEach((b, j) => b.classList.toggle('active', j === i));
+      });
+      sizeBtns.push(btn);
+      sizeRow.appendChild(btn);
+    });
+
+    // BG freeze buttons
+    const bgRow = document.createElement('div');
+    bgRow.style.cssText = 'display:flex;gap:6px;padding:0 10px 8px;';
+    [['Freeze BG1','screen.bg1'],['Freeze BG2','screen.bg2']].forEach(([label, id]) => {
+      const btn = document.createElement('button');
+      btn.className = 'import-btn';
+      btn.textContent = label;
+      btn.addEventListener('click', () => ps.trigger(id));
+      bgRow.appendChild(btn);
+    });
+
+    // Insert before the canvas
+    bufferSection.insertBefore(bgRow,    bufferCanvas ?? null);
+    bufferSection.insertBefore(sizeRow,  bufferCanvas ?? null);
+    bufferSection.insertBefore(capRow,   bufferCanvas ?? null);
+    bufferSection.insertBefore(srcRow,   bufferCanvas ?? null);
   }
 
   // Click to select frame
   bufferCanvas?.addEventListener('click', e => {
     const rect = bufferCanvas.getBoundingClientRect();
-    const mx   = (e.clientX - rect.left) * (bufferCanvas.width  / rect.width);
-    const my   = (e.clientY - rect.top)  * (bufferCanvas.height / rect.height);
-    const idx  = Math.floor(my / CELL_H) * BCOLS + Math.floor(mx / CELL_W);
-    if (idx >= 0 && idx < 16) {
+    const { cw, ch } = gridCellSize();
+    const mx  = (e.clientX - rect.left) * (CANVAS_W / rect.width);
+    const my  = (e.clientY - rect.top)  * (bufferCanvas.height / rect.height);
+    const idx = Math.floor(my / ch) * BCOLS + Math.floor(mx / cw);
+    if (idx >= 0 && idx < stillsBuffer.frameCount) {
       ps.set('buffer.fs1', idx);
       refreshBufferGrid();
     }
   });
 
   ps.get('buffer.fs1').onChange(refreshBufferGrid);
-  refreshBufferGrid();
+  rebuildBufferGrid();
 
   // ── Record button ─────────────────────────────────────────────────────────
 
@@ -570,6 +694,7 @@ async function main() {
 
   let lastTime = performance.now();
   let frameCount = 0;
+  let autoCapTimer = 0;
 
   function render(now) {
     requestAnimationFrame(render);
@@ -589,6 +714,18 @@ async function main() {
 
     // Tick stills buffer (reads fs1 → readIndex)
     stillsBuffer.tick(ps);
+
+    // Auto-capture into buffer at buffer.rate fps
+    if (ps.get('buffer.auto').value) {
+      autoCapTimer += dt;
+      const rate = Math.max(0.01, ps.get('buffer.rate').value);
+      if (autoCapTimer >= 1 / rate) {
+        autoCapTimer = 0;
+        captureFromSource();
+      }
+    } else {
+      autoCapTimer = 0;
+    }
 
     // Tick draw layer (paints to canvas texture based on draw.* params)
     drawLayer.tick(ps);

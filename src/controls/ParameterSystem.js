@@ -369,6 +369,14 @@ export function registerCoreParameters(ps) {
     type: PARAM_TYPE.TOGGLE, value: 0 });
 
   // ── Buffer / Stills ───────────────────────────────────────────────────────
+  ps.register({ id: 'buffer.source', label: 'CaptureFrom', group: 'buffer',
+    type: PARAM_TYPE.SELECT, options: ['Screen','Camera','Movie','Draw'], value: 0 });
+  ps.register({ id: 'buffer.size',   label: 'BufferSize',  group: 'buffer',
+    type: PARAM_TYPE.SELECT, options: ['4','8','16','32'], value: 2 }); // default = 16 frames
+  ps.register({ id: 'buffer.auto',   label: 'AutoCapture', group: 'buffer',
+    type: PARAM_TYPE.TOGGLE, value: 0 });
+  ps.register({ id: 'buffer.rate',   label: 'CaptureRate', group: 'buffer',
+    min: 0.1, max: 30, value: 1, unit: 'fps' });
   ps.register({ id: 'buffer.panX',  label: 'PanX',  group: 'buffer',
     min: 0, max: 100, value: 50, feedbackVisible: true });
   ps.register({ id: 'buffer.panY',  label: 'PanY',  group: 'buffer',

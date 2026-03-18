@@ -460,7 +460,8 @@ button {
   text-align: left;
   transition: all 0.1s;
 }
-.import-btn:hover { color: var(--text-0); border-color: var(--border-hi); }
+.import-btn:hover  { color: var(--text-0); border-color: var(--border-hi); }
+.import-btn.active { color: var(--accent); border-color: var(--accent); background: rgba(232,200,64,.08); }
 .import-note {
   font-size: 11px;
   color: var(--text-2);

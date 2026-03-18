@@ -1,43 +1,34 @@
 /**
  * ImWeb Stills Buffer — Phase 2
  *
- * Captures 16 still frames from any source into WebGLRenderTargets.
- * FrameSelect (buffer.fs1) picks which captured frame to route as the Buffer source.
+ * Captures still frames from any source into WebGLRenderTargets.
+ * Supports 4 / 8 / 16 / 32 slot counts (setFrameCount).
+ * FrameSelect (buffer.fs1) picks which frame to route as the Buffer source.
  * Thumbnails are generated on capture via a small CPU readback (80×45).
  *
  * Flow:
- *   trigger(buffer.cap_screen/video/movie) → capture(tex)
- *   → frames[writeIndex] (full-res RT) + thumbnailCanvases[idx] (80×45)
- *   → tick() reads buffer.fs1 → readIndex
- *   → texture getter → Pipeline source
+ *   capture(tex) → frames[writeIndex] (full-res RT) + thumbnailCanvases[idx] (80×45)
+ *   tick() reads buffer.fs1 → readIndex → texture getter → Pipeline source
  */
 
 import * as THREE from 'three';
 import { VERT, PASSTHROUGH } from '../shaders/index.js';
 
-const FRAME_COUNT = 16;
-const THUMB_W     = 80;
-const THUMB_H     = 45;
+const THUMB_W = 80;
+const THUMB_H = 45;
 
 export class StillsBuffer {
-  constructor(renderer, width, height) {
-    this.renderer = renderer;
-    this.width    = width;
-    this.height   = height;
+  constructor(renderer, width, height, initialCount = 16) {
+    this.renderer   = renderer;
+    this.width      = width;
+    this.height     = height;
+    this.frameCount = 0; // set properly by setFrameCount below
 
-    // 16 full-resolution capture slots
-    this.frames     = Array.from({ length: FRAME_COUNT }, () => this._makeTarget(width, height));
-    this._hasFrame  = new Array(FRAME_COUNT).fill(false);
-    this.writeIndex = 0;
-    this.readIndex  = 0;
-
-    // Per-slot thumbnail canvases (80×45), updated on capture
-    this.thumbnailCanvases = Array.from({ length: FRAME_COUNT }, () => {
-      const c = document.createElement('canvas');
-      c.width  = THUMB_W;
-      c.height = THUMB_H;
-      return c;
-    });
+    this.frames            = [];
+    this._hasFrame         = [];
+    this.thumbnailCanvases = [];
+    this.writeIndex        = 0;
+    this.readIndex         = 0;
 
     // Small render target for cheap CPU readback
     this._thumbTarget = new THREE.WebGLRenderTarget(THUMB_W, THUMB_H, {
@@ -64,11 +55,50 @@ export class StillsBuffer {
     this._scene  = new THREE.Scene();
     this._camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
     this._scene.add(this._quad);
+
+    // Allocate initial frames
+    this.setFrameCount(initialCount);
   }
+
+  // ── Frame count (dynamic) ─────────────────────────────────────────────────
+
+  /**
+   * Resize the slot array to n frames (4 / 8 / 16 / 32).
+   * Existing captured frames within the new range are preserved.
+   */
+  setFrameCount(n) {
+    if (n === this.frameCount) return;
+
+    if (n < this.frameCount) {
+      // Dispose extra render targets
+      for (let i = n; i < this.frameCount; i++) {
+        this.frames[i].dispose();
+      }
+      this.frames.length            = n;
+      this._hasFrame.length         = n;
+      this.thumbnailCanvases.length = n;
+    } else {
+      // Allocate new slots
+      for (let i = this.frameCount; i < n; i++) {
+        this.frames.push(this._makeTarget(this.width, this.height));
+        this._hasFrame.push(false);
+        const c = document.createElement('canvas');
+        c.width  = THUMB_W;
+        c.height = THUMB_H;
+        this.thumbnailCanvases.push(c);
+      }
+    }
+
+    this.frameCount = n;
+    this.writeIndex = this.writeIndex % n;
+    this.readIndex  = Math.min(this.readIndex, n - 1);
+  }
+
+  // ── Capture ───────────────────────────────────────────────────────────────
 
   /**
    * Capture a texture into the current write slot.
-   * Returns the slot index that was written.
+   * Returns the slot index that was written, or -1 if tex is null.
    */
   capture(tex) {
     if (!tex) return -1;
@@ -87,9 +117,11 @@ export class StillsBuffer {
     this.renderer.setRenderTarget(null);
 
     const captured = this.writeIndex;
-    this.writeIndex = (this.writeIndex + 1) % FRAME_COUNT;
+    this.writeIndex = (this.writeIndex + 1) % this.frameCount;
     return captured;
   }
+
+  // ── Tick ──────────────────────────────────────────────────────────────────
 
   /**
    * Called each frame from the render loop.
@@ -97,8 +129,10 @@ export class StillsBuffer {
    */
   tick(ps) {
     const fs1 = Math.round(ps.get('buffer.fs1').value);
-    this.readIndex = Math.max(0, Math.min(FRAME_COUNT - 1, fs1));
+    this.readIndex = Math.max(0, Math.min(this.frameCount - 1, fs1));
   }
+
+  // ── Texture access ────────────────────────────────────────────────────────
 
   /**
    * The texture to route into the compositing pipeline as the Buffer source.
@@ -109,7 +143,7 @@ export class StillsBuffer {
       return this.frames[this.readIndex].texture;
     }
     // Fall back to most recently written frame
-    const last = (this.writeIndex - 1 + FRAME_COUNT) % FRAME_COUNT;
+    const last = (this.writeIndex - 1 + this.frameCount) % this.frameCount;
     return this._hasFrame[last] ? this.frames[last].texture : null;
   }
 
@@ -127,6 +161,8 @@ export class StillsBuffer {
   bgTexture(idx) {
     return this._bgHasFrame[idx] ? this._bgSlots[idx].texture : null;
   }
+
+  // ── Resize (canvas dimensions) ────────────────────────────────────────────
 
   resize(w, h) {
     this.width  = w;
@@ -158,7 +194,6 @@ export class StillsBuffer {
   /**
    * Render the current _mat texture to the small thumb target, read back pixels,
    * flip Y (GL origin is bottom-left), and paint into thumbnailCanvases[idx].
-   * The _mat texture must already be set before calling this.
    */
   _updateThumbnail(idx) {
     this.renderer.setRenderTarget(this._thumbTarget);
@@ -170,7 +205,7 @@ export class StillsBuffer {
     const ctx     = this.thumbnailCanvases[idx].getContext('2d');
     const imgData = ctx.createImageData(THUMB_W, THUMB_H);
 
-    // GL y=0 = bottom of image; canvas y=0 = top — flip rows
+    // GL y=0 = bottom; canvas y=0 = top — flip rows
     for (let y = 0; y < THUMB_H; y++) {
       const srcRow = (THUMB_H - 1 - y) * THUMB_W * 4;
       imgData.data.set(pixels.subarray(srcRow, srcRow + THUMB_W * 4), y * THUMB_W * 4);
