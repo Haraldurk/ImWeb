@@ -409,7 +409,7 @@ export function registerCoreParameters(ps) {
     type: PARAM_TYPE.TOGGLE, value: 0, feedbackVisible: true });
   ps.register({ id: 'scene3d.geo',       label: 'Geometry',    group: 'scene3d',
     type: PARAM_TYPE.SELECT,
-    options: ['Sphere','Torus','Cube','Plane','Cylinder','Capsule','TorusKnot','Cone','Dodecahedron','Icosahedron'],
+    options: ['Sphere','Torus','Cube','Plane','Cylinder','Capsule','TorusKnot','Cone','Dodecahedron','Icosahedron','Octahedron','Tetrahedron','Ring'],
     value: 0 });
   ps.register({ id: 'scene3d.rot.x',     label: 'Rotation X',  group: 'scene3d',
     min: 0, max: 360, value: 0, unit: '°', feedbackVisible: true });
