@@ -277,7 +277,7 @@ export class ParameterSystem extends EventTarget {
 export function registerCoreParameters(ps) {
 
   // ── Layer source selection ────────────────────────────────────────────────
-  const SOURCES = ['Camera', 'Movie', 'Buffer', 'Color', 'Noise', '3D Scene', 'Draw', 'Output'];
+  const SOURCES = ['Camera', 'Movie', 'Buffer', 'Color', 'Noise', '3D Scene', 'Draw', 'Output', 'BG1', 'BG2'];
 
   ps.register({ id: 'layer.fg', label: 'Foreground', group: 'layers',
     type: PARAM_TYPE.SELECT, options: SOURCES, value: 3, feedbackVisible: true }); // default: Color
