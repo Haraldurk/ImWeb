@@ -25,6 +25,7 @@ import { Pipeline } from './core/Pipeline.js';
 import { PresetManager } from './state/Preset.js';
 import {
   initTabs,
+  buildLayerButtons,
   buildMappingPanels,
   buildGeometryButtons,
   StateDots,
@@ -139,6 +140,7 @@ async function main() {
 
   initTabs();
   const contextMenu = new ContextMenu(ps, ctrl);
+  buildLayerButtons(ps, contextMenu);
   buildMappingPanels(ps, contextMenu);
   buildGeometryButtons(ps, scene3d);
 

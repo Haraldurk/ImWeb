@@ -142,11 +142,74 @@ export function buildParamRow(param, contextMenu) {
   return row;
 }
 
+// ── Layer source button matrix ────────────────────────────────────────────────
+
+// Short labels for each source index (matches SOURCES order in ParameterSystem)
+const SOURCE_ABBREV = ['CAM','MOV','BUF','COL','NSE','3D','DRW','OUT','SND'];
+
+/**
+ * Builds the FG / BG / DS source-selector rows in #layer-params.
+ * Each row: a label + one button per source option.
+ * Clicking a button sets the param immediately.
+ * Buttons stay in sync when the param is driven by a controller.
+ * Right-click on any button or label opens the controller context menu.
+ */
+export function buildLayerButtons(ps, contextMenu) {
+  const el = document.getElementById('layer-params');
+  if (!el) return;
+  el.innerHTML = '';
+
+  [
+    { param: ps.get('layer.fg'), label: 'FG' },
+    { param: ps.get('layer.bg'), label: 'BG' },
+    { param: ps.get('layer.ds'), label: 'DS' },
+  ].forEach(({ param, label }) => {
+    const row = document.createElement('div');
+    row.className = 'layer-row';
+
+    const lbl = document.createElement('span');
+    lbl.className = 'layer-label';
+    lbl.textContent = label;
+    lbl.addEventListener('contextmenu', e => {
+      e.preventDefault();
+      contextMenu?.show(param, e.clientX, e.clientY);
+    });
+    row.appendChild(lbl);
+
+    const btns = document.createElement('div');
+    btns.className = 'layer-btns';
+
+    const buttons = [];
+    (param.options ?? []).forEach((opt, i) => {
+      const btn = document.createElement('button');
+      btn.className = 'source-btn';
+      btn.textContent = SOURCE_ABBREV[i] ?? opt.slice(0, 3).toUpperCase();
+      btn.title = opt;
+      btn.classList.toggle('active', i === param.value);
+      btn.addEventListener('click', () => { param.value = i; });
+      btn.addEventListener('contextmenu', e => {
+        e.preventDefault();
+        contextMenu?.show(param, e.clientX, e.clientY);
+      });
+      buttons.push(btn);
+      btns.appendChild(btn);
+    });
+
+    // Keep highlight in sync with controller changes (MIDI, LFO, etc.)
+    param.onChange(v => {
+      const idx = Math.round(v);
+      buttons.forEach((b, i) => b.classList.toggle('active', i === idx));
+    });
+
+    row.appendChild(btns);
+    el.appendChild(row);
+  });
+}
+
 // ── Populate mapping panels ───────────────────────────────────────────────────
 
 export function buildMappingPanels(ps, contextMenu) {
   const sections = {
-    'layer-params':    ps.getGroup('layers'),
     'keyer-params':    ps.getGroup('keyer'),
     'displace-params': ps.getGroup('displace'),
     'blend-params':    ps.getGroup('blend'),
