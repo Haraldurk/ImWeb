@@ -1126,6 +1126,131 @@ async function main() {
     }
   });
 
+  // Built-in GLSL shader presets
+  const GLSL_PRESETS = {
+    'Passthrough': `void main() {
+  vec4 col = texture2D(uTexture, vUv);
+  gl_FragColor = col;
+}`,
+    'Invert': `void main() {
+  vec4 col = texture2D(uTexture, vUv);
+  gl_FragColor = vec4(1.0 - col.rgb, col.a);
+}`,
+    'Hue Cycle': `void main() {
+  vec4 col = texture2D(uTexture, vUv);
+  // RGB → HSV rotation
+  float r=col.r,g=col.g,b=col.b;
+  float ma=max(r,max(g,b)), mi=min(r,min(g,b)), d=ma-mi;
+  float h=0.0;
+  if(d>0.0){
+    if(ma==r) h=mod((g-b)/d,6.0);
+    else if(ma==g) h=(b-r)/d+2.0;
+    else h=(r-g)/d+4.0;
+    h/=6.0;
+  }
+  h=mod(h+uTime*0.1,1.0);
+  float s=ma>0.0?d/ma:0.0, v=ma;
+  // HSV → RGB
+  float C=v*s, X=C*(1.0-abs(mod(h*6.0,2.0)-1.0)), m=v-C;
+  vec3 rgb;
+  float hi=floor(h*6.0);
+  if(hi<1.0) rgb=vec3(C,X,0);
+  else if(hi<2.0) rgb=vec3(X,C,0);
+  else if(hi<3.0) rgb=vec3(0,C,X);
+  else if(hi<4.0) rgb=vec3(0,X,C);
+  else if(hi<5.0) rgb=vec3(X,0,C);
+  else rgb=vec3(C,0,X);
+  gl_FragColor=vec4(rgb+m,col.a);
+}`,
+    'Ripple': `void main() {
+  vec2 uv = vUv;
+  float d = length(uv - 0.5);
+  uv.y += sin(d * 40.0 - uTime * 5.0) * 0.015;
+  uv.x += cos(d * 40.0 - uTime * 5.0) * 0.015;
+  gl_FragColor = texture2D(uTexture, uv);
+}`,
+    'Tunnel': `void main() {
+  vec2 uv = vUv - 0.5;
+  float a = atan(uv.y, uv.x);
+  float r = length(uv);
+  vec2 tuv = vec2(a / 6.283 + 0.5, 0.5 / r + uTime * 0.2);
+  gl_FragColor = texture2D(uTexture, fract(tuv));
+}`,
+    'Luma Displace': `void main() {
+  vec4 c = texture2D(uTexture, vUv);
+  float l = dot(c.rgb, vec3(0.299,0.587,0.114));
+  vec2 uv = vUv + vec2(cos(l*20.0+uTime),sin(l*20.0+uTime))*0.01;
+  gl_FragColor = texture2D(uTexture, uv);
+}`,
+    'Glitch Bands': `float hash(float n){ return fract(sin(n)*43758.5453123); }
+void main() {
+  vec2 uv = vUv;
+  float t = floor(uTime * 8.0);
+  float band = floor(uv.y * 24.0);
+  float r = hash(band + t * 71.3);
+  if(r > 0.92) uv.x += (hash(band*3.7+t)-0.5)*0.15;
+  gl_FragColor = texture2D(uTexture, uv);
+}`,
+    'RGB Split': `void main() {
+  float a = uTime * 0.5;
+  vec2 off = vec2(cos(a),sin(a)) * 0.015;
+  float r = texture2D(uTexture, vUv + off).r;
+  float g = texture2D(uTexture, vUv).g;
+  float b = texture2D(uTexture, vUv - off).b;
+  gl_FragColor = vec4(r,g,b,1.0);
+}`,
+    'Mosaic': `void main() {
+  vec2 sz = vec2(32.0, 18.0);
+  vec2 uv = floor(vUv * sz) / sz;
+  gl_FragColor = texture2D(uTexture, uv);
+}`,
+    'Old TV': `float hash(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5);}
+void main() {
+  vec2 uv = vUv;
+  // Barrel distortion
+  vec2 d = uv - 0.5;
+  uv = 0.5 + d * (1.0 + dot(d,d)*0.15);
+  // Scanlines
+  float scan = sin(uv.y * 400.0) * 0.04;
+  // Noise
+  float n = (hash(uv + fract(uTime*0.017)) - 0.5)*0.06;
+  vec4 col = texture2D(uTexture, uv);
+  col.rgb = col.rgb * (1.0 - scan) + n;
+  col.rgb = mix(col.rgb, vec3(dot(col.rgb,vec3(0.3,0.6,0.1))), 0.4);
+  if(uv.x<0.0||uv.x>1.0||uv.y<0.0||uv.y>1.0) col=vec4(0);
+  gl_FragColor = col;
+}`,
+  };
+
+  const glslPresetSel = document.createElement('select');
+  glslPresetSel.style.cssText = 'font-size:11px;background:var(--bg-4);border:1px solid var(--border);color:var(--text-1);padding:2px 4px;flex:1;';
+  Object.keys(GLSL_PRESETS).forEach(name => {
+    const o = document.createElement('option');
+    o.value = name; o.textContent = name;
+    glslPresetSel.appendChild(o);
+  });
+  glslPresetSel.addEventListener('change', () => {
+    const code = GLSL_PRESETS[glslPresetSel.value];
+    if (code && glslEditor) {
+      glslEditor.value = code;
+      if (glslAuto?.checked) applyGLSL();
+    }
+  });
+
+  // Insert preset selector above the apply buttons
+  const glslTab = document.getElementById('tab-glsl');
+  const glslSection = glslTab?.querySelector('.panel-section');
+  if (glslSection) {
+    const selRow = document.createElement('div');
+    selRow.style.cssText = 'display:flex;gap:4px;padding:4px 8px 0;align-items:center;';
+    const lbl = document.createElement('span');
+    lbl.textContent = 'Preset:';
+    lbl.style.cssText = 'font-size:11px;color:var(--text-2);white-space:nowrap;';
+    selRow.appendChild(lbl);
+    selRow.appendChild(glslPresetSel);
+    glslSection.insertBefore(selRow, glslSection.querySelector('div'));
+  }
+
   // ── Record button ─────────────────────────────────────────────────────────
 
   let mediaRecorder = null;
