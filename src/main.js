@@ -1428,8 +1428,17 @@ void main() {
     if (e.key === 'v' && !e.metaKey) { e.preventDefault(); ps.toggle('camera.active'); }
     // m = Movie on/off
     if (e.key === 'm' && !e.metaKey) { e.preventDefault(); ps.toggle('movie.active'); }
-    // Escape = exit fullscreen
-    if (e.key === 'Escape') { document.body.classList.remove('fullscreen-output'); }
+    // t = Tap tempo
+    if (e.key === 't' && !e.metaKey) { e.preventDefault(); ps.trigger('global.tap'); }
+    // f = Fullscreen
+    if (e.key === 'f' && !e.metaKey) { e.preventDefault(); toggleFullscreen(); }
+    // ? = Keyboard help
+    if (e.key === '?') { e.preventDefault(); toggleHelpOverlay(); }
+    // Escape = exit fullscreen / close overlays
+    if (e.key === 'Escape') {
+      document.body.classList.remove('fullscreen-output');
+      document.getElementById('kb-help')?.classList.add('hidden');
+    }
   });
 
   // ── Color pickers (native input[type=color] for Color1/Color2) ───────────
@@ -1471,6 +1480,15 @@ void main() {
 
   document.getElementById('btn-fullscreen')?.addEventListener('click', toggleFullscreen);
   canvas.addEventListener('dblclick', toggleFullscreen);
+
+  // ── Keyboard help overlay ─────────────────────────────────────────────────
+
+  const toggleHelpOverlay = () => {
+    document.getElementById('kb-help')?.classList.toggle('hidden');
+  };
+  document.getElementById('kb-help')?.addEventListener('click', e => {
+    if (e.target.id === 'kb-help') document.getElementById('kb-help').classList.add('hidden');
+  });
 
   // ── Resolution control ────────────────────────────────────────────────────
 

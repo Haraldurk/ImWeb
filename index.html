@@ -319,6 +319,39 @@ void main() {
     <canvas id="ctx-lfo-viz" width="160" height="40" style="display:none;margin:4px 8px;border-radius:3px;background:#0a0a0e;"></canvas>
   </div>
 
+  <!-- KEYBOARD HELP OVERLAY (? key) -->
+  <div id="kb-help" class="hidden">
+    <div id="kb-help-box">
+      <div id="kb-help-title">Keyboard Shortcuts</div>
+      <div id="kb-help-cols">
+        <div class="kb-col">
+          <div class="kb-section">Sources</div>
+          <div class="kb-row"><kbd>v</kbd><span>Camera on/off</span></div>
+          <div class="kb-row"><kbd>m</kbd><span>Movie on/off</span></div>
+          <div class="kb-section">Processing</div>
+          <div class="kb-row"><kbd>b</kbd><span>Blend toggle</span></div>
+          <div class="kb-row"><kbd>k</kbd><span>Keyer toggle</span></div>
+          <div class="kb-row"><kbd>x</kbd><span>External key</span></div>
+          <div class="kb-row"><kbd>s</kbd><span>Solo output</span></div>
+          <div class="kb-row"><kbd>c</kbd><span>Capture to buffer</span></div>
+        </div>
+        <div class="kb-col">
+          <div class="kb-section">Navigation</div>
+          <div class="kb-row"><kbd>−</kbd><span>Previous preset</span></div>
+          <div class="kb-row"><kbd>+</kbd><span>Next preset</span></div>
+          <div class="kb-row"><kbd>0–9</kbd><span>Recall display state</span></div>
+          <div class="kb-section">Global</div>
+          <div class="kb-row"><kbd>t</kbd><span>Tap tempo</span></div>
+          <div class="kb-row"><kbd>f</kbd><span>Fullscreen</span></div>
+          <div class="kb-row"><kbd>/</kbd><span>Search params</span></div>
+          <div class="kb-row"><kbd>?</kbd><span>This help</span></div>
+          <div class="kb-row"><kbd>Esc</kbd><span>Close / Exit fullscreen</span></div>
+        </div>
+      </div>
+      <div style="text-align:center;margin-top:10px;font-size:10px;color:var(--text-2)">Right-click any parameter to assign a controller</div>
+    </div>
+  </div>
+
   <script type="module" src="/src/main.js"></script>
 </body>
 </html>
