@@ -26,26 +26,21 @@ export const PASSTHROUGH = /* glsl */ `
 `;
 
 // ── Luminance keyer ───────────────────────────────────────────────────────────
-// ImOs9/ImX: KeyLevelWhite, KeyLevelBlack, KeySoftness
-// Uses FG image luminance to key between FG and BG.
-//
-// WGSL equivalent would use @fragment with textureLoad/textureSample
-// and the same luminance logic.
 
 export const KEYER = /* glsl */ `
-  uniform sampler2D uFG;          // Foreground input
-  uniform sampler2D uBG;          // Background input
-  uniform float uKeyWhite;        // 0–1: luminance threshold for FG visible (high)
-  uniform float uKeyBlack;        // 0–1: luminance threshold for BG visible (low)
-  uniform float uKeySoftness;     // 0–1: softness of the key transition
-  uniform int   uKeyActive;       // 0=off, 1=on
-  uniform int   uAlpha;           // use alpha channel keying
-  uniform int   uAlphaInvert;     // invert alpha
+  uniform sampler2D uFG;
+  uniform sampler2D uBG;
+  uniform float uKeyWhite;
+  uniform float uKeyBlack;
+  uniform float uKeySoftness;
+  uniform int   uKeyActive;
+  uniform int   uAlpha;
+  uniform int   uAlphaInvert;
 
   varying vec2 vUv;
 
   float luma(vec3 c) {
-      return dot(c, vec3(0.2126, 0.7152, 0.0722));
+    return dot(c, vec3(0.2126, 0.7152, 0.0722));
   }
 
   void main() {
@@ -60,23 +55,11 @@ export const KEYER = /* glsl */ `
     float alpha;
 
     if (uAlpha == 1) {
-      // Alpha channel keying (24-bit mode)
       alpha = uAlphaInvert == 1 ? (1.0 - fg.a) : fg.a;
     } else {
-      // Luminance keying
       float lumaVal = luma(fg.rgb);
-      float lo = uKeyBlack;
-      float hi = uKeyWhite;
       float soft = max(uKeySoftness, 0.001);
-
-      // Foreground visible where luma > hi, BG visible where luma < lo
-      // Soft zone between lo and hi
-      float fgAlpha = smoothstep(lo - soft, lo + soft, luma) *
-                      (1.0 - smoothstep(hi - soft, hi + soft, luma));
-      alpha = 1.0 - fgAlpha; // 1 = show FG, 0 = show BG
-
-      // Classic luminance key: bright areas are transparent
-      alpha = 1.0 - smoothstep(hi - soft, hi + soft, luma);
+      alpha = 1.0 - smoothstep(uKeyWhite - soft, uKeyWhite + soft, lumaVal);
     }
 
     gl_FragColor = mix(bg, fg, alpha);
@@ -84,17 +67,14 @@ export const KEYER = /* glsl */ `
 `;
 
 // ── Displacement ──────────────────────────────────────────────────────────────
-// Uses DisplaceSrc luminance to offset FG pixels spatially.
-// DisplaceAngle rotates the displacement direction.
-// DisplaceOffset shifts the mapping center.
 
 export const DISPLACE = /* glsl */ `
   uniform sampler2D uFG;
-  uniform sampler2D uDS;          // DisplaceSrc
-  uniform float uAmount;          // 0–1 displacement strength
-  uniform float uAngle;           // radians, direction of displacement
-  uniform float uOffset;          // −1–1, center offset
-  uniform int   uRotateGrey;      // RotateGrey mode
+  uniform sampler2D uDS;
+  uniform float uAmount;
+  uniform float uAngle;
+  uniform float uOffset;
+  uniform int   uRotateGrey;
 
   varying vec2 vUv;
 
@@ -104,35 +84,30 @@ export const DISPLACE = /* glsl */ `
       return;
     }
 
-    vec4 ds  = texture2D(uDS, vUv);
-    float luma = dot(ds.rgb, vec3(0.2126, 0.7152, 0.0722));
+    vec4 ds = texture2D(uDS, vUv);
+    float lumaVal = dot(ds.rgb, vec3(0.2126, 0.7152, 0.0722));
+    float strength = (lumaVal + uOffset - 0.5) * uAmount * 0.1;
 
     vec2 offset;
-    float strength = (luma + uOffset - 0.5) * uAmount * 0.1;
-
     if (uRotateGrey == 1) {
-      // Circular displacement: luminance maps to angle
-      float theta = (luma - 0.5) * 2.0 * 3.14159265;
+      float theta = (lumaVal - 0.5) * 2.0 * 3.14159265;
       offset = vec2(cos(theta), sin(theta)) * uAmount * 0.05;
     } else {
-      // Linear displacement at angle
       vec2 dir = vec2(cos(uAngle), sin(uAngle));
       offset = dir * strength;
     }
 
-    vec2 displaced = vUv + offset;
-    gl_FragColor = texture2D(uFG, clamp(displaced, 0.0, 1.0));
+    gl_FragColor = texture2D(uFG, clamp(vUv + offset, 0.0, 1.0));
   }
 `;
 
-// ── Blend (50/50 mix with previous frame) ────────────────────────────────────
-// Creates motion blur / persistence / ghosting effect.
+// ── Blend ─────────────────────────────────────────────────────────────────────
 
 export const BLEND = /* glsl */ `
-  uniform sampler2D uCurrent;     // current frame
-  uniform sampler2D uPrev;        // previous output frame
-  uniform int       uActive;      // 0=off, 1=on
-  uniform float     uAmount;      // blend amount 0–1
+  uniform sampler2D uCurrent;
+  uniform sampler2D uPrev;
+  uniform int       uActive;
+  uniform float     uAmount;
 
   varying vec2 vUv;
 
@@ -145,42 +120,35 @@ export const BLEND = /* glsl */ `
 `;
 
 // ── Feedback ──────────────────────────────────────────────────────────────────
-// Offsets and scales the output before feeding back as a source.
 
 export const FEEDBACK = /* glsl */ `
   uniform sampler2D uOutput;
-  uniform float uHorOffset;       // −1–1 horizontal offset in UV space
-  uniform float uVerOffset;       // −1–1 vertical offset
-  uniform float uScale;           // scale factor (0 = none)
+  uniform float uHorOffset;
+  uniform float uVerOffset;
+  uniform float uScale;
   uniform vec2  uResolution;
 
   varying vec2 vUv;
 
   void main() {
     vec2 uv = vUv;
-
     if (uScale != 0.0) {
       vec2 center = vec2(0.5);
       float s = 1.0 + uScale * 0.1;
       uv = (uv - center) / s + center;
     }
-
     uv.x += uHorOffset * 0.1;
     uv.y += uVerOffset * 0.1;
-
-    vec4 color = texture2D(uOutput, clamp(uv, 0.0, 1.0));
-    gl_FragColor = color;
+    gl_FragColor = texture2D(uOutput, clamp(uv, 0.0, 1.0));
   }
 `;
 
-// ── Transfer modes (XOR / OR / AND) ──────────────────────────────────────────
-// Bitwise pixel operations between FG and BG.
-// Note: true bitwise ops on floats require encoding to uint8.
+// ── Transfer modes ────────────────────────────────────────────────────────────
 
 export const TRANSFERMODE = /* glsl */ `
   uniform sampler2D uFG;
   uniform sampler2D uBG;
-  uniform int       uMode;        // 0=copy, 1=xor, 2=or, 3=and
+  uniform int       uMode;
 
   varying vec2 vUv;
 
@@ -195,31 +163,23 @@ export const TRANSFERMODE = /* glsl */ `
   void main() {
     vec4 fg = texture2D(uFG, vUv);
     vec4 bg = texture2D(uBG, vUv);
-
-    if (uMode == 0) {
-      gl_FragColor = fg;
-      return;
-    }
-
+    if (uMode == 0) { gl_FragColor = fg; return; }
     ivec3 a = floatToInt8(fg.rgb);
     ivec3 b = floatToInt8(bg.rgb);
     ivec3 r;
-
-    if (uMode == 1) r = a ^ b;       // XOR
-    else if (uMode == 2) r = a | b;  // OR  (brighter)
-    else if (uMode == 3) r = a & b;  // AND (darker)
-    else r = a;
-
+    if (uMode == 1)      r = a ^ b;
+    else if (uMode == 2) r = a | b;
+    else if (uMode == 3) r = a & b;
+    else                 r = a;
     gl_FragColor = vec4(int8ToFloat(r), fg.a);
   }
 `;
 
 // ── Color Shift ───────────────────────────────────────────────────────────────
-// Global hue rotation. Unusual/unpredictable — as per the original.
 
 export const COLORSHIFT = /* glsl */ `
   uniform sampler2D uTexture;
-  uniform float uShift;           // 0–1, amount of hue shift
+  uniform float uShift;
 
   varying vec2 vUv;
 
@@ -247,13 +207,11 @@ export const COLORSHIFT = /* glsl */ `
   }
 `;
 
-// ── Noise generators (rand1/2/3) ──────────────────────────────────────────────
-// Three built-in noise textures matching ImOs9's rand1/2/3.
-// Type 0 = pixel noise, 1 = horizontal bands, 2 = vertical bands.
+// ── Noise ─────────────────────────────────────────────────────────────────────
 
 export const NOISE_GEN = /* glsl */ `
   uniform float uTime;
-  uniform int   uType;   // 0=pixel, 1=horiz, 2=vert
+  uniform int   uType;
   varying vec2 vUv;
 
   float hash(vec2 p) {
@@ -273,13 +231,12 @@ export const NOISE_GEN = /* glsl */ `
   }
 `;
 
-// ── Interlace effect ──────────────────────────────────────────────────────────
-// Skips scan lines for a CRT/interlaced look (also a speed optimization).
+// ── Interlace ─────────────────────────────────────────────────────────────────
 
 export const INTERLACE = /* glsl */ `
   uniform sampler2D uTexture;
   uniform float uResY;
-  uniform float uAmount;          // 0 = off, 1+ = lines to skip
+  uniform float uAmount;
   uniform float uTime;
 
   varying vec2 vUv;
@@ -290,11 +247,10 @@ export const INTERLACE = /* glsl */ `
       return;
     }
     float line = floor(vUv.y * uResY);
-    float field = mod(floor(uTime * 30.0), 2.0); // 30fps field alternation
+    float field = mod(floor(uTime * 30.0), 2.0);
     if (mod(line + field, 2.0) < 1.0) {
       gl_FragColor = texture2D(uTexture, vUv);
     } else {
-      // Blank alternate lines
       vec4 above = texture2D(uTexture, vec2(vUv.x, vUv.y + 1.0/uResY));
       vec4 below = texture2D(uTexture, vec2(vUv.x, vUv.y - 1.0/uResY));
       gl_FragColor = (above + below) * 0.5;
@@ -318,12 +274,12 @@ export const MIRROR = /* glsl */ `
   }
 `;
 
-// ── Solid color (HSV→RGB) ─────────────────────────────────────────────────────
+// ── Solid color ───────────────────────────────────────────────────────────────
 
 export const SOLID_COLOR = /* glsl */ `
-  uniform float uHue;       // 0–1
-  uniform float uSat;       // 0–1
-  uniform float uVal;       // 0–1
+  uniform float uHue;
+  uniform float uSat;
+  uniform float uVal;
   varying vec2 vUv;
 
   vec3 hsv2rgb(vec3 c) {
@@ -338,13 +294,11 @@ export const SOLID_COLOR = /* glsl */ `
 `;
 
 // ── WarpMap ───────────────────────────────────────────────────────────────────
-// Reads from a stored warp displacement map texture.
-// The warp map texture encodes (dx, dy) in RG channels.
 
 export const WARP = /* glsl */ `
   uniform sampler2D uFG;
-  uniform sampler2D uWarpMap;     // RG = displacement vector, encoded 0–1 (0.5=center)
-  uniform float uStrength;        // 0–1
+  uniform sampler2D uWarpMap;
+  uniform float uStrength;
 
   varying vec2 vUv;
 
@@ -355,16 +309,15 @@ export const WARP = /* glsl */ `
     }
     vec4 warp = texture2D(uWarpMap, vUv);
     vec2 displacement = (warp.rg - 0.5) * uStrength * 0.3;
-    vec2 warped = vUv + displacement;
-    gl_FragColor = texture2D(uFG, clamp(warped, 0.0, 1.0));
+    gl_FragColor = texture2D(uFG, clamp(vUv + displacement, 0.0, 1.0));
   }
 `;
 
-// ── Fade ─────────────────────────────────────────────────────────────────────
+// ── Fade ──────────────────────────────────────────────────────────────────────
 
 export const FADE = /* glsl */ `
   uniform sampler2D uTexture;
-  uniform float uAmount;   // 0=full black, 1=full image
+  uniform float uAmount;
   varying vec2 vUv;
   void main() {
     gl_FragColor = texture2D(uTexture, vUv) * uAmount;
