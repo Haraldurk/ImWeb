@@ -24,6 +24,11 @@ export class ControllerManager {
     this._midiLearnParam = null; // paramId waiting for MIDI learn
     this._midiLearnTimer = null;
 
+    // MIDI clock sync (0xF8 = 24 pulses per quarter note)
+    this._midiClockEnabled  = false;
+    this._midiClockTimes    = []; // timestamps of recent 0xF8 messages
+    this._midiClockCallback = null; // called with derived bpm
+
     this._initKeyboard();
     this._initMouse();
     this._initMIDI();
@@ -256,9 +261,41 @@ export class ControllerManager {
     el?.classList.remove('learning');
   }
 
+  /**
+   * Enable MIDI clock sync. `callback(bpm)` is called whenever BPM is derived
+   * from incoming 0xF8 timing clock messages (24 pulses/quarter note).
+   */
+  enableMIDIClock(callback) {
+    this._midiClockEnabled  = true;
+    this._midiClockCallback = callback;
+    this._midiClockTimes    = [];
+  }
+
+  disableMIDIClock() {
+    this._midiClockEnabled  = false;
+    this._midiClockCallback = null;
+    this._midiClockTimes    = [];
+  }
+
   _attachMIDIInput(input) {
     input.onmidimessage = e => {
       const [status, data1, data2] = e.data;
+
+      // MIDI clock: 0xF8 = timing tick (24 per quarter note)
+      if (status === 0xF8 && this._midiClockEnabled) {
+        const now = performance.now();
+        this._midiClockTimes.push(now);
+        if (this._midiClockTimes.length > 24) this._midiClockTimes.shift();
+        if (this._midiClockTimes.length >= 4) {
+          // Average interval of last N ticks
+          const n   = this._midiClockTimes.length;
+          const avg = (this._midiClockTimes[n - 1] - this._midiClockTimes[0]) / (n - 1);
+          const bpm = 60000 / (avg * 24); // 24 ticks per quarter note
+          if (bpm > 20 && bpm < 300) this._midiClockCallback?.(Math.round(bpm * 10) / 10);
+        }
+        return;
+      }
+
       const type    = status & 0xF0;
       const channel = (status & 0x0F) + 1;
       const norm    = data2 / 127;

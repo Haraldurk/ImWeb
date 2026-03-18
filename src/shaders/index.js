@@ -633,3 +633,60 @@ export const BUFFER_TRANSFORM = /* glsl */ `
     gl_FragColor = texture2D(uTexture, uv);
   }
 `;
+
+// ─── Pixel Sort ────────────────────────────────────────────────────────────────
+// Approximates pixel-sorting by reading a strip of N pixels from the input
+// and replacing each sample with the min/max brightness pixel in a window.
+// uDirection: 0=vertical columns, 1=horizontal rows
+// uThreshold: luminance threshold — pixels below threshold are unsorted "anchors"
+// uLength:    sort window length (1–512 px)
+export const PIXEL_SORT = /* glsl */ `
+  uniform sampler2D uTexture;
+  uniform vec2  uResolution;
+  uniform float uThreshold;   // 0–1 luminance anchor point
+  uniform float uLength;      // sort window size in pixels
+  uniform float uDirection;   // 0=vertical, 1=horizontal
+  uniform float uMode;        // 0=light→dark, 1=dark→light
+  varying vec2 vUv;
+
+  float luma(vec3 c) {
+    return dot(c, vec3(0.2126, 0.7152, 0.0722));
+  }
+
+  void main() {
+    vec2 res  = uResolution;
+    vec2 step = uDirection < 0.5
+      ? vec2(0.0, 1.0 / res.y)   // vertical
+      : vec2(1.0 / res.x, 0.0);  // horizontal
+
+    vec4 src  = texture2D(uTexture, vUv);
+    float l   = luma(src.rgb);
+
+    // If this pixel is below threshold → it's an anchor, no sort
+    if (l < uThreshold) {
+      gl_FragColor = src;
+      return;
+    }
+
+    // Sample a window of ±N/2 pixels and find the sorted replacement
+    int half = int(uLength * 0.5);
+    vec4 best = src;
+    float bestL = uMode < 0.5 ? -1.0 : 2.0; // looking for max (mode=0) or min (mode=1)
+
+    for (int i = -128; i <= 128; i++) {
+      if (i < -half || i > half) continue;
+      vec2 uv2 = vUv + float(i) * step;
+      if (uv2.x < 0.0 || uv2.x > 1.0 || uv2.y < 0.0 || uv2.y > 1.0) continue;
+      vec4 s  = texture2D(uTexture, uv2);
+      float sl = luma(s.rgb);
+      if (sl < uThreshold) break; // hit an anchor — stop window
+      if (uMode < 0.5) {
+        if (sl > bestL) { bestL = sl; best = s; } // brightest
+      } else {
+        if (sl < bestL) { bestL = sl; best = s; } // darkest
+      }
+    }
+
+    gl_FragColor = best;
+  }
+`;

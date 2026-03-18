@@ -21,7 +21,7 @@ import {
   TRANSFERMODE, COLORSHIFT, NOISE_GEN, INTERLACE, MIRROR, SOLID_COLOR, WARP, FADE, PASSTHROUGH,
   BUFFER_TRANSFORM, INTERP,
   PIXELATE, EDGE, RGBSHIFT, POSTERIZE, SOLARIZE, COLOR_CORRECT, CHROMA_KEY,
-  VIGNETTE, BLOOM_EXTRACT, BLOOM_BLUR, BLOOM_COMPOSITE, KALEIDOSCOPE,
+  VIGNETTE, BLOOM_EXTRACT, BLOOM_BLUR, BLOOM_COMPOSITE, KALEIDOSCOPE, PIXEL_SORT,
 } from '../shaders/index.js';
 
 export class Pipeline {
@@ -326,12 +326,27 @@ export class Pipeline {
       });
     }
 
+    // ── Pixel Sort ────────────────────────────────────────────────────────
+    let pixsorted = bloomed;
+    const psortAmt = p.get('effect.pixelsort').value / 100;
+    if (psortAmt > 0) {
+      const res = new THREE.Vector2(this.width, this.height);
+      this.m.pixelsort.uniforms.uResolution.value.copy(res);
+      pixsorted = this._pass(this.m.pixelsort, {
+        uTexture:   bloomed,
+        uThreshold: p.get('effect.psortthresh').value / 100,
+        uLength:    p.get('effect.psortlen').value * psortAmt,
+        uDirection: p.get('effect.psortdir').value,
+        uMode:      p.get('effect.psortmode').value,
+      });
+    }
+
     // ── Interlace ─────────────────────────────────────────────────────────
-    let interlaced = bloomed;
+    let interlaced = pixsorted;
     const il = p.get('output.interlace').value;
     if (il > 0) {
       interlaced = this._pass(this.m.interlace, {
-        uTexture: bloomed, uResY: this.height, uAmount: il, uTime: this._noiseTime,
+        uTexture: pixsorted, uResY: this.height, uAmount: il, uTime: this._noiseTime,
       });
     }
 
@@ -435,7 +450,7 @@ export class Pipeline {
   }
 
   _resolveSource(inputs, sourceIdx) {
-    const SOURCES = ['camera', 'movie', 'buffer', 'color', 'noise', 'scene3d', 'draw', 'output', 'bg1', 'bg2', 'color2', 'text', 'sound'];
+    const SOURCES = ['camera', 'movie', 'buffer', 'color', 'noise', 'scene3d', 'draw', 'output', 'bg1', 'bg2', 'color2', 'text', 'sound', 'delay'];
     const key = SOURCES[sourceIdx] ?? 'color';
 
     if (key === 'camera'  && inputs.camera)  return inputs.camera;
@@ -450,6 +465,7 @@ export class Pipeline {
     if (key === 'color2'  && inputs.color2)  return inputs.color2;
     if (key === 'text'    && inputs.text)    return inputs.text;
     if (key === 'sound'   && inputs.sound)   return inputs.sound;
+    if (key === 'delay'   && inputs.delay)   return inputs.delay;
     return inputs.color ?? this._getFallbackTexture();
   }
 
@@ -582,6 +598,13 @@ export class Pipeline {
       bloomComposite: this._mat(BLOOM_COMPOSITE, {
         uBloom:    { value: null },
         uStrength: { value: 1 },
+      }),
+      pixelsort: this._mat(PIXEL_SORT, {
+        uResolution: { value: new THREE.Vector2(1280, 720) },
+        uThreshold:  { value: 0.3 },
+        uLength:     { value: 64 },
+        uDirection:  { value: 0 },
+        uMode:       { value: 0 },
       }),
     };
   }

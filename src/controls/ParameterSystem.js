@@ -310,14 +310,14 @@ export class ParameterSystem extends EventTarget {
 export function registerCoreParameters(ps) {
 
   // ── Layer source selection ────────────────────────────────────────────────
-  const SOURCES = ['Camera', 'Movie', 'Buffer', 'Color', 'Noise', '3D Scene', 'Draw', 'Output', 'BG1', 'BG2', 'Color2', 'Text'];
+  const SOURCES = ['Camera', 'Movie', 'Buffer', 'Color', 'Noise', '3D Scene', 'Draw', 'Output', 'BG1', 'BG2', 'Color2', 'Text', 'Sound', 'Delay'];
 
   ps.register({ id: 'layer.fg', label: 'Foreground', group: 'layers',
     type: PARAM_TYPE.SELECT, options: SOURCES, value: 3, feedbackVisible: true }); // default: Color
   ps.register({ id: 'layer.bg', label: 'Background', group: 'layers',
     type: PARAM_TYPE.SELECT, options: SOURCES, value: 3, feedbackVisible: true }); // default: Color
   ps.register({ id: 'layer.ds', label: 'DisplaceSrc', group: 'layers',
-    type: PARAM_TYPE.SELECT, options: [...SOURCES, 'Sound'], value: 4, feedbackVisible: true }); // Sound = index 12
+    type: PARAM_TYPE.SELECT, options: SOURCES, value: 4, feedbackVisible: true });
 
   // ── Keyer ─────────────────────────────────────────────────────────────────
   ps.register({ id: 'keyer.active',     label: 'Keyer ON',      group: 'keyer',
@@ -602,6 +602,22 @@ export function registerCoreParameters(ps) {
     min: 0, max: 100, value: 0, unit: '%' });
   ps.register({ id: 'effect.bloomthresh',label:'BloomThresh',group: 'effect',
     min: 0, max: 100, value: 70, unit: '%' });
+
+  // ── Pixel Sort ────────────────────────────────────────────────────────────
+  ps.register({ id: 'effect.pixelsort',   label: 'PixSort',    group: 'effect',
+    min: 0, max: 100, value: 0, unit: '%' });
+  ps.register({ id: 'effect.psortlen',    label: 'SortLen',    group: 'effect',
+    min: 1, max: 512, value: 64, unit: 'px' });
+  ps.register({ id: 'effect.psortthresh',label: 'SortThresh', group: 'effect',
+    min: 0, max: 100, value: 30, unit: '%' });
+  ps.register({ id: 'effect.psortdir',   label: 'SortDir',    group: 'effect',
+    type: PARAM_TYPE.SELECT, options: ['Vert','Horiz'], value: 0 });
+  ps.register({ id: 'effect.psortmode',  label: 'SortMode',   group: 'effect',
+    type: PARAM_TYPE.SELECT, options: ['Bright','Dark'], value: 0 });
+
+  // ── Video Delay Line ──────────────────────────────────────────────────────
+  ps.register({ id: 'delay.frames', label: 'DelayFrames', group: 'delay',
+    min: 1, max: 30, value: 5, step: 1 });
 
   return ps;
 }

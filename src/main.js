@@ -22,6 +22,7 @@ import { Automation } from './controls/Automation.js';
 import { CameraInput }    from './inputs/CameraInput.js';
 import { MovieInput }     from './inputs/MovieInput.js';
 import { StillsBuffer }   from './inputs/StillsBuffer.js';
+import { VideoDelayLine } from './inputs/VideoDelayLine.js';
 import { DrawLayer }      from './inputs/DrawLayer.js';
 import { TextLayer }      from './inputs/TextLayer.js';
 import { buildWarpMaps }  from './inputs/WarpMaps.js';
@@ -92,7 +93,8 @@ async function main() {
 
   const movieInput = new MovieInput();
 
-  const stillsBuffer = new StillsBuffer(renderer, W, H);
+  const stillsBuffer  = new StillsBuffer(renderer, W, H);
+  const videoDelay    = new VideoDelayLine(renderer, W, H, 30);
   const warpMaps     = buildWarpMaps(); // 8 procedural warp map textures (map1–map8)
   const drawLayer    = new DrawLayer();
   const textLayer    = new TextLayer();
@@ -194,8 +196,25 @@ async function main() {
     ctrl.syncBPM(bpm);
     if (bpmEl) bpmEl.textContent = `${Math.round(bpm)} bpm`;
   });
-  // Click BPM indicator = tap tempo
-  bpmEl?.addEventListener('click', () => ps.trigger('global.tap'));
+  // Click BPM indicator = tap tempo; right-click = toggle MIDI clock sync
+  bpmEl?.addEventListener('click', e => {
+    if (e.button !== 0) return;
+    ps.trigger('global.tap');
+  });
+  bpmEl?.addEventListener('contextmenu', e => {
+    e.preventDefault();
+    if (ctrl._midiClockEnabled) {
+      ctrl.disableMIDIClock();
+      bpmEl.title = 'Click: tap tempo | Right-click: enable MIDI clock';
+      bpmEl.style.outline = '';
+    } else {
+      ctrl.enableMIDIClock(bpm => {
+        ps.set('global.bpm', bpm);
+      });
+      bpmEl.title = 'MIDI clock sync ON — right-click to disable';
+      bpmEl.style.outline = '1px solid var(--accent)';
+    }
+  });
 
   const _tapTimes = [];
   ps.get('global.tap').onTrigger(() => {
@@ -1271,6 +1290,7 @@ async function main() {
     pipeline.resize(rW, rH);
     scene3d.resize(rW, rH);
     stillsBuffer.resize(rW, rH);
+    videoDelay.resize(rW, rH);
   }
 
   ps.get('output.resolution').onChange(idx => applyResolution(idx));
@@ -1398,11 +1418,15 @@ async function main() {
       noise:   noiseTexture,
       draw:    drawLayer.texture,
       text:    textLayer.texture,
+      delay:   videoDelay.getTexture(ps.get('delay.frames').value),
       warpMaps,
     };
 
     // Run compositing pipeline
     pipeline.render(inputs, ps, dt);
+
+    // Capture output into video delay ring buffer
+    videoDelay.capture(pipeline.prev.texture);
 
     // FPS counter
     fpsDisplay.tick();
