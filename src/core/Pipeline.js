@@ -21,7 +21,7 @@ import {
   TRANSFERMODE, COLORSHIFT, NOISE_GEN, INTERLACE, MIRROR, SOLID_COLOR, WARP, FADE, PASSTHROUGH,
   BUFFER_TRANSFORM, INTERP,
   PIXELATE, EDGE, RGBSHIFT, POSTERIZE, SOLARIZE, COLOR_CORRECT, CHROMA_KEY,
-  VIGNETTE, BLOOM_EXTRACT, BLOOM_BLUR, BLOOM_COMPOSITE,
+  VIGNETTE, BLOOM_EXTRACT, BLOOM_BLUR, BLOOM_COMPOSITE, KALEIDOSCOPE,
 } from '../shaders/index.js';
 
 export class Pipeline {
@@ -270,12 +270,23 @@ export class Pipeline {
       });
     }
 
+    // ── Kaleidoscope ──────────────────────────────────────────────────────
+    let kaleided = rgbShifted;
+    const kaleSegs = p.get('effect.kaleidoscope').value;
+    if (kaleSegs >= 2) {
+      kaleided = this._pass(this.m.kaleidoscope, {
+        uTexture:  rgbShifted,
+        uSegments: kaleSegs,
+        uRotation: p.get('effect.kalerot').value / 100,
+      });
+    }
+
     // ── Posterize ─────────────────────────────────────────────────────────
-    let posterized = rgbShifted;
+    let posterized = kaleided;
     const postLvl = p.get('effect.posterize').value;
     if (postLvl < 32) {
       posterized = this._pass(this.m.posterize, {
-        uTexture: rgbShifted, uLevels: postLvl,
+        uTexture: kaleided, uLevels: postLvl,
       });
     }
 
@@ -550,6 +561,10 @@ export class Pipeline {
         uKeyRange:    { value: 0.15 },
         uKeySoftness: { value: 0.08 },
         uKeyActive:   { value: 0 },
+      }),
+      kaleidoscope: this._mat(KALEIDOSCOPE, {
+        uSegments: { value: 4 },
+        uRotation: { value: 0 },
       }),
       vignette: this._mat(VIGNETTE, {
         uAmount: { value: 0 },

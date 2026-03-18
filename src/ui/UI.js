@@ -412,7 +412,7 @@ export class SignalPath {
       'displace.amount','displace.warp',
       'blend.active','feedback.hor','feedback.ver','feedback.scale',
       'output.colorshift','output.fade',
-      'effect.pixelate','effect.edge','effect.rgbshift','effect.posterize','effect.solarize',
+      'effect.pixelate','effect.edge','effect.rgbshift','effect.kaleidoscope','effect.posterize','effect.solarize',
       'effect.vignette','effect.bloom',
       'fg.hue','fg.sat','fg.bright','bg.hue','bg.sat','bg.bright',
       'keyer.chroma',
@@ -447,6 +447,7 @@ export class SignalPath {
     const pixOn     = p.get('effect.pixelate').value > 1;
     const edgeOn    = p.get('effect.edge').value > 0;
     const rgbOn     = p.get('effect.rgbshift').value > 0;
+    const kaleOn    = p.get('effect.kaleidoscope').value >= 2;
     const postOn    = p.get('effect.posterize').value < 32;
     const solOn     = p.get('effect.solarize').value < 100;
 
@@ -468,6 +469,7 @@ export class SignalPath {
       ...(pixOn  ? [{ label: 'pixel',   type: 'active' }] : []),
       ...(edgeOn ? [{ label: 'edge',    type: 'active' }] : []),
       ...(rgbOn  ? [{ label: 'rgb»',    type: 'active' }] : []),
+      ...(kaleOn ? [{ label: 'kale',    type: 'active' }] : []),
       ...(postOn ? [{ label: 'poster',  type: 'active' }] : []),
       ...(solOn  ? [{ label: 'solar',   type: 'active' }] : []),
       ...(vigOn  ? [{ label: 'vign',    type: 'active' }] : []),

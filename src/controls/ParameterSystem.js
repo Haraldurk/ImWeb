@@ -590,6 +590,10 @@ export function registerCoreParameters(ps) {
     min: 2, max: 32, value: 32, step: 1 });
   ps.register({ id: 'effect.solarize',  label: 'Solarize',   group: 'effect',
     min: 0, max: 100, value: 100, unit: '%' });
+  ps.register({ id: 'effect.kaleidoscope', label: 'Kaleidoscope', group: 'effect',
+    min: 0, max: 16, value: 0, step: 1 });
+  ps.register({ id: 'effect.kalerot',   label: 'Kale.Rot',   group: 'effect',
+    min: 0, max: 100, value: 0, unit: '%' });
   ps.register({ id: 'effect.vignette',  label: 'Vignette',   group: 'effect',
     min: 0, max: 100, value: 0, unit: '%' });
   ps.register({ id: 'effect.vigradius', label: 'Vign.Radius',group: 'effect',
