@@ -466,6 +466,11 @@ export function registerCoreParameters(ps) {
     min: 0, max: 100, value: 100, unit: '%' });
   ps.register({ id: 'movie.mirror',  label: 'MirrorMovie',group: 'movie',
     type: PARAM_TYPE.TOGGLE, value: 0 });
+  ps.register({ id: 'movie.bpmsync', label: 'BPM Sync',   group: 'movie',
+    type: PARAM_TYPE.TOGGLE, value: 0 });
+  ps.register({ id: 'movie.bpmbeats',label: 'BeatLen',    group: 'movie',
+    type: PARAM_TYPE.SELECT, value: 2,
+    options: ['1 beat','2 beats','4 beats','8 beats','16 beats'] });
 
   // ── Camera ────────────────────────────────────────────────────────────────
   ps.register({ id: 'camera.active', label: 'CameraOn',   group: 'camera',

@@ -1546,6 +1546,7 @@ void main() {
   let scanTimer = 0;
   let scanDir = 1; // +1 fwd, -1 back (for ping-pong)
   let strobePhase = 0; // 0–1 phase within one strobe cycle
+  let beatPhase = 0;   // accumulated beat counter (beats, increases at BPM rate)
 
   function render(now) {
     requestAnimationFrame(render);
@@ -1569,8 +1570,12 @@ void main() {
     // Update camera texture
     camera3d.tick();
 
+    // Advance beat phase
+    const bpm = ps.get('global.bpm')?.value ?? 120;
+    beatPhase += dt * (bpm / 60);
+
     // Update movie clip
-    movieInput.tick(ps);
+    movieInput.tick(ps, beatPhase);
 
     // Tick stills buffer (reads fs1 → readIndex)
     stillsBuffer.tick(ps);
