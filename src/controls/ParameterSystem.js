@@ -154,7 +154,8 @@ export class Parameter {
       'midi-cc': `CC${c.cc ?? '?'}`,
       'lfo-sine': 'LFO~', 'lfo-triangle': 'LFO△',
       'lfo-sawtooth': 'LFO⊿', 'lfo-square': 'LFO▭',
-      'sound': 'SND', 'random': 'RND', 'fixed': 'FXD',
+      'sound': 'SND', 'sound-bass': 'BAS', 'sound-mid': 'MID', 'sound-high': 'HIG',
+      'random': 'RND', 'fixed': 'FXD',
       'key': `KEY:${c.key ?? '?'}`, 'nudge': 'NDG',
       'movie-pos': 'MVP', 'osc': 'OSC',
     };
@@ -167,7 +168,7 @@ export class Parameter {
     if (t.startsWith('lfo'))   return 'lfo';
     if (t.startsWith('midi'))  return 'midi';
     if (t.startsWith('mouse')) return 'mouse';
-    if (t === 'sound')         return 'sound';
+    if (t.startsWith('sound')) return 'sound';
     return 'assigned';
   }
 
