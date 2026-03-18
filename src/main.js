@@ -197,6 +197,7 @@ async function main() {
 
   const _tapTimes = [];
   ps.get('global.tap').onTrigger(() => {
+    ctrl.retriggerLFOs(); // sync all LFOs to the beat
     const now = performance.now();
     _tapTimes.push(now);
     if (_tapTimes.length > 5) _tapTimes.shift();
@@ -229,6 +230,22 @@ async function main() {
   const presetsPanel = new PresetsPanel(presetMgr);
   const fpsDisplay    = new FPSDisplay();
   const tablesEditor  = new TablesEditor(tableManager);
+
+  // ── Preset save buttons ───────────────────────────────────────────────────
+  document.getElementById('btn-save-preset')?.addEventListener('click', async () => {
+    await presetMgr.saveCurrentPreset();
+    const btn = document.getElementById('btn-save-preset');
+    const orig = btn.textContent;
+    btn.textContent = '✓ Saved';
+    setTimeout(() => { btn.textContent = orig; }, 1200);
+  });
+  document.getElementById('btn-save-state')?.addEventListener('click', async () => {
+    const idx = await presetMgr.saveCurrentState();
+    const btn = document.getElementById('btn-save-state');
+    const orig = btn.textContent;
+    btn.textContent = `✓ State ${idx}`;
+    setTimeout(() => { btn.textContent = orig; }, 1200);
+  });
 
   // ── OSC bridge ────────────────────────────────────────────────────────────
   const oscBridge  = new OSCBridge(ps, presetMgr);
@@ -280,8 +297,24 @@ async function main() {
       inp.click();
     });
 
+    const btnRandomize = document.createElement('button');
+    btnRandomize.className = 'import-btn';
+    btnRandomize.textContent = '🎲 Randomize';
+    btnRandomize.title = 'Randomize all continuous parameters';
+    btnRandomize.addEventListener('click', () => {
+      const SKIP = new Set(['buffer.fs1','buffer.fs2','buffer.fs3','buffer.rate','buffer.scanrate',
+        'global.bpm','output.interlace','movie.pos','movie.start','movie.loop']);
+      ps.getAll().forEach(p => {
+        if (p.type !== 'continuous') return;
+        if (SKIP.has(p.id)) return;
+        if (p.controller) return; // don't override active controllers
+        p.value = p.min + Math.random() * (p.max - p.min);
+      });
+    });
+
     ioRow.appendChild(btnExport);
     ioRow.appendChild(btnImport);
+    ioRow.appendChild(btnRandomize);
     presetsSection.appendChild(ioRow);
   })();
 
