@@ -310,7 +310,7 @@ export class ParameterSystem extends EventTarget {
 export function registerCoreParameters(ps) {
 
   // ── Layer source selection ────────────────────────────────────────────────
-  const SOURCES = ['Camera', 'Movie', 'Buffer', 'Color', 'Noise', '3D Scene', 'Draw', 'Output', 'BG1', 'BG2', 'Color2', 'Text', 'Sound', 'Delay', 'Scope', 'SlitScan'];
+  const SOURCES = ['Camera', 'Movie', 'Buffer', 'Color', 'Noise', '3D Scene', 'Draw', 'Output', 'BG1', 'BG2', 'Color2', 'Text', 'Sound', 'Delay', 'Scope', 'SlitScan', 'Particles'];
 
   ps.register({ id: 'layer.fg', label: 'Foreground', group: 'layers',
     type: PARAM_TYPE.SELECT, options: SOURCES, value: 3, feedbackVisible: true }); // default: Color
@@ -648,6 +648,22 @@ export function registerCoreParameters(ps) {
   // ── Video Delay Line ──────────────────────────────────────────────────────
   ps.register({ id: 'delay.frames', label: 'DelayFrames', group: 'delay',
     min: 1, max: 30, value: 5, step: 1 });
+
+  // ── Particles ─────────────────────────────────────────────────────────────
+  ps.register({ id: 'particle.count',   label: 'PCount',   group: 'particle',
+    type: PARAM_TYPE.SELECT, options: ['1k','4k','16k','64k'], value: 0 });
+  ps.register({ id: 'particle.speed',   label: 'PSpeed',   group: 'particle',
+    min: 0, max: 100, value: 40, unit: '%' });
+  ps.register({ id: 'particle.life',    label: 'PLife',    group: 'particle',
+    min: 1, max: 100, value: 30, unit: '%' });
+  ps.register({ id: 'particle.gravity', label: 'PGravity', group: 'particle',
+    min: 0, max: 100, value: 20, unit: '%' });
+  ps.register({ id: 'particle.wind',    label: 'PWind',    group: 'particle',
+    min: 0, max: 100, value: 50, unit: '%' });
+  ps.register({ id: 'particle.size',    label: 'PSize',    group: 'particle',
+    min: 1, max: 32, value: 4, unit: 'px' });
+  ps.register({ id: 'particle.color',   label: 'PColor',   group: 'particle',
+    type: PARAM_TYPE.SELECT, options: ['White','Rainbow','Mono','Fire'], value: 0 });
 
   // ── Slit Scan ─────────────────────────────────────────────────────────────
   ps.register({ id: 'slitscan.active', label: 'SlitScan',   group: 'slitscan',

@@ -25,6 +25,7 @@ import { StillsBuffer }   from './inputs/StillsBuffer.js';
 import { VideoDelayLine }    from './inputs/VideoDelayLine.js';
 import { VectorscopeInput }  from './inputs/VectorscopeInput.js';
 import { SlitScanBuffer }    from './inputs/SlitScanBuffer.js';
+import { ParticleSystem }    from './inputs/ParticleSystem.js';
 import { DrawLayer }      from './inputs/DrawLayer.js';
 import { TextLayer }      from './inputs/TextLayer.js';
 import { buildWarpMaps }  from './inputs/WarpMaps.js';
@@ -99,6 +100,7 @@ async function main() {
   const videoDelay    = new VideoDelayLine(renderer, W, H, 30);
   const vectorscope   = new VectorscopeInput();
   const slitScan      = new SlitScanBuffer(W, H);
+  const particles     = new ParticleSystem(renderer, W, H);
   const warpMaps     = buildWarpMaps(); // 8 procedural warp map textures (map1–map8)
   const drawLayer    = new DrawLayer();
   const textLayer    = new TextLayer();
@@ -1494,6 +1496,7 @@ void main() {
     stillsBuffer.resize(rW, rH);
     videoDelay.resize(rW, rH);
     slitScan.resize(rW, rH);
+    particles.resize(rW, rH);
   }
 
   ps.get('output.resolution').onChange(idx => applyResolution(idx));
@@ -1600,6 +1603,9 @@ void main() {
     // Tick slit scan (reads from pipeline.prev render target)
     slitScan.tick(renderer, pipeline.prev, ps, dt);
 
+    // Tick particle system
+    particles.tick(ps, dt);
+
     // Generate GPU noise every 2 frames
     if (frameCount % 2 === 0) {
       noiseTexture = pipeline.generateNoise(
@@ -1630,7 +1636,8 @@ void main() {
       text:    textLayer.texture,
       delay:   videoDelay.getTexture(ps.get('delay.frames').value),
       scope:    vectorscope.texture,
-      slitscan: slitScan.texture,
+      slitscan:  slitScan.texture,
+      particles: particles.texture,
       warpMaps,
     };
 
