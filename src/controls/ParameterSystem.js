@@ -571,6 +571,8 @@ export function registerCoreParameters(ps) {
     min: 0, max: 100, value: 0, unit: '%', feedbackVisible: true });
   ps.register({ id: 'global.morphspeed', label: 'MorphSpeed', group: 'global',
     min: 0.1, max: 20, value: 2, unit: 's' });
+  ps.register({ id: 'global.beatdetect', label: 'Auto BPM', group: 'global',
+    type: PARAM_TYPE.TOGGLE, value: 0 });
 
   // ── Per-layer color correction ────────────────────────────────────────────
   ps.register({ id: 'fg.hue',    label: 'FG Hue',    group: 'fg',

@@ -1628,6 +1628,18 @@ void main() {
     // Update camera texture
     camera3d.tick();
 
+    // Beat detection: auto-update global.bpm from audio when opted in
+    if (ps.get('global.beatdetect')?.value && ctrl.sound?.beatDetector?.beat) {
+      const detectedBpm = ctrl.sound.beatDetector.bpm;
+      if (detectedBpm > 0) {
+        // Smooth: blend detected BPM toward current (avoid jumpy updates)
+        const cur = ps.get('global.bpm')?.value ?? 120;
+        const smoothed = Math.round(cur * 0.7 + detectedBpm * 0.3);
+        ps.set('global.bpm', smoothed);
+        ctrl.retriggerLFOs();
+      }
+    }
+
     // Advance beat phase
     const bpm = ps.get('global.bpm')?.value ?? 120;
     beatPhase += dt * (bpm / 60);
