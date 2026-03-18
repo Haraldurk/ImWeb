@@ -176,11 +176,11 @@ export class Pipeline {
       });
     }
 
-    // Save as previous frame (for blend next frame)
-    this._copyToPrev(faded);
-
-    // Blit to screen
+    // Blit to screen first (faded texture still valid in ping-pong)
     this._blit(faded);
+
+    // Then save to prev buffer (safe: _blit already consumed faded)
+    this._copyToPrev(faded);
   }
 
   // ── Resize ────────────────────────────────────────────────────────────────
@@ -205,9 +205,17 @@ export class Pipeline {
 
   /** Run a shader pass, returns the output texture */
   _pass(material, uniforms) {
-    // Update uniforms
+    // Update uniforms — skip null textures (use fallback to avoid WebGL errors)
+    const fallback = this._getFallbackTexture();
     Object.entries(uniforms).forEach(([key, val]) => {
       if (material.uniforms[key] !== undefined) {
+        // Replace null textures with fallback so WebGL never gets a null sampler
+        if (val === null && key.startsWith('u') && key !== 'uKeyActive' &&
+            key !== 'uAlpha' && key !== 'uAlphaInvert' && key !== 'uMode' &&
+            key !== 'uActive' && key !== 'uRotateGrey' && key !== 'uFlipH' &&
+            key !== 'uFlipV' && key !== 'uType') {
+          val = fallback;
+        }
         material.uniforms[key].value = val;
       }
     });
@@ -223,15 +231,14 @@ export class Pipeline {
     return target.texture;
   }
 
-  /** Copy a texture to the previous-frame buffer */
+  /** Copy a texture to the previous-frame buffer (direct write, no ping-pong) */
   _copyToPrev(tex) {
-    this._pass(this.m.passthrough, { uTexture: tex });
-    // Actually write to prev target
-    const m = this.m.passthrough;
-    m.uniforms.uTexture.value = tex;
-    this._quad.material = m;
+    this.m.passthrough.uniforms.uTexture.value = tex;
+    this._quad.material = this.m.passthrough;
     this.renderer.setRenderTarget(this.prev);
     this.renderer.render(this._scene, this._camera);
+    // Restore render target to null so Three.js state is clean
+    this.renderer.setRenderTarget(null);
   }
 
   /** Final blit to screen (null render target) */
