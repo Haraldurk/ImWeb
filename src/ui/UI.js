@@ -529,6 +529,18 @@ export class ContextMenu {
       btn.classList.toggle('active', param.controller?.type === btn.dataset.ctrl);
     });
 
+    // LFO visualizer — draw waveform preview when param has an LFO controller
+    const vizCanvas = document.getElementById('ctx-lfo-viz');
+    if (vizCanvas) {
+      const lfoEntry = this.ctrl.lfos?.get(param.id);
+      if (lfoEntry) {
+        vizCanvas.style.display = 'block';
+        this._drawLFOViz(vizCanvas, lfoEntry.lfo);
+      } else {
+        vizCanvas.style.display = 'none';
+      }
+    }
+
     this.el.style.left = `${x}px`;
     this.el.style.top  = `${y}px`;
     this.el.classList.remove('hidden');
@@ -544,6 +556,51 @@ export class ContextMenu {
   hide() {
     this.el.classList.add('hidden');
     this._currentParam = null;
+  }
+
+  _drawLFOViz(canvas, lfo) {
+    const W   = canvas.width;
+    const H   = canvas.height;
+    const ctx = canvas.getContext('2d');
+
+    ctx.clearRect(0, 0, W, H);
+
+    // Grid centre line
+    ctx.strokeStyle = '#2a2a3a';
+    ctx.lineWidth   = 1;
+    ctx.beginPath();
+    ctx.moveTo(0, H / 2);
+    ctx.lineTo(W, H / 2);
+    ctx.stroke();
+
+    // Waveform — sample 2 full cycles across the canvas width
+    ctx.strokeStyle = '#e8c840';
+    ctx.lineWidth   = 1.5;
+    ctx.beginPath();
+    const cycles = 2;
+    for (let px = 0; px <= W; px++) {
+      const t   = (px / W) * cycles % 1;
+      const val = lfo._sample(t); // 0–1
+      const py  = H - val * H;
+      px === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
+    }
+    ctx.stroke();
+
+    // Current phase marker
+    const cx  = ((lfo._t % 1) / cycles) * W;
+    ctx.strokeStyle = '#60a0e0';
+    ctx.lineWidth   = 1;
+    ctx.beginPath();
+    ctx.moveTo(cx, 0);
+    ctx.lineTo(cx, H);
+    ctx.stroke();
+
+    // Hz label
+    const bpmDiv = this._currentParam?.controller?.bpmDiv;
+    const label  = bpmDiv != null ? `÷${1 / bpmDiv}` : `${lfo.hz.toFixed(2)}Hz`;
+    ctx.fillStyle = '#9090a8';
+    ctx.font      = '9px monospace';
+    ctx.fillText(label, 4, H - 4);
   }
 
   _wire() {
