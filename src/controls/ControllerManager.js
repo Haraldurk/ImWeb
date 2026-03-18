@@ -9,6 +9,7 @@
  */
 
 import { LFOController } from './LFO.js';
+import { BeatDetector }  from './BeatDetector.js';
 
 export class ControllerManager {
   constructor(ps) {
@@ -455,8 +456,11 @@ export class ControllerManager {
       const timeBuf = new Float32Array(analyser.fftSize);
       const freqBuf = new Uint8Array(analyser.frequencyBinCount); // 256 bins
 
+      const beatDetector = new BeatDetector(analyser, ctx);
+
       this.sound = {
         ctx, analyser, timeBuf, freqBuf,
+        beatDetector,
         level: 0, bass: 0, mid: 0, high: 0,
         tick() {
           analyser.getFloatTimeDomainData(timeBuf);
@@ -476,6 +480,9 @@ export class ControllerManager {
           this.bass = Math.min(1, (b / bassEnd) / 200);
           this.mid  = Math.min(1, (m / (midEnd - bassEnd)) / 160);
           this.high = Math.min(1, (h / (N - midEnd)) / 120);
+
+          // Beat detection
+          beatDetector.tick();
         }
       };
 
