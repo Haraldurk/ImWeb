@@ -20,10 +20,13 @@ export class ControllerManager {
     this.mouse   = { x: 0.5, y: 0.5 };
     this.modifiers = { capsLock: false, shift: false, ctrl: false, alt: false, meta: false };
 
+    this._gamepadBtnPrev = []; // tracks button press edges for toggle/trigger params
+
     this._initKeyboard();
     this._initMouse();
     this._initMIDI();
     this._initSound();
+    this._initGamepad();
   }
 
   // ── Frame tick ────────────────────────────────────────────────────────────
@@ -47,6 +50,9 @@ export class ControllerManager {
 
     // Update sound controller if active
     if (this.sound) this.sound.tick();
+
+    // Poll gamepads
+    this._tickGamepad();
   }
 
   // ── Assign controller to parameter ───────────────────────────────────────
@@ -236,6 +242,56 @@ export class ControllerManager {
         el._t = setTimeout(() => el.classList.remove('active'), 100);
       }
     };
+  }
+
+  // ── Gamepad ───────────────────────────────────────────────────────────────
+
+  _initGamepad() {
+    window.addEventListener('gamepadconnected', e => {
+      console.info(`[Gamepad] Connected: ${e.gamepad.id}`);
+    });
+    window.addEventListener('gamepaddisconnected', e => {
+      console.info(`[Gamepad] Disconnected: ${e.gamepad.id}`);
+    });
+  }
+
+  _tickGamepad() {
+    const gamepads = navigator.getGamepads ? navigator.getGamepads() : [];
+    // Use the first connected gamepad
+    let gp = null;
+    for (const g of gamepads) { if (g) { gp = g; break; } }
+    if (!gp) return;
+
+    this.ps.getAll().forEach(p => {
+      if (!p.controller) return;
+      const c = p.controller;
+      const t = c.type;
+
+      if (t?.startsWith('gamepad-axis-')) {
+        const idx  = parseInt(t.replace('gamepad-axis-', ''));
+        const raw  = gp.axes[idx] ?? 0;
+        const norm = (raw + 1) / 2; // -1..1  →  0..1
+        p.setNormalized(norm);
+
+      } else if (t?.startsWith('gamepad-btn-')) {
+        const idx = parseInt(t.replace('gamepad-btn-', ''));
+        const btn = gp.buttons[idx];
+        if (!btn) return;
+
+        const prev    = this._gamepadBtnPrev[idx] ?? false;
+        const pressed = btn.pressed;
+
+        if (p.type === 'toggle') {
+          if (pressed && !prev) p.toggle();     // rising edge only
+        } else if (p.type === 'trigger') {
+          if (pressed && !prev) p.trigger();    // rising edge only
+        } else {
+          p.setNormalized(btn.value);           // analog (0 or 1 for digital)
+        }
+
+        this._gamepadBtnPrev[idx] = pressed;
+      }
+    });
   }
 
   // ── Sound ─────────────────────────────────────────────────────────────────

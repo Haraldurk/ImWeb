@@ -20,6 +20,7 @@ import { ControllerManager } from './controls/ControllerManager.js';
 import { CameraInput }    from './inputs/CameraInput.js';
 import { MovieInput }     from './inputs/MovieInput.js';
 import { StillsBuffer }   from './inputs/StillsBuffer.js';
+import { DrawLayer }      from './inputs/DrawLayer.js';
 import { buildWarpMaps }  from './inputs/WarpMaps.js';
 import { SceneManager } from './scene3d/SceneManager.js';
 import { Pipeline } from './core/Pipeline.js';
@@ -86,6 +87,7 @@ async function main() {
 
   const stillsBuffer = new StillsBuffer(renderer, W, H);
   const warpMaps     = buildWarpMaps(); // 8 procedural warp map textures (map1–map8)
+  const drawLayer    = new DrawLayer();
 
   const scene3d = new SceneManager(renderer, W, H);
 
@@ -320,6 +322,78 @@ async function main() {
   ps.get('screen.bg1').onTrigger(() => stillsBuffer.captureBG(0, pipeline.prev.texture));
   ps.get('screen.bg2').onTrigger(() => stillsBuffer.captureBG(1, pipeline.prev.texture));
 
+  // Draw layer triggers
+  ps.get('draw.clear').onTrigger(() => drawLayer.clear());
+
+  // ── Draw tab UI ───────────────────────────────────────────────────────────
+
+  // Mirror the draw canvas into the preview element (same canvas = live)
+  const drawPreviewEl = document.getElementById('draw-preview');
+  if (drawPreviewEl && drawPreviewEl.parentNode) {
+    drawPreviewEl.replaceWith(drawLayer.canvas);
+    drawLayer.canvas.id = 'draw-preview';
+    drawLayer.canvas.style.cssText = 'display:block;width:100%;image-rendering:pixelated;border:1px solid var(--border);background:#000;';
+    // Allow mouse drawing directly on the preview canvas
+    const setDrawPos = e => {
+      const r  = drawLayer.canvas.getBoundingClientRect();
+      ps.set('draw.x', ((e.clientX - r.left) / r.width)  * 100);
+      ps.set('draw.y', (1 - (e.clientY - r.top) / r.height) * 100);
+    };
+
+    let _drawPenBackup = 0;
+    let _drawEraseBackup = 0;
+
+    drawLayer.canvas.addEventListener('mousedown', e => {
+      setDrawPos(e);
+      if (e.button === 0) {          // left = pen
+        _drawPenBackup = ps.get('draw.pensize').value;
+        if (!_drawPenBackup) ps.set('draw.pensize', 8);
+        ps.set('draw.erasesize', 0);
+      } else if (e.button === 2) {   // right = erase
+        _drawEraseBackup = ps.get('draw.erasesize').value;
+        if (!_drawEraseBackup) ps.set('draw.erasesize', 20);
+        ps.set('draw.pensize', 0);
+      }
+    });
+    drawLayer.canvas.addEventListener('mousemove', e => {
+      if (e.buttons) setDrawPos(e);
+    });
+    drawLayer.canvas.addEventListener('mouseup', () => {
+      ps.set('draw.pensize',   _drawPenBackup   || 0);
+      ps.set('draw.erasesize', _drawEraseBackup || 0);
+      _drawPenBackup = _drawEraseBackup = 0;
+    });
+    drawLayer.canvas.addEventListener('contextmenu', e => e.preventDefault());
+  }
+
+  // Draw controls — Clear button and params
+  const drawControls = document.getElementById('draw-controls');
+  if (drawControls) {
+    const btnClear = document.createElement('button');
+    btnClear.className = 'import-btn';
+    btnClear.textContent = '✕ Clear';
+    btnClear.addEventListener('click', () => ps.trigger('draw.clear'));
+    drawControls.appendChild(btnClear);
+
+    // Pen/Erase mode indicator buttons
+    const btnPen   = document.createElement('button');
+    const btnErase = document.createElement('button');
+    btnPen.className   = 'import-btn';
+    btnErase.className = 'import-btn';
+    btnPen.textContent   = '✏ Pen';
+    btnErase.textContent = '◻ Erase';
+    btnPen.addEventListener('click', () => {
+      if (!ps.get('draw.pensize').value) ps.set('draw.pensize', 5);
+      ps.set('draw.erasesize', 0);
+    });
+    btnErase.addEventListener('click', () => {
+      ps.set('draw.pensize', 0);
+      if (!ps.get('draw.erasesize').value) ps.set('draw.erasesize', 10);
+    });
+    drawControls.appendChild(btnPen);
+    drawControls.appendChild(btnErase);
+  }
+
   // ── Buffer tab UI ─────────────────────────────────────────────────────────
 
   const FRAME_COUNT  = 16; // mirrors StillsBuffer constant
@@ -516,6 +590,9 @@ async function main() {
     // Tick stills buffer (reads fs1 → readIndex)
     stillsBuffer.tick(ps);
 
+    // Tick draw layer (paints to canvas texture based on draw.* params)
+    drawLayer.tick(ps);
+
     // Update sound level texture
     if (ctrl.sound) {
       const lvl = Math.round(Math.min(1, ctrl.sound.level * 4) * 255);
@@ -548,7 +625,7 @@ async function main() {
       color2:  color2Texture,
       sound:   soundTexture,
       noise:   noiseTexture,
-      draw:    null, // DrawLayer wired in Phase 3
+      draw:    drawLayer.texture,
       warpMaps,
     };
 

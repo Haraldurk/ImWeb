@@ -46,6 +46,7 @@
       <div id="tab-bar">
         <button class="tab active" data-tab="mapping">Mapping</button>
         <button class="tab" data-tab="buffer">Buffer</button>
+        <button class="tab" data-tab="draw">Draw</button>
         <button class="tab" data-tab="scene3d">3D</button>
         <button class="tab" data-tab="clips">Clips</button>
         <button class="tab" data-tab="presets">Presets</button>
@@ -89,6 +90,20 @@
           <canvas id="buffer-canvas" width="320" height="240"></canvas>
           <div id="buffer-controls"></div>
           <div id="buffer-params"></div>
+        </div>
+      </div>
+
+      <!-- DRAW TAB -->
+      <div id="tab-draw" class="tab-content">
+        <div class="panel-section">
+          <div class="section-header">Draw Layer</div>
+          <canvas id="draw-preview" width="256" height="256"
+            style="display:block;width:100%;image-rendering:pixelated;border:1px solid var(--border);background:#000;"></canvas>
+          <div id="draw-controls" style="display:flex;gap:6px;padding:8px 0 4px;flex-wrap:wrap;"></div>
+        </div>
+        <div class="panel-section">
+          <div class="section-header">Brush</div>
+          <div id="draw-params"></div>
         </div>
       </div>
 
@@ -180,6 +195,14 @@
     <button class="menu-item" data-ctrl="sound">Sound Level</button>
     <button class="menu-item" data-ctrl="random">Random</button>
     <button class="menu-item" data-ctrl="fixed">Fixed Value</button>
+    <button class="menu-item" data-ctrl="gamepad-axis-0">Gamepad LX</button>
+    <button class="menu-item" data-ctrl="gamepad-axis-1">Gamepad LY</button>
+    <button class="menu-item" data-ctrl="gamepad-axis-2">Gamepad RX</button>
+    <button class="menu-item" data-ctrl="gamepad-axis-3">Gamepad RY</button>
+    <button class="menu-item" data-ctrl="gamepad-btn-0">Gamepad A/Cross</button>
+    <button class="menu-item" data-ctrl="gamepad-btn-1">Gamepad B/Circle</button>
+    <button class="menu-item" data-ctrl="gamepad-btn-2">Gamepad X/Square</button>
+    <button class="menu-item" data-ctrl="gamepad-btn-3">Gamepad Y/Triangle</button>
     <div class="menu-section">Options</div>
     <button class="menu-item" data-action="invert">Toggle Invert</button>
     <button class="menu-item" data-action="show">Toggle Feedback</button>

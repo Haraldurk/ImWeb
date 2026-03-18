@@ -223,6 +223,7 @@ export function buildMappingPanels(ps, contextMenu) {
     'transform-params': ps.getGroup('scene3d').filter(p => p.id.includes('rot') || p.id.includes('pos') || p.id.includes('scale')),
     'camera3d-params': ps.getGroup('scene3d').filter(p => p.id.includes('cam')),
     'material-params': ps.getGroup('scene3d').filter(p => p.id.includes('mat') || p.id.includes('wire') || p.id.includes('light')),
+    'draw-params':     ps.getGroup('draw'),
   };
 
   Object.entries(sections).forEach(([elId, params]) => {
