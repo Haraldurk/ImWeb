@@ -1201,6 +1201,46 @@ async function main() {
     if (e.key === 'Escape') { document.body.classList.remove('fullscreen-output'); }
   });
 
+  // ── Color pickers (native input[type=color] for Color1/Color2) ───────────
+
+  function hexToHsv(hex) {
+    const r = parseInt(hex.slice(1, 3), 16) / 255;
+    const g = parseInt(hex.slice(3, 5), 16) / 255;
+    const b = parseInt(hex.slice(5, 7), 16) / 255;
+    const max = Math.max(r, g, b); const min = Math.min(r, g, b);
+    const d = max - min;
+    let h = 0;
+    if (d > 0) {
+      if (max === r) h = ((g - b) / d + 6) % 6;
+      else if (max === g) h = (b - r) / d + 2;
+      else h = (r - g) / d + 4;
+      h /= 6;
+    }
+    return { h: h * 100, s: max > 0 ? (d / max) * 100 : 0, v: max * 100 };
+  }
+
+  document.getElementById('color1-picker')?.addEventListener('input', e => {
+    const { h, s, v } = hexToHsv(e.target.value);
+    ps.set('color1.hue', h);
+    ps.set('color1.sat', s);
+    ps.set('color1.val', v);
+  });
+  document.getElementById('color2-picker')?.addEventListener('input', e => {
+    const { h, s, v } = hexToHsv(e.target.value);
+    ps.set('color2.hue', h);
+    ps.set('color2.sat', s);
+    ps.set('color2.val', v);
+  });
+
+  // ── Fullscreen button and double-click toggle ─────────────────────────────
+
+  const toggleFullscreen = () => {
+    document.body.classList.toggle('fullscreen-output');
+  };
+
+  document.getElementById('btn-fullscreen')?.addEventListener('click', toggleFullscreen);
+  canvas.addEventListener('dblclick', toggleFullscreen);
+
   // ── Resize handler ────────────────────────────────────────────────────────
 
   const resizeObserver = new ResizeObserver(() => {
