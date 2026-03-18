@@ -149,7 +149,7 @@ export class SceneManager {
 
   // ── Parameter-driven updates ───────────────────────────────────────────────
 
-  applyParams(params) {
+  applyParams(params, dt = 0) {
     const p = params;
 
     // Geometry selection
@@ -161,9 +161,19 @@ export class SceneManager {
 
     // Transform
     const toRad = Math.PI / 180;
-    this.mesh.rotation.x = p.get('scene3d.rot.x').value * toRad;
-    this.mesh.rotation.y = p.get('scene3d.rot.y').value * toRad;
-    this.mesh.rotation.z = p.get('scene3d.rot.z').value * toRad;
+    // Auto-spin: accumulate rotation over time
+    const spinX = p.get('scene3d.spin.x')?.value ?? 0;
+    const spinY = p.get('scene3d.spin.y')?.value ?? 0;
+    const spinZ = p.get('scene3d.spin.z')?.value ?? 0;
+    if (spinX !== 0 || spinY !== 0 || spinZ !== 0) {
+      this.mesh.rotation.x += spinX * toRad * dt;
+      this.mesh.rotation.y += spinY * toRad * dt;
+      this.mesh.rotation.z += spinZ * toRad * dt;
+    } else {
+      this.mesh.rotation.x = p.get('scene3d.rot.x').value * toRad;
+      this.mesh.rotation.y = p.get('scene3d.rot.y').value * toRad;
+      this.mesh.rotation.z = p.get('scene3d.rot.z').value * toRad;
+    }
     this.mesh.position.x = p.get('scene3d.pos.x').value;
     this.mesh.position.y = p.get('scene3d.pos.y').value;
     this.mesh.position.z = p.get('scene3d.pos.z').value;
@@ -197,9 +207,9 @@ export class SceneManager {
 
   // ── Render ────────────────────────────────────────────────────────────────
 
-  render(params) {
+  render(params, dt = 0) {
     if (!params.get('scene3d.active').value) return;
-    this.applyParams(params);
+    this.applyParams(params, dt);
     const prev = this.renderer.getRenderTarget();
     this.renderer.setRenderTarget(this.target);
     this.renderer.render(this.scene, this.camera);

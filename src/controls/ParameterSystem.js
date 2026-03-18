@@ -522,6 +522,12 @@ export function registerCoreParameters(ps) {
     min: 0, max: 1, value: 1.0 });
   ps.register({ id: 'scene3d.light.intensity', label: 'Light Int.', group: 'scene3d',
     min: 0, max: 5, value: 1.0 });
+  ps.register({ id: 'scene3d.spin.x', label: 'Spin X', group: 'scene3d',
+    min: -180, max: 180, value: 0, unit: '°/s' });
+  ps.register({ id: 'scene3d.spin.y', label: 'Spin Y', group: 'scene3d',
+    min: -180, max: 180, value: 0, unit: '°/s' });
+  ps.register({ id: 'scene3d.spin.z', label: 'Spin Z', group: 'scene3d',
+    min: -180, max: 180, value: 0, unit: '°/s' });
 
   // ── Draw ──────────────────────────────────────────────────────────────────
   ps.register({ id: 'draw.pensize',   label: 'DrawPenSize',  group: 'draw',

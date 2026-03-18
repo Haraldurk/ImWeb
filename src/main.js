@@ -1882,7 +1882,7 @@ void main() {
 
     // Render 3D scene to its render target
     if (ps.get('scene3d.active').value) {
-      scene3d.render(ps);
+      scene3d.render(ps, dt);
     }
 
     // Assemble input sources
