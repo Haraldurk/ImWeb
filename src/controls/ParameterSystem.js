@@ -562,6 +562,14 @@ export function registerCoreParameters(ps) {
     min: 2, max: 32, value: 32, step: 1 });
   ps.register({ id: 'effect.solarize',  label: 'Solarize',   group: 'effect',
     min: 0, max: 100, value: 100, unit: '%' });
+  ps.register({ id: 'effect.vignette',  label: 'Vignette',   group: 'effect',
+    min: 0, max: 100, value: 0, unit: '%' });
+  ps.register({ id: 'effect.vigradius', label: 'Vign.Radius',group: 'effect',
+    min: 0, max: 100, value: 65, unit: '%' });
+  ps.register({ id: 'effect.bloom',     label: 'Bloom',      group: 'effect',
+    min: 0, max: 100, value: 0, unit: '%' });
+  ps.register({ id: 'effect.bloomthresh',label:'BloomThresh',group: 'effect',
+    min: 0, max: 100, value: 70, unit: '%' });
 
   return ps;
 }

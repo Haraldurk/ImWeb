@@ -385,6 +385,7 @@ export class SignalPath {
       'blend.active','feedback.hor','feedback.ver','feedback.scale',
       'output.colorshift','output.fade',
       'effect.pixelate','effect.edge','effect.rgbshift','effect.posterize','effect.solarize',
+      'effect.vignette','effect.bloom',
       'fg.hue','fg.sat','fg.bright','bg.hue','bg.sat','bg.bright',
       'keyer.chroma',
     ].forEach(id => {
@@ -413,6 +414,8 @@ export class SignalPath {
     const fgCCon    = p.get('fg.hue').value !== 0 || p.get('fg.sat').value !== 100 || p.get('fg.bright').value !== 100;
     const bgCCon    = p.get('bg.hue').value !== 0 || p.get('bg.sat').value !== 100 || p.get('bg.bright').value !== 100;
     const chromaOn  = p.get('keyer.chroma').value;
+    const vigOn     = p.get('effect.vignette').value > 0;
+    const bloomOn   = p.get('effect.bloom').value > 0;
     const pixOn     = p.get('effect.pixelate').value > 1;
     const edgeOn    = p.get('effect.edge').value > 0;
     const rgbOn     = p.get('effect.rgbshift').value > 0;
@@ -439,6 +442,8 @@ export class SignalPath {
       ...(rgbOn  ? [{ label: 'rgb»',    type: 'active' }] : []),
       ...(postOn ? [{ label: 'poster',  type: 'active' }] : []),
       ...(solOn  ? [{ label: 'solar',   type: 'active' }] : []),
+      ...(vigOn  ? [{ label: 'vign',    type: 'active' }] : []),
+      ...(bloomOn? [{ label: 'bloom',   type: 'active' }] : []),
       ...(fadeOn ? [{ label: 'fade',    type: 'active' }] : []),
       { label: '▶ out', type: 'active' },
     ].filter(Boolean);

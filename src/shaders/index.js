@@ -545,6 +545,66 @@ export const COLOR_CORRECT = /* glsl */ `
   }
 `;
 
+export const VIGNETTE = /* glsl */ `
+  uniform sampler2D uTexture;
+  uniform float uAmount;   // 0=none, 1=full black edges
+  uniform float uRadius;   // 0=center point, 1=edges (default ~0.6)
+  varying vec2 vUv;
+  void main() {
+    vec4 c = texture2D(uTexture, vUv);
+    vec2 uv = vUv - 0.5;
+    float d  = length(uv * vec2(1.0, 0.85)); // slightly oval
+    float vig = smoothstep(uRadius, uRadius - uAmount * 0.5, d);
+    gl_FragColor = vec4(c.rgb * vig, c.a);
+  }
+`;
+
+// Bloom: two-pass separable Gaussian blur for bright pixels
+export const BLOOM_EXTRACT = /* glsl */ `
+  uniform sampler2D uTexture;
+  uniform float uThreshold;  // 0-1 luminance threshold
+  varying vec2 vUv;
+  float luma(vec3 c) { return dot(c, vec3(0.2126, 0.7152, 0.0722)); }
+  void main() {
+    vec4 c = texture2D(uTexture, vUv);
+    float l = luma(c.rgb);
+    float w = smoothstep(uThreshold - 0.1, uThreshold + 0.1, l);
+    gl_FragColor = vec4(c.rgb * w, 1.0);
+  }
+`;
+
+export const BLOOM_BLUR = /* glsl */ `
+  uniform sampler2D uTexture;
+  uniform vec2      uDirection;  // (1,0) or (0,1)
+  uniform vec2      uResolution;
+  varying vec2 vUv;
+  void main() {
+    vec2 texel = uDirection / uResolution;
+    vec4 c = vec4(0.0);
+    // 9-tap Gaussian
+    float w[5];
+    w[0]=0.2270; w[1]=0.1945; w[2]=0.1216; w[3]=0.0540; w[4]=0.0162;
+    c += texture2D(uTexture, vUv) * w[0];
+    for (int i = 1; i <= 4; i++) {
+      c += texture2D(uTexture, vUv + texel * float(i)) * w[i];
+      c += texture2D(uTexture, vUv - texel * float(i)) * w[i];
+    }
+    gl_FragColor = c;
+  }
+`;
+
+export const BLOOM_COMPOSITE = /* glsl */ `
+  uniform sampler2D uTexture;   // original
+  uniform sampler2D uBloom;     // blurred bright
+  uniform float     uStrength;  // blend amount
+  varying vec2 vUv;
+  void main() {
+    vec4 orig  = texture2D(uTexture, vUv);
+    vec4 bloom = texture2D(uBloom,   vUv);
+    gl_FragColor = vec4(orig.rgb + bloom.rgb * uStrength, orig.a);
+  }
+`;
+
 export const BUFFER_TRANSFORM = /* glsl */ `
   uniform sampler2D uTexture;
   uniform float uPanX;

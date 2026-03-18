@@ -21,6 +21,7 @@ import {
   TRANSFERMODE, COLORSHIFT, NOISE_GEN, INTERLACE, MIRROR, SOLID_COLOR, WARP, FADE, PASSTHROUGH,
   BUFFER_TRANSFORM, INTERP,
   PIXELATE, EDGE, RGBSHIFT, POSTERIZE, SOLARIZE, COLOR_CORRECT, CHROMA_KEY,
+  VIGNETTE, BLOOM_EXTRACT, BLOOM_BLUR, BLOOM_COMPOSITE,
 } from '../shaders/index.js';
 
 export class Pipeline {
@@ -275,12 +276,39 @@ export class Pipeline {
       });
     }
 
+    // ── Vignette ──────────────────────────────────────────────────────────
+    let vignetted = solarized;
+    const vigAmt = p.get('effect.vignette').value / 100;
+    if (vigAmt > 0) {
+      vignetted = this._pass(this.m.vignette, {
+        uTexture: solarized,
+        uAmount:  vigAmt,
+        uRadius:  p.get('effect.vigradius').value / 100,
+      });
+    }
+
+    // ── Bloom ─────────────────────────────────────────────────────────────
+    let bloomed = vignetted;
+    const bloomAmt = p.get('effect.bloom').value / 100;
+    if (bloomAmt > 0) {
+      const thresh = p.get('effect.bloomthresh').value / 100;
+      const res    = new THREE.Vector2(this.width, this.height);
+      const bright = this._pass(this.m.bloomExtract, { uTexture: vignetted, uThreshold: thresh });
+      this.m.bloomBlurH.uniforms.uResolution.value.copy(res);
+      this.m.bloomBlurV.uniforms.uResolution.value.copy(res);
+      const blurH  = this._pass(this.m.bloomBlurH, { uTexture: bright });
+      const blurV  = this._pass(this.m.bloomBlurV, { uTexture: blurH });
+      bloomed = this._pass(this.m.bloomComposite, {
+        uTexture: vignetted, uBloom: blurV, uStrength: bloomAmt * 3,
+      });
+    }
+
     // ── Interlace ─────────────────────────────────────────────────────────
-    let interlaced = solarized;
+    let interlaced = bloomed;
     const il = p.get('output.interlace').value;
     if (il > 0) {
       interlaced = this._pass(this.m.interlace, {
-        uTexture: solarized, uResY: this.height, uAmount: il, uTime: this._noiseTime,
+        uTexture: bloomed, uResY: this.height, uAmount: il, uTime: this._noiseTime,
       });
     }
 
@@ -510,6 +538,23 @@ export class Pipeline {
         uKeyRange:    { value: 0.15 },
         uKeySoftness: { value: 0.08 },
         uKeyActive:   { value: 0 },
+      }),
+      vignette: this._mat(VIGNETTE, {
+        uAmount: { value: 0 },
+        uRadius: { value: 0.65 },
+      }),
+      bloomExtract: this._mat(BLOOM_EXTRACT, { uThreshold: { value: 0.7 } }),
+      bloomBlurH: this._mat(BLOOM_BLUR, {
+        uDirection:  { value: new THREE.Vector2(1, 0) },
+        uResolution: { value: new THREE.Vector2(1280, 720) },
+      }),
+      bloomBlurV: this._mat(BLOOM_BLUR, {
+        uDirection:  { value: new THREE.Vector2(0, 1) },
+        uResolution: { value: new THREE.Vector2(1280, 720) },
+      }),
+      bloomComposite: this._mat(BLOOM_COMPOSITE, {
+        uBloom:    { value: null },
+        uStrength: { value: 1 },
       }),
     };
   }
