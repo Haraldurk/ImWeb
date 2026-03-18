@@ -1431,6 +1431,12 @@ void main() {
     if (e.key === 'm' && !e.metaKey) { e.preventDefault(); ps.toggle('movie.active'); }
     // t = Tap tempo
     if (e.key === 't' && !e.metaKey) { e.preventDefault(); ps.trigger('global.tap'); }
+    // h = Hold / Fade to black (toggle output.fade between 0 and 100)
+    if (e.key === 'h' && !e.metaKey) {
+      e.preventDefault();
+      const fadeP = ps.get('output.fade');
+      fadeP.value = fadeP.value > 0 ? 0 : 100;
+    }
     // 1–8 = Select clip (when Shift is held, select clip N-1)
     if (e.shiftKey && !e.metaKey && /^Digit[1-8]$/.test(e.code)) {
       const idx = parseInt(e.code.replace('Digit', '')) - 1;
@@ -1481,6 +1487,12 @@ void main() {
     ps.set('color2.hue', h);
     ps.set('color2.sat', s);
     ps.set('color2.val', v);
+  });
+
+  // Chroma key colour picker → sets keyer.chromahue
+  document.getElementById('chroma-picker')?.addEventListener('input', e => {
+    const { h } = hexToHsv(e.target.value);
+    ps.set('keyer.chromahue', h * 3.6); // h is 0–100, chromahue is 0–360
   });
 
   // ── Fullscreen button and double-click toggle ─────────────────────────────

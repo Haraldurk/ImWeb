@@ -65,6 +65,11 @@
         </div>
         <div class="panel-section">
           <div class="section-header">Keyer</div>
+          <div style="display:flex;gap:8px;padding:4px 10px;">
+            <label style="font-size:11px;color:var(--text-2);display:flex;align-items:center;gap:4px;">
+              Chroma <input type="color" id="chroma-picker" value="#00ff00" title="Pick chroma key colour">
+            </label>
+          </div>
           <div id="keyer-params"></div>
         </div>
         <div class="panel-section">
@@ -333,6 +338,7 @@ void main() {
           <div class="kb-row"><kbd>k</kbd><span>Keyer toggle</span></div>
           <div class="kb-row"><kbd>x</kbd><span>External key</span></div>
           <div class="kb-row"><kbd>s</kbd><span>Solo output</span></div>
+          <div class="kb-row"><kbd>h</kbd><span>Hold / Fade to black</span></div>
           <div class="kb-row"><kbd>c</kbd><span>Capture to buffer</span></div>
         </div>
         <div class="kb-col">
