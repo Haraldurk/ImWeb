@@ -522,6 +522,9 @@ export function registerCoreParameters(ps) {
   // ── Interpolation ─────────────────────────────────────────────────────────
   ps.register({ id: 'output.interp', label: 'Interpolation', group: 'output',
     type: PARAM_TYPE.SELECT, options: ['none', 'linear', 'bicubic'], value: 0 });
+  ps.register({ id: 'output.resolution', label: 'Resolution', group: 'output',
+    type: PARAM_TYPE.SELECT,
+    options: ['Display','720p','1080p','540p','Quarter'], value: 0 });
 
   // ── Global BPM / Tap Tempo / Morph ───────────────────────────────────────
   ps.register({ id: 'global.bpm',   label: 'BPM',       group: 'global',
