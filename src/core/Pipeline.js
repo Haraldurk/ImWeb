@@ -280,7 +280,7 @@ export class Pipeline {
     const il = p.get('output.interlace').value;
     if (il > 0) {
       interlaced = this._pass(this.m.interlace, {
-        uTexture: shifted, uResY: this.height, uAmount: il, uTime: this._noiseTime,
+        uTexture: solarized, uResY: this.height, uAmount: il, uTime: this._noiseTime,
       });
     }
 

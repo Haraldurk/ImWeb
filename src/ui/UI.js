@@ -528,15 +528,24 @@ export class ContextMenu {
           const note = parseInt(prompt('MIDI Note number (0–127, e.g. 60=C4):', '60'));
           if (!isNaN(note)) this.ctrl.assign(this._currentParam.id, { type: 'midi-note', note });
         } else if (type.startsWith('lfo-')) {
-          const hzStr = prompt('LFO Hz (or "1/2", "1", "2", "4" beat divs):', '0.5');
+          const hzStr = prompt(
+            'LFO Hz (or beat div: "1/8","1/4","1/2","1","2","4"):\n' +
+            '  Phase 0-1 and Width 0-1 (square only) can be appended:\n' +
+            '  e.g.  "0.5 0.25 0.7"  → 0.5Hz, phase=0.25, width=0.7',
+            this._currentParam.controller?.hz?.toFixed(2) ?? '0.5'
+          );
           if (hzStr === null) { this.hide(); return; }
-          // Beat division shorthand
+          const parts  = hzStr.trim().split(/\s+/);
           const beatDivMap = { '1/8': 2, '1/4': 1, '1/2': 0.5, '1': 0.25, '2': 0.125, '4': 0.0625 };
-          const bpmDiv = beatDivMap[hzStr.trim()];
+          const bpmDiv = beatDivMap[parts[0]];
           const bpm = this.ps.get('global.bpm')?.value ?? 120;
-          const hz  = bpmDiv != null ? (bpm / 60) * bpmDiv : parseFloat(hzStr);
+          const hz  = bpmDiv != null ? (bpm / 60) * bpmDiv : parseFloat(parts[0]);
+          const phase = parseFloat(parts[1] ?? '0');
+          const width = parseFloat(parts[2] ?? '0.5');
           this.ctrl.assign(this._currentParam.id, {
             type, hz: isNaN(hz) ? 0.5 : hz,
+            phase: isNaN(phase) ? 0 : Math.max(0, Math.min(1, phase)),
+            width: isNaN(width) ? 0.5 : Math.max(0, Math.min(1, width)),
             ...(bpmDiv != null ? { bpmDiv } : {}),
           });
         } else if (type === 'fixed') {
