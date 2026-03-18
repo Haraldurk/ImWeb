@@ -618,6 +618,16 @@ export class ContextMenu {
           this.hide();
           this.ctrl.startMIDILearn(paramId);
         }
+        if (action === 'slew') {
+          const v = parseFloat(prompt(
+            'Slew time (seconds, 0=instant):\n0.01=very fast, 0.1=smooth, 0.5=slow, 1=very slow',
+            this._currentParam.slew?.toFixed(3) ?? '0'
+          ));
+          if (!isNaN(v)) {
+            this._currentParam.slew = Math.max(0, v);
+            this.hide();
+          }
+        }
       });
     });
   }
