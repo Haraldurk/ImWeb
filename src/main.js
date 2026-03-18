@@ -152,27 +152,61 @@ async function main() {
 
   // ── Camera controls ───────────────────────────────────────────────────────
 
+  const cameraRow = document.createElement('div');
+  cameraRow.style.cssText = 'display:flex;align-items:center;gap:6px;padding:8px 10px;';
+
   const btnCameraOn = document.createElement('button');
   btnCameraOn.className = 'import-btn';
-  btnCameraOn.textContent = '▶ Start Camera';
-  btnCameraOn.style.margin = '8px 10px';
-  document.getElementById('tab-mapping')?.prepend(btnCameraOn);
+  btnCameraOn.textContent = '▶ Camera';
+
+  const camDeviceSel = document.createElement('select');
+  camDeviceSel.className = 'param-select';
+  camDeviceSel.style.cssText = 'flex:1;font-size:11px;';
+  camDeviceSel.innerHTML = '<option value="">default</option>';
+
+  cameraRow.appendChild(btnCameraOn);
+  cameraRow.appendChild(camDeviceSel);
+  document.getElementById('tab-mapping')?.prepend(cameraRow);
+
+  async function populateCameraDevices() {
+    const devices = camera3d.getDeviceList();
+    // Re-enumerate after permission grant (labels now available)
+    await camera3d.init();
+    const list = camera3d.getDeviceList();
+    if (!list.length) return;
+    camDeviceSel.innerHTML = '';
+    list.forEach((d, i) => {
+      const o = document.createElement('option');
+      o.value = d.deviceId;
+      o.textContent = d.label || `Camera ${i + 1}`;
+      camDeviceSel.appendChild(o);
+    });
+  }
+
+  camDeviceSel.addEventListener('change', async () => {
+    if (!camera3d.active) return;
+    camera3d.stop();
+    const ok = await camera3d.start(camDeviceSel.value || null);
+    if (!ok) { btnCameraOn.textContent = '▶ Camera'; ps.set('camera.active', 0); }
+  });
 
   btnCameraOn.addEventListener('click', async () => {
     if (!camera3d.active) {
-      const ok = await camera3d.start();
+      const ok = await camera3d.start(camDeviceSel.value || null);
       if (ok) {
-        btnCameraOn.textContent = '■ Stop Camera';
+        btnCameraOn.textContent = '■ Camera';
         ps.set('camera.active', 1);
-        // Route camera to FG automatically
-        ps.set('layer.fg', 0); // 0 = Camera
+        ps.set('layer.fg', 0);
+        await populateCameraDevices();
+        // Select the active device in the dropdown
+        const activeId = camera3d._stream?.getVideoTracks()[0]?.getSettings()?.deviceId;
+        if (activeId) camDeviceSel.value = activeId;
       }
     } else {
       camera3d.stop();
-      btnCameraOn.textContent = '▶ Start Camera';
+      btnCameraOn.textContent = '▶ Camera';
       ps.set('camera.active', 0);
-      // Fall back to color when camera stops
-      ps.set('layer.fg', 3); // 3 = Color
+      ps.set('layer.fg', 3);
     }
   });
 
