@@ -22,7 +22,8 @@ import { Automation } from './controls/Automation.js';
 import { CameraInput }    from './inputs/CameraInput.js';
 import { MovieInput }     from './inputs/MovieInput.js';
 import { StillsBuffer }   from './inputs/StillsBuffer.js';
-import { VideoDelayLine } from './inputs/VideoDelayLine.js';
+import { VideoDelayLine }    from './inputs/VideoDelayLine.js';
+import { VectorscopeInput }  from './inputs/VectorscopeInput.js';
 import { DrawLayer }      from './inputs/DrawLayer.js';
 import { TextLayer }      from './inputs/TextLayer.js';
 import { buildWarpMaps }  from './inputs/WarpMaps.js';
@@ -95,6 +96,7 @@ async function main() {
 
   const stillsBuffer  = new StillsBuffer(renderer, W, H);
   const videoDelay    = new VideoDelayLine(renderer, W, H, 30);
+  const vectorscope   = new VectorscopeInput();
   const warpMaps     = buildWarpMaps(); // 8 procedural warp map textures (map1–map8)
   const drawLayer    = new DrawLayer();
   const textLayer    = new TextLayer();
@@ -420,6 +422,21 @@ async function main() {
 
   cameraRow.appendChild(btnCameraOn);
   cameraRow.appendChild(camDeviceSel);
+
+  // Vectorscope mic button
+  const btnScope = document.createElement('button');
+  btnScope.className = 'import-btn';
+  btnScope.textContent = '⌖ Scope';
+  btnScope.title = 'Enable vectorscope input (uses microphone)';
+  btnScope.addEventListener('click', async () => {
+    const ok = await vectorscope.initMic();
+    if (ok) {
+      btnScope.textContent = '⌖ Scope ✓';
+      btnScope.classList.add('active');
+    }
+  });
+  cameraRow.appendChild(btnScope);
+
   document.getElementById('tab-mapping')?.prepend(cameraRow);
 
   async function populateCameraDevices() {
@@ -1390,6 +1407,9 @@ async function main() {
       soundTexture.needsUpdate = true;
     }
 
+    // Tick vectorscope
+    vectorscope.tick(ps);
+
     // Generate GPU noise every 2 frames
     if (frameCount % 2 === 0) {
       noiseTexture = pipeline.generateNoise(
@@ -1419,6 +1439,7 @@ async function main() {
       draw:    drawLayer.texture,
       text:    textLayer.texture,
       delay:   videoDelay.getTexture(ps.get('delay.frames').value),
+      scope:   vectorscope.texture,
       warpMaps,
     };
 
