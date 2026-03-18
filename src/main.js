@@ -1861,6 +1861,24 @@ void main() {
       const lvl = Math.round(Math.min(1, ctrl.sound.level * 4) * 255);
       soundData[0] = soundData[1] = soundData[2] = lvl;
       soundTexture.needsUpdate = true;
+
+      // VU meter in status bar
+      const vuCanvas = document.getElementById('status-vu');
+      if (vuCanvas) {
+        vuCanvas.style.display = 'inline-block';
+        const vCtx = vuCanvas.getContext('2d');
+        const W = vuCanvas.width, H = vuCanvas.height;
+        vCtx.clearRect(0, 0, W, H);
+        const bars = 4;
+        const barW = W / bars - 1;
+        const levels = [ctrl.sound.bass, ctrl.sound.mid, ctrl.sound.high, ctrl.sound.level];
+        const colors = ['#4080ff', '#40c040', '#c0c040', '#e84040'];
+        levels.forEach((lv, i) => {
+          const h = Math.round(Math.min(1, lv) * H);
+          vCtx.fillStyle = colors[i];
+          vCtx.fillRect(i * (barW + 1), H - h, barW, h);
+        });
+      }
     }
 
     // Tick vectorscope
