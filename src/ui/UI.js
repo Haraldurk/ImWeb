@@ -522,14 +522,24 @@ export class ContextMenu {
           const cc = parseInt(prompt('MIDI CC number (0–127):', '7'));
           if (!isNaN(cc)) this.ctrl.assign(this._currentParam.id, { type: 'midi-cc', cc });
         } else if (type.startsWith('lfo-')) {
-          const hz = parseFloat(prompt('LFO frequency (Hz):', '0.5'));
+          const hzStr = prompt('LFO Hz (or "1/2", "1", "2", "4" beat divs):', '0.5');
+          if (hzStr === null) { this.hide(); return; }
+          // Beat division shorthand
+          const beatDivMap = { '1/8': 2, '1/4': 1, '1/2': 0.5, '1': 0.25, '2': 0.125, '4': 0.0625 };
+          const bpmDiv = beatDivMap[hzStr.trim()];
+          const bpm = this.ps.get('global.bpm')?.value ?? 120;
+          const hz  = bpmDiv != null ? (bpm / 60) * bpmDiv : parseFloat(hzStr);
           this.ctrl.assign(this._currentParam.id, {
             type, hz: isNaN(hz) ? 0.5 : hz,
+            ...(bpmDiv != null ? { bpmDiv } : {}),
           });
         } else if (type === 'fixed') {
           const v = parseFloat(prompt(`Fixed value (${this._currentParam.min}–${this._currentParam.max}):`,
             this._currentParam.value));
           if (!isNaN(v)) this.ctrl.assign(this._currentParam.id, { type: 'fixed', value: v });
+        } else if (type === 'key') {
+          const k = prompt('Press a key character (e.g. a, 1, Enter, ArrowUp):', this._currentParam.controller?.key ?? '');
+          if (k) this.ctrl.assign(this._currentParam.id, { type: 'key', key: k.trim() });
         } else {
           this.ctrl.assign(this._currentParam.id, { type });
         }

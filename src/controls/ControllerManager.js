@@ -82,6 +82,7 @@ export class ControllerManager {
         mode:  controllerConfig.mode  ?? 'norm',
         width: controllerConfig.width ?? 0.5,
       });
+      lfo.bpmDiv = controllerConfig.bpmDiv ?? null; // null = free Hz mode
       this.lfos.set(paramId, lfo);
 
     } else if (t === 'random') {
@@ -108,6 +109,26 @@ export class ControllerManager {
 
   retriggerLFOs() {
     this.lfos.forEach(lfo => lfo.retrigger());
+  }
+
+  // ── BPM sync ──────────────────────────────────────────────────────────────
+
+  /**
+   * Update hz for all BPM-synced LFOs.
+   * Called whenever global.bpm changes.
+   */
+  syncBPM(bpm) {
+    this.lfos.forEach(lfo => {
+      if (lfo.bpmDiv != null) {
+        lfo.lfo.hz = (bpm / 60) * lfo.bpmDiv;
+        // Persist to controller config so it serializes correctly
+        const paramId = [...this.lfos.entries()].find(([, v]) => v === lfo)?.[0];
+        if (paramId) {
+          const p = this.ps.get(paramId);
+          if (p?.controller) p.controller.hz = lfo.lfo.hz;
+        }
+      }
+    });
   }
 
   // ── Mouse ─────────────────────────────────────────────────────────────────
