@@ -379,9 +379,10 @@ export class SignalPath {
     [
       'layer.fg','layer.bg','layer.ds',
       'keyer.active','keyer.extkey',
-      'displace.amount',
+      'displace.amount','displace.warp',
       'blend.active','feedback.hor','feedback.ver','feedback.scale',
       'output.colorshift','output.fade',
+      'effect.pixelate','effect.edge','effect.rgbshift','effect.posterize','effect.solarize',
     ].forEach(id => {
       ps.get(id)?.onChange(() => this._render());
     });
@@ -393,32 +394,44 @@ export class SignalPath {
     const fgSrc   = p.get('layer.fg').displayValue;
     const bgSrc   = p.get('layer.bg').displayValue;
     const dsSrc   = p.get('layer.ds').displayValue;
-    const keyerOn    = p.get('keyer.active').value;
-    const extKeyOn   = p.get('keyer.extkey').value;
-    const displOn    = p.get('displace.amount').value > 0;
-    const blendOn    = p.get('blend.active').value;
-    const fbOn       = blendOn && (
+    const keyerOn  = p.get('keyer.active').value;
+    const extKeyOn = p.get('keyer.extkey').value;
+    const displOn  = p.get('displace.amount').value > 0;
+    const warpOn   = p.get('displace.warp').value > 0;
+    const blendOn  = p.get('blend.active').value;
+    const fbOn     = blendOn && (
       p.get('feedback.hor').value !== 0 ||
       p.get('feedback.ver').value !== 0 ||
       p.get('feedback.scale').value !== 0
     );
-    const csOn    = p.get('output.colorshift').value > 0;
-    const fadeOn  = p.get('output.fade').value > 0;
+    const csOn      = p.get('output.colorshift').value > 0;
+    const fadeOn    = p.get('output.fade').value > 0;
+    const pixOn     = p.get('effect.pixelate').value > 1;
+    const edgeOn    = p.get('effect.edge').value > 0;
+    const rgbOn     = p.get('effect.rgbshift').value > 0;
+    const postOn    = p.get('effect.posterize').value < 32;
+    const solOn     = p.get('effect.solarize').value < 100;
 
     this.el.innerHTML = '';
 
     const nodes = [
-      { label: fgSrc,    type: 'source' },
-      { label: '/',      type: 'merge' },
-      { label: bgSrc,    type: 'source' },
-      keyerOn  ? { label: extKeyOn ? 'extkey' : 'keyer', type: 'active' } : { label: 'keyer', type: 'node' },
-      displOn  ? { label: 'displace', type: 'active' }   : { label: 'displace', type: 'node' },
-      { label: dsSrc,    type: 'source' },
+      { label: fgSrc,  type: 'source' },
+      { label: '/',    type: 'merge' },
+      { label: bgSrc,  type: 'source' },
+      keyerOn  ? { label: extKeyOn ? 'extkey' : 'keyer', type: 'active' } : { label: 'keyer',    type: 'node' },
+      displOn  ? { label: 'displace', type: 'active' }  : { label: 'displace',  type: 'node' },
+      warpOn   ? { label: 'warp',     type: 'active' }  : null,
+      { label: dsSrc,  type: 'source' },
       blendOn  ? { label: fbOn ? 'blend+fb' : 'blend', type: 'active' } : { label: 'blend', type: 'node' },
       ...(csOn   ? [{ label: 'cshift',  type: 'active' }] : []),
+      ...(pixOn  ? [{ label: 'pixel',   type: 'active' }] : []),
+      ...(edgeOn ? [{ label: 'edge',    type: 'active' }] : []),
+      ...(rgbOn  ? [{ label: 'rgb»',    type: 'active' }] : []),
+      ...(postOn ? [{ label: 'poster',  type: 'active' }] : []),
+      ...(solOn  ? [{ label: 'solar',   type: 'active' }] : []),
       ...(fadeOn ? [{ label: 'fade',    type: 'active' }] : []),
-      { label: '▶ out',  type: 'active' },
-    ];
+      { label: '▶ out', type: 'active' },
+    ].filter(Boolean);
 
     nodes.forEach((n, i) => {
       const el = document.createElement('div');
