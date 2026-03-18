@@ -21,6 +21,8 @@ export class ControllerManager {
     this.modifiers = { capsLock: false, shift: false, ctrl: false, alt: false, meta: false };
 
     this._gamepadBtnPrev = []; // tracks button press edges for toggle/trigger params
+    this._midiLearnParam = null; // paramId waiting for MIDI learn
+    this._midiLearnTimer = null;
 
     this._initKeyboard();
     this._initMouse();
@@ -211,12 +213,44 @@ export class ControllerManager {
     }
   }
 
+  // ── MIDI Learn ────────────────────────────────────────────────────────────
+
+  startMIDILearn(paramId) {
+    this._midiLearnParam = paramId;
+
+    // Flash the MIDI indicator
+    const el = document.getElementById('status-midi');
+    if (el) {
+      el.classList.add('learning');
+      clearTimeout(this._midiLearnTimer);
+      // Auto-cancel after 10s
+      this._midiLearnTimer = setTimeout(() => this.cancelMIDILearn(), 10000);
+    }
+  }
+
+  cancelMIDILearn() {
+    this._midiLearnParam = null;
+    clearTimeout(this._midiLearnTimer);
+    const el = document.getElementById('status-midi');
+    el?.classList.remove('learning');
+  }
+
   _attachMIDIInput(input) {
     input.onmidimessage = e => {
       const [status, data1, data2] = e.data;
       const type    = status & 0xF0;
       const channel = (status & 0x0F) + 1;
       const norm    = data2 / 127;
+
+      // MIDI Learn: intercept next CC
+      if (this._midiLearnParam && type === 0xB0) {
+        this.assign(this._midiLearnParam, { type: 'midi-cc', cc: data1, channel });
+        this.cancelMIDILearn();
+        // Activity flash
+        const el = document.getElementById('status-midi');
+        if (el) { el.classList.add('active'); clearTimeout(el._t); el._t = setTimeout(() => el.classList.remove('active'), 200); }
+        return;
+      }
 
       this.ps.getAll().forEach(p => {
         if (!p.controller) return;

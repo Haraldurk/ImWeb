@@ -548,6 +548,11 @@ export class ContextMenu {
         if (action === 'table') {
           this._showTablePicker(btn);
         }
+        if (action === 'midi-learn') {
+          const paramId = this._currentParam.id;
+          this.hide();
+          this.ctrl.startMIDILearn(paramId);
+        }
       });
     });
   }

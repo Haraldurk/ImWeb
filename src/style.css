@@ -100,6 +100,15 @@ button {
   background: var(--green-dim);
   border-color: var(--green);
 }
+.indicator.learning {
+  color: var(--accent);
+  border-color: var(--accent);
+  animation: learn-pulse 0.5s ease-in-out infinite alternate;
+}
+@keyframes learn-pulse {
+  from { background: transparent; }
+  to   { background: color-mix(in srgb, var(--accent-dim) 60%, transparent); }
+}
 
 .status-right {
   margin-left: auto;
