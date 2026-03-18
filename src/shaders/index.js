@@ -779,6 +779,56 @@ export const QUAD_MIRROR = /* glsl */ `
   }
 `;
 
+// ─── 3D LUT colour grade ──────────────────────────────────────────────────────
+// Applies a 3D colour look-up table encoded as a 2D texture strip.
+// uLUT:    2D texture (N*N wide, N tall) — horizontal slices of the 3D cube
+// uLUTSize: cube edge length N (e.g. 17 or 33)
+// uAmount: 0–1 blend between original and graded colour
+export const LUT3D = /* glsl */ `
+  uniform sampler2D uTexture;
+  uniform sampler2D uLUT;
+  uniform float     uLUTSize;  // cube edge N
+  uniform float     uAmount;   // blend 0–1
+  varying vec2 vUv;
+
+  vec3 sampleLUT(vec3 col) {
+    float N   = uLUTSize;
+    float scale = (N - 1.0) / N;
+    float offset = 0.5 / N;
+
+    // clamp to [0,1]
+    col = clamp(col, 0.0, 1.0);
+
+    // Map into [offset, scale+offset]
+    float r = col.r * scale + offset;
+    float g = col.g * scale + offset;
+    float b = col.b * scale + offset;
+
+    // The texture is laid out as N horizontal slices each N×N pixels.
+    // Total texture size: (N*N) wide × N tall.
+    // Slice index = floor(b * N) and b fraction within slice.
+    float bSlice  = b * (N - 1.0);
+    float bFloor  = floor(bSlice);
+    float bFrac   = bSlice - bFloor;
+
+    // UV for floor slice
+    float sliceW  = 1.0 / N;
+    float uBase0  = bFloor * sliceW + r * sliceW;
+    float uBase1  = (bFloor + 1.0) * sliceW + r * sliceW;
+    float vCoord  = g;
+
+    vec3 c0 = texture2D(uLUT, vec2(uBase0, vCoord)).rgb;
+    vec3 c1 = texture2D(uLUT, vec2(uBase1, vCoord)).rgb;
+    return mix(c0, c1, bFrac);
+  }
+
+  void main() {
+    vec4 col = texture2D(uTexture, vUv);
+    vec3 graded = sampleLUT(col.rgb);
+    gl_FragColor = vec4(mix(col.rgb, graded, uAmount), col.a);
+  }
+`;
+
 // ─── Levels ───────────────────────────────────────────────────────────────────
 // Adjusts black point, white point, gamma (lift-gamma-gain style).
 export const LEVELS = /* glsl */ `

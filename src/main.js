@@ -34,6 +34,7 @@ import { Pipeline } from './core/Pipeline.js';
 import { PresetManager, openDB } from './state/Preset.js';
 import { OSCBridge }    from './io/OSCBridge.js';
 import { ProjectFile }  from './io/ProjectFile.js';
+import { parseCubeFile } from './io/CubeLoader.js';
 import {
   initTabs,
   buildLayerButtons,
@@ -261,6 +262,33 @@ async function main() {
       hdr.classList.toggle('collapsed');
     });
   });
+
+  // ── LUT loader ────────────────────────────────────────────────────────────
+  const lutNameEl = document.getElementById('lut-name');
+  document.getElementById('btn-load-lut')?.addEventListener('click', () => {
+    const inp = document.createElement('input');
+    inp.type   = 'file';
+    inp.accept = '.cube';
+    inp.onchange = async e => {
+      const file = e.target.files[0];
+      if (!file) return;
+      try {
+        const text = await file.text();
+        const lut  = parseCubeFile(text);
+        pipeline.setLUT(lut, ps.get('effect.lutamount')?.value / 100 ?? 1);
+        if (lutNameEl) lutNameEl.textContent = file.name;
+      } catch (err) {
+        alert(`LUT load failed: ${err.message}`);
+        console.error('[LUT]', err);
+      }
+    };
+    inp.click();
+  });
+  document.getElementById('btn-clear-lut')?.addEventListener('click', () => {
+    pipeline.clearLUT();
+    if (lutNameEl) lutNameEl.textContent = 'No LUT';
+  });
+  // LUT amount updates are read directly from ps in pipeline.render()
 
   const stateDots   = new StateDots(presetMgr);
   const signalPath  = new SignalPath(ps);

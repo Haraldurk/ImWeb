@@ -263,6 +263,7 @@ export function buildMappingPanels(ps, contextMenu) {
     'vectorscope-params':  ps.getGroup('vectorscope'),
     'slitscan-params':     ps.getGroup('slitscan'),
     'layer-params':        ps.getGroup('layers'),
+    'lut-params':          ps.getGroup('lut'),
   };
 
   Object.entries(sections).forEach(([elId, params]) => {

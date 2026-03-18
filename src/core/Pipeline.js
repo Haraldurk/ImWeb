@@ -22,7 +22,7 @@ import {
   BUFFER_TRANSFORM, INTERP,
   PIXELATE, EDGE, RGBSHIFT, POSTERIZE, SOLARIZE, COLOR_CORRECT, CHROMA_KEY,
   VIGNETTE, BLOOM_EXTRACT, BLOOM_BLUR, BLOOM_COMPOSITE, KALEIDOSCOPE, PIXEL_SORT,
-  FILM_GRAIN, FEEDBACK_ROTATE, QUAD_MIRROR, LEVELS,
+  FILM_GRAIN, FEEDBACK_ROTATE, QUAD_MIRROR, LEVELS, LUT3D,
 } from '../shaders/index.js';
 
 export class Pipeline {
@@ -58,6 +58,41 @@ export class Pipeline {
     this._customMat    = null;  // set by setCustomShader()
     this._customError  = null;  // last compile error string, or null
     this._customActive = false; // whether to run the custom pass
+
+    // 3D LUT colour grade
+    this._lutTex    = null;   // THREE.DataTexture
+    this._lutActive = false;
+    this._lutSize   = 17;
+    this._lutAmount = 1;
+  }
+
+  // ── 3D LUT ───────────────────────────────────────────────────────────────
+
+  /**
+   * Load a parsed LUT (from parseCubeFile) into GPU memory.
+   * @param {{ data: Float32Array, size: number }} lut
+   * @param {number} amount 0–1 blend
+   */
+  setLUT(lut, amount = 1) {
+    this._lutTex?.dispose();
+    const N = lut.size;
+    // Encode as 2D texture: width = N*N, height = N (horizontal slices)
+    const tex = new THREE.DataTexture(lut.data, N * N, N, THREE.RGBFormat, THREE.FloatType);
+    tex.minFilter = THREE.LinearFilter;
+    tex.magFilter = THREE.LinearFilter;
+    tex.wrapS     = THREE.ClampToEdgeWrapping;
+    tex.wrapT     = THREE.ClampToEdgeWrapping;
+    tex.needsUpdate = true;
+    this._lutTex    = tex;
+    this._lutSize   = N;
+    this._lutAmount = amount;
+    this._lutActive = true;
+  }
+
+  clearLUT() {
+    this._lutTex?.dispose();
+    this._lutTex    = null;
+    this._lutActive = false;
   }
 
   // ── Public: render one frame ──────────────────────────────────────────────
@@ -366,8 +401,20 @@ export class Pipeline {
       });
     }
 
+    // ── 3D LUT colour grade ───────────────────────────────────────────────
+    let luted = leveled;
+    if (this._lutTex && this._lutActive) {
+      const lutAmt = (p.get('effect.lutamount')?.value ?? 100) / 100;
+      luted = this._pass(this.m.lut3d, {
+        uTexture: leveled,
+        uLUT:     this._lutTex,
+        uLUTSize: this._lutSize,
+        uAmount:  lutAmt,
+      });
+    }
+
     // ── Pixel Sort ────────────────────────────────────────────────────────
-    let pixsorted = leveled;
+    let pixsorted = luted;
     const psortAmt = p.get('effect.pixelsort').value / 100;
     if (psortAmt > 0) {
       const res = new THREE.Vector2(this.width, this.height);
@@ -758,6 +805,11 @@ export class Pipeline {
         uBlack: { value: 0 },
         uWhite: { value: 1 },
         uGamma: { value: 1 },
+      }),
+      lut3d:      this._mat(LUT3D, {
+        uLUT:     { value: null },
+        uLUTSize: { value: 17 },
+        uAmount:  { value: 1 },
       }),
     };
   }

@@ -641,6 +641,8 @@ export function registerCoreParameters(ps) {
     min: 0, max: 100, value: 0, unit: '%' });
   ps.register({ id: 'effect.scanlines',  label: 'Scanlines',  group: 'effect',
     min: 0, max: 100, value: 0, unit: '%' });
+  ps.register({ id: 'effect.lutamount',  label: 'LUT Amount', group: 'lut',
+    min: 0, max: 100, value: 100, unit: '%' });
 
   // ── Pixel Sort ────────────────────────────────────────────────────────────
   ps.register({ id: 'effect.pixelsort',   label: 'PixSort',    group: 'effect',
