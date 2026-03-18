@@ -146,7 +146,8 @@ export function buildParamRow(param, contextMenu) {
 
 // Short labels for each source index (matches SOURCES order in ParameterSystem)
 // Indices match SOURCES order: Camera(0)…Color2(10), Sound(11, DS only)
-const SOURCE_ABBREV = ['CAM','MOV','BUF','COL','NSE','3D','DRW','OUT','BG1','BG2','COL2','SND'];
+// Indices: Camera(0)…Color2(10), Text(11), Sound(12 — DS only)
+const SOURCE_ABBREV = ['CAM','MOV','BUF','COL','NSE','3D','DRW','OUT','BG1','BG2','COL2','TXT','SND'];
 
 /**
  * Builds the FG / BG / DS source-selector rows in #layer-params.
@@ -224,6 +225,7 @@ export function buildMappingPanels(ps, contextMenu) {
     'camera3d-params': ps.getGroup('scene3d').filter(p => p.id.includes('cam')),
     'material-params': ps.getGroup('scene3d').filter(p => p.id.includes('mat') || p.id.includes('wire') || p.id.includes('light')),
     'draw-params':     ps.getGroup('draw'),
+    'text-params':     ps.getGroup('text'),
     'effect-params':   ps.getGroup('effect'),
   };
 

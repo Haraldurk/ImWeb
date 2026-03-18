@@ -22,6 +22,7 @@ import { CameraInput }    from './inputs/CameraInput.js';
 import { MovieInput }     from './inputs/MovieInput.js';
 import { StillsBuffer }   from './inputs/StillsBuffer.js';
 import { DrawLayer }      from './inputs/DrawLayer.js';
+import { TextLayer }      from './inputs/TextLayer.js';
 import { buildWarpMaps }  from './inputs/WarpMaps.js';
 import { SceneManager } from './scene3d/SceneManager.js';
 import { Pipeline } from './core/Pipeline.js';
@@ -90,6 +91,7 @@ async function main() {
   const stillsBuffer = new StillsBuffer(renderer, W, H);
   const warpMaps     = buildWarpMaps(); // 8 procedural warp map textures (map1–map8)
   const drawLayer    = new DrawLayer();
+  const textLayer    = new TextLayer();
 
   const scene3d = new SceneManager(renderer, W, H);
 
@@ -356,6 +358,9 @@ async function main() {
   // Draw layer triggers
   ps.get('draw.clear').onTrigger(() => drawLayer.clear());
 
+  // Text layer triggers
+  ps.get('text.advance').onTrigger(() => textLayer.advance());
+
   // ── Draw tab UI ───────────────────────────────────────────────────────────
 
   // Mirror the draw canvas into the preview element (same canvas = live)
@@ -424,6 +429,28 @@ async function main() {
     drawControls.appendChild(btnPen);
     drawControls.appendChild(btnErase);
   }
+
+  // ── Text tab UI ───────────────────────────────────────────────────────────
+
+  const textPreviewEl = document.getElementById('text-preview');
+  if (textPreviewEl?.parentNode) {
+    textPreviewEl.replaceWith(textLayer.canvas);
+    textLayer.canvas.id = 'text-preview';
+    textLayer.canvas.style.cssText = 'display:block;width:100%;image-rendering:pixelated;border:1px solid var(--border);background:#000;';
+  }
+
+  const textContentEl = document.getElementById('text-content');
+  textContentEl?.addEventListener('input', () => {
+    textLayer.setContent(textContentEl.value);
+  });
+
+  document.getElementById('btn-text-advance')?.addEventListener('click', () => {
+    ps.trigger('text.advance');
+  });
+  document.getElementById('btn-text-reset')?.addEventListener('click', () => {
+    textLayer._idx = 0;
+    textLayer._render();
+  });
 
   // ── Buffer tab UI ─────────────────────────────────────────────────────────
 
@@ -834,6 +861,9 @@ async function main() {
     // Tick draw layer (paints to canvas texture based on draw.* params)
     drawLayer.tick(ps);
 
+    // Tick text layer (updates text rendering based on text.* params)
+    textLayer.tick(ps);
+
     // Update sound level texture
     if (ctrl.sound) {
       const lvl = Math.round(Math.min(1, ctrl.sound.level * 4) * 255);
@@ -867,6 +897,7 @@ async function main() {
       sound:   soundTexture,
       noise:   noiseTexture,
       draw:    drawLayer.texture,
+      text:    textLayer.texture,
       warpMaps,
     };
 
