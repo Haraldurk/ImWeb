@@ -418,11 +418,8 @@ export class Pipeline {
       this._customMat.uniforms.uTexture.value    = faded;
       this._customMat.uniforms.uTime.value       = this._noiseTime;
       this._customMat.uniforms.uResolution.value.set(this.width, this.height);
-      customOut = this._pass(this._customMat, {
-        uTexture:    faded,
-        uTime:       this._noiseTime,
-        uResolution: new THREE.Vector2(this.width, this.height),
-      });
+      // uParam1..4 are set externally via setCustomUniforms()
+      customOut = this._pass(this._customMat, {});
     }
 
     // Final blit — optionally through bicubic interpolation
@@ -450,6 +447,20 @@ export class Pipeline {
    * The shader receives: uTexture (sampler2D), uTime (float), uResolution (vec2),
    * and the standard vUv varying.
    */
+  /**
+   * Update the 4 user-bindable parameter uniforms (uParam1..uParam4).
+   * Called each frame from main.js with current param values.
+   */
+  setCustomUniforms(vals) {
+    if (!this._customMat) return;
+    for (let i = 0; i < 4; i++) {
+      const key = `uParam${i + 1}`;
+      if (this._customMat.uniforms[key] !== undefined) {
+        this._customMat.uniforms[key].value = vals[i] ?? 0;
+      }
+    }
+  }
+
   setCustomShader(fragmentSrc) {
     // Build a test material to detect compile errors via WebGL
     const mat = new THREE.ShaderMaterial({
@@ -457,6 +468,10 @@ export class Pipeline {
         uTexture:    { value: null },
         uTime:       { value: 0 },
         uResolution: { value: new THREE.Vector2(this.width, this.height) },
+        uParam1:     { value: 0 },
+        uParam2:     { value: 0 },
+        uParam3:     { value: 0 },
+        uParam4:     { value: 0 },
       },
       vertexShader:   VERT,
       fragmentShader: fragmentSrc,

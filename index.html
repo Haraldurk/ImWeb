@@ -245,15 +245,18 @@
                    font-family:monospace;font-size:11px;border:1px solid var(--border);padding:6px;
                    box-sizing:border-box;outline:none;tab-size:2;"
           >// Available uniforms:
-//   sampler2D uTexture  — current frame
-//   float     uTime     — seconds
+//   sampler2D uTexture    — current frame
+//   float     uTime       — seconds
 //   vec2      uResolution
-//   varying vec2 vUv    — 0..1 UV coords
+//   varying vec2 vUv      — 0..1 UV coords
+//   float uParam1..uParam4 — bind any param in the slots below
 
 void main() {
   vec4 col = texture2D(uTexture, vUv);
   gl_FragColor = col;
 }</textarea>
+          <!-- Param uniform binding slots -->
+          <div id="glsl-uniforms" style="padding:4px 8px 6px;font-family:monospace;font-size:10px;color:var(--text-2);"></div>
         </div>
       </div>
     </div>

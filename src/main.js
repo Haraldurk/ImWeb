@@ -1128,6 +1128,27 @@ async function main() {
   const glslReset   = document.getElementById('btn-glsl-reset');
   const glslAuto    = document.getElementById('glsl-auto-apply');
 
+  // ── GLSL param uniform slots (uParam1..uParam4) ───────────────────────────
+  const glslParamBindings = ['', '', '', '']; // paramId strings
+  const uniformsEl = document.getElementById('glsl-uniforms');
+  if (uniformsEl) {
+    for (let i = 0; i < 4; i++) {
+      const row = document.createElement('div');
+      row.style.cssText = 'display:flex;align-items:center;gap:4px;margin:2px 0;';
+      const lbl = document.createElement('span');
+      lbl.textContent = `uParam${i + 1}:`;
+      lbl.style.cssText = 'min-width:60px;color:var(--text-2);';
+      const inp = document.createElement('input');
+      inp.type  = 'text';
+      inp.placeholder = 'param id (e.g. effect.bloom)';
+      inp.style.cssText = 'flex:1;background:var(--bg-4);border:1px solid var(--border);color:var(--text-1);font-family:monospace;font-size:10px;padding:2px 4px;';
+      inp.addEventListener('change', () => { glslParamBindings[i] = inp.value.trim(); });
+      row.appendChild(lbl);
+      row.appendChild(inp);
+      uniformsEl.appendChild(row);
+    }
+  }
+
   function applyGLSL() {
     const src = glslEditor?.value;
     if (!src) return;
@@ -1750,6 +1771,12 @@ void main() {
       strobePhase = (strobePhase + dt * strobeRate) % 1;
     }
     const strobeFreeze = strobeOn && strobePhase >= strobeDuty;
+
+    // Update GLSL param uniforms
+    pipeline.setCustomUniforms(glslParamBindings.map(id => {
+      const p = id ? ps.get(id) : null;
+      return p ? p.normalized : 0;
+    }));
 
     // Run compositing pipeline
     if (!strobeFreeze) {
