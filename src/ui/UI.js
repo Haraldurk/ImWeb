@@ -88,6 +88,34 @@ export function buildParamRow(param, contextMenu) {
       updateDisplay();
     });
 
+    // Ctrl+click on value label → inline type-in
+    valueEl.style.cursor = 'text';
+    valueEl.addEventListener('click', e => {
+      if (!e.ctrlKey && !e.metaKey) return;
+      e.stopPropagation();
+      const input = document.createElement('input');
+      input.type  = 'number';
+      input.min   = param.min;
+      input.max   = param.max;
+      input.step  = param.step ?? 'any';
+      input.value = param.value.toFixed(param.step ? 0 : 3);
+      input.style.cssText = 'width:60px;font-size:11px;font-family:var(--mono);background:var(--bg-4);border:1px solid var(--accent);color:var(--text-0);padding:1px 3px;border-radius:3px;';
+      valueEl.innerHTML = '';
+      valueEl.appendChild(input);
+      input.focus();
+      input.select();
+      const commit = () => {
+        const v = parseFloat(input.value);
+        if (!isNaN(v)) param.value = v;
+        updateDisplay();
+      };
+      input.addEventListener('blur',    commit);
+      input.addEventListener('keydown', e2 => {
+        if (e2.key === 'Enter') { commit(); }
+        if (e2.key === 'Escape') { updateDisplay(); }
+      });
+    });
+
   } else if (param.type === PARAM_TYPE.TOGGLE) {
     const dot = document.createElement('span');
     dot.className = `toggle-dot ${param.value ? 'on' : ''}`;
