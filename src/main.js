@@ -18,7 +18,8 @@ import * as THREE from 'three';
 import { ParameterSystem, registerCoreParameters, setTableManager } from './controls/ParameterSystem.js';
 import { tableManager } from './state/TableManager.js';
 import { ControllerManager } from './controls/ControllerManager.js';
-import { Automation } from './controls/Automation.js';
+import { Automation }      from './controls/Automation.js';
+import { StepSequencer }   from './controls/StepSequencer.js';
 import { CameraInput }    from './inputs/CameraInput.js';
 import { MovieInput }     from './inputs/MovieInput.js';
 import { StillsBuffer }   from './inputs/StillsBuffer.js';
@@ -88,7 +89,8 @@ async function main() {
   // ── 3. Controllers ────────────────────────────────────────────────────────
 
   const ctrl = new ControllerManager(ps);
-  const automation = new Automation(ps);
+  const automation    = new Automation(ps);
+  const stepSequencer = new StepSequencer(presetMgr);
 
   // ── 4. Input sources ──────────────────────────────────────────────────────
 
@@ -447,6 +449,105 @@ async function main() {
     autoRow2.appendChild(btnAutoClear);
     autoRow2.appendChild(btnAutoInfo);
     presetsSection.appendChild(autoRow2);
+
+    // ── Step Sequencer ──────────────────────────────────────────────────────
+    const seqHeader = document.createElement('div');
+    seqHeader.style.cssText = 'font-family:var(--mono);font-size:10px;color:var(--text-2);padding:8px 10px 4px;text-transform:uppercase;letter-spacing:0.1em;';
+    seqHeader.textContent = 'Step Sequencer';
+    presetsSection.appendChild(seqHeader);
+
+    const seqControlRow = document.createElement('div');
+    seqControlRow.style.cssText = 'display:flex;gap:4px;padding:0 10px 4px;align-items:center;flex-wrap:wrap;';
+
+    const btnSeqPlay = document.createElement('button');
+    btnSeqPlay.className = 'import-btn';
+    btnSeqPlay.textContent = '▶ Seq';
+    btnSeqPlay.title = 'Toggle step sequencer';
+    btnSeqPlay.addEventListener('click', () => {
+      stepSequencer.active = !stepSequencer.active;
+      if (stepSequencer.active) stepSequencer.reset();
+      btnSeqPlay.classList.toggle('active', stepSequencer.active);
+      btnSeqPlay.textContent = stepSequencer.active ? '⏹ Seq' : '▶ Seq';
+      refreshSeqGrid();
+    });
+
+    const seqRateSel = document.createElement('select');
+    seqRateSel.className = 'param-select';
+    seqRateSel.style.cssText = 'font-size:10px;';
+    [['1 beat',1],['2 beats',2],['4 beats',4],['8 beats',8],['16 beats',16]].forEach(([label, v]) => {
+      const opt = document.createElement('option');
+      opt.value = v; opt.textContent = label;
+      if (v === 4) opt.selected = true;
+      seqRateSel.appendChild(opt);
+    });
+    seqRateSel.addEventListener('change', () => {
+      stepSequencer.rate = parseFloat(seqRateSel.value);
+    });
+
+    const seqStepsSel = document.createElement('select');
+    seqStepsSel.className = 'param-select';
+    seqStepsSel.style.cssText = 'font-size:10px;';
+    [4,8,16].forEach(n => {
+      const opt = document.createElement('option');
+      opt.value = n; opt.textContent = `${n} steps`;
+      if (n === 8) opt.selected = true;
+      seqStepsSel.appendChild(opt);
+    });
+    seqStepsSel.addEventListener('change', () => {
+      stepSequencer.setStepCount(parseInt(seqStepsSel.value));
+      buildSeqGrid();
+    });
+
+    seqControlRow.appendChild(btnSeqPlay);
+    seqControlRow.appendChild(seqRateSel);
+    seqControlRow.appendChild(seqStepsSel);
+    presetsSection.appendChild(seqControlRow);
+
+    // Step grid
+    const seqGrid = document.createElement('div');
+    seqGrid.style.cssText = 'display:flex;flex-wrap:wrap;gap:3px;padding:4px 10px 8px;';
+    presetsSection.appendChild(seqGrid);
+
+    function buildSeqGrid() {
+      seqGrid.innerHTML = '';
+      stepSequencer.steps.forEach((presetIdx, i) => {
+        const cell = document.createElement('div');
+        cell.dataset.stepIdx = i;
+        cell.style.cssText = `width:28px;height:28px;background:var(--bg-4);border:1px solid var(--border);
+          border-radius:3px;display:flex;align-items:center;justify-content:center;
+          font-size:10px;font-family:var(--mono);cursor:pointer;user-select:none;`;
+        cell.textContent = presetIdx >= 0 ? presetIdx : '—';
+        cell.title = `Step ${i}: ${presetIdx >= 0 ? 'Preset ' + presetIdx : 'skip'}\nClick to set, right-click to clear`;
+        cell.addEventListener('click', () => {
+          const v = prompt(`Step ${i} — enter preset number (or empty to skip):`, presetIdx >= 0 ? presetIdx : '');
+          if (v === null) return;
+          const n = v.trim() === '' ? -1 : parseInt(v);
+          stepSequencer.setStep(i, isNaN(n) ? -1 : n);
+          refreshSeqGrid();
+        });
+        cell.addEventListener('contextmenu', e => {
+          e.preventDefault();
+          stepSequencer.setStep(i, -1);
+          refreshSeqGrid();
+        });
+        seqGrid.appendChild(cell);
+      });
+    }
+
+    function refreshSeqGrid() {
+      seqGrid.querySelectorAll('[data-step-idx]').forEach(cell => {
+        const i = parseInt(cell.dataset.stepIdx);
+        const presetIdx = stepSequencer.steps[i];
+        const isActive  = stepSequencer.active && i === stepSequencer.step;
+        cell.textContent = presetIdx >= 0 ? presetIdx : '—';
+        cell.style.background = isActive ? 'var(--accent)' : presetIdx >= 0 ? 'var(--bg-3)' : 'var(--bg-4)';
+        cell.style.color = isActive ? '#000' : presetIdx >= 0 ? 'var(--text-1)' : 'var(--text-2)';
+      });
+    }
+
+    buildSeqGrid();
+
+    stepSequencer.onStep = () => refreshSeqGrid();
   })();
 
   // ── Camera controls ───────────────────────────────────────────────────────
@@ -1673,6 +1774,9 @@ void main() {
 
     // Tick automation playback
     automation.tick(dt);
+
+    // Tick step sequencer
+    stepSequencer.tick(beatPhase);
 
     // Update camera texture
     camera3d.tick();
