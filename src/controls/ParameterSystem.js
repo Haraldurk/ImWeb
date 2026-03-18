@@ -310,7 +310,7 @@ export class ParameterSystem extends EventTarget {
 export function registerCoreParameters(ps) {
 
   // ── Layer source selection ────────────────────────────────────────────────
-  const SOURCES = ['Camera', 'Movie', 'Buffer', 'Color', 'Noise', '3D Scene', 'Draw', 'Output', 'BG1', 'BG2', 'Color2', 'Text', 'Sound', 'Delay', 'Scope'];
+  const SOURCES = ['Camera', 'Movie', 'Buffer', 'Color', 'Noise', '3D Scene', 'Draw', 'Output', 'BG1', 'BG2', 'Color2', 'Text', 'Sound', 'Delay', 'Scope', 'SlitScan'];
 
   ps.register({ id: 'layer.fg', label: 'Foreground', group: 'layers',
     type: PARAM_TYPE.SELECT, options: SOURCES, value: 3, feedbackVisible: true }); // default: Color
@@ -636,6 +636,20 @@ export function registerCoreParameters(ps) {
   // ── Video Delay Line ──────────────────────────────────────────────────────
   ps.register({ id: 'delay.frames', label: 'DelayFrames', group: 'delay',
     min: 1, max: 30, value: 5, step: 1 });
+
+  // ── Slit Scan ─────────────────────────────────────────────────────────────
+  ps.register({ id: 'slitscan.active', label: 'SlitScan',   group: 'slitscan',
+    type: PARAM_TYPE.TOGGLE, value: 0 });
+  ps.register({ id: 'slitscan.pos',    label: 'SlitPos',    group: 'slitscan',
+    min: 0, max: 100, value: 50, unit: '%' });
+  ps.register({ id: 'slitscan.speed',  label: 'SlitSpeed',  group: 'slitscan',
+    min: 0.5, max: 60, value: 15, unit: 'fps' });
+  ps.register({ id: 'slitscan.axis',   label: 'SlitAxis',   group: 'slitscan',
+    type: PARAM_TYPE.SELECT, options: ['Vertical','Horizontal'], value: 0 });
+  ps.register({ id: 'slitscan.width',  label: 'SlitWidth',  group: 'slitscan',
+    min: 1, max: 16, value: 2, unit: 'px', step: 1 });
+  ps.register({ id: 'slitscan.clear',  label: 'SlitClear',  group: 'slitscan',
+    type: PARAM_TYPE.TRIGGER });
 
   // ── Vectorscope ───────────────────────────────────────────────────────────
   ps.register({ id: 'vectorscope.mode',  label: 'VScope Mode',  group: 'vectorscope',
