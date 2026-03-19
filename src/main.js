@@ -40,6 +40,11 @@ import { ProjectFile }  from './io/ProjectFile.js';
 import { importImX }    from './io/ImXImporter.js';
 import { parseCubeFile } from './io/CubeLoader.js';
 import {
+  getApiKey, setApiKey, clearApiKey,
+  generatePreset, narrateState, buildStateSnapshot,
+  coachSuggestion, buildActivitySnapshot,
+} from './ai/AIFeatures.js';
+import {
   initTabs,
   buildLayerButtons,
   buildMappingPanels,
@@ -1447,32 +1452,75 @@ async function main() {
     drawLayer.canvas.addEventListener('contextmenu', e => e.preventDefault());
   }
 
-  // Draw controls — Clear button and params
+  // Draw controls — Clear, Pen, Erase, Color picker, Fade toggle
   const drawControls = document.getElementById('draw-controls');
   if (drawControls) {
-    const btnClear = document.createElement('button');
-    btnClear.className = 'import-btn';
-    btnClear.textContent = '✕ Clear';
-    btnClear.addEventListener('click', () => ps.trigger('draw.clear'));
-    drawControls.appendChild(btnClear);
-
-    // Pen/Erase mode indicator buttons
+    // Pen / Erase buttons
     const btnPen   = document.createElement('button');
     const btnErase = document.createElement('button');
+    const btnClear = document.createElement('button');
     btnPen.className   = 'import-btn';
     btnErase.className = 'import-btn';
+    btnClear.className = 'import-btn';
     btnPen.textContent   = '✏ Pen';
     btnErase.textContent = '◻ Erase';
+    btnClear.textContent = '✕ Clear';
+
     btnPen.addEventListener('click', () => {
       if (!ps.get('draw.pensize').value) ps.set('draw.pensize', 5);
       ps.set('draw.erasesize', 0);
+      btnPen.style.borderColor = 'var(--accent)';
+      btnErase.style.borderColor = '';
     });
     btnErase.addEventListener('click', () => {
       ps.set('draw.pensize', 0);
       if (!ps.get('draw.erasesize').value) ps.set('draw.erasesize', 10);
+      btnErase.style.borderColor = 'var(--accent)';
+      btnPen.style.borderColor = '';
     });
-    drawControls.appendChild(btnPen);
-    drawControls.appendChild(btnErase);
+    btnClear.addEventListener('click', () => ps.trigger('draw.clear'));
+
+    drawControls.append(btnPen, btnErase, btnClear);
+
+    // Color picker (native <input type=color> as quick color entry)
+    const colorPicker = document.createElement('input');
+    colorPicker.type  = 'color';
+    colorPicker.value = '#ffffff';
+    colorPicker.title = 'Pen color (or use PenHue/PenSat/PenBright params)';
+    colorPicker.style.cssText = 'width:28px;height:22px;padding:1px;border:1px solid var(--border);border-radius:3px;background:var(--bg-3);cursor:pointer;';
+    colorPicker.addEventListener('input', () => {
+      const hex = colorPicker.value;
+      const r = parseInt(hex.slice(1,3),16)/255;
+      const g = parseInt(hex.slice(3,5),16)/255;
+      const b = parseInt(hex.slice(5,7),16)/255;
+      // Convert RGB → HSV
+      const max = Math.max(r,g,b), min = Math.min(r,g,b), d = max - min;
+      let h = 0;
+      if (d > 0) {
+        if (max===r) h = 60*(((g-b)/d)%6);
+        else if (max===g) h = 60*((b-r)/d+2);
+        else h = 60*((r-g)/d+4);
+      }
+      if (h < 0) h += 360;
+      const s = max > 0 ? d/max * 100 : 0;
+      const v = max * 100;
+      ps.set('draw.color.h', h);
+      ps.set('draw.color.s', s);
+      ps.set('draw.color.v', v);
+    });
+    drawControls.appendChild(colorPicker);
+
+    // Fade toggle — quick enable/disable of draw fade
+    const btnFade = document.createElement('button');
+    btnFade.className = 'import-btn';
+    btnFade.textContent = '〜 Fade';
+    btnFade.title = 'Toggle draw fade/decay (sets DrawFade to 0.05 or 0)';
+    btnFade.addEventListener('click', () => {
+      const cur = ps.get('draw.fade').value;
+      ps.set('draw.fade', cur > 0 ? 0 : 0.04);
+      btnFade.style.borderColor = ps.get('draw.fade').value > 0 ? 'var(--accent)' : '';
+    });
+    drawControls.appendChild(btnFade);
   }
 
   // ── Text tab UI ───────────────────────────────────────────────────────────
@@ -2700,11 +2748,18 @@ void main() {
     }
 
     // Render 3D scene if active OR used as a layer source
-    const SCENE3D_IDX = 5; // index in SOURCES array
+    const SCENE3D_IDX  = 5;  // index in SOURCES array
+    const DEPTH3D_IDX  = 20; // index in SOURCES array
+    const depthUsed = ps.get('layer.fg').value === DEPTH3D_IDX
+      || ps.get('layer.bg').value === DEPTH3D_IDX
+      || ps.get('layer.ds').value === DEPTH3D_IDX;
+    // Auto-enable depth pass when the depth3d source is routed
+    if (depthUsed) ps.get('scene3d.depth.active').value = 1;
     const scene3dNeeded = ps.get('scene3d.active').value
       || ps.get('layer.fg').value === SCENE3D_IDX
       || ps.get('layer.bg').value === SCENE3D_IDX
-      || ps.get('layer.ds').value === SCENE3D_IDX;
+      || ps.get('layer.ds').value === SCENE3D_IDX
+      || depthUsed;
     if (scene3dNeeded) scene3d.render(ps, dt, {
       camera: camera3d.active ? camera3d.currentTexture : null,
       movie:  movieInput.active ? movieInput.currentTexture : null,
@@ -2722,6 +2777,7 @@ void main() {
       bg1:     stillsBuffer.bgTexture(0),
       bg2:     stillsBuffer.bgTexture(1),
       scene3d: scene3dNeeded ? scene3d.texture : null,
+      depth3d: depthUsed ? scene3d.depthTexture : null,
       color:   colorTexture,
       color2:  color2Texture,
       sound:   soundTexture,
@@ -2772,6 +2828,371 @@ void main() {
   }
 
   requestAnimationFrame(render);
+
+  // ── Project File (.imweb) — Export / Import ───────────────────────────────
+  (() => {
+    const container = document.getElementById('project-file-ui');
+    if (!container) return;
+
+    container.innerHTML = `
+      <div style="padding:8px 10px;display:flex;flex-direction:column;gap:6px;">
+        <div style="display:flex;gap:6px;">
+          <button id="btn-export-project" class="import-btn" style="flex:1" title="Save full session as .imweb file">
+            ⇩ Export .imweb
+          </button>
+          <button id="btn-import-project" class="import-btn" style="flex:1" title="Load a .imweb session file">
+            ⇧ Import .imweb
+          </button>
+        </div>
+        <div id="project-name-row" style="display:flex;gap:6px;align-items:center;">
+          <input id="project-name-input" type="text" placeholder="Session name…"
+            style="flex:1;background:var(--bg-3);border:1px solid var(--border);border-radius:3px;
+                   color:var(--text-0);font-family:var(--mono);font-size:11px;padding:4px 7px;outline:none;"
+          />
+        </div>
+        <div id="project-file-status" style="font-family:var(--mono);font-size:10px;color:var(--text-2);min-height:14px;"></div>
+        <input id="project-file-input" type="file" accept=".imweb" style="display:none;" />
+      </div>
+    `;
+
+    const statusEl = document.getElementById('project-file-status');
+
+    function setStatus(msg, color = 'var(--text-2)') {
+      statusEl.textContent = msg;
+      statusEl.style.color = color;
+    }
+
+    // ── Export ──────────────────────────────────────────────────────────────
+
+    document.getElementById('btn-export-project')?.addEventListener('click', async () => {
+      try {
+        const name = document.getElementById('project-name-input')?.value.trim()
+          || document.getElementById('status-preset')?.textContent
+          || 'imweb-session';
+
+        const project = {
+          format:  'imweb',
+          version: '0.3',
+          name,
+          savedAt: new Date().toISOString(),
+
+          // Live parameter values
+          params: ps.captureState(),
+
+          // Warp map editor state
+          warpMap: {
+            dx: Array.from(warpEditor.dx),
+            dy: Array.from(warpEditor.dy),
+          },
+
+          // Warp slots from localStorage
+          warpSlots: (() => {
+            try { return JSON.parse(localStorage.getItem('imweb-warpmaps') ?? '{}'); }
+            catch { return {}; }
+          })(),
+
+          // All presets (including controller assignments & display states)
+          presets: await presetMgr.exportAll(),
+
+          // Current preset index
+          currentPreset: presetMgr.currentIndex,
+        };
+
+        const json = JSON.stringify(project, null, 2);
+        const blob = new Blob([json], { type: 'application/json' });
+        const url  = URL.createObjectURL(blob);
+        const a    = document.createElement('a');
+        a.href     = url;
+        a.download = `${name.replace(/[^a-z0-9_\-\s]/gi, '_')}.imweb`;
+        a.click();
+        URL.revokeObjectURL(url);
+        setStatus(`✓ Exported "${name}"`, 'var(--green)');
+      } catch (err) {
+        setStatus(`✗ Export failed: ${err.message}`, 'var(--red)');
+      }
+    });
+
+    // ── Import ──────────────────────────────────────────────────────────────
+
+    document.getElementById('btn-import-project')?.addEventListener('click', () => {
+      document.getElementById('project-file-input')?.click();
+    });
+
+    document.getElementById('project-file-input')?.addEventListener('change', async e => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      e.target.value = ''; // reset so same file can be re-selected
+
+      try {
+        const text = await file.text();
+        const project = JSON.parse(text);
+
+        if (project.format !== 'imweb') throw new Error('Not a valid .imweb file');
+
+        // Restore presets first (so activatePreset works)
+        if (Array.isArray(project.presets)) {
+          await presetMgr.importAll(project.presets);
+        }
+
+        // Activate the saved current preset
+        const targetPreset = project.currentPreset ?? 0;
+        await presetMgr.activatePreset(targetPreset, { fade: false });
+
+        // Overlay live param values (may override preset defaults)
+        if (project.params && typeof project.params === 'object') {
+          ps.restoreState(project.params);
+        }
+
+        // Restore warp map editor state
+        if (project.warpMap?.dx && project.warpMap?.dy) {
+          warpEditor.dx = new Float32Array(project.warpMap.dx);
+          warpEditor.dy = new Float32Array(project.warpMap.dy);
+          warpEditor._rebuild();
+        }
+
+        // Restore warp slots to localStorage
+        if (project.warpSlots && typeof project.warpSlots === 'object') {
+          localStorage.setItem('imweb-warpmaps', JSON.stringify(project.warpSlots));
+        }
+
+        // Update project name input
+        if (project.name) {
+          const nameInput = document.getElementById('project-name-input');
+          if (nameInput) nameInput.value = project.name;
+          document.getElementById('status-name').textContent = project.name;
+        }
+
+        setStatus(`✓ Loaded "${project.name}" (v${project.version})`, 'var(--green)');
+      } catch (err) {
+        setStatus(`✗ Import failed: ${err.message}`, 'var(--red)');
+      }
+    });
+
+    // Keyboard shortcut: Cmd+E = export
+    window.addEventListener('keydown', e => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'e' && !e.shiftKey) {
+        e.preventDefault();
+        document.getElementById('btn-export-project')?.click();
+      }
+      if ((e.metaKey || e.ctrlKey) && e.key === 'o') {
+        e.preventDefault();
+        document.getElementById('btn-import-project')?.click();
+      }
+    });
+  })();
+
+  // ── AI Features ───────────────────────────────────────────────────────────
+
+  // ── AI Settings panel ─────────────────────────────────────────────────────
+  (() => {
+    const panel = document.createElement('div');
+    panel.id = 'ai-settings-panel';
+    panel.className = 'ai-settings-panel hidden';
+    panel.innerHTML = `
+      <div class="ai-settings-hdr">AI Settings (Anthropic API key)</div>
+      <div id="ai-key-status" class="ai-key-status"></div>
+      <div style="display:flex;gap:6px;margin-top:8px;">
+        <input id="ai-key-input" type="password" placeholder="sk-ant-..." class="ai-key-input" />
+        <button id="ai-key-save" class="import-btn">Save</button>
+      </div>
+      <button id="ai-key-clear" class="import-btn" style="margin-top:6px;width:100%">✕ Clear key</button>
+      <div class="ai-settings-note">Your key is stored only in this browser's localStorage.<br>
+        Get a key at console.anthropic.com</div>
+    `;
+    document.body.appendChild(panel);
+
+    function updateKeyStatus() {
+      const el = document.getElementById('ai-key-status');
+      const k  = getApiKey();
+      el.textContent = k ? `Key set: ${k.slice(0,8)}…` : 'No key set';
+      el.style.color = k ? 'var(--green)' : 'var(--text-2)';
+    }
+    updateKeyStatus();
+
+    document.getElementById('btn-ai-settings')?.addEventListener('click', e => {
+      panel.classList.toggle('hidden');
+      updateKeyStatus();
+      e.stopPropagation();
+    });
+    document.getElementById('ai-key-save')?.addEventListener('click', () => {
+      const k = document.getElementById('ai-key-input').value.trim();
+      if (k) { setApiKey(k); document.getElementById('ai-key-input').value = ''; }
+      updateKeyStatus();
+    });
+    document.getElementById('ai-key-clear')?.addEventListener('click', () => {
+      clearApiKey(); updateKeyStatus();
+    });
+    document.addEventListener('click', e => {
+      if (!panel.contains(e.target) && e.target.id !== 'btn-ai-settings') {
+        panel.classList.add('hidden');
+      }
+    });
+  })();
+
+  // ── Feature 1: AI Preset Generator ────────────────────────────────────────
+  (() => {
+    const container = document.getElementById('ai-preset-ui');
+    if (!container) return;
+
+    container.innerHTML = `
+      <div style="padding:8px 10px;display:flex;flex-direction:column;gap:6px;">
+        <div style="font-size:10px;color:var(--text-2);font-family:var(--mono);">
+          Describe a visual mood or look:
+        </div>
+        <textarea id="ai-preset-input" class="ai-text-input"
+          placeholder="e.g. slow organic ocean, aggressive glitch rhythm, dreamy feedback vortex…"
+          rows="2"></textarea>
+        <button id="ai-preset-btn" class="import-btn">✦ Generate Preset</button>
+        <div id="ai-preset-result" class="ai-result hidden"></div>
+      </div>
+    `;
+
+    document.getElementById('ai-preset-btn')?.addEventListener('click', async () => {
+      const input = document.getElementById('ai-preset-input');
+      const result = document.getElementById('ai-preset-result');
+      const btn    = document.getElementById('ai-preset-btn');
+      const desc   = input.value.trim();
+      if (!desc) return;
+
+      if (!getApiKey()) {
+        result.textContent = '⚠ No API key set — click ⚙ in the status bar.';
+        result.classList.remove('hidden');
+        return;
+      }
+
+      btn.textContent = '⏳ Generating…';
+      btn.disabled = true;
+      result.classList.add('hidden');
+
+      try {
+        const { params, explanation } = await generatePreset(desc);
+        // Apply parameters
+        let applied = 0;
+        for (const [id, val] of Object.entries(params)) {
+          const p = ps.get(id);
+          if (p) { ps.set(id, val); applied++; }
+        }
+        result.textContent = `✦ ${explanation} (${applied} params set)`;
+        result.classList.remove('hidden');
+        result.style.color = '';
+      } catch (err) {
+        result.textContent = err.message === 'no-key'
+          ? '⚠ No API key — click ⚙ in the status bar.'
+          : `✗ ${err.message}`;
+        result.classList.remove('hidden');
+        result.style.color = 'var(--red, #e05)';
+      } finally {
+        btn.textContent = '✦ Generate Preset';
+        btn.disabled = false;
+      }
+    });
+  })();
+
+  // ── Feature 2: Parameter Narrator ─────────────────────────────────────────
+  let _narratorActive  = false;
+  let _narratorTimer   = null;
+  const _narratorOverlay = document.getElementById('ai-narrator-overlay');
+
+  async function _runNarrator() {
+    if (!_narratorActive) return;
+    try {
+      const snapshot = buildStateSnapshot(ps);
+      const text     = await narrateState(snapshot);
+      if (_narratorOverlay && _narratorActive) {
+        _narratorOverlay.textContent = text;
+      }
+    } catch (err) { /* silent — narrator is non-critical */ }
+    if (_narratorActive) _narratorTimer = setTimeout(_runNarrator, 2500);
+  }
+
+  function _toggleNarrator() {
+    _narratorActive = !_narratorActive;
+    const btn = document.getElementById('btn-ai-narrator');
+    btn?.classList.toggle('active', _narratorActive);
+    if (_narratorOverlay) _narratorOverlay.classList.toggle('hidden', !_narratorActive);
+    if (_narratorActive) {
+      if (!getApiKey()) {
+        _narratorOverlay && (_narratorOverlay.textContent = '⚠ No API key — click ⚙');
+      } else {
+        _runNarrator();
+      }
+    } else {
+      clearTimeout(_narratorTimer);
+    }
+  }
+
+  document.getElementById('btn-ai-narrator')?.addEventListener('click', _toggleNarrator);
+
+  // ── Feature 3: Performance Coach ──────────────────────────────────────────
+  let _coachActive    = false;
+  let _coachTimer     = null;
+  const _recentChanges = []; // { id, t } — last 30 seconds of param changes
+  let _coachNotif     = null;
+
+  // Track parameter changes for coach — register per-param listeners on all params
+  {
+    const _trackChange = (id) => {
+      const now = Date.now();
+      _recentChanges.push({ id, t: now });
+      const cutoff = now - 30000;
+      while (_recentChanges.length > 0 && _recentChanges[0].t < cutoff) _recentChanges.shift();
+    };
+    for (const param of ps.getAll()) {
+      param.onChange(() => _trackChange(param.id));
+    }
+  }
+
+  function _showCoachNotif(text) {
+    if (!_coachNotif) {
+      _coachNotif = document.createElement('div');
+      _coachNotif.id = 'ai-coach-notif';
+      _coachNotif.className = 'ai-coach-notif';
+      document.body.appendChild(_coachNotif);
+    }
+    _coachNotif.textContent = `⬡ ${text}`;
+    _coachNotif.classList.remove('fadeout');
+    _coachNotif.style.opacity = '1';
+    // Fade out after 10s
+    setTimeout(() => {
+      _coachNotif.style.opacity = '0';
+    }, 10000);
+  }
+
+  async function _runCoach() {
+    if (!_coachActive) return;
+    try {
+      const snapshot = buildActivitySnapshot(_recentChanges, ps);
+      const text     = await coachSuggestion(snapshot);
+      if (text && _coachActive) _showCoachNotif(text);
+    } catch (err) { /* silent */ }
+    if (_coachActive) _coachTimer = setTimeout(_runCoach, 30000);
+  }
+
+  function _toggleCoach() {
+    _coachActive = !_coachActive;
+    const btn = document.getElementById('btn-ai-coach');
+    btn?.classList.toggle('active', _coachActive);
+    if (_coachActive) {
+      if (!getApiKey()) {
+        _showCoachNotif('⚠ No API key — click ⚙ in status bar');
+      } else {
+        _showCoachNotif('Performance Coach active — watching for 30s…');
+        _coachTimer = setTimeout(_runCoach, 30000);
+      }
+    } else {
+      clearTimeout(_coachTimer);
+    }
+  }
+
+  document.getElementById('btn-ai-coach')?.addEventListener('click', _toggleCoach);
+
+  // Keyboard shortcuts for narrator (N) and coach (P)
+  // (added to existing keydown handler via additional listener)
+  window.addEventListener('keydown', e => {
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+    if (e.key === 'n' || e.key === 'N') _toggleNarrator();
+    if (e.key === 'p' || e.key === 'P') _toggleCoach();
+  });
 
   console.log('%cImWeb ready — press V to start camera, 3D tab for scene', 'color:#9090a8');
 
