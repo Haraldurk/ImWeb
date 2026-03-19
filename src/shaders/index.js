@@ -342,142 +342,268 @@ export const COLORSHIFT = /* glsl */ `
   }
 `;
 
-// ── Noise ─────────────────────────────────────────────────────────────────────
+// ── BFG — Basis Function Generator ───────────────────────────────────────────
+// Inspired by Cycling '74 jit.bfg — resolution-independent GPU noise field.
+// All types use 3D sampling with time as the 4th (z) dimension, enabling
+// smooth continuous animation without per-frame seed discontinuities.
+//
+// Types: 0=Value  1=Perlin  2=Simplex  3=Cellular-F1  4=Cellular-F2
+//        5=Ridged  6=Curl  7=DomainWarp
 
-export const NOISE_GEN = /* glsl */ `
+export const NOISE_BFG = /* glsl */ `
   uniform float uTime;
   uniform int   uType;
-  uniform float uScale;  // grain size: 1=pixel, >1=coarser
-  uniform int   uColor;  // 0=mono, 1=colour
-  varying vec2 vUv;
+  uniform float uScale;
+  uniform float uOctaves;
+  uniform float uLacunarity;
+  uniform float uGain;
+  uniform float uSpeed;
+  uniform float uOffsetX;
+  uniform float uOffsetY;
+  uniform float uContrast;
+  uniform int   uInvert;
+  uniform float uSeed;
+  uniform int   uColor;
+  varying vec2  vUv;
 
-  float hash(vec2 p) {
-    return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
-  }
-  float hash3(vec2 p, float seed) {
-    return fract(sin(dot(p + seed, vec2(127.1, 311.7))) * 43758.5453);
-  }
+  // ── Hash functions (iq-style, high quality) ────────────────────────────────
 
-  // Smooth value noise (bilinear interpolation of hash grid)
-  float valueNoise(vec2 p) {
-    vec2 i = floor(p);
-    vec2 f = fract(p);
-    vec2 u = f * f * (3.0 - 2.0 * f);
-    return mix(mix(hash(i + vec2(0,0)), hash(i + vec2(1,0)), u.x),
-               mix(hash(i + vec2(0,1)), hash(i + vec2(1,1)), u.x), u.y);
-  }
-
-  // Box-Muller: uniform → gaussian approximation
-  float gaussian(vec2 uv, float seed) {
-    float u1 = hash(uv + seed);
-    float u2 = hash(uv + seed + 0.5);
-    u1 = clamp(u1, 0.0001, 0.9999);
-    float g = sqrt(-2.0 * log(u1)) * cos(6.28318 * u2);
-    return clamp(g * 0.2 + 0.5, 0.0, 1.0);
+  float h1(vec3 p) {
+    p = fract(p * 0.1031);
+    p += dot(p, p.zyx + 31.32);
+    return fract((p.x + p.y) * p.z);
   }
 
-  void main() {
-    float frame = floor(uTime * 60.0);
-    vec2 seed   = vec2(frame * 0.001, frame * 0.0007);
-    // Apply grain scale: coarser scale by flooring UV
-    vec2 scaledUv = floor(vUv * 1024.0 / uScale) / (1024.0 / uScale);
+  vec3 h3(vec3 p) {
+    p = fract(p * vec3(0.1031, 0.1030, 0.0973));
+    p += dot(p, p.yxz + 33.33);
+    return fract((p.xxy + p.yxx) * p.zyx);
+  }
 
-    float n;
-    if (uType == 0) {
-      // White noise (all frequencies, pixel-grain)
-      n = hash(scaledUv + seed);
+  // ── Value Noise — trilinear interpolation of random grid ──────────────────
 
-    } else if (uType == 1) {
-      // Smooth / value noise (low-frequency blobs)
-      n = valueNoise(scaledUv * (8.0 / uScale) + seed * 37.0);
+  float vNoise(vec3 p) {
+    vec3 i = floor(p), f = fract(p);
+    vec3 u = f * f * (3.0 - 2.0 * f);
+    return mix(
+      mix(mix(h1(i),              h1(i+vec3(1,0,0)), u.x),
+          mix(h1(i+vec3(0,1,0)), h1(i+vec3(1,1,0)), u.x), u.y),
+      mix(mix(h1(i+vec3(0,0,1)), h1(i+vec3(1,0,1)), u.x),
+          mix(h1(i+vec3(0,1,1)), h1(i+vec3(1,1,1)), u.x), u.y),
+      u.z);
+  }
 
-    } else if (uType == 2) {
-      // Pink-ish: sum 4 octaves of value noise (1/f approximation)
-      float amp = 0.5, freq = 1.0, acc = 0.0, tot = 0.0;
-      for (int i = 0; i < 4; i++) {
-        acc += valueNoise(scaledUv * freq * (4.0 / uScale) + seed * (3.7 + float(i))) * amp;
-        tot += amp; amp *= 0.5; freq *= 2.0;
-      }
-      n = acc / tot;
+  // ── Perlin Gradient Noise — quintic interpolation ─────────────────────────
 
-    } else if (uType == 3) {
-      // Brown (integrated): very low freq, warm rumble
-      float amp = 0.5, freq = 0.5, acc = 0.0, tot = 0.0;
-      for (int i = 0; i < 3; i++) {
-        acc += valueNoise(scaledUv * freq * (2.0 / uScale) + seed * (1.3 + float(i))) * amp;
-        tot += amp; amp *= 0.7; freq *= 1.5;
-      }
-      n = acc / tot;
+  vec3 gHash(vec3 p) {
+    p = fract(p * vec3(0.1031, 0.1030, 0.0973));
+    p += dot(p, p.yxz + 33.33);
+    return normalize(-1.0 + 2.0 * fract((p.xxy + p.yxx) * p.zyx));
+  }
 
-    } else if (uType == 4) {
-      // Gaussian (electronic) — normal distribution centred at 0.5
-      n = gaussian(scaledUv, frame * 0.0013);
+  float pNoise(vec3 p) {
+    vec3 i = floor(p), f = fract(p);
+    vec3 u = f*f*f*(f*(f*6.0-15.0)+10.0);
+    float v000 = dot(gHash(i),              f);
+    float v100 = dot(gHash(i+vec3(1,0,0)), f-vec3(1,0,0));
+    float v010 = dot(gHash(i+vec3(0,1,0)), f-vec3(0,1,0));
+    float v110 = dot(gHash(i+vec3(1,1,0)), f-vec3(1,1,0));
+    float v001 = dot(gHash(i+vec3(0,0,1)), f-vec3(0,0,1));
+    float v101 = dot(gHash(i+vec3(1,0,1)), f-vec3(1,0,1));
+    float v011 = dot(gHash(i+vec3(0,1,1)), f-vec3(0,1,1));
+    float v111 = dot(gHash(i+vec3(1,1,1)), f-vec3(1,1,1));
+    return 0.5 + 0.5 * mix(
+      mix(mix(v000,v100,u.x), mix(v010,v110,u.x), u.y),
+      mix(mix(v001,v101,u.x), mix(v011,v111,u.x), u.y),
+      u.z);
+  }
 
-    } else if (uType == 5) {
-      // Salt & Pepper — sparse impulse noise
-      float r = hash(scaledUv + seed);
-      n = (r < 0.04) ? 1.0 : (r < 0.08) ? 0.0 : 0.5;
+  // ── Simplex Noise 3D — Stefan Gustavson ───────────────────────────────────
 
-    } else if (uType == 6) {
-      // Speckle (multiplicative) — mid-grey with random fluctuation
-      float base = 0.5;
-      float speckle = hash(scaledUv + seed) * 2.0 - 1.0;
-      n = clamp(base + base * speckle, 0.0, 1.0);
+  vec3  _m289v3(vec3  x){return x-floor(x*(1.0/289.0))*289.0;}
+  vec4  _m289v4(vec4  x){return x-floor(x*(1.0/289.0))*289.0;}
+  vec4  _prm(vec4   x){return _m289v4(((x*34.0)+1.0)*x);}
+  vec4  _tiS(vec4   r){return 1.79284291400159-0.85373472095314*r;}
 
-    } else if (uType == 7) {
-      // H-lines
-      n = hash(vec2(scaledUv.x, 0.5) + seed);
+  float sNoise(vec3 v) {
+    const vec2 C = vec2(1.0/6.0, 1.0/3.0);
+    const vec4 D = vec4(0.0, 0.5, 1.0, 2.0);
+    vec3 i  = floor(v + dot(v, C.yyy));
+    vec3 x0 = v - i + dot(i, C.xxx);
+    vec3 g  = step(x0.yzx, x0.xyz);
+    vec3 l  = 1.0 - g;
+    vec3 i1 = min(g.xyz, l.zxy);
+    vec3 i2 = max(g.xyz, l.zxy);
+    vec3 x1 = x0 - i1 + C.xxx;
+    vec3 x2 = x0 - i2 + C.yyy;
+    vec3 x3 = x0 - D.yyy;
+    i = _m289v3(i);
+    vec4 p = _prm(_prm(_prm(
+               i.z + vec4(0.0,i1.z,i2.z,1.0))
+             + i.y + vec4(0.0,i1.y,i2.y,1.0))
+             + i.x + vec4(0.0,i1.x,i2.x,1.0));
+    float n_ = 0.142857142857;
+    vec3  ns = n_ * D.wyz - D.xzx;
+    vec4  j  = p - 49.0*floor(p*ns.z*ns.z);
+    vec4  x_ = floor(j*ns.z);
+    vec4  y_ = floor(j - 7.0*x_);
+    vec4  x  = x_*ns.x + ns.yyyy;
+    vec4  y  = y_*ns.x + ns.yyyy;
+    vec4  h  = 1.0 - abs(x) - abs(y);
+    vec4  b0 = vec4(x.xy, y.xy);
+    vec4  b1 = vec4(x.zw, y.zw);
+    vec4  s0 = floor(b0)*2.0 + 1.0;
+    vec4  s1 = floor(b1)*2.0 + 1.0;
+    vec4  sh = -step(h, vec4(0.0));
+    vec4  a0 = b0.xzyw + s0.xzyw*sh.xxyy;
+    vec4  a1 = b1.xzyw + s1.xzyw*sh.zzww;
+    vec3  p0 = vec3(a0.xy, h.x);
+    vec3  p1 = vec3(a0.zw, h.y);
+    vec3  p2 = vec3(a1.xy, h.z);
+    vec3  p3 = vec3(a1.zw, h.w);
+    vec4  nm = _tiS(vec4(dot(p0,p0),dot(p1,p1),dot(p2,p2),dot(p3,p3)));
+    p0 *= nm.x; p1 *= nm.y; p2 *= nm.z; p3 *= nm.w;
+    vec4 m = max(0.5 - vec4(dot(x0,x0),dot(x1,x1),dot(x2,x2),dot(x3,x3)), 0.0);
+    m = m * m;
+    return 0.5 + 52.0 * dot(m*m, vec4(dot(p0,x0),dot(p1,x1),dot(p2,x2),dot(p3,x3)));
+  }
 
-    } else if (uType == 8) {
-      // V-lines — vertical scan lines
-      n = hash(vec2(0.5, scaledUv.y) + seed);
+  // ── Cellular / Worley Noise — 3×3×3 grid search ──────────────────────────
 
-    } else if (uType == 9) {
-      // Voronoi / cellular — distance to nearest randomised grid point
-      vec2 p = vUv * (6.0 * uScale);
-      vec2 gi = floor(p);
-      vec2 gf = fract(p);
-      float minD = 1.0;
-      for (int dy = -1; dy <= 1; dy++) {
-        for (int dx = -1; dx <= 1; dx++) {
-          vec2 nb  = vec2(float(dx), float(dy));
-          vec2 pt  = vec2(hash(gi + nb + seed), hash(gi + nb + seed + 0.37));
-          minD = min(minD, length(nb + pt - gf));
+  vec2 wNoise(vec3 p) {
+    vec3 i = floor(p), f = fract(p);
+    float f1 = 9.0, f2 = 9.0;
+    for (int z = -1; z <= 1; z++) {
+      for (int y = -1; y <= 1; y++) {
+        for (int x = -1; x <= 1; x++) {
+          vec3 nb = vec3(float(x), float(y), float(z));
+          vec3 pt = h3(i + nb);
+          float d = length(nb + pt - f);
+          if (d < f1) { f2 = f1; f1 = d; }
+          else if (d < f2) { f2 = d; }
         }
       }
-      n = minD;
+    }
+    return vec2(f1, f2);
+  }
 
-    } else if (uType == 10) {
-      // Plasma — animated sin/cos interference
-      vec2 p = vUv * (3.0 * uScale);
-      float t = uTime * 0.4;
-      float v = sin(p.x * 6.2832 + t)
-              + cos(p.y * 6.2832 + t * 0.7)
-              + sin((p.x + p.y) * 4.0 + t * 1.3)
-              + cos(length(p - vec2(0.5)) * 8.0 - t * 0.9);
-      n = 0.5 + 0.25 * v;
+  // ── fBm wrapper — up to 8 octaves, three basis types ─────────────────────
 
+  float fbm(vec3 p, int oct, float lac, float gn, int basis) {
+    float sum = 0.0, amp = 0.5, freq = 1.0, norm = 0.0;
+    for (int i = 0; i < 8; i++) {
+      if (i >= oct) break;
+      float n;
+      if      (basis == 0) n = vNoise(p * freq);
+      else if (basis == 1) n = pNoise(p * freq);
+      else                 n = sNoise(p * freq);
+      sum  += n * amp;
+      norm += amp;
+      amp  *= gn;
+      freq *= lac;
+    }
+    return sum / norm;
+  }
+
+  // ── Ridged Multifractal — sharp crests, deep valleys ─────────────────────
+
+  float ridged(vec3 p, int oct, float lac, float gn) {
+    float sum = 0.0, amp = 0.5, freq = 1.0, prev = 1.0, norm = 0.0;
+    for (int i = 0; i < 8; i++) {
+      if (i >= oct) break;
+      float n = 1.0 - abs(pNoise(p * freq) * 2.0 - 1.0);
+      n    = n * n * prev;
+      sum += n * amp;
+      norm += amp;
+      prev  = n;
+      amp  *= gn;
+      freq *= lac;
+    }
+    return sum / norm;
+  }
+
+  // ── Curl Noise — numerically differentiated fBm → divergence-free field ──
+  // Output: RG = flow vector (remapped 0–1), B = magnitude.
+  // Use as DisplaceSrc for fluid video displacement.
+
+  vec2 curlField(vec3 p, int oct, float lac, float gn) {
+    const float e = 0.005;
+    float n1 = fbm(p + vec3(0.0, e, 0.0), oct, lac, gn, 1);
+    float n2 = fbm(p - vec3(0.0, e, 0.0), oct, lac, gn, 1);
+    float n3 = fbm(p + vec3(e, 0.0, 0.0), oct, lac, gn, 1);
+    float n4 = fbm(p - vec3(e, 0.0, 0.0), oct, lac, gn, 1);
+    return vec2(n1 - n2, -(n3 - n4)) * (1.0 / (2.0 * e));
+  }
+
+  // ── Domain Warp — fBm(fBm(p)), Inigo Quilez ──────────────────────────────
+
+  float domainWarp(vec3 p, int oct, float lac, float gn) {
+    float ox = fbm(p + vec3(1.7, 9.2, 0.0), oct, lac, gn, 1);
+    float oy = fbm(p + vec3(8.3, 2.8, 0.0), oct, lac, gn, 1);
+    vec3  q  = p + 1.5 * vec3(ox, oy, 0.0);
+    float rx = fbm(q + vec3(5.2, 1.3, 0.0), oct, lac, gn, 1);
+    float ry = fbm(q + vec3(0.7, 4.1, 0.0), oct, lac, gn, 1);
+    return fbm(p + 1.5 * vec3(rx, ry, 0.0), oct, lac, gn, 1);
+  }
+
+  // ── Main ──────────────────────────────────────────────────────────────────
+
+  void main() {
+    int  oct = int(uOctaves + 0.5);
+    // Time is the 3rd spatial dimension — smooth continuous animation
+    float t  = uTime * uSpeed + uSeed;
+    vec3  p  = vec3((vUv + vec2(uOffsetX, uOffsetY)) * uScale, t);
+
+    float n     = 0.0;
+    vec2  curlV = vec2(0.0);
+    bool  isCurl = (uType == 6);
+
+    if (uType == 0) {
+      n = fbm(p, oct, uLacunarity, uGain, 0);           // Value
+    } else if (uType == 1) {
+      n = fbm(p, oct, uLacunarity, uGain, 1);           // Perlin
+    } else if (uType == 2) {
+      n = fbm(p, oct, uLacunarity, uGain, 2);           // Simplex
+    } else if (uType == 3) {
+      vec2 c = wNoise(p);
+      n = 1.0 - smoothstep(0.0, 0.9, c.x);             // Cellular F1
+    } else if (uType == 4) {
+      vec2 c = wNoise(p);
+      n = smoothstep(0.0, 0.5, c.y - c.x);             // Cellular F2-F1
+    } else if (uType == 5) {
+      n = ridged(p, oct, uLacunarity, uGain);           // Ridged
+    } else if (uType == 6) {
+      curlV = curlField(p, oct, uLacunarity, uGain);
+      n = length(curlV) * 0.5;                          // Curl
     } else {
-      // Animated fBm — fractal brownian motion that flows over time
-      float amp = 0.5, freq = 1.0, acc = 0.0, tot = 0.0;
-      vec2 p = vUv * (4.0 * uScale);
-      for (int i = 0; i < 5; i++) {
-        vec2 anim = vec2(uTime * 0.06 * float(i + 1), uTime * 0.05 * float(i + 1));
-        acc += valueNoise(p * freq + anim) * amp;
-        tot += amp; amp *= 0.5; freq *= 2.0;
-      }
-      n = acc / tot;
+      n = domainWarp(p, oct, uLacunarity, uGain);       // Domain Warp
     }
 
+    // ── Post-process ────────────────────────────────────────────────────────
+    n = clamp(n, 0.0, 1.0);
+    n = pow(n, uContrast);
+    if (uInvert == 1) n = 1.0 - n;
+
+    // ── Color output ────────────────────────────────────────────────────────
     vec3 col;
-    if (uColor == 1) {
-      col = vec3(hash3(scaledUv, 0.0 + frame * 0.001),
-                 hash3(scaledUv, 0.3 + frame * 0.001),
-                 hash3(scaledUv, 0.7 + frame * 0.001));
-      col = mix(vec3(n), col, 0.8);
+    if (isCurl) {
+      // Encode flow vector in RG (0=left/down, 1=right/up), magnitude in B
+      col = vec3(0.5 + 0.4 * curlV.x, 0.5 + 0.4 * curlV.y, n);
+      if (uInvert == 1) col.xy = 1.0 - col.xy;
+    } else if (uColor == 1) {
+      // Tri-channel colorization via spatially shifted fbm passes
+      int colorOct = oct > 1 ? oct - 1 : 1;
+      float r = fbm(p + vec3(1.0, 0.0, 0.5), colorOct, uLacunarity, uGain, 0);
+      float g = fbm(p + vec3(0.0, 1.0, 0.5), colorOct, uLacunarity, uGain, 0);
+      float b = fbm(p + vec3(0.5, 0.0, 1.0), colorOct, uLacunarity, uGain, 0);
+      r = pow(clamp(r, 0.0, 1.0), uContrast);
+      g = pow(clamp(g, 0.0, 1.0), uContrast);
+      b = pow(clamp(b, 0.0, 1.0), uContrast);
+      col = mix(vec3(n), vec3(r, g, b), 0.75);
     } else {
       col = vec3(n);
     }
+
     gl_FragColor = vec4(col, 1.0);
   }
 `;

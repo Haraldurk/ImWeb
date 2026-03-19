@@ -18,7 +18,7 @@
 import * as THREE from 'three';
 import {
   VERT, KEYER, DISPLACE, BLEND, FEEDBACK,
-  TRANSFERMODE, COLORSHIFT, NOISE_GEN, INTERLACE, MIRROR, SOLID_COLOR, WARP, FADE, PASSTHROUGH,
+  TRANSFERMODE, COLORSHIFT, NOISE_BFG, INTERLACE, MIRROR, SOLID_COLOR, WARP, FADE, PASSTHROUGH,
   BUFFER_TRANSFORM, INTERP,
   PIXELATE, EDGE, RGBSHIFT, POSTERIZE, SOLARIZE, COLOR_CORRECT, CHROMA_KEY,
   VIGNETTE, BLOOM_EXTRACT, BLOOM_BLUR, BLOOM_COMPOSITE, KALEIDOSCOPE, PIXEL_SORT,
@@ -173,8 +173,9 @@ export class Pipeline {
     // Pre-build all effect materials
     this._buildMaterials();
 
-    // Noise textures (updated each frame)
-    this._noiseTime = 0;
+    // Dedicated noise render target — fixed 512×512 so complex BFG types
+    // (DomainWarp, Curl) stay fast regardless of output resolution.
+    this._noiseTarget = this._makeTarget(512, 512);
 
     // Live GLSL custom effect (hot-swappable)
     this._customMat    = null;  // set by setCustomShader()
@@ -554,11 +555,32 @@ export class Pipeline {
     this._customActive = false;
   }
 
-  // ── GPU noise generation ──────────────────────────────────────────────────
+  // ── BFG noise generation ──────────────────────────────────────────────────
 
-  /** Run the NOISE_GEN shader and return the resulting texture. */
-  generateNoise(time, type, scale = 1, color = 0) {
-    return this._pass(this.m.noise, { uTime: time, uType: type, uScale: scale, uColor: color });
+  /**
+   * Render the BFG noise shader to a dedicated 512×512 target each frame.
+   * Returns the noise texture for use as inputs.noise in the pipeline.
+   * @param {object} p  All BFG params from ParameterSystem
+   */
+  generateNoise(p) {
+    const m = this.m.noise;
+    m.uniforms.uTime.value       = p.time;
+    m.uniforms.uType.value       = p.type;
+    m.uniforms.uScale.value      = p.scale;
+    m.uniforms.uOctaves.value    = p.octaves;
+    m.uniforms.uLacunarity.value = p.lacunarity;
+    m.uniforms.uGain.value       = p.gain;
+    m.uniforms.uSpeed.value      = p.speed;
+    m.uniforms.uOffsetX.value    = p.offsetX;
+    m.uniforms.uOffsetY.value    = p.offsetY;
+    m.uniforms.uContrast.value   = p.contrast;
+    m.uniforms.uInvert.value     = p.invert;
+    m.uniforms.uSeed.value       = p.seed;
+    m.uniforms.uColor.value      = p.color;
+    this._quad.material = m;
+    this.renderer.setRenderTarget(this._noiseTarget);
+    this.renderer.render(this._scene, this._camera);
+    return this._noiseTarget.texture;
   }
 
   // ── Resize ────────────────────────────────────────────────────────────────
@@ -730,9 +752,20 @@ export class Pipeline {
       solidcolor:  this._mat(SOLID_COLOR, {
         uHue: { value: 0 }, uSat: { value: 0.8 }, uVal: { value: 0.6 },
       }),
-      noise:       this._mat(NOISE_GEN, {
-        uTime: { value: 0 }, uType: { value: 0 },
-        uScale: { value: 1 }, uColor: { value: 0 },
+      noise: this._mat(NOISE_BFG, {
+        uTime:       { value: 0 },
+        uType:       { value: 1 },   // default: Perlin
+        uScale:      { value: 3.0 },
+        uOctaves:    { value: 4.0 },
+        uLacunarity: { value: 2.0 },
+        uGain:       { value: 0.5 },
+        uSpeed:      { value: 0.2 },
+        uOffsetX:    { value: 0.0 },
+        uOffsetY:    { value: 0.0 },
+        uContrast:   { value: 1.0 },
+        uInvert:     { value: 0 },
+        uSeed:       { value: 0.0 },
+        uColor:      { value: 0 },
       }),
       bufferTransform: this._mat(BUFFER_TRANSFORM, {
         uPanX:  { value: 0 },

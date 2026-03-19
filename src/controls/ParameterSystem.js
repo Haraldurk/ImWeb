@@ -431,14 +431,22 @@ export function registerCoreParameters(ps) {
   ps.register({ id: 'color2.speed', label: 'Col2 Speed', group: 'color',
     min: -200, max: 200, value: 0, unit: '%' });
 
-  // ── Noise ─────────────────────────────────────────────────────────────────
-  ps.register({ id: 'noise.type',  label: 'NoiseType',  group: 'noise',
+  // ── Noise BFG (Basis Function Generator) ─────────────────────────────────
+  ps.register({ id: 'noise.type', label: 'BasisType', group: 'noise',
     type: PARAM_TYPE.SELECT,
-    options: ['White','Smooth','Pink','Brown','Gaussian','Salt&Pep','Speckle','H-Lines','V-Lines','Voronoi','Plasma','fBm Flow'], value: 0 });
-  ps.register({ id: 'noise.scale', label: 'GrainSize',  group: 'noise',
-    min: 1, max: 64, value: 1, step: 1 });
-  ps.register({ id: 'noise.color', label: 'ColorNoise', group: 'noise',
-    type: PARAM_TYPE.TOGGLE, value: 0 });
+    options: ['Value','Perlin','Simplex','Cellular-F1','Cellular-F2','Ridged','Curl','DomainWarp'],
+    value: 1 }); // default: Perlin
+  ps.register({ id: 'noise.scale',      label: 'Scale',      group: 'noise', min: 0.1,  max: 20,   value: 3,    step: 0.1  });
+  ps.register({ id: 'noise.octaves',    label: 'Octaves',    group: 'noise', min: 1,    max: 8,    value: 4,    step: 1    });
+  ps.register({ id: 'noise.lacunarity', label: 'Lacunarity', group: 'noise', min: 1.0,  max: 4.0,  value: 2.0,  step: 0.05 });
+  ps.register({ id: 'noise.gain',       label: 'Gain',       group: 'noise', min: 0.1,  max: 1.0,  value: 0.5,  step: 0.01 });
+  ps.register({ id: 'noise.speed',      label: 'Speed',      group: 'noise', min: -5.0, max: 5.0,  value: 0.2,  step: 0.05 });
+  ps.register({ id: 'noise.offsetX',    label: 'OffsetX',    group: 'noise', min: -10,  max: 10,   value: 0,    step: 0.1  });
+  ps.register({ id: 'noise.offsetY',    label: 'OffsetY',    group: 'noise', min: -10,  max: 10,   value: 0,    step: 0.1  });
+  ps.register({ id: 'noise.contrast',   label: 'Contrast',   group: 'noise', min: 0.1,  max: 5.0,  value: 1.0,  step: 0.05 });
+  ps.register({ id: 'noise.invert',     label: 'Invert',     group: 'noise', type: PARAM_TYPE.TOGGLE, value: 0 });
+  ps.register({ id: 'noise.seed',       label: 'Seed',       group: 'noise', min: 0,    max: 100,  value: 0,    step: 0.5  });
+  ps.register({ id: 'noise.color',      label: 'ColorField', group: 'noise', type: PARAM_TYPE.TOGGLE, value: 0 });
 
   // ── Mirror ────────────────────────────────────────────────────────────────
   ps.register({ id: 'mirror.camera', label: 'Mirror Cam',    group: 'mirror',

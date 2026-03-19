@@ -2770,15 +2770,22 @@ void main() {
       updateColor2Texture();
     }
 
-    // Generate GPU noise every 2 frames
-    if (frameCount % 2 === 0) {
-      noiseTexture = pipeline.generateNoise(
-        lastTime / 1000,
-        ps.get('noise.type').value,
-        ps.get('noise.scale')?.value ?? 1,
-        ps.get('noise.color')?.value ?? 0,
-      );
-    }
+    // Generate BFG noise every frame (dedicated 512×512 target, always live)
+    noiseTexture = pipeline.generateNoise({
+      time:       lastTime / 1000,
+      type:       ps.get('noise.type').value,
+      scale:      ps.get('noise.scale').value,
+      octaves:    ps.get('noise.octaves').value,
+      lacunarity: ps.get('noise.lacunarity').value,
+      gain:       ps.get('noise.gain').value,
+      speed:      ps.get('noise.speed').value,
+      offsetX:    ps.get('noise.offsetX').value,
+      offsetY:    ps.get('noise.offsetY').value,
+      contrast:   ps.get('noise.contrast').value,
+      invert:     ps.get('noise.invert').value,
+      seed:       ps.get('noise.seed').value,
+      color:      ps.get('noise.color').value,
+    });
 
     // Render 3D scene if active OR used as a layer source
     const SCENE3D_IDX  = 5;  // index in SOURCES array
