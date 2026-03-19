@@ -434,7 +434,7 @@ export function registerCoreParameters(ps) {
   // ── Noise ─────────────────────────────────────────────────────────────────
   ps.register({ id: 'noise.type',  label: 'NoiseType',  group: 'noise',
     type: PARAM_TYPE.SELECT,
-    options: ['White','Smooth','Pink','Brown','Gaussian','Salt&Pep','Speckle','H-Lines'], value: 0 });
+    options: ['White','Smooth','Pink','Brown','Gaussian','Salt&Pep','Speckle','H-Lines','V-Lines','Voronoi','Plasma','fBm Flow'], value: 0 });
   ps.register({ id: 'noise.scale', label: 'GrainSize',  group: 'noise',
     min: 1, max: 64, value: 1, step: 1 });
   ps.register({ id: 'noise.color', label: 'ColorNoise', group: 'noise',

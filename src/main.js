@@ -753,7 +753,7 @@ async function main() {
 
   // ── OSC bridge ────────────────────────────────────────────────────────────
   const oscBridge  = new OSCBridge(ps, presetMgr);
-  const projectFile = new ProjectFile(ps, presetMgr, tableManager);
+  const projectFile = new ProjectFile(ps, presetMgr, tableManager, { warpEditor });
 
   // Click OSC indicator → prompt for WebSocket URL and connect
   document.getElementById('status-osc')?.addEventListener('click', () => {
@@ -765,44 +765,79 @@ async function main() {
     }
   });
 
-  // Export / Import project file buttons in Presets tab
+  // Project file UI — #project-file-ui container in Presets tab
   (() => {
-    const presetsSection = document.querySelector('#tab-presets .panel-section');
+    const container = document.getElementById('project-file-ui');
+    if (container) {
+      container.innerHTML = `
+        <div style="padding:8px 10px;display:flex;flex-direction:column;gap:5px;">
+          <div style="display:flex;gap:5px;">
+            <input id="project-name-input" type="text" placeholder="Session name…"
+              style="flex:1;background:var(--bg-3);border:1px solid var(--border);border-radius:3px;
+                     color:var(--text-0);font-family:var(--mono);font-size:11px;padding:4px 7px;outline:none;" />
+          </div>
+          <div style="display:flex;gap:5px;">
+            <button id="btn-export-project" class="import-btn" style="flex:1" title="Cmd+E">⇩ Export .imweb</button>
+            <button id="btn-import-project" class="import-btn" style="flex:1" title="Cmd+O">⇧ Import .imweb</button>
+          </div>
+          <div id="project-file-status" style="font-family:var(--mono);font-size:10px;color:var(--text-2);min-height:14px;"></div>
+          <input id="project-file-input" type="file" accept=".imweb,application/json" style="display:none;" />
+        </div>
+      `;
+
+      const statusEl = () => document.getElementById('project-file-status');
+      const setStatus = (msg, color = 'var(--text-2)') => {
+        const el = statusEl(); if (el) { el.textContent = msg; el.style.color = color; }
+      };
+
+      document.getElementById('btn-export-project')?.addEventListener('click', async () => {
+        try {
+          const name = document.getElementById('project-name-input')?.value.trim()
+            || document.getElementById('status-preset')?.textContent
+            || 'imweb-session';
+          await projectFile.export(name);
+          setStatus(`✓ Exported "${name}"`, 'var(--green)');
+        } catch (err) {
+          setStatus(`✗ ${err.message}`, 'var(--red)');
+        }
+      });
+
+      document.getElementById('btn-import-project')?.addEventListener('click', () => {
+        document.getElementById('project-file-input')?.click();
+      });
+
+      document.getElementById('project-file-input')?.addEventListener('change', async e => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        e.target.value = '';
+        try {
+          const name = await projectFile.import(file);
+          const inp = document.getElementById('project-name-input');
+          if (inp) inp.value = name;
+          setStatus(`✓ Loaded "${name}"`, 'var(--green)');
+        } catch (err) {
+          setStatus(`✗ ${err.message}`, 'var(--red)');
+        }
+      });
+
+      window.addEventListener('keydown', e => {
+        if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+        if ((e.metaKey || e.ctrlKey) && e.key === 'e' && !e.shiftKey) {
+          e.preventDefault(); document.getElementById('btn-export-project')?.click();
+        }
+        if ((e.metaKey || e.ctrlKey) && e.key === 'o') {
+          e.preventDefault(); document.getElementById('btn-import-project')?.click();
+        }
+      });
+    }
+  })();
+
+  (() => {
+    const presetsSection = document.querySelector('#tab-presets .panel-section:last-of-type');
     if (!presetsSection) return;
 
     const ioRow = document.createElement('div');
     ioRow.style.cssText = 'display:flex;gap:6px;padding:8px 10px 4px;flex-wrap:wrap;';
-
-    const btnExport = document.createElement('button');
-    btnExport.className = 'import-btn';
-    btnExport.textContent = '⬇ Export .imweb';
-    btnExport.addEventListener('click', async () => {
-      const name = prompt('Project name:', 'ImWeb Project') ?? 'ImWeb Project';
-      await projectFile.export(name);
-    });
-
-    const btnImport = document.createElement('button');
-    btnImport.className = 'import-btn';
-    btnImport.textContent = '⬆ Import .imweb';
-    btnImport.addEventListener('click', () => {
-      const inp = document.createElement('input');
-      inp.type = 'file';
-      inp.accept = '.imweb,application/json';
-      inp.style.display = 'none';
-      document.body.appendChild(inp);
-      inp.onchange = async e => {
-        const file = e.target.files[0];
-        document.body.removeChild(inp);
-        if (!file) return;
-        try {
-          const name = await projectFile.import(file);
-          alert(`Loaded: ${name}`);
-        } catch (err) {
-          alert(`Import failed: ${err.message}`);
-        }
-      };
-      inp.click();
-    });
 
     const btnRandomize = document.createElement('button');
     btnRandomize.className = 'import-btn';
@@ -839,8 +874,6 @@ async function main() {
       inp.click();
     });
 
-    ioRow.appendChild(btnExport);
-    ioRow.appendChild(btnImport);
     ioRow.appendChild(btnImportImX);
     ioRow.appendChild(btnRandomize);
     presetsSection.appendChild(ioRow);
@@ -2828,158 +2861,6 @@ void main() {
   }
 
   requestAnimationFrame(render);
-
-  // ── Project File (.imweb) — Export / Import ───────────────────────────────
-  (() => {
-    const container = document.getElementById('project-file-ui');
-    if (!container) return;
-
-    container.innerHTML = `
-      <div style="padding:8px 10px;display:flex;flex-direction:column;gap:6px;">
-        <div style="display:flex;gap:6px;">
-          <button id="btn-export-project" class="import-btn" style="flex:1" title="Save full session as .imweb file">
-            ⇩ Export .imweb
-          </button>
-          <button id="btn-import-project" class="import-btn" style="flex:1" title="Load a .imweb session file">
-            ⇧ Import .imweb
-          </button>
-        </div>
-        <div id="project-name-row" style="display:flex;gap:6px;align-items:center;">
-          <input id="project-name-input" type="text" placeholder="Session name…"
-            style="flex:1;background:var(--bg-3);border:1px solid var(--border);border-radius:3px;
-                   color:var(--text-0);font-family:var(--mono);font-size:11px;padding:4px 7px;outline:none;"
-          />
-        </div>
-        <div id="project-file-status" style="font-family:var(--mono);font-size:10px;color:var(--text-2);min-height:14px;"></div>
-        <input id="project-file-input" type="file" accept=".imweb" style="display:none;" />
-      </div>
-    `;
-
-    const statusEl = document.getElementById('project-file-status');
-
-    function setStatus(msg, color = 'var(--text-2)') {
-      statusEl.textContent = msg;
-      statusEl.style.color = color;
-    }
-
-    // ── Export ──────────────────────────────────────────────────────────────
-
-    document.getElementById('btn-export-project')?.addEventListener('click', async () => {
-      try {
-        const name = document.getElementById('project-name-input')?.value.trim()
-          || document.getElementById('status-preset')?.textContent
-          || 'imweb-session';
-
-        const project = {
-          format:  'imweb',
-          version: '0.3',
-          name,
-          savedAt: new Date().toISOString(),
-
-          // Live parameter values
-          params: ps.captureState(),
-
-          // Warp map editor state
-          warpMap: {
-            dx: Array.from(warpEditor.dx),
-            dy: Array.from(warpEditor.dy),
-          },
-
-          // Warp slots from localStorage
-          warpSlots: (() => {
-            try { return JSON.parse(localStorage.getItem('imweb-warpmaps') ?? '{}'); }
-            catch { return {}; }
-          })(),
-
-          // All presets (including controller assignments & display states)
-          presets: await presetMgr.exportAll(),
-
-          // Current preset index
-          currentPreset: presetMgr.currentIndex,
-        };
-
-        const json = JSON.stringify(project, null, 2);
-        const blob = new Blob([json], { type: 'application/json' });
-        const url  = URL.createObjectURL(blob);
-        const a    = document.createElement('a');
-        a.href     = url;
-        a.download = `${name.replace(/[^a-z0-9_\-\s]/gi, '_')}.imweb`;
-        a.click();
-        URL.revokeObjectURL(url);
-        setStatus(`✓ Exported "${name}"`, 'var(--green)');
-      } catch (err) {
-        setStatus(`✗ Export failed: ${err.message}`, 'var(--red)');
-      }
-    });
-
-    // ── Import ──────────────────────────────────────────────────────────────
-
-    document.getElementById('btn-import-project')?.addEventListener('click', () => {
-      document.getElementById('project-file-input')?.click();
-    });
-
-    document.getElementById('project-file-input')?.addEventListener('change', async e => {
-      const file = e.target.files?.[0];
-      if (!file) return;
-      e.target.value = ''; // reset so same file can be re-selected
-
-      try {
-        const text = await file.text();
-        const project = JSON.parse(text);
-
-        if (project.format !== 'imweb') throw new Error('Not a valid .imweb file');
-
-        // Restore presets first (so activatePreset works)
-        if (Array.isArray(project.presets)) {
-          await presetMgr.importAll(project.presets);
-        }
-
-        // Activate the saved current preset
-        const targetPreset = project.currentPreset ?? 0;
-        await presetMgr.activatePreset(targetPreset, { fade: false });
-
-        // Overlay live param values (may override preset defaults)
-        if (project.params && typeof project.params === 'object') {
-          ps.restoreState(project.params);
-        }
-
-        // Restore warp map editor state
-        if (project.warpMap?.dx && project.warpMap?.dy) {
-          warpEditor.dx = new Float32Array(project.warpMap.dx);
-          warpEditor.dy = new Float32Array(project.warpMap.dy);
-          warpEditor._rebuild();
-        }
-
-        // Restore warp slots to localStorage
-        if (project.warpSlots && typeof project.warpSlots === 'object') {
-          localStorage.setItem('imweb-warpmaps', JSON.stringify(project.warpSlots));
-        }
-
-        // Update project name input
-        if (project.name) {
-          const nameInput = document.getElementById('project-name-input');
-          if (nameInput) nameInput.value = project.name;
-          document.getElementById('status-name').textContent = project.name;
-        }
-
-        setStatus(`✓ Loaded "${project.name}" (v${project.version})`, 'var(--green)');
-      } catch (err) {
-        setStatus(`✗ Import failed: ${err.message}`, 'var(--red)');
-      }
-    });
-
-    // Keyboard shortcut: Cmd+E = export
-    window.addEventListener('keydown', e => {
-      if ((e.metaKey || e.ctrlKey) && e.key === 'e' && !e.shiftKey) {
-        e.preventDefault();
-        document.getElementById('btn-export-project')?.click();
-      }
-      if ((e.metaKey || e.ctrlKey) && e.key === 'o') {
-        e.preventDefault();
-        document.getElementById('btn-import-project')?.click();
-      }
-    });
-  })();
 
   // ── AI Features ───────────────────────────────────────────────────────────
 

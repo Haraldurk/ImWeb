@@ -424,9 +424,49 @@ export const NOISE_GEN = /* glsl */ `
       float speckle = hash(scaledUv + seed) * 2.0 - 1.0;
       n = clamp(base + base * speckle, 0.0, 1.0);
 
-    } else {
+    } else if (uType == 7) {
       // H-lines
       n = hash(vec2(scaledUv.x, 0.5) + seed);
+
+    } else if (uType == 8) {
+      // V-lines — vertical scan lines
+      n = hash(vec2(0.5, scaledUv.y) + seed);
+
+    } else if (uType == 9) {
+      // Voronoi / cellular — distance to nearest randomised grid point
+      vec2 p = vUv * (6.0 * uScale);
+      vec2 gi = floor(p);
+      vec2 gf = fract(p);
+      float minD = 1.0;
+      for (int dy = -1; dy <= 1; dy++) {
+        for (int dx = -1; dx <= 1; dx++) {
+          vec2 nb  = vec2(float(dx), float(dy));
+          vec2 pt  = vec2(hash(gi + nb + seed), hash(gi + nb + seed + 0.37));
+          minD = min(minD, length(nb + pt - gf));
+        }
+      }
+      n = minD;
+
+    } else if (uType == 10) {
+      // Plasma — animated sin/cos interference
+      vec2 p = vUv * (3.0 * uScale);
+      float t = uTime * 0.4;
+      float v = sin(p.x * 6.2832 + t)
+              + cos(p.y * 6.2832 + t * 0.7)
+              + sin((p.x + p.y) * 4.0 + t * 1.3)
+              + cos(length(p - vec2(0.5)) * 8.0 - t * 0.9);
+      n = 0.5 + 0.25 * v;
+
+    } else {
+      // Animated fBm — fractal brownian motion that flows over time
+      float amp = 0.5, freq = 1.0, acc = 0.0, tot = 0.0;
+      vec2 p = vUv * (4.0 * uScale);
+      for (int i = 0; i < 5; i++) {
+        vec2 anim = vec2(uTime * 0.06 * float(i + 1), uTime * 0.05 * float(i + 1));
+        acc += valueNoise(p * freq + anim) * amp;
+        tot += amp; amp *= 0.5; freq *= 2.0;
+      }
+      n = acc / tot;
     }
 
     vec3 col;

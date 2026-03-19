@@ -18,13 +18,20 @@
  *   - 3D imported models
  */
 
-const FORMAT_VERSION = 1;
+const FORMAT_VERSION = 2;
 
 export class ProjectFile {
-  constructor(ps, presetMgr, tableManager) {
+  /**
+   * @param {object} ps           ParameterSystem
+   * @param {object} presetMgr    PresetManager
+   * @param {object} tableManager TableManager (optional)
+   * @param {object} extras       Extra save/restore hooks: { warpEditor }
+   */
+  constructor(ps, presetMgr, tableManager, extras = {}) {
     this.ps      = ps;
     this.presets = presetMgr;
     this.tables  = tableManager;
+    this.extras  = extras; // { warpEditor }
   }
 
   // ── Export ────────────────────────────────────────────────────────────────
@@ -35,16 +42,15 @@ export class ProjectFile {
     const blob = new Blob([json], { type: 'application/json' });
     const a    = document.createElement('a');
     a.href     = URL.createObjectURL(blob);
-    a.download = `${name.replace(/\s+/g, '-')}.imweb`;
+    a.download = `${name.replace(/[^a-z0-9_\-\s]/gi, '_')}.imweb`;
     a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 5000);
   }
 
   async _collect(name) {
-    // Gather all presets from IndexedDB via PresetManager
     const presets = await this.presets.exportAll();
 
-    // Gather user tables (non-builtins)
+    // User tables (non-builtins)
     const tables = {};
     if (this.tables) {
       this.tables.getNames().forEach(tName => {
@@ -54,46 +60,52 @@ export class ProjectFile {
       });
     }
 
+    // Warp map editor state (if provided)
+    let warpMap  = null;
+    let warpSlots = null;
+    if (this.extras.warpEditor) {
+      const ed = this.extras.warpEditor;
+      warpMap   = { dx: Array.from(ed.dx), dy: Array.from(ed.dy) };
+      try { warpSlots = JSON.parse(localStorage.getItem('imweb-warpmaps') ?? '{}'); } catch { warpSlots = {}; }
+    }
+
     return {
-      _type:    'imweb-project',
-      _version: FORMAT_VERSION,
-      _name:    name,
-      _date:    new Date().toISOString(),
+      _type:        'imweb-project',
+      _version:     FORMAT_VERSION,
+      _name:        name,
+      _date:        new Date().toISOString(),
       activePreset: this.presets.currentIndex,
+      params:       this.ps.captureState(),
       presets,
       tables,
+      warpMap,
+      warpSlots,
     };
   }
 
   // ── Import ────────────────────────────────────────────────────────────────
 
-  import(file) {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = async e => {
-        try {
-          const data = JSON.parse(e.target.result);
-          await this._apply(data);
-          resolve(data._name ?? 'project');
-        } catch (err) {
-          reject(err);
-        }
-      };
-      reader.onerror = () => reject(new Error('Could not read file'));
-      reader.readAsText(file);
-    });
+  async import(file) {
+    const text = await file.text();
+    const data = JSON.parse(text);
+    await this._apply(data);
+    return data._name ?? data.name ?? 'project';
   }
 
   async _apply(data) {
-    if (data._type !== 'imweb-project') throw new Error('Not an ImWeb project file');
-    if (data._version > FORMAT_VERSION) {
+    // Accept both v1/v2 (_type) and the inline format (format:'imweb')
+    const isLegacy = data._type === 'imweb-project';
+    const isInline = data.format === 'imweb';
+    if (!isLegacy && !isInline) throw new Error('Not a valid .imweb project file');
+
+    if (isLegacy && data._version > FORMAT_VERSION) {
       console.warn(`[ProjectFile] Version ${data._version} > ${FORMAT_VERSION} — loading anyway`);
     }
 
-    // Import tables first (presets may reference them)
+    // Import tables
     if (data.tables && this.tables) {
-      Object.entries(data.tables).forEach(([name, points]) => {
-        this.tables.set(name, points);
+      Object.entries(data.tables).forEach(([tName, points]) => {
+        this.tables.set(tName, points);
       });
     }
 
@@ -103,8 +115,27 @@ export class ProjectFile {
     }
 
     // Restore active preset
-    if (typeof data.activePreset === 'number') {
-      await this.presets.loadPreset(data.activePreset);
+    const presetIdx = data.activePreset ?? data.currentPreset ?? 0;
+    if (typeof presetIdx === 'number') {
+      await this.presets.loadPreset(presetIdx);
     }
+
+    // Restore live params (overlay on top of preset)
+    if (data.params) {
+      this.ps.restoreState(data.params);
+    }
+
+    // Restore warp map
+    if (this.extras.warpEditor && data.warpMap?.dx && data.warpMap?.dy) {
+      const ed = this.extras.warpEditor;
+      ed.dx = new Float32Array(data.warpMap.dx);
+      ed.dy = new Float32Array(data.warpMap.dy);
+      ed._rebuild();
+    }
+    if (data.warpSlots) {
+      localStorage.setItem('imweb-warpmaps', JSON.stringify(data.warpSlots));
+    }
+
+    return data._name ?? data.name ?? 'project';
   }
 }
