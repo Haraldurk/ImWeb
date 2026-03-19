@@ -1374,3 +1374,172 @@ body.fullscreen-output #app {
   50% { opacity: 1.0; }
 }
 .param-ctrl.lfo { animation: lfo-pulse 2s ease-in-out infinite; }
+
+/* ── AI FEATURES ─────────────────────────────────────────────────────────── */
+
+/* Settings panel — floats below ⚙ button in status bar */
+.ai-settings-panel {
+  position: fixed;
+  top: var(--status-h);
+  right: 8px;
+  width: 280px;
+  background: var(--bg-2);
+  border: 1px solid var(--border-hi);
+  border-radius: 4px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.7);
+  z-index: 500;
+  padding: 10px 12px 12px;
+  font-family: var(--mono);
+  font-size: 11px;
+}
+.ai-settings-panel.hidden { display: none; }
+
+.ai-settings-hdr {
+  font-size: 10px;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 8px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+}
+
+.ai-key-status {
+  font-size: 11px;
+  color: var(--text-2);
+  margin-bottom: 6px;
+  min-height: 16px;
+}
+.ai-key-status.ok    { color: var(--green); }
+.ai-key-status.error { color: var(--red); }
+
+.ai-key-input {
+  width: 100%;
+  background: var(--bg-3);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  color: var(--text-0);
+  font-family: var(--mono);
+  font-size: 11px;
+  padding: 5px 8px;
+  outline: none;
+  box-sizing: border-box;
+  margin-bottom: 4px;
+}
+.ai-key-input:focus { border-color: var(--accent-dim); }
+
+.ai-settings-note {
+  font-size: 10px;
+  color: var(--text-2);
+  margin-top: 8px;
+  line-height: 1.5;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+
+/* AI Preset Generator section (inside Presets tab) */
+#ai-preset-ui {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-3);
+}
+
+.ai-section-hdr {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 6px;
+}
+
+.ai-text-input {
+  width: 100%;
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  color: var(--text-0);
+  font-family: var(--mono);
+  font-size: 11px;
+  padding: 5px 8px;
+  outline: none;
+  resize: vertical;
+  min-height: 44px;
+  box-sizing: border-box;
+  margin-bottom: 5px;
+  line-height: 1.4;
+}
+.ai-text-input:focus { border-color: var(--accent-dim); }
+.ai-text-input::placeholder { color: var(--text-2); }
+
+.ai-result {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-1);
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 6px 8px;
+  margin-top: 5px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.ai-result.hidden { display: none; }
+.ai-result.error  { color: var(--red); border-color: var(--red-dim); }
+
+/* Parameter Narrator overlay — text at bottom of output canvas */
+#ai-narrator-overlay {
+  position: absolute;
+  bottom: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  max-width: 80%;
+  background: rgba(0,0,0,0.55);
+  color: var(--accent);
+  font-family: var(--mono);
+  font-size: 12px;
+  padding: 5px 12px;
+  border-radius: 3px;
+  pointer-events: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  z-index: 50;
+  letter-spacing: 0.04em;
+  border: 1px solid var(--accent-dim);
+  text-shadow: 0 1px 4px rgba(0,0,0,0.8);
+}
+#ai-narrator-overlay.hidden { display: none; }
+
+/* Performance Coach notification toast */
+@keyframes coach-fade {
+  0%   { opacity: 1; transform: translateY(0); }
+  70%  { opacity: 1; transform: translateY(0); }
+  100% { opacity: 0; transform: translateY(-6px); }
+}
+
+.ai-coach-notif {
+  position: fixed;
+  top: calc(var(--status-h) + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--bg-3);
+  border: 1px solid var(--accent-dim);
+  border-radius: 4px;
+  color: var(--accent);
+  font-family: var(--mono);
+  font-size: 12px;
+  padding: 7px 16px;
+  pointer-events: none;
+  white-space: nowrap;
+  z-index: 600;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+  letter-spacing: 0.04em;
+  transition: opacity 0.6s ease;
+}
+
+/* Active state for AI status bar buttons */
+#btn-ai-narrator.active { color: var(--accent) !important; border-color: var(--accent-dim) !important; }
+#btn-ai-coach.active    { color: var(--green) !important; border-color: var(--green-dim) !important; }
+#btn-ai-settings.active { color: var(--accent) !important; }

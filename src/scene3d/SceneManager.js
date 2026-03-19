@@ -36,6 +36,18 @@ export class SceneManager {
       generateMipmaps: false,
     });
 
+    // Depth render target — grayscale depth map for use as displacement/key source
+    this.depthTarget = new THREE.WebGLRenderTarget(width, height, {
+      minFilter: THREE.LinearFilter,
+      magFilter: THREE.LinearFilter,
+      format:    THREE.RGBAFormat,
+      type:      THREE.UnsignedByteType,
+      generateMipmaps: false,
+    });
+    this._depthMat = new THREE.MeshDepthMaterial({
+      depthPacking: THREE.BasicDepthPacking,
+    });
+
     // Current mesh
     this.mesh     = null;
     this.material = null;
@@ -261,23 +273,38 @@ export class SceneManager {
   render(params, dt = 0, inputs = {}) {
     this.applyParams(params, dt, inputs);
     const prev = this.renderer.getRenderTarget();
+
+    // Color pass
     this.renderer.setRenderTarget(this.target);
     this.renderer.render(this.scene, this.camera);
+
+    // Depth pass — only when scene3d.depth.active is set, to avoid wasting GPU
+    if (params.get('scene3d.depth.active')?.value) {
+      this.scene.overrideMaterial = this._depthMat;
+      this.renderer.setRenderTarget(this.depthTarget);
+      this.renderer.render(this.scene, this.camera);
+      this.scene.overrideMaterial = null;
+    }
+
     this.renderer.setRenderTarget(prev);
   }
 
-  get texture() { return this.target.texture; }
+  get texture()      { return this.target.texture; }
+  get depthTexture() { return this.depthTarget.texture; }
   get importedModelName() { return this._importedModelName; }
 
   resize(w, h) {
     this.width = w; this.height = h;
     this.target.setSize(w, h);
+    this.depthTarget.setSize(w, h);
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
   }
 
   dispose() {
     this.target.dispose();
+    this.depthTarget.dispose();
+    this._depthMat.dispose();
     this.scene.traverse(obj => {
       if (obj.geometry) obj.geometry.dispose();
       if (obj.material) obj.material.dispose();

@@ -328,7 +328,7 @@ export class ParameterSystem extends EventTarget {
 export function registerCoreParameters(ps) {
 
   // ── Layer source selection ────────────────────────────────────────────────
-  const SOURCES = ['Camera', 'Movie', 'Buffer', 'Color', 'Noise', '3D Scene', 'Draw', 'Output', 'BG1', 'BG2', 'Color2', 'Text', 'Sound', 'Delay', 'Scope', 'SlitScan', 'Particles', 'Seq1', 'Seq2', 'Seq3'];
+  const SOURCES = ['Camera', 'Movie', 'Buffer', 'Color', 'Noise', '3D Scene', 'Draw', 'Output', 'BG1', 'BG2', 'Color2', 'Text', 'Sound', 'Delay', 'Scope', 'SlitScan', 'Particles', 'Seq1', 'Seq2', 'Seq3', '3D Depth'];
 
   ps.register({ id: 'layer.fg', label: 'Foreground', group: 'layers',
     type: PARAM_TYPE.SELECT, options: SOURCES, value: 0, feedbackVisible: true }); // default: Camera
@@ -566,6 +566,8 @@ export function registerCoreParameters(ps) {
     min: -180, max: 180, value: 0, unit: '°/s' });
   ps.register({ id: 'scene3d.spin.z', label: 'Spin Z', group: 'scene3d',
     min: -180, max: 180, value: 0, unit: '°/s' });
+  ps.register({ id: 'scene3d.depth.active', label: 'DepthPass', group: 'scene3d',
+    type: PARAM_TYPE.TOGGLE, value: 0 });
 
   // ── Draw ──────────────────────────────────────────────────────────────────
   ps.register({ id: 'draw.pensize',   label: 'DrawPenSize',  group: 'draw',
@@ -576,6 +578,16 @@ export function registerCoreParameters(ps) {
     min: 0, max: 100, value: 50 });
   ps.register({ id: 'draw.y',        label: 'DrawY',        group: 'draw',
     min: 0, max: 100, value: 50 });
+  ps.register({ id: 'draw.color.h',  label: 'PenHue',       group: 'draw',
+    min: 0, max: 360, value: 0, unit: '°' });
+  ps.register({ id: 'draw.color.s',  label: 'PenSat',       group: 'draw',
+    min: 0, max: 100, value: 0, unit: '%' });
+  ps.register({ id: 'draw.color.v',  label: 'PenBright',    group: 'draw',
+    min: 0, max: 100, value: 100, unit: '%' });
+  ps.register({ id: 'draw.opacity',  label: 'PenOpacity',   group: 'draw',
+    min: 1, max: 100, value: 100, unit: '%' });
+  ps.register({ id: 'draw.fade',     label: 'DrawFade',     group: 'draw',
+    min: 0, max: 1, value: 0, step: 0.005 }); // 0 = no fade, 1 = instant clear
   ps.register({ id: 'draw.clear',    label: 'ClearDraw',    group: 'draw',
     type: PARAM_TYPE.TRIGGER });
 
