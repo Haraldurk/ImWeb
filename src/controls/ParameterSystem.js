@@ -50,6 +50,8 @@ export class Parameter {
     this.invert          = false;
     this.cycle           = false;   // for SELECT: cycle on trigger
     this.slew            = 0;       // 0=instant, 0.001–1.0 seconds (lag time)
+    this.ctrlMin         = null;    // controller output range override (null = param.min)
+    this.ctrlMax         = null;    // controller output range override (null = param.max)
     this.feedbackVisible = config.feedbackVisible ?? false;
     this.feedbackPos     = config.feedbackPos ?? { x: 20, y: 60 };
 
@@ -107,7 +109,9 @@ export class Parameter {
     } else if (this.type === PARAM_TYPE.SELECT) {
       this.value = Math.round(applied * ((this.options?.length ?? 1) - 1));
     } else {
-      const target = this.min + applied * (this.max - this.min);
+      const lo = this.ctrlMin ?? this.min;
+      const hi = this.ctrlMax ?? this.max;
+      const target = lo + applied * (hi - lo);
       if (this.slew > 0) {
         this._target = target; // defer to tickSlew
       } else {
@@ -201,7 +205,12 @@ export class Parameter {
       id:          this.id,
       value:       this._value,
       controller:  this.controller   ? { ...this.controller }  : null,
+      xControllers: this.xControllers.length
+        ? this.xControllers.map(xc => xc ? { ...xc, _fn: undefined, _rState: undefined } : null)
+        : undefined,
       table:       this.table,
+      ctrlMin:     this.ctrlMin,
+      ctrlMax:     this.ctrlMax,
       invert:      this.invert,
       cycle:       this.cycle,
       slew:        this.slew,
@@ -213,7 +222,12 @@ export class Parameter {
   deserialize(data) {
     if (data.value       !== undefined) this.value = data.value;
     if (data.controller  !== undefined) this.controller = data.controller;
+    if (data.xControllers !== undefined) {
+      this.xControllers = (data.xControllers ?? []).map(xc => xc ? { ...xc } : null);
+    }
     if (data.table       !== undefined) this.table = data.table;
+    if (data.ctrlMin     !== undefined) this.ctrlMin = data.ctrlMin;
+    if (data.ctrlMax     !== undefined) this.ctrlMax = data.ctrlMax;
     if (data.invert      !== undefined) this.invert = data.invert;
     if (data.cycle       !== undefined) this.cycle = data.cycle;
     if (data.slew        !== undefined) this.slew = data.slew;
@@ -294,7 +308,7 @@ export class ParameterSystem extends EventTarget {
   serializeControllers() {
     const r = {};
     this.params.forEach((p, id) => {
-      if (p.controller || p.table || p.invert) r[id] = p.serialize();
+      if (p.controller || p.table || p.invert || p.xControllers.length || p.ctrlMin !== null || p.ctrlMax !== null) r[id] = p.serialize();
     });
     return r;
   }
@@ -314,10 +328,10 @@ export class ParameterSystem extends EventTarget {
 export function registerCoreParameters(ps) {
 
   // ── Layer source selection ────────────────────────────────────────────────
-  const SOURCES = ['Camera', 'Movie', 'Buffer', 'Color', 'Noise', '3D Scene', 'Draw', 'Output', 'BG1', 'BG2', 'Color2', 'Text', 'Sound', 'Delay', 'Scope', 'SlitScan', 'Particles'];
+  const SOURCES = ['Camera', 'Movie', 'Buffer', 'Color', 'Noise', '3D Scene', 'Draw', 'Output', 'BG1', 'BG2', 'Color2', 'Text', 'Sound', 'Delay', 'Scope', 'SlitScan', 'Particles', 'Seq1', 'Seq2', 'Seq3'];
 
   ps.register({ id: 'layer.fg', label: 'Foreground', group: 'layers',
-    type: PARAM_TYPE.SELECT, options: SOURCES, value: 3, feedbackVisible: true }); // default: Color
+    type: PARAM_TYPE.SELECT, options: SOURCES, value: 0, feedbackVisible: true }); // default: Camera
   ps.register({ id: 'layer.bg', label: 'Background', group: 'layers',
     type: PARAM_TYPE.SELECT, options: SOURCES, value: 3, feedbackVisible: true }); // default: Color
   ps.register({ id: 'layer.ds', label: 'DisplaceSrc', group: 'layers',
@@ -361,6 +375,8 @@ export function registerCoreParameters(ps) {
   ps.register({ id: 'displace.warp',    label: 'WarpMode',      group: 'displace',
     min: 0, max: 8, value: 0, type: PARAM_TYPE.SELECT,
     options: ['off','H-Wave','V-Wave','Radial','Spiral','Shear','Pinch','Turb','Rings'] });
+  ps.register({ id: 'displace.warpamt', label: 'WarpAmt',       group: 'displace',
+    min: 0, max: 100, value: 50, unit: '%' });
 
   // ── Blend & Feedback ──────────────────────────────────────────────────────
   ps.register({ id: 'blend.active',     label: 'Blend',         group: 'blend',
@@ -380,8 +396,15 @@ export function registerCoreParameters(ps) {
   ps.register({ id: 'output.colorshift',label: 'ColorShift',    group: 'blend',
     min: 0, max: 100, value: 0 });
   ps.register({ id: 'output.transfer',  label: 'TransferMode',  group: 'blend',
-    type: PARAM_TYPE.SELECT, options: ['copy', 'xor', 'or', 'and'], value: 0,
-    feedbackVisible: true });
+    type: PARAM_TYPE.SELECT,
+    options: [
+      'Copy','XOR','OR','AND',
+      'Multiply','Screen','Add','Difference','Exclude',
+      'Overlay','Hardlight','Softlight','Dodge','Burn',
+      'Subtract','Divide','PinLight','VividLight',
+      'Hue','Saturation','Color','Luminosity',
+    ],
+    value: 0, feedbackVisible: true });
   ps.register({ id: 'output.interlace', label: 'Interlace',     group: 'blend',
     min: 0, max: 8, value: 0, step: 1 });
   ps.register({ id: 'output.fade',      label: 'Fade',          group: 'blend',
@@ -405,10 +428,17 @@ export function registerCoreParameters(ps) {
   ps.register({ id: 'color2.type', label: 'Col2 Type', group: 'color',
     type: PARAM_TYPE.SELECT,
     options: ['Solid','Grad H','Grad V','Grad R'], value: 0 });
+  ps.register({ id: 'color2.speed', label: 'Col2 Speed', group: 'color',
+    min: -200, max: 200, value: 0, unit: '%' });
 
   // ── Noise ─────────────────────────────────────────────────────────────────
-  ps.register({ id: 'noise.type', label: 'NoiseType', group: 'noise',
-    type: PARAM_TYPE.SELECT, options: ['Pixel','H-Lines','V-Lines'], value: 0 });
+  ps.register({ id: 'noise.type',  label: 'NoiseType',  group: 'noise',
+    type: PARAM_TYPE.SELECT,
+    options: ['White','Smooth','Pink','Brown','Gaussian','Salt&Pep','Speckle','H-Lines'], value: 0 });
+  ps.register({ id: 'noise.scale', label: 'GrainSize',  group: 'noise',
+    min: 1, max: 64, value: 1, step: 1 });
+  ps.register({ id: 'noise.color', label: 'ColorNoise', group: 'noise',
+    type: PARAM_TYPE.TOGGLE, value: 0 });
 
   // ── Mirror ────────────────────────────────────────────────────────────────
   ps.register({ id: 'mirror.camera', label: 'Mirror Cam',    group: 'mirror',
@@ -420,9 +450,10 @@ export function registerCoreParameters(ps) {
 
   // ── Buffer / Stills ───────────────────────────────────────────────────────
   ps.register({ id: 'buffer.source', label: 'CaptureFrom', group: 'buffer',
-    type: PARAM_TYPE.SELECT, options: ['Screen','Camera','Movie','Draw'], value: 0 });
-  ps.register({ id: 'buffer.size',   label: 'BufferSize',  group: 'buffer',
-    type: PARAM_TYPE.SELECT, options: ['4','8','16','32'], value: 2 }); // default = 16 frames
+    type: PARAM_TYPE.SELECT,
+    options: ['Screen','Camera','Movie','Draw','FG Layer','BG Layer','3D Scene'], value: 0 });
+  ps.register({ id: 'buffer.rows', label: 'Rows', type: PARAM_TYPE.CONTINUOUS, min: 1, max: 8, value: 4, step: 1, group: 'buffer' }),
+  ps.register({ id: 'buffer.cols', label: 'Cols', type: PARAM_TYPE.CONTINUOUS, min: 1, max: 8, value: 4, step: 1, group: 'buffer' }),
   ps.register({ id: 'buffer.auto',   label: 'AutoCapture', group: 'buffer',
     type: PARAM_TYPE.TOGGLE, value: 0 });
   ps.register({ id: 'buffer.rate',   label: 'CaptureRate', group: 'buffer',
@@ -434,13 +465,13 @@ export function registerCoreParameters(ps) {
   ps.register({ id: 'buffer.scale', label: 'Scale', group: 'buffer',
     min: 0, max: 5, value: 1, feedbackVisible: true });
   ps.register({ id: 'buffer.fs1',   label: 'FrameSelect 1', group: 'buffer',
-    min: 0, max: 15, value: 0, step: 1 });
+    min: 0, max: 63, value: 0, step: 1 });
   ps.register({ id: 'buffer.fs2',   label: 'FrameSelect 2', group: 'buffer',
-    min: 0, max: 15, value: 0, step: 1 });
+    min: 0, max: 63, value: 0, step: 1 });
   ps.register({ id: 'buffer.frameblend', label: 'FrameBlend', group: 'buffer',
     min: 0, max: 100, value: 0, unit: '%' });
   ps.register({ id: 'buffer.fs3',   label: 'FrameSelect 3', group: 'buffer',
-    min: 0, max: 15, value: 0, step: 1 });
+    min: 0, max: 63, value: 0, step: 1 });
   ps.register({ id: 'buffer.scan',      label: 'ScanFrames', group: 'buffer',
     type: PARAM_TYPE.TOGGLE, value: 0 });
   ps.register({ id: 'buffer.scanrate',  label: 'ScanRate',   group: 'buffer',
@@ -520,6 +551,13 @@ export function registerCoreParameters(ps) {
     min: 0, max: 1, value: 0.0 });
   ps.register({ id: 'scene3d.mat.opacity',   label: 'Opacity',   group: 'scene3d',
     min: 0, max: 1, value: 1.0 });
+  ps.register({ id: 'scene3d.mat.hue',       label: 'MatHue',    group: 'scene3d',
+    min: 0, max: 360, value: 240, unit: '°' });
+  ps.register({ id: 'scene3d.mat.sat',       label: 'MatSat',    group: 'scene3d',
+    min: 0, max: 100, value: 50, unit: '%' });
+  ps.register({ id: 'scene3d.mat.texsrc', label: 'TexSrc', group: 'scene3d',
+    type: PARAM_TYPE.SELECT,
+    options: ['None','Camera','Movie','Screen','Draw','Buffer'], value: 0 });
   ps.register({ id: 'scene3d.light.intensity', label: 'Light Int.', group: 'scene3d',
     min: 0, max: 5, value: 1.0 });
   ps.register({ id: 'scene3d.spin.x', label: 'Spin X', group: 'scene3d',
@@ -543,13 +581,25 @@ export function registerCoreParameters(ps) {
 
   // ── Text ──────────────────────────────────────────────────────────────────
   ps.register({ id: 'text.size',    label: 'TextSize',    group: 'text',
-    min: 8, max: 255, value: 72 });
+    min: 8, max: 400, value: 72 });
   ps.register({ id: 'text.x',       label: 'TextX',       group: 'text',
     min: 0, max: 100, value: 50 });
   ps.register({ id: 'text.y',       label: 'TextY',       group: 'text',
     min: 0, max: 100, value: 50 });
   ps.register({ id: 'text.hue',     label: 'TextHue',     group: 'text',
-    min: 0, max: 100, value: 0, unit: '°' });
+    min: 0, max: 360, value: 0, unit: '°' });
+  ps.register({ id: 'text.sat',     label: 'TextSat',     group: 'text',
+    min: 0, max: 100, value: 0, unit: '%' });
+  ps.register({ id: 'text.opacity', label: 'TextOpacity', group: 'text',
+    min: 0, max: 100, value: 100, unit: '%' });
+  ps.register({ id: 'text.align',   label: 'TextAlign',   group: 'text',
+    type: PARAM_TYPE.SELECT, options: ['Center','Left','Right'], value: 0 });
+  ps.register({ id: 'text.font',    label: 'FontStyle',   group: 'text',
+    type: PARAM_TYPE.SELECT, options: ['Sans','Serif','Mono','Bold','Italic'], value: 0 });
+  ps.register({ id: 'text.outline', label: 'Outline',     group: 'text',
+    min: 0, max: 20, value: 0, unit: 'px' });
+  ps.register({ id: 'text.spacing', label: 'LineSpacing', group: 'text',
+    min: 0.5, max: 3, value: 1.2 });
   ps.register({ id: 'text.mode',    label: 'AdvanceMode', group: 'text',
     type: PARAM_TYPE.SELECT, options: ['All','Char','Word','Line'], value: 0 });
   ps.register({ id: 'text.bg',      label: 'BlackBG',     group: 'text',
@@ -581,20 +631,26 @@ export function registerCoreParameters(ps) {
     min: 0.1, max: 20, value: 2, unit: 's' });
   ps.register({ id: 'global.beatdetect', label: 'Auto BPM', group: 'global',
     type: PARAM_TYPE.TOGGLE, value: 0 });
+  ps.register({ id: 'global.debug',     label: 'Debug',    group: 'global',
+    type: PARAM_TYPE.TOGGLE, value: 0 });
 
   // ── Per-layer color correction ────────────────────────────────────────────
-  ps.register({ id: 'fg.hue',    label: 'FG Hue',    group: 'fg',
+  ps.register({ id: 'fg.hue',     label: 'FG Hue',     group: 'fg',
     min: -180, max: 180, value: 0, unit: '°' });
-  ps.register({ id: 'fg.sat',    label: 'FG Sat',    group: 'fg',
+  ps.register({ id: 'fg.sat',     label: 'FG Sat',     group: 'fg',
     min: 0, max: 200, value: 100, unit: '%' });
-  ps.register({ id: 'fg.bright', label: 'FG Bright', group: 'fg',
+  ps.register({ id: 'fg.bright',  label: 'FG Bright',  group: 'fg',
     min: 0, max: 200, value: 100, unit: '%' });
-  ps.register({ id: 'bg.hue',    label: 'BG Hue',    group: 'bg',
+  ps.register({ id: 'fg.opacity', label: 'FG Opacity', group: 'fg',
+    min: 0, max: 100, value: 100, unit: '%' });
+  ps.register({ id: 'bg.hue',     label: 'BG Hue',     group: 'bg',
     min: -180, max: 180, value: 0, unit: '°' });
-  ps.register({ id: 'bg.sat',    label: 'BG Sat',    group: 'bg',
+  ps.register({ id: 'bg.sat',     label: 'BG Sat',     group: 'bg',
     min: 0, max: 200, value: 100, unit: '%' });
-  ps.register({ id: 'bg.bright', label: 'BG Bright', group: 'bg',
+  ps.register({ id: 'bg.bright',  label: 'BG Bright',  group: 'bg',
     min: 0, max: 200, value: 100, unit: '%' });
+  ps.register({ id: 'bg.opacity', label: 'BG Opacity', group: 'bg',
+    min: 0, max: 100, value: 100, unit: '%' });
 
   // ── Effects ───────────────────────────────────────────────────────────────
   ps.register({ id: 'effect.pixelate',  label: 'Pixelate',   group: 'effect',
@@ -652,6 +708,12 @@ export function registerCoreParameters(ps) {
   ps.register({ id: 'effect.lutamount',  label: 'LUT Amount', group: 'lut',
     min: 0, max: 100, value: 100, unit: '%' });
 
+  // ── White Balance ─────────────────────────────────────────────────────────
+  ps.register({ id: 'effect.wbtemp', label: 'WB Temp',  group: 'effect',
+    min: -100, max: 100, value: 0, unit: '' });
+  ps.register({ id: 'effect.wbtint', label: 'WB Tint',  group: 'effect',
+    min: -100, max: 100, value: 0, unit: '' });
+
   // ── Pixel Sort ────────────────────────────────────────────────────────────
   ps.register({ id: 'effect.pixelsort',   label: 'PixSort',    group: 'effect',
     min: 0, max: 100, value: 0, unit: '%' });
@@ -692,11 +754,26 @@ export function registerCoreParameters(ps) {
   ps.register({ id: 'slitscan.speed',  label: 'SlitSpeed',  group: 'slitscan',
     min: 0.5, max: 60, value: 15, unit: 'fps' });
   ps.register({ id: 'slitscan.axis',   label: 'SlitAxis',   group: 'slitscan',
-    type: PARAM_TYPE.SELECT, options: ['Vertical','Horizontal'], value: 0 });
+    type: PARAM_TYPE.SELECT, options: ['Vertical','Horizontal','Center-V','Center-H'], value: 0 });
   ps.register({ id: 'slitscan.width',  label: 'SlitWidth',  group: 'slitscan',
     min: 1, max: 16, value: 2, unit: 'px', step: 1 });
   ps.register({ id: 'slitscan.clear',  label: 'SlitClear',  group: 'slitscan',
     type: PARAM_TYPE.TRIGGER });
+
+  // ── Sequence Buffers ──────────────────────────────────────────────────────
+  const SEQ_SOURCES = ['Output','Camera','Movie','FG','BG','Buffer','Draw'];
+  ps.register({ id: 'seq1.active',  label: 'Seq1 Rec',    type: PARAM_TYPE.TOGGLE,     group: 'seq', value: 0 });
+  ps.register({ id: 'seq1.source',  label: 'Seq1 Source', type: PARAM_TYPE.SELECT,     group: 'seq', options: SEQ_SOURCES, value: 0 });
+  ps.register({ id: 'seq1.speed',   label: 'Seq1 Speed',  type: PARAM_TYPE.CONTINUOUS, group: 'seq', min: -300, max: 300, value: 100, unit: '%' });
+  ps.register({ id: 'seq1.size',    label: 'Seq1 Frames', type: PARAM_TYPE.CONTINUOUS, group: 'seq', min: 4, max: 480, value: 60, step: 1 });
+  ps.register({ id: 'seq2.active',  label: 'Seq2 Rec',    type: PARAM_TYPE.TOGGLE,     group: 'seq', value: 0 });
+  ps.register({ id: 'seq2.source',  label: 'Seq2 Source', type: PARAM_TYPE.SELECT,     group: 'seq', options: SEQ_SOURCES, value: 0 });
+  ps.register({ id: 'seq2.speed',   label: 'Seq2 Speed',  type: PARAM_TYPE.CONTINUOUS, group: 'seq', min: -300, max: 300, value: 100, unit: '%' });
+  ps.register({ id: 'seq2.size',    label: 'Seq2 Frames', type: PARAM_TYPE.CONTINUOUS, group: 'seq', min: 4, max: 480, value: 60, step: 1 });
+  ps.register({ id: 'seq3.active',  label: 'Seq3 Rec',    type: PARAM_TYPE.TOGGLE,     group: 'seq', value: 0 });
+  ps.register({ id: 'seq3.source',  label: 'Seq3 Source', type: PARAM_TYPE.SELECT,     group: 'seq', options: SEQ_SOURCES, value: 0 });
+  ps.register({ id: 'seq3.speed',   label: 'Seq3 Speed',  type: PARAM_TYPE.CONTINUOUS, group: 'seq', min: -300, max: 300, value: 100, unit: '%' });
+  ps.register({ id: 'seq3.size',    label: 'Seq3 Frames', type: PARAM_TYPE.CONTINUOUS, group: 'seq', min: 4, max: 480, value: 60, step: 1 });
 
   // ── Vectorscope ───────────────────────────────────────────────────────────
   ps.register({ id: 'vectorscope.mode',  label: 'VScope Mode',  group: 'vectorscope',

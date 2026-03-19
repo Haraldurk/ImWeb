@@ -5,6 +5,8 @@
  */
 
 import { PARAM_TYPE } from '../controls/ParameterSystem.js';
+import { DEFAULT_FX_ORDER } from '../core/Pipeline.js';
+const DEFAULT_FX_ORDER_SP = DEFAULT_FX_ORDER;
 
 // ── Tab switching ──────────────────────────────────────────────────────────────
 
@@ -29,7 +31,8 @@ export function initTabs() {
  */
 export function buildParamRow(param, contextMenu) {
   const row = document.createElement('div');
-  row.className = `param-row ${param.type === PARAM_TYPE.TOGGLE ? 'toggle-row' : ''}`;
+  const typeClass = { [PARAM_TYPE.TOGGLE]: 'toggle-row', [PARAM_TYPE.SELECT]: 'select-row', [PARAM_TYPE.TRIGGER]: 'trigger-row' }[param.type] ?? '';
+  row.className = `param-row ${typeClass}`;
   row.dataset.paramId = param.id;
 
   const label = document.createElement('span');
@@ -74,12 +77,15 @@ export function buildParamRow(param, contextMenu) {
 
     window.addEventListener('mouseup', () => { dragging = false; });
 
-    // Scroll to adjust
+    // Alt+wheel or horizontal scroll to adjust value; plain vertical scroll scrolls the panel
     row.addEventListener('wheel', e => {
+      const horiz = Math.abs(e.deltaX) > Math.abs(e.deltaY);
+      if (!e.altKey && !horiz) return; // let vertical scroll pass through
       e.preventDefault();
       if (param.locked) return;
+      const delta = horiz ? e.deltaX : e.deltaY;
       const step = range * 0.01 * (e.shiftKey ? 5 : 1);
-      param.value = param.value - Math.sign(e.deltaY) * step;
+      param.value = param.value - Math.sign(delta) * step;
       updateDisplay();
     }, { passive: false });
 
@@ -151,7 +157,8 @@ export function buildParamRow(param, contextMenu) {
     btn.addEventListener('click', () => param.trigger());
     row.appendChild(label);
     row.appendChild(ctrlEl);
-    row.appendChild(btn);
+    valueEl.appendChild(btn);
+    row.appendChild(valueEl);
     return row;
   }
 
@@ -167,6 +174,59 @@ export function buildParamRow(param, contextMenu) {
 
   row.appendChild(label);
   row.appendChild(ctrlEl);
+
+  // Min / Max range fields (continuous params only)
+  if (param.type === PARAM_TYPE.CONTINUOUS) {
+    const makeRangeEl = (which) => {
+      const el = document.createElement('span');
+      el.className = 'param-range';
+      const refresh = () => {
+        const v = which === 'min' ? (param.ctrlMin ?? param.min) : (param.ctrlMax ?? param.max);
+        el.textContent = Number.isInteger(v) ? v : v.toFixed(1);
+        el.classList.toggle('overridden', which === 'min' ? param.ctrlMin !== null : param.ctrlMax !== null);
+      };
+      refresh();
+      param.onChange(refresh);
+
+      el.addEventListener('click', e => {
+        e.stopPropagation();
+        const current = which === 'min' ? (param.ctrlMin ?? param.min) : (param.ctrlMax ?? param.max);
+        const input = document.createElement('input');
+        input.type  = 'number';
+        input.value = current;
+        input.step  = 'any';
+        input.style.cssText = 'width:36px;font-size:10px;font-family:var(--mono);background:var(--bg-4);border:1px solid var(--accent);color:var(--text-0);padding:1px 2px;border-radius:2px;';
+        el.innerHTML = '';
+        el.appendChild(input);
+        input.focus();
+        input.select();
+        const commit = () => {
+          const v = parseFloat(input.value);
+          if (!isNaN(v)) {
+            if (which === 'min') param.ctrlMin = v;
+            else                 param.ctrlMax = v;
+          }
+          refresh();
+        };
+        input.addEventListener('blur', commit);
+        input.addEventListener('keydown', e2 => {
+          if (e2.key === 'Enter')  { commit(); e2.stopPropagation(); }
+          if (e2.key === 'Escape') { refresh(); e2.stopPropagation(); }
+        });
+        input.addEventListener('dblclick', e2 => {
+          e2.stopPropagation();
+          // Double-click resets to natural range
+          if (which === 'min') param.ctrlMin = null;
+          else                 param.ctrlMax = null;
+          refresh();
+        });
+      });
+      return el;
+    };
+    row.appendChild(makeRangeEl('min'));
+    row.appendChild(makeRangeEl('max'));
+  }
+
   row.appendChild(valueEl);
   return row;
 }
@@ -191,15 +251,15 @@ export function buildLayerButtons(ps, contextMenu) {
   el.innerHTML = '';
 
   [
-    { param: ps.get('layer.fg'), label: 'FG' },
-    { param: ps.get('layer.bg'), label: 'BG' },
-    { param: ps.get('layer.ds'), label: 'DS' },
+    { param: ps.get('layer.fg'), label: 'Foreground' },
+    { param: ps.get('layer.bg'), label: 'Background' },
+    { param: ps.get('layer.ds'), label: 'DisplaceSrc' },
   ].forEach(({ param, label }) => {
     const row = document.createElement('div');
-    row.className = 'layer-row';
+    row.className = 'param-row';
 
     const lbl = document.createElement('span');
-    lbl.className = 'layer-label';
+    lbl.className = 'param-label';
     lbl.textContent = label;
     lbl.addEventListener('contextmenu', e => {
       e.preventDefault();
@@ -207,32 +267,25 @@ export function buildLayerButtons(ps, contextMenu) {
     });
     row.appendChild(lbl);
 
-    const btns = document.createElement('div');
-    btns.className = 'layer-btns';
-
-    const buttons = [];
+    const sel = document.createElement('select');
+    sel.className = 'source-select';
     (param.options ?? []).forEach((opt, i) => {
-      const btn = document.createElement('button');
-      btn.className = 'source-btn';
-      btn.textContent = SOURCE_ABBREV[i] ?? opt.slice(0, 3).toUpperCase();
-      btn.title = opt;
-      btn.classList.toggle('active', i === param.value);
-      btn.addEventListener('click', () => { param.value = i; });
-      btn.addEventListener('contextmenu', e => {
-        e.preventDefault();
-        contextMenu?.show(param, e.clientX, e.clientY);
-      });
-      buttons.push(btn);
-      btns.appendChild(btn);
+      const option = document.createElement('option');
+      option.value = i;
+      option.textContent = opt;
+      if (i === param.value) option.selected = true;
+      sel.appendChild(option);
+    });
+    sel.addEventListener('change', () => { param.value = parseInt(sel.value); });
+    sel.addEventListener('contextmenu', e => {
+      e.preventDefault();
+      contextMenu?.show(param, e.clientX, e.clientY);
     });
 
-    // Keep highlight in sync with controller changes (MIDI, LFO, etc.)
-    param.onChange(v => {
-      const idx = Math.round(v);
-      buttons.forEach((b, i) => b.classList.toggle('active', i === idx));
-    });
+    // Keep in sync with controller changes (MIDI, LFO, etc.)
+    param.onChange(v => { sel.value = Math.round(v); });
 
-    row.appendChild(btns);
+    row.appendChild(sel);
     el.appendChild(row);
   });
 }
@@ -263,7 +316,8 @@ export function buildMappingPanels(ps, contextMenu) {
     'delay-params':        ps.getGroup('delay'),
     'vectorscope-params':  ps.getGroup('vectorscope'),
     'slitscan-params':     ps.getGroup('slitscan'),
-    'layer-params':        ps.getGroup('layers'),
+    // 'seq-params' is built by buildSeqParams() — skip here
+    // 'layer-params' is owned by buildLayerButtons() — do not render here
     'lut-params':          ps.getGroup('lut'),
   };
 
@@ -272,6 +326,111 @@ export function buildMappingPanels(ps, contextMenu) {
     if (!el || !params.length) return;
     el.innerHTML = '';
     params.forEach(p => el.appendChild(buildParamRow(p, contextMenu)));
+  });
+}
+
+// ── Sequence params panel ─────────────────────────────────────────────────────
+
+const SEQ_SRC_OPTS = [
+  { label: 'Out',  title: 'Output (composite)' },
+  { label: 'Cam',  title: 'Camera' },
+  { label: 'Mov',  title: 'Movie / Video clip' },
+  { label: 'FG',   title: 'Foreground layer source' },
+  { label: 'BG',   title: 'Background layer source' },
+  { label: 'Buf',  title: 'Stills buffer' },
+  { label: 'Draw', title: 'Draw layer' },
+];
+
+export function buildSeqParams(ps, contextMenu) {
+  const el = document.getElementById('seq-params');
+  if (!el) return;
+  el.innerHTML = '';
+
+  [1, 2, 3].forEach(n => {
+    const card = document.createElement('div');
+    card.className = 'seq-card';
+
+    // ── Header row: label + active toggle ──
+    const hdr = document.createElement('div');
+    hdr.className = 'seq-card-hdr';
+
+    const hdrLabel = document.createElement('span');
+    hdrLabel.className = 'seq-card-label';
+    hdrLabel.textContent = `Seq ${n}`;
+
+    const activeParam = ps.get(`seq${n}.active`);
+    const recBtn = document.createElement('button');
+    const setRecBtnState = () => {
+      recBtn.textContent = activeParam.value ? '⏺ REC' : '⏺ OFF';
+      recBtn.classList.toggle('active', !!activeParam.value);
+    };
+    setRecBtnState();
+    recBtn.title = 'Toggle recording';
+    recBtn.className = 'seq-rec-btn';
+    recBtn.addEventListener('click', () => {
+      activeParam.toggle();
+      setRecBtnState();
+    });
+    activeParam.onChange(setRecBtnState);
+
+    hdr.appendChild(hdrLabel);
+    hdr.appendChild(recBtn);
+    card.appendChild(hdr);
+
+    // ── Source row: compact buttons ──
+    const srcLabel = document.createElement('div');
+    srcLabel.className = 'seq-row-label';
+    srcLabel.textContent = 'Source';
+    card.appendChild(srcLabel);
+
+    const srcRow = document.createElement('div');
+    srcRow.className = 'seq-src-row';
+    const srcParam = ps.get(`seq${n}.source`);
+
+    SEQ_SRC_OPTS.forEach((opt, i) => {
+      const btn = document.createElement('button');
+      btn.textContent = opt.label;
+      btn.title = opt.title;
+      btn.className = 'seq-src-btn';
+      const refresh = () => btn.classList.toggle('active', srcParam.value === i);
+      refresh();
+      srcParam.onChange(refresh);
+      btn.addEventListener('click', () => {
+        srcParam.value = i;
+      });
+      btn.addEventListener('contextmenu', e => {
+        e.preventDefault();
+        contextMenu?.show(srcParam, e.clientX, e.clientY);
+      });
+      srcRow.appendChild(btn);
+    });
+    card.appendChild(srcRow);
+
+    // ── Speed row ──
+    const speedParam = ps.get(`seq${n}.speed`);
+    card.appendChild(buildParamRow(speedParam, contextMenu));
+
+    // ── Frames row + memory hint ──
+    const sizeParam = ps.get(`seq${n}.size`);
+    card.appendChild(buildParamRow(sizeParam, contextMenu));
+
+    // Memory estimate (updates live as slider is dragged)
+    const memHint = document.createElement('div');
+    memHint.className = 'seq-mem-hint';
+    const updateMemHint = (frames) => {
+      // Approximate: W × H × 4 bytes per frame; use screen size as proxy
+      const W = window.innerWidth  || 1280;
+      const H = window.innerHeight || 720;
+      const mb = Math.round(frames * W * H * 4 / 1024 / 1024);
+      const warn = mb > 800;
+      memHint.textContent = `≈ ${mb} MB VRAM${warn ? ' ⚠' : ''}`;
+      memHint.style.color = warn ? 'var(--red)' : 'var(--text-2)';
+    };
+    updateMemHint(sizeParam.value);
+    sizeParam.onChange(updateMemHint);
+    card.appendChild(memHint);
+
+    el.appendChild(card);
   });
 }
 
@@ -407,11 +566,39 @@ export class StateDots {
 
 // ── Signal path display ────────────────────────────────────────────────────────
 
+// Map from fx ID to { label, isActive(p) } for the signal path display
+const _FX_NODE_INFO = {
+  pixelate:    { label: 'pixel',   isActive: p => p.get('effect.pixelate').value > 1 },
+  edge:        { label: 'edge',    isActive: p => p.get('effect.edge').value > 0 },
+  rgbshift:    { label: 'rgb»',    isActive: p => p.get('effect.rgbshift').value > 0 },
+  kaleidoscope:{ label: 'kale',    isActive: p => p.get('effect.kaleidoscope').value >= 2 },
+  quadmirror:  { label: 'mirror',  isActive: p => p.get('effect.quadmirror').value > 0 },
+  posterize:   { label: 'poster',  isActive: p => p.get('effect.posterize').value < 32 },
+  solarize:    { label: 'solar',   isActive: p => p.get('effect.solarize').value < 100 },
+  vignette:    { label: 'vign',    isActive: p => p.get('effect.vignette').value > 0 },
+  bloom:       { label: 'bloom',   isActive: p => p.get('effect.bloom').value > 0 },
+  levels:      { label: 'levels',  isActive: p => p.get('effect.lvblack').value > 0 || p.get('effect.lvwhite').value < 100 || p.get('effect.lvgamma').value !== 100 },
+  lut:         { label: 'lut',     isActive: p => (p.get('effect.lutamount')?.value ?? 0) > 0 },
+  whitebal:    { label: 'wbal',    isActive: p => (p.get('effect.wbtemp')?.value ?? 0) !== 0 || (p.get('effect.wbtint')?.value ?? 0) !== 0 },
+  pixelsort:   { label: 'psort',   isActive: p => p.get('effect.pixelsort').value > 0 },
+  grain:       { label: 'grain',   isActive: p => p.get('effect.grain').value > 0 || p.get('effect.scanlines').value > 0 },
+};
+
 export class SignalPath {
-  constructor(ps) {
+  constructor({ ps, pipeline = null, onOrderChange = null }) {
     this.ps = ps;
+    this.pipeline = pipeline;
+    this.onOrderChange = onOrderChange;
     this.el = document.getElementById('signal-path-display');
+    this._fxOrder = pipeline ? [...pipeline.fxOrder] : [...DEFAULT_FX_ORDER_SP];
+    this._dragSrc = null;
     this._render();
+
+    // Re-render on sequence changes too
+    ['seq1.active','seq1.source','seq1.speed',
+     'seq2.active','seq2.source','seq2.speed',
+     'seq3.active','seq3.source','seq3.speed',
+    ].forEach(id => { ps.get(id)?.onChange(() => this._render()); });
 
     // Re-render on layer/effect changes
     [
@@ -423,6 +610,7 @@ export class SignalPath {
       'effect.pixelate','effect.edge','effect.rgbshift','effect.kaleidoscope','effect.posterize','effect.solarize',
       'effect.vignette','effect.bloom','effect.pixelsort','effect.grain','effect.scanlines','effect.strobe',
       'effect.quadmirror','effect.lvblack','effect.lvwhite','effect.lvgamma',
+      'effect.lutamount','effect.wbtemp','effect.wbtint',
       'fg.hue','fg.sat','fg.bright','bg.hue','bg.sat','bg.bright',
       'keyer.chroma',
     ].forEach(id => {
@@ -451,23 +639,15 @@ export class SignalPath {
     const fgCCon    = p.get('fg.hue').value !== 0 || p.get('fg.sat').value !== 100 || p.get('fg.bright').value !== 100;
     const bgCCon    = p.get('bg.hue').value !== 0 || p.get('bg.sat').value !== 100 || p.get('bg.bright').value !== 100;
     const chromaOn  = p.get('keyer.chroma').value;
-    const vigOn     = p.get('effect.vignette').value > 0;
-    const bloomOn   = p.get('effect.bloom').value > 0;
-    const pixOn     = p.get('effect.pixelate').value > 1;
-    const edgeOn    = p.get('effect.edge').value > 0;
-    const rgbOn     = p.get('effect.rgbshift').value > 0;
-    const kaleOn    = p.get('effect.kaleidoscope').value >= 2;
-    const psortOn   = p.get('effect.pixelsort').value > 0;
-    const grainOn   = p.get('effect.grain').value > 0 || p.get('effect.scanlines').value > 0;
-    const strobeOn2   = p.get('effect.strobe').value;
-    const qmOn        = p.get('effect.quadmirror').value > 0;
-    const levelsOn    = p.get('effect.lvblack').value > 0 || p.get('effect.lvwhite').value < 100 || p.get('effect.lvgamma').value !== 100;
-    const postOn    = p.get('effect.posterize').value < 32;
-    const solOn     = p.get('effect.solarize').value < 100;
+    const strobeOn2 = p.get('effect.strobe').value;
 
     this.el.innerHTML = '';
+    const mainRow = document.createElement('div');
+    mainRow.style.cssText = 'display:flex;align-items:center;gap:6px;';
+    this.el.appendChild(mainRow);
 
-    const nodes = [
+    // Build pre-FX fixed nodes
+    const fixedNodes = [
       { label: fgSrc,  type: 'source' },
       ...(fgCCon ? [{ label: 'fg-cc',  type: 'active' }] : []),
       { label: '/',    type: 'merge' },
@@ -480,24 +660,79 @@ export class SignalPath {
       { label: dsSrc,  type: 'source' },
       blendOn  ? { label: fbOn ? 'blend+fb' : 'blend', type: 'active' } : { label: 'blend', type: 'node' },
       ...(csOn   ? [{ label: 'cshift',  type: 'active' }] : []),
-      ...(pixOn  ? [{ label: 'pixel',   type: 'active' }] : []),
-      ...(edgeOn ? [{ label: 'edge',    type: 'active' }] : []),
-      ...(rgbOn  ? [{ label: 'rgb»',    type: 'active' }] : []),
-      ...(kaleOn   ? [{ label: 'kale',   type: 'active' }] : []),
-      ...(qmOn     ? [{ label: 'mirror', type: 'active' }] : []),
-      ...(postOn   ? [{ label: 'poster', type: 'active' }] : []),
-      ...(solOn  ? [{ label: 'solar',   type: 'active' }] : []),
-      ...(vigOn    ? [{ label: 'vign',   type: 'active' }] : []),
-      ...(bloomOn  ? [{ label: 'bloom',  type: 'active' }] : []),
-      ...(levelsOn ? [{ label: 'levels', type: 'active' }] : []),
-      ...(psortOn ? [{ label: 'psort',  type: 'active' }] : []),
-      ...(grainOn  ? [{ label: 'grain',   type: 'active' }] : []),
-      ...(strobeOn2? [{ label: 'strobe', type: 'active' }] : []),
-      ...(fadeOn   ? [{ label: 'fade',   type: 'active' }] : []),
-      { label: '▶ out', type: 'active' },
     ].filter(Boolean);
 
-    nodes.forEach((n, i) => {
+    // Build post-FX nodes in current order (only active ones rendered, but fxId stored for drag)
+    const fxNodes = this._fxOrder
+      .map(fxId => {
+        const info = _FX_NODE_INFO[fxId];
+        if (!info) return null;
+        const active = info.isActive(p);
+        if (!active) return null;
+        return { label: info.label, type: 'active', fxId, draggable: true };
+      })
+      .filter(Boolean);
+
+    // Tail nodes (fixed, not draggable)
+    const tailNodes = [
+      ...(strobeOn2 ? [{ label: 'strobe', type: 'active' }] : []),
+      ...(fadeOn    ? [{ label: 'fade',   type: 'active' }] : []),
+      { label: '▶ out', type: 'active' },
+    ];
+
+    const allNodes = [...fixedNodes, ...fxNodes, ...tailNodes];
+
+    // ── Sequence rows (below main chain) ──────────────────────────────────
+    const seqRowEls = [];
+    const SEQ_SRC_OPTIONS = ['Output','Camera','Movie','FG','BG','Buffer','Draw'];
+    [1,2,3].forEach(n => {
+      const active = p.get(`seq${n}.active`)?.value;
+      if (!active) return;
+      const srcIdx  = p.get(`seq${n}.source`)?.value ?? 0;
+      const speed   = (p.get(`seq${n}.speed`)?.value ?? 100);
+      const spdLbl  = speed === 100 ? '1×' : (speed / 100).toFixed(1) + '×';
+
+      const row = document.createElement('div');
+      row.className = 'sp-seq-row';
+
+      // Source <select>
+      const sel = document.createElement('select');
+      sel.className = 'sp-seq-source';
+      SEQ_SRC_OPTIONS.forEach((opt, i) => {
+        const o = document.createElement('option');
+        o.value = i; o.textContent = opt;
+        sel.appendChild(o);
+      });
+      sel.value = srcIdx;
+      sel.title = `Seq${n} record source`;
+      sel.addEventListener('change', e => {
+        p.get(`seq${n}.source`).value = parseInt(e.target.value);
+      });
+      sel.addEventListener('click', e => e.stopPropagation()); // don't trigger drag etc.
+
+      const arrow1 = document.createElement('span');
+      arrow1.className = 'sp-arrow'; arrow1.textContent = '→';
+
+      const recNode = document.createElement('span');
+      recNode.className = 'sp-node active';
+      recNode.textContent = `seq${n} ⏺`;
+
+      const arrow2 = document.createElement('span');
+      arrow2.className = 'sp-arrow'; arrow2.textContent = '→';
+
+      const spdNode = document.createElement('span');
+      spdNode.className = 'sp-node active';
+      spdNode.textContent = spdLbl;
+
+      row.appendChild(sel);
+      row.appendChild(arrow1);
+      row.appendChild(recNode);
+      row.appendChild(arrow2);
+      row.appendChild(spdNode);
+      seqRowEls.push(row);
+    });
+
+    allNodes.forEach((n, i) => {
       const el = document.createElement('div');
       if (n.type === 'merge') {
         el.className = 'sp-merge';
@@ -508,16 +743,59 @@ export class SignalPath {
       } else {
         el.className = `sp-node ${n.type}`;
         el.textContent = n.label;
+        if (n.draggable && n.fxId) {
+          el.classList.add('draggable');
+          el.draggable = true;
+          el.dataset.fxId = n.fxId;
+          el.addEventListener('dragstart', e => {
+            this._dragSrc = n.fxId;
+            e.dataTransfer.effectAllowed = 'move';
+            e.dataTransfer.setData('text/plain', n.fxId);
+          });
+          el.addEventListener('dragover', e => {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'move';
+            el.classList.add('drag-over');
+          });
+          el.addEventListener('dragleave', () => {
+            el.classList.remove('drag-over');
+          });
+          el.addEventListener('drop', e => {
+            e.preventDefault();
+            el.classList.remove('drag-over');
+            const srcId = this._dragSrc;
+            const dstId = n.fxId;
+            if (!srcId || srcId === dstId) return;
+            // Reorder within this._fxOrder: move srcId to position of dstId
+            const newOrder = [...this._fxOrder];
+            const srcIdx = newOrder.indexOf(srcId);
+            const dstIdx = newOrder.indexOf(dstId);
+            if (srcIdx === -1 || dstIdx === -1) return;
+            newOrder.splice(srcIdx, 1);
+            newOrder.splice(dstIdx, 0, srcId);
+            this._fxOrder = newOrder;
+            if (this.pipeline) this.pipeline.setFxOrder(newOrder);
+            if (this.onOrderChange) this.onOrderChange(newOrder);
+            this._render();
+          });
+          el.addEventListener('dragend', () => {
+            this._dragSrc = null;
+            this.el.querySelectorAll('.drag-over').forEach(el => el.classList.remove('drag-over'));
+          });
+        }
       }
-      this.el.appendChild(el);
+      mainRow.appendChild(el);
 
-      if (i < nodes.length - 1 && n.type !== 'merge' && nodes[i+1].type !== 'merge') {
+      if (i < allNodes.length - 1 && n.type !== 'merge' && allNodes[i+1].type !== 'merge') {
         const arrow = document.createElement('div');
         arrow.className = 'sp-arrow';
         arrow.textContent = '→';
-        this.el.appendChild(arrow);
+        mainRow.appendChild(arrow);
       }
     });
+
+    // Append sequence rows below the main chain
+    seqRowEls.forEach(row => this.el.appendChild(row));
   }
 }
 
@@ -544,6 +822,34 @@ export class ContextMenu {
       btn.classList.toggle('active', param.controller?.type === btn.dataset.ctrl);
     });
 
+    // Populate active xController list
+    const xmapList = document.getElementById('ctx-xmap-list');
+    if (xmapList) {
+      xmapList.innerHTML = '';
+      (param.xControllers ?? []).forEach((xc, idx) => {
+        if (!xc) return;
+        const row = document.createElement('div');
+        row.style.cssText = 'display:flex;align-items:center;gap:2px;padding:1px 6px;';
+        const lbl = document.createElement('span');
+        lbl.style.cssText = 'flex:1;font-size:10px;color:var(--text-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+        const typeShort = xc.type.replace('lfo-', '').replace('sound-', 'snd-').replace('mouse-', 'm-');
+        lbl.textContent = `↪ ${typeShort} → ${xc.target}`;
+        lbl.title = `${xc.type} → ${xc.target}${xc.hz ? ' @ ' + xc.hz.toFixed(2) + 'Hz' : ''}`;
+        const del = document.createElement('button');
+        del.className = 'menu-item';
+        del.style.cssText = 'padding:0 5px;font-size:11px;line-height:16px;min-width:0;';
+        del.textContent = '×';
+        const capturedIdx = idx;
+        del.addEventListener('click', e => {
+          e.stopPropagation();
+          this.ctrl.removeX(param.id, capturedIdx);
+          this.hide();
+        });
+        row.append(lbl, del);
+        xmapList.appendChild(row);
+      });
+    }
+
     // LFO visualizer — draw waveform preview when param has an LFO controller
     const vizCanvas = document.getElementById('ctx-lfo-viz');
     if (vizCanvas) {
@@ -560,11 +866,18 @@ export class ContextMenu {
     this.el.style.top  = `${y}px`;
     this.el.classList.remove('hidden');
 
-    // Clamp to viewport
+    // Clamp to viewport — all four edges, after browser has computed menu size
     requestAnimationFrame(() => {
-      const r = this.el.getBoundingClientRect();
-      if (r.right  > window.innerWidth)  this.el.style.left = `${x - r.width}px`;
-      if (r.bottom > window.innerHeight) this.el.style.top  = `${y - r.height}px`;
+      const r   = this.el.getBoundingClientRect();
+      const pad = 4;
+      let left = x;
+      let top  = y;
+      if (left + r.width  > window.innerWidth)  left = x - r.width;
+      if (top  + r.height > window.innerHeight) top  = y - r.height;
+      left = Math.max(pad, Math.min(left, window.innerWidth  - r.width  - pad));
+      top  = Math.max(pad, Math.min(top,  window.innerHeight - r.height - pad));
+      this.el.style.left = `${left}px`;
+      this.el.style.top  = `${top}px`;
     });
   }
 
@@ -649,26 +962,46 @@ export class ContextMenu {
             if (!isNaN(note)) this.ctrl.assign(this._currentParam.id, { type: 'midi-note', note, ...(ch > 0 && { channel: ch }) });
           }
         } else if (type.startsWith('lfo-')) {
+          const prev = this._currentParam.controller;
+          const prevDefault = prev?.beatSync
+            ? `${prev.beatDiv ?? 1}b`
+            : (prev?.hz?.toFixed(2) ?? '0.5');
           const hzStr = prompt(
-            'LFO Hz (or beat div: "1/8","1/4","1/2","1","2","4"):\n' +
-            '  Phase 0-1 and Width 0-1 (square only) can be appended:\n' +
-            '  e.g.  "0.5 0.25 0.7"  → 0.5Hz, phase=0.25, width=0.7',
-            this._currentParam.controller?.hz?.toFixed(2) ?? '0.5'
+            'LFO rate:\n' +
+            '  Hz (free): "0.5"  or  "1.5"\n' +
+            '  Beat-sync (locks to BPM): "1b" = 1 beat, "2b" = 2 beats, "0.5b" = half beat\n' +
+            '  Append phase (0-1) and width (0-1 for square/sh):\n' +
+            '  e.g.  "2b 0.25"  or  "0.5 0 0.3"',
+            prevDefault
           );
           if (hzStr === null) { this.hide(); return; }
-          const parts  = hzStr.trim().split(/\s+/);
-          const beatDivMap = { '1/8': 2, '1/4': 1, '1/2': 0.5, '1': 0.25, '2': 0.125, '4': 0.0625 };
-          const bpmDiv = beatDivMap[parts[0]];
-          const bpm = this.ps.get('global.bpm')?.value ?? 120;
-          const hz  = bpmDiv != null ? (bpm / 60) * bpmDiv : parseFloat(parts[0]);
+          const parts = hzStr.trim().split(/\s+/);
           const phase = parseFloat(parts[1] ?? '0');
           const width = parseFloat(parts[2] ?? '0.5');
-          this.ctrl.assign(this._currentParam.id, {
-            type, hz: isNaN(hz) ? 0.5 : hz,
-            phase: isNaN(phase) ? 0 : Math.max(0, Math.min(1, phase)),
-            width: isNaN(width) ? 0.5 : Math.max(0, Math.min(1, width)),
-            ...(bpmDiv != null ? { bpmDiv } : {}),
-          });
+
+          // Beat-sync: "Nb" or "N/Mb" suffix
+          const beatMatch = parts[0].match(/^([\d./]+)b$/i);
+          if (beatMatch) {
+            const beatDiv = parseFloat(eval(beatMatch[1])); // "1/4" → 0.25
+            const bpm = this.ps.get('global.bpm')?.value ?? 120;
+            this.ctrl.assign(this._currentParam.id, {
+              type,
+              hz:       (bpm / 60) / beatDiv, // approximate hz for display
+              beatSync: true,
+              beatDiv:  isNaN(beatDiv) ? 1 : beatDiv,
+              phase:    isNaN(phase) ? 0 : Math.max(0, Math.min(1, phase)),
+              width:    isNaN(width) ? 0.5 : Math.max(0, Math.min(1, width)),
+            });
+          } else {
+            const hz = parseFloat(parts[0]);
+            this.ctrl.assign(this._currentParam.id, {
+              type,
+              hz:    isNaN(hz) ? 0.5 : hz,
+              phase: isNaN(phase) ? 0 : Math.max(0, Math.min(1, phase)),
+              width: isNaN(width) ? 0.5 : Math.max(0, Math.min(1, width)),
+              beatSync: false,
+            });
+          }
         } else if (type === 'fixed') {
           const v = parseFloat(prompt(`Fixed value (${this._currentParam.min}–${this._currentParam.max}):`,
             this._currentParam.value));
@@ -733,6 +1066,39 @@ export class ContextMenu {
             this._currentParam.slew = Math.max(0, v);
             this.hide();
           }
+        }
+        if (action === 'xmap-hz' || action === 'xmap-amp' || action === 'xmap-value') {
+          const target = action === 'xmap-hz' ? 'hz' : action === 'xmap-amp' ? 'amp' : 'value';
+          const targetLabel = { hz: 'LFO Hz', amp: 'Amplitude (VCA)', value: 'Value (override)' }[target];
+          const typeStr = prompt(
+            `X-Map: ${targetLabel}\n\n` +
+            'Controller type (+ optional Hz):\n' +
+            '  lfo-sine 0.5   lfo-triangle 2   lfo-sawtooth\n' +
+            '  lfo-square 1   lfo-sh 0.25\n' +
+            '  sound  sound-bass  sound-mid  sound-high\n' +
+            '  mouse-x  mouse-y  random 4',
+            'lfo-sine 0.5'
+          );
+          if (typeStr === null) { this.hide(); return; }
+          const parts = typeStr.trim().split(/\s+/);
+          const type  = parts[0];
+          const hz    = parseFloat(parts[1] ?? '0.5');
+          const xIdx  = (this._currentParam.xControllers ?? []).length;
+          this.ctrl.assignX(this._currentParam.id, xIdx, {
+            type,
+            hz:     isNaN(hz) ? 0.5 : hz,
+            target,
+          });
+          this.hide();
+          this.presets?.saveCurrentPreset();
+        }
+        if (action === 'xmap-clear') {
+          const p = this._currentParam;
+          const id = p.id;
+          p.xControllers.forEach((_, idx) => this.ctrl._xLFOs.delete(`${id}:${idx}`));
+          p.xControllers = [];
+          this.hide();
+          this.presets?.saveCurrentPreset();
         }
       });
     });
@@ -889,10 +1255,22 @@ export class PresetsPanel {
       const row = document.createElement('div');
       row.className = `preset-item ${i === this.pm.currentIdx ? 'active' : ''}`;
       row.dataset.idx = i;
+
+      const thumbEl = document.createElement('div');
+      thumbEl.className = 'preset-thumb';
+      if (p.thumbnail) {
+        thumbEl.style.backgroundImage = `url(${p.thumbnail})`;
+        thumbEl.classList.add('preset-thumb--has');
+      }
+
       row.innerHTML = `<span class="preset-num">${i}</span><span class="preset-name">${p.name}</span>`;
-      row.addEventListener('dblclick', () => this.pm.activatePreset(i));
+      row.insertBefore(thumbEl, row.firstChild);
+
+      row.addEventListener('dblclick', () => {
+        clearTimeout(row._timer); // prevent rename prompt from firing after dblclick
+        this.pm.activatePreset(i);
+      });
       row.addEventListener('click', e => {
-        // Single click selects, shows name editor on long hold
         clearTimeout(row._timer);
         row._timer = setTimeout(() => {
           const newName = prompt('Rename preset:', p.name);
@@ -909,7 +1287,13 @@ export class PresetsPanel {
     this.el.querySelectorAll('.preset-item').forEach((row, i) => {
       row.classList.toggle('active', i === this.pm.currentIdx);
       const p = this.pm.presets[i];
-      if (p) row.querySelector('.preset-name').textContent = p.name;
+      if (!p) return;
+      row.querySelector('.preset-name').textContent = p.name;
+      const thumb = row.querySelector('.preset-thumb');
+      if (thumb && p.thumbnail) {
+        thumb.style.backgroundImage = `url(${p.thumbnail})`;
+        thumb.classList.add('preset-thumb--has');
+      }
     });
   }
 
@@ -1083,6 +1467,60 @@ export class TablesEditor {
       this._lastPaintIdx = null;
     });
     this.canvas.addEventListener('contextmenu', e => e.preventDefault());
+  }
+}
+
+// ── Debug overlay ─────────────────────────────────────────────────────────────
+
+export class DebugOverlay {
+  constructor(ps) {
+    this.ps  = ps;
+    this.el  = null;
+    this._fps = 0;
+    this._frames = 0;
+    this._last = performance.now();
+    this._create();
+  }
+
+  _create() {
+    const el = document.createElement('div');
+    el.id = 'debug-overlay';
+    el.style.cssText = [
+      'position:absolute', 'top:8px', 'left:8px',
+      'background:rgba(0,0,0,0.65)', 'color:#0f0',
+      'font-family:monospace', 'font-size:11px',
+      'line-height:1.5', 'padding:6px 10px',
+      'border-radius:4px', 'pointer-events:none',
+      'white-space:pre', 'z-index:50', 'display:none',
+    ].join(';');
+    document.getElementById('canvas-wrap')?.appendChild(el);
+    this.el = el;
+  }
+
+  tick(fps) {
+    const p = this.ps;
+    const active = p.get('global.debug')?.value;
+    if (!this.el) return;
+    this.el.style.display = active ? 'block' : 'none';
+    if (!active) return;
+
+    const SNAMES = ['CAM','MOV','BUF','COL','NSE','3D','DRW','OUT','BG1','BG2','COL2','TXT','SND','DEL','SCO','SLI','PAR'];
+    const fg  = SNAMES[p.get('layer.fg')?.value] ?? '?';
+    const bg  = SNAMES[p.get('layer.bg')?.value] ?? '?';
+    const ds  = SNAMES[p.get('layer.ds')?.value] ?? '?';
+    const warp = p.get('displace.warp')?.options?.[p.get('displace.warp')?.value] ?? 'off';
+    const warpAmt = ((p.get('displace.warpamt')?.value ?? 0)).toFixed(0);
+    const blend = p.get('blend.active')?.value ? `${(p.get('blend.amount')?.value ?? 0).toFixed(0)}%` : 'off';
+    const keyer = p.get('keyer.active')?.value ? 'on' : 'off';
+    const displ = (p.get('displace.amount')?.value ?? 0).toFixed(0);
+
+    this.el.textContent = [
+      `FPS  ${fps}`,
+      `FG   ${fg}   BG  ${bg}   DS  ${ds}`,
+      `Warp ${warp} (${warpAmt}%)   Displ ${displ}%`,
+      `Blend ${blend}   Keyer ${keyer}`,
+      `BPM  ${(p.get('global.bpm')?.value ?? 0).toFixed(0)}`,
+    ].join('\n');
   }
 }
 

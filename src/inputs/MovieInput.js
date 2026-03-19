@@ -53,6 +53,19 @@ export class MovieInput {
     texture.magFilter = THREE.LinearFilter;
     texture.format    = THREE.RGBAFormat;
 
+    // Capture a thumbnail frame (seek to 10% or 0.5s, whichever is earlier)
+    let thumb = null;
+    try {
+      const seekTo = Math.min(video.duration * 0.1, 0.5);
+      video.currentTime = seekTo;
+      await new Promise(res => video.addEventListener('seeked', res, { once: true }));
+      const tc = document.createElement('canvas');
+      tc.width = 160; tc.height = 90;
+      tc.getContext('2d').drawImage(video, 0, 0, 160, 90);
+      thumb = tc.toDataURL('image/jpeg', 0.75);
+      video.currentTime = 0; // reset
+    } catch (e) { /* thumbnail optional */ }
+
     const idx = this.clips.length;
     this.clips.push({
       name,
@@ -60,6 +73,7 @@ export class MovieInput {
       video,
       texture,
       duration: video.duration,
+      thumb,
     });
 
     console.info(`[Movie] Loaded clip ${idx}: "${name}" (${video.duration.toFixed(1)}s)`);

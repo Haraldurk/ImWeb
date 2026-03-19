@@ -14,7 +14,7 @@
  *   slitscan.active  TOGGLE
  *   slitscan.pos     0–100%  position of the slit within the source frame
  *   slitscan.speed   0.5–60  fps advance rate
- *   slitscan.axis    SELECT  0=Vertical slit, 1=Horizontal slit
+ *   slitscan.axis    SELECT  0=Vertical, 1=Horizontal, 2=Center-V, 3=Center-H
  *   slitscan.width   1–16    strip pixel width per tick
  */
 
@@ -61,28 +61,52 @@ export class SlitScanBuffer {
     const ctx = this._ctx;
 
     if (axis === 0) {
-      // Vertical slit: sample a column at x = pos * W
+      // Vertical slit: sample a column, scroll canvas left, paste at right
       const srcX = Math.max(0, Math.min(W - stripW, Math.round(pos01 * W)));
       const pix  = this._read(renderer, rt, srcX, 0, stripW, H);
-
-      // Shift existing content left by stripW, paste new column at right edge
       ctx.drawImage(this._canvas, -stripW, 0);
       const imgData = ctx.createImageData(stripW, H);
       this._flipY(pix, stripW, H);
       imgData.data.set(pix);
       ctx.putImageData(imgData, W - stripW, 0);
 
-    } else {
-      // Horizontal slit: sample a row at y = pos * H
+    } else if (axis === 1) {
+      // Horizontal slit: sample a row, scroll canvas down, paste at top
       const srcY = Math.max(0, Math.min(H - stripW, Math.round(pos01 * H)));
       const pix  = this._read(renderer, rt, 0, srcY, W, stripW);
-
-      // Shift existing content down by stripW, paste new row at top
       ctx.drawImage(this._canvas, 0, stripW);
       const imgData = ctx.createImageData(W, stripW);
       this._flipY(pix, W, stripW);
       imgData.data.set(pix);
       ctx.putImageData(imgData, 0, 0);
+
+    } else if (axis === 2) {
+      // Center-V: sample a column, expand outward left+right from canvas center
+      const srcX = Math.max(0, Math.min(W - stripW, Math.round(pos01 * W)));
+      const pix  = this._read(renderer, rt, srcX, 0, stripW, H);
+      const half = Math.floor(W / 2);
+      const hw   = Math.ceil(stripW / 2);
+      // Left half slides left, right half slides right
+      ctx.drawImage(this._canvas, 0, 0, half, H, -hw, 0, half, H);
+      ctx.drawImage(this._canvas, half, 0, half, H, half + hw, 0, half, H);
+      const imgData = ctx.createImageData(stripW, H);
+      this._flipY(pix, stripW, H);
+      imgData.data.set(pix);
+      ctx.putImageData(imgData, half - hw, 0);
+
+    } else {
+      // Center-H: sample a row, expand outward up+down from canvas center
+      const srcY = Math.max(0, Math.min(H - stripW, Math.round(pos01 * H)));
+      const pix  = this._read(renderer, rt, 0, srcY, W, stripW);
+      const half = Math.floor(H / 2);
+      const hw   = Math.ceil(stripW / 2);
+      // Top half slides up, bottom half slides down
+      ctx.drawImage(this._canvas, 0, 0, W, half, 0, -hw, W, half);
+      ctx.drawImage(this._canvas, 0, half, W, half, 0, half + hw, W, half);
+      const imgData = ctx.createImageData(W, stripW);
+      this._flipY(pix, W, stripW);
+      imgData.data.set(pix);
+      ctx.putImageData(imgData, 0, half - hw);
     }
 
     this.texture.needsUpdate = true;
