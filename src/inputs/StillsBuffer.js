@@ -185,6 +185,26 @@ export class StillsBuffer {
     return idx;
   }
 
+  /**
+   * Live blit — updates the slot texture every frame without the thumbnail
+   * readback. Call updateLiveThumbnail(idx) occasionally (e.g. every 60 frames)
+   * to refresh the thumbnail.
+   */
+  liveCapture(tex, idx) {
+    if (!tex || idx < 0 || idx >= this.frameCount) return;
+    this._mat.uniforms.uTexture.value = tex;
+    this.renderer.setRenderTarget(this.frames[idx]);
+    this.renderer.render(this._scene, this._camera);
+    this._hasFrame[idx] = true;
+    this.renderer.setRenderTarget(null);
+  }
+
+  updateLiveThumbnail(idx) {
+    if (!this._hasFrame[idx]) return;
+    this._mat.uniforms.uTexture.value = this.frames[idx].texture;
+    this._updateThumbnail(idx);
+  }
+
   // ── Zone protection ────────────────────────────────────────────────────────
 
   /** Toggle protection on a slot. Protected slots are skipped by auto-capture. */

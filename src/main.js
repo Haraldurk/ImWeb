@@ -1316,6 +1316,10 @@ async function main() {
   // Per-capture-button pinned target slots (null = auto-advance write head)
   const captureTargetSlots = { screen: null, camera: null, movie: null, draw: null, fg: null, bg: null, '3d': null };
 
+  // Live slots: slot index → source key ('camera'|'movie'|'draw'|'screen'|'fg')
+  const liveSlots = new Map();
+  let _liveTick = 0; // frame counter for throttled thumbnail updates
+
   /** Resolve a raw layer-source index to its current texture (matches Pipeline._resolveSource). */
   function _resolveLayerTex(idx) {
     const keys = ['camera','movie','buffer','color','noise','scene3d','draw','output',
@@ -1527,6 +1531,7 @@ async function main() {
       const isRead      = i === stillsBuffer.readIndex;
       const isWrite     = i === ((stillsBuffer.writeIndex - 1 + n) % n) && stillsBuffer._hasFrame[i];
       const isProtected = stillsBuffer.isProtected(i);
+      const isLive      = liveSlots.has(i);
 
       // Cell background
       bufferCtx.fillStyle = isRead ? '#2a2a3a' : '#111118';
@@ -1547,7 +1552,7 @@ async function main() {
       if (ch >= 12) {
         bufferCtx.fillStyle = isRead ? '#e8c840' : isWrite ? '#60a0e0' : isProtected ? '#ffa020' : '#404050';
         bufferCtx.font = `${Math.max(7, Math.min(9, ch * 0.25))}px monospace`;
-        bufferCtx.fillText(`${i}${isProtected ? '🔒' : ''}`, x + 2, y + Math.max(8, ch * 0.28));
+        bufferCtx.fillText(`${i}${isProtected ? '🔒' : ''}${isLive ? '●' : ''}`, x + 2, y + Math.max(8, ch * 0.28));
       }
 
       // Write-head marker (blue for normal, amber for protected)
@@ -1555,6 +1560,12 @@ async function main() {
         bufferCtx.strokeStyle = isProtected ? '#ffa020' : '#60a0e0';
         bufferCtx.lineWidth = 1;
         bufferCtx.strokeRect(x + 0.5, y + 0.5, cw - 2, ch - 2);
+      }
+      // Live slot — green border
+      if (isLive) {
+        bufferCtx.strokeStyle = '#40c060';
+        bufferCtx.lineWidth = 1.5;
+        bufferCtx.strokeRect(x + 1, y + 1, cw - 3, ch - 3);
       }
     }
   }
@@ -1919,8 +1930,48 @@ async function main() {
       _bufSlotMenu.appendChild(pngBtn);
     }
 
+    // Live source sub-menu
+    const liveDiv = document.createElement('div');
+    liveDiv.className = 'menu-separator';
+    _bufSlotMenu.appendChild(liveDiv);
+    const liveHeader = document.createElement('div');
+    liveHeader.className = 'menu-header';
+    liveHeader.style.fontSize = '9px';
+    liveHeader.textContent = 'Insert live feed';
+    _bufSlotMenu.appendChild(liveHeader);
+    const currentLive = liveSlots.get(idx);
+    const liveSrcs = [
+      { key: 'camera', label: '📷 Camera' },
+      { key: 'movie',  label: '🎬 Movie'  },
+      { key: 'screen', label: '🖥 Screen' },
+      { key: 'fg',     label: '▲ FG layer' },
+    ];
+    liveSrcs.forEach(({ key, label }) => {
+      const btn = document.createElement('button');
+      btn.className = 'menu-item' + (currentLive === key ? ' active' : '');
+      btn.textContent = label;
+      btn.addEventListener('click', () => {
+        liveSlots.set(idx, key);
+        stillsBuffer._protected.add(idx); // protect from overwrite by auto-capture
+        refreshBufferGrid();
+        _bufSlotMenu.classList.add('hidden');
+      });
+      _bufSlotMenu.appendChild(btn);
+    });
+    if (currentLive) {
+      const clearBtn = document.createElement('button');
+      clearBtn.className = 'menu-item';
+      clearBtn.textContent = '⏹ Remove live feed';
+      clearBtn.addEventListener('click', () => {
+        liveSlots.delete(idx);
+        refreshBufferGrid();
+        _bufSlotMenu.classList.add('hidden');
+      });
+      _bufSlotMenu.appendChild(clearBtn);
+    }
+
     _bufSlotMenu.style.left = `${Math.min(x, window.innerWidth - 160)}px`;
-    _bufSlotMenu.style.top  = `${Math.min(y, window.innerHeight - 120)}px`;
+    _bufSlotMenu.style.top  = `${Math.min(y, window.innerHeight - 140)}px`;
     _bufSlotMenu.classList.remove('hidden');
 
     setTimeout(() => document.addEventListener('click', _hideBufSlotMenu, { once: true }), 0);
@@ -2564,6 +2615,19 @@ void main() {
       }
     } else {
       scanTimer = 0;
+    }
+
+    // Live slots — blit each live source to its slot every frame
+    if (liveSlots.size > 0) {
+      _liveTick++;
+      for (const [slot, srcKey] of liveSlots.entries()) {
+        const tex = texForSource(srcKey);
+        if (tex) {
+          stillsBuffer.liveCapture(tex, slot);
+          if (_liveTick % 60 === 0) stillsBuffer.updateLiveThumbnail(slot); // refresh thumb ~1/s
+        }
+      }
+      if (_liveTick % 30 === 0) refreshBufferGrid();
     }
 
     // Auto-capture into buffer at buffer.rate fps
