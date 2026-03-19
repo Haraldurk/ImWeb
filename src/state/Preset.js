@@ -73,10 +73,12 @@ export class Preset {
     this.bufferRef    = null;
     this.created      = Date.now();
     this.modified     = Date.now();
+    this.thumbnail    = null; // base64 JPEG data URL, captured on save
   }
 
-  addState(values, index = null) {
+  addState(values, index = null, fxOrder = null) {
     const ds = { values: { ...values }, created: Date.now() };
+    if (fxOrder) ds.fxOrder = [...fxOrder];
     if (index !== null && index >= 0 && index < 128) {
       this.states[index] = ds;
       return index;
@@ -105,6 +107,7 @@ export class Preset {
       bufferRef:   this.bufferRef,
       created:     this.created,
       modified:    this.modified,
+      thumbnail:   this.thumbnail,
     };
   }
 
@@ -133,10 +136,11 @@ export class Preset {
 // ── PresetManager ─────────────────────────────────────────────────────────────
 
 export class PresetManager extends EventTarget {
-  constructor(ps, controllers) {
+  constructor(ps, controllers, pipeline = null) {
     super();
     this.ps          = ps;
     this.ctrl        = controllers;
+    this.pipeline    = pipeline;
     this.presets     = [];
     this.currentIdx  = 0;
     this._fadePresets = true;
@@ -181,6 +185,8 @@ export class PresetManager extends EventTarget {
       Object.entries(p.controllers).forEach(([paramId, config]) => {
         if (config.controller) this.ctrl.assign(paramId, config.controller);
       });
+      // Rebuild xController LFO instances from deserialized xControllers
+      this.ctrl.rebuildXControllers();
     }
 
     // Get target state values
@@ -199,6 +205,11 @@ export class PresetManager extends EventTarget {
       this.ctrl.retriggerLFOs();
       // Send MIDI feedback to motorized faders
       this.ps.getAll().forEach(p => this.ctrl.sendParamFeedback(p));
+    }
+
+    // Restore fx order if saved
+    if (ds?.fxOrder && this.pipeline) {
+      this.pipeline.setFxOrder(ds.fxOrder);
     }
 
     // Update UI
@@ -248,7 +259,8 @@ export class PresetManager extends EventTarget {
     if (!p) return;
 
     const values = this.ps.captureState();
-    const idx = p.addState(values, stateIndex);
+    const fxOrder = this.pipeline ? [...this.pipeline.fxOrder] : null;
+    const idx = p.addState(values, stateIndex, fxOrder);
     await p.save();
 
     this.dispatchEvent(new CustomEvent('stateSaved', { detail: { presetIndex: this.currentIdx, stateIndex: idx } }));
@@ -265,6 +277,11 @@ export class PresetManager extends EventTarget {
     p.activeState = stateIndex;
     this.ps.restoreState(ds.values);
     this.ctrl.retriggerLFOs();
+
+    // Restore fx order if saved
+    if (ds.fxOrder && this.pipeline) {
+      this.pipeline.setFxOrder(ds.fxOrder);
+    }
 
     document.getElementById('status-state').textContent = `State ${stateIndex}`;
 

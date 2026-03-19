@@ -49,6 +49,9 @@ export class SceneManager {
     // Geometry factory — must be before setGeometry()
     this.geoFactory = new GeometryFactory();
 
+    // Imported model tracking
+    this._importedModelName = null;
+
     // Lights
     this._setupLights();
 
@@ -74,6 +77,7 @@ export class SceneManager {
   setGeometry(name) {
     if (name === this._geoKey) return;
     this._geoKey = name;
+    this._importedModelName = null;
 
     const geo = this.geoFactory.create(name);
     this._replaceMesh(geo);
@@ -99,42 +103,64 @@ export class SceneManager {
 
   // ── Model import ───────────────────────────────────────────────────────────
 
-  async loadGLTF(url) {
+  async loadGLTF(url, name = '') {
     return new Promise((resolve, reject) => {
       this.gltfLoader.load(url, gltf => {
         const model = gltf.scene;
         this._fitToView(model);
         if (this.mesh) this.scene.remove(this.mesh);
         this.mesh = model;
+        this._geoKey = '__imported__';
+        this._importedModelName = name;
         this.scene.add(model);
         resolve(model);
       }, undefined, reject);
     });
   }
 
-  async loadOBJ(url) {
+  async loadOBJ(url, name = '') {
     return new Promise((resolve, reject) => {
       this.objLoader.load(url, obj => {
         this._fitToView(obj);
         if (this.mesh) this.scene.remove(this.mesh);
         this.mesh = obj;
+        this._geoKey = '__imported__';
+        this._importedModelName = name;
         this.scene.add(obj);
         resolve(obj);
       }, undefined, reject);
     });
   }
 
-  async loadSTL(url) {
+  async loadSTL(url, name = '') {
     return new Promise((resolve, reject) => {
       this.stlLoader.load(url, geo => {
         const mesh = new THREE.Mesh(geo, this.material ?? new THREE.MeshStandardMaterial({ color: 0x8888cc }));
         this._fitToView(mesh);
         if (this.mesh) this.scene.remove(this.mesh);
         this.mesh = mesh;
+        this._geoKey = '__imported__';
+        this._importedModelName = name;
         this.scene.add(mesh);
         resolve(mesh);
       }, undefined, reject);
     });
+  }
+
+  /**
+   * Load a 3D model from a File object, routing by extension.
+   */
+  async loadModel(file) {
+    const url = URL.createObjectURL(file);
+    const ext = file.name.split('.').pop().toLowerCase();
+    try {
+      if (ext === 'glb' || ext === 'gltf') return await this.loadGLTF(url, file.name);
+      if (ext === 'obj')                   return await this.loadOBJ(url, file.name);
+      if (ext === 'stl')                   return await this.loadSTL(url, file.name);
+      throw new Error(`Unsupported format: .${ext}`);
+    } finally {
+      URL.revokeObjectURL(url);
+    }
   }
 
   _fitToView(obj) {
@@ -190,7 +216,16 @@ export class SceneManager {
       this.material.emissiveIntensity = p.get('scene3d.mat.emissive').value;
       this.material.opacity  = p.get('scene3d.mat.opacity').value;
       this.material.transparent = this.material.opacity < 1;
-      this.material.wireframe = !!p.get('scene3d.wireframe').value;
+      const wireframe = !!p.get('scene3d.wireframe').value;
+      this.material.wireframe = wireframe;
+      // Also apply wireframe to any imported model's sub-meshes
+      if (this._importedModelName && this.mesh) {
+        this.mesh.traverse(child => {
+          if (child.isMesh && child.material && child.material !== this.material) {
+            child.material.wireframe = wireframe;
+          }
+        });
+      }
 
       // Live texture source on mesh surface
       const texSrcIdx = p.get('scene3d.mat.texsrc')?.value ?? 0;
@@ -230,6 +265,7 @@ export class SceneManager {
   }
 
   get texture() { return this.target.texture; }
+  get importedModelName() { return this._importedModelName; }
 
   resize(w, h) {
     this.width = w; this.height = h;

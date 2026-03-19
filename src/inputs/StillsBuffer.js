@@ -26,6 +26,7 @@ export class StillsBuffer {
 
     this.frames            = [];
     this._hasFrame         = [];
+    this._protected        = new Set(); // slot indices protected from auto-capture overwrite
     this.thumbnailCanvases = [];
     this.writeIndex        = 0;
     this.readIndex         = 0;
@@ -93,6 +94,10 @@ export class StillsBuffer {
     this.frameCount = n;
     this.writeIndex = this.writeIndex % n;
     this.readIndex  = Math.min(this.readIndex, n - 1);
+    // Remove protection marks for slots that no longer exist
+    for (const idx of this._protected) {
+      if (idx >= n) this._protected.delete(idx);
+    }
   }
 
   // ── Capture ───────────────────────────────────────────────────────────────
@@ -103,6 +108,13 @@ export class StillsBuffer {
    */
   capture(tex) {
     if (!tex) return -1;
+
+    // Skip protected slots — advance writeIndex to next unprotected slot
+    let safety = this.frameCount;
+    while (this._protected.has(this.writeIndex) && safety-- > 0) {
+      this.writeIndex = (this.writeIndex + 1) % this.frameCount;
+    }
+    if (safety <= 0) return -1; // all slots protected
 
     this._mat.uniforms.uTexture.value = tex;
 
@@ -172,6 +184,17 @@ export class StillsBuffer {
     this.renderer.setRenderTarget(null);
     return idx;
   }
+
+  // ── Zone protection ────────────────────────────────────────────────────────
+
+  /** Toggle protection on a slot. Protected slots are skipped by auto-capture. */
+  toggleProtect(idx) {
+    if (idx < 0 || idx >= this.frameCount) return;
+    if (this._protected.has(idx)) this._protected.delete(idx);
+    else this._protected.add(idx);
+  }
+
+  isProtected(idx) { return this._protected.has(idx); }
 
   /** Capture tex into a named background slot (0 = bg1, 1 = bg2). */
   captureBG(idx, tex) {

@@ -1,0 +1,25 @@
+{
+  "name": "ImWeb — Video Synthesis Instrument",
+  "short_name": "ImWeb",
+  "description": "Real-time video synthesis and compositing instrument. A reimagining of Tom Demeyer's Image/ine.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0a0a0f",
+  "theme_color": "#0a0a0f",
+  "orientation": "landscape",
+  "categories": ["multimedia", "music", "entertainment"],
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
