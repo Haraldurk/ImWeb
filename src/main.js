@@ -59,7 +59,7 @@ import {
 // ─────────────────────────────────────────────────────────────────────────────
 
 async function main() {
-  console.log('%cImWeb v0.2', 'color:#e8c840;font-weight:bold;font-size:14px');
+  console.log('%cImWeb v0.3.0', 'color:#e8c840;font-weight:bold;font-size:14px');
 
   // ── 1. Canvas & renderer ──────────────────────────────────────────────────
 
@@ -270,6 +270,27 @@ async function main() {
   buildMappingPanels(ps, contextMenu);
   buildSeqParams(ps, contextMenu);
   buildGeometryButtons(ps, scene3d);
+
+  // Update model status label after drag-and-drop or button import
+  function _refreshModelLabel() {
+    const lbl = document.getElementById('model-status-label');
+    if (!lbl) return;
+    const name = scene3d.importedModelName;
+    if (name) {
+      lbl.textContent = `✓ ${name}`;
+      lbl.style.color = 'var(--green)';
+    } else {
+      lbl.textContent = 'No model loaded — drop .glb/.obj/.stl here or use button below';
+      lbl.style.color = '';
+    }
+  }
+
+  // modelLoaded event from the import button in buildGeometryButtons
+  document.getElementById('model-import')?.addEventListener('modelLoaded', e => {
+    if (ps.get('layer.fg').value === 0) ps.set('layer.fg', 5);
+    ps.set('scene3d.active', 1);
+    _refreshModelLabel();
+  });
 
   // ── Collapsible section headers + Detach + Collapse-all ──────────────────
 
@@ -1211,10 +1232,17 @@ async function main() {
   document.body.addEventListener('dragover', e => {
     e.preventDefault();
     e.dataTransfer.dropEffect = 'copy';
+    document.body.classList.add('dnd-active');
+  });
+  document.body.addEventListener('dragleave', e => {
+    if (!e.relatedTarget || e.relatedTarget === document.documentElement) {
+      document.body.classList.remove('dnd-active');
+    }
   });
 
   document.body.addEventListener('drop', async e => {
     e.preventDefault();
+    document.body.classList.remove('dnd-active');
     const files = Array.from(e.dataTransfer.files);
     // Read .imx buffers immediately before any await (DataTransfer expires after first yield)
     const imxBuffers = new Map();
@@ -1228,6 +1256,15 @@ async function main() {
           refreshClipsList();
           if (!ps.get('movie.active').value) ps.set('movie.active', 1);
         } catch (err) { console.error('[DnD] video load failed:', err); }
+      } else if (/\.(glb|gltf|obj|stl)$/i.test(file.name)) {
+        try {
+          await scene3d.loadModel(file);
+          // Auto-activate 3D: if FG is not already a useful source, route it to 3D
+          if (ps.get('layer.fg').value === 0 /* Color */) ps.set('layer.fg', 5); // 5 = 3D scene
+          ps.set('scene3d.active', 1);
+          _refreshModelLabel();
+          console.info(`[3D] Loaded model: ${file.name}`);
+        } catch (err) { console.error('[DnD] 3D model load failed:', err); }
       } else if (/\.imx$/i.test(file.name)) {
         _doImportImX(file, await imxBuffers.get(file));
       } else if (file.type.startsWith('image/') || /\.(png|jpg|jpeg|gif|bmp|webp)$/i.test(file.name)) {
@@ -2668,6 +2705,11 @@ void main() {
   requestAnimationFrame(render);
 
   console.log('%cImWeb ready — press V to start camera, 3D tab for scene', 'color:#9090a8');
+
+  // Register service worker for PWA / offline support
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('/sw.js').catch(() => {});
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

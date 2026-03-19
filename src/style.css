@@ -612,6 +612,24 @@ button {
   font-family: var(--mono);
 }
 
+/* drag-over highlight for whole page */
+body.dnd-active::after {
+  content: 'Drop file to load';
+  position: fixed;
+  inset: 0;
+  background: rgba(232,200,64,0.06);
+  border: 2px dashed var(--accent-dim);
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--mono);
+  font-size: 18px;
+  color: var(--accent);
+  pointer-events: none;
+  z-index: 9000;
+}
+
 /* ── TABLES EDITOR ───────────────────────────────────────────────────────── */
 
 .table-list-row {

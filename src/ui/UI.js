@@ -474,40 +474,61 @@ export function buildGeometryButtons(ps, sceneManager) {
   const importEl = document.getElementById('model-import');
   if (!importEl) return;
 
-  const fmts = [
-    { label: '+ Import GLTF / GLB',  accept: '.gltf,.glb',  method: 'loadGLTF' },
-    { label: '+ Import OBJ',          accept: '.obj',         method: 'loadOBJ'  },
-    { label: '+ Import STL',          accept: '.stl',         method: 'loadSTL'  },
-  ];
+  // Status label — updated by main.js via _refreshModelLabel()
+  const modelLabel = document.createElement('div');
+  modelLabel.id = 'model-status-label';
+  modelLabel.className = 'import-note';
+  modelLabel.textContent = 'No model loaded — drop .glb/.obj/.stl here or use buttons below';
+  importEl.appendChild(modelLabel);
 
-  fmts.forEach(({ label, accept, method }) => {
-    const btn = document.createElement('button');
-    btn.className = 'import-btn';
-    btn.textContent = label;
-    btn.addEventListener('click', () => {
-      const input = document.createElement('input');
-      input.type = 'file';
-      input.accept = accept;
-      input.onchange = async e => {
-        const file = e.target.files[0];
-        if (!file) return;
-        const url = URL.createObjectURL(file);
-        try {
-          await sceneManager[method](url);
-          btn.textContent = `✓ ${file.name}`;
-        } catch (err) {
-          console.error('[Import]', err);
-          btn.textContent = `✗ Error loading ${file.name}`;
-        }
-      };
-      input.click();
-    });
-    importEl.appendChild(btn);
+  const importBtn = document.createElement('button');
+  importBtn.className = 'import-btn';
+  importBtn.textContent = '+ Import Model (GLB / OBJ / STL)';
+  importBtn.addEventListener('click', () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.gltf,.glb,.obj,.stl';
+    input.onchange = async e => {
+      const file = e.target.files[0];
+      if (!file) return;
+      importBtn.textContent = `⏳ Loading…`;
+      try {
+        await sceneManager.loadModel(file);
+        modelLabel.textContent = `✓ ${file.name}`;
+        modelLabel.style.color = 'var(--green)';
+        importBtn.textContent = '+ Import Model (GLB / OBJ / STL)';
+        // Fire event so main.js can update layer routing
+        importEl.dispatchEvent(new CustomEvent('modelLoaded', { bubbles: true, detail: { name: file.name } }));
+      } catch (err) {
+        console.error('[Import]', err);
+        modelLabel.textContent = `✗ Error: ${err.message}`;
+        modelLabel.style.color = 'var(--red, #e05)';
+        importBtn.textContent = '+ Import Model (GLB / OBJ / STL)';
+      }
+    };
+    input.click();
   });
+  importEl.appendChild(importBtn);
+
+  const clearBtn = document.createElement('button');
+  clearBtn.className = 'import-btn';
+  clearBtn.textContent = '↩ Back to Geometry';
+  clearBtn.title = 'Remove imported model and return to procedural geometry';
+  clearBtn.addEventListener('click', () => {
+    const geoIdx = ps.get('scene3d.geo').value;
+    // Force re-select current geometry by temporarily invalidating the key
+    sceneManager._geoKey = null;
+    sceneManager._importedModelName = null;
+    sceneManager.setGeometry(sceneManager.geoFactory.create ? (ps.get('scene3d.geo').options[geoIdx] ?? 'Sphere') : 'Sphere');
+    modelLabel.textContent = 'No model loaded — drop .glb/.obj/.stl here or use buttons below';
+    modelLabel.style.color = '';
+  });
+  importEl.appendChild(clearBtn);
 
   const note = document.createElement('div');
   note.className = 'import-note';
-  note.textContent = 'FBX requires additional setup — see README';
+  note.style.marginTop = '4px';
+  note.textContent = 'Tip: drag & drop model files anywhere onto the app window';
   importEl.appendChild(note);
 }
 
