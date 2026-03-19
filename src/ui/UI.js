@@ -516,11 +516,12 @@ export function buildGeometryButtons(ps, sceneManager) {
   clearBtn.title = 'Remove imported model and return to procedural geometry';
   clearBtn.addEventListener('click', () => {
     const geoIdx = ps.get('scene3d.geo').value;
-    // Force re-select current geometry by temporarily invalidating the key
-    sceneManager._geoKey = null;
+    const geoName = ps.get('scene3d.geo').options[geoIdx] ?? 'Sphere';
+    // Clear imported model then force geometry re-select
     sceneManager._importedModelName = null;
-    sceneManager.setGeometry(sceneManager.geoFactory.create ? (ps.get('scene3d.geo').options[geoIdx] ?? 'Sphere') : 'Sphere');
-    modelLabel.textContent = 'No model loaded — drop .glb/.obj/.stl here or use buttons below';
+    sceneManager._geoKey = null;  // invalidate so setGeometry actually runs
+    sceneManager.setGeometry(geoName);
+    modelLabel.textContent = 'No model loaded — drop .glb/.obj/.stl here or use button below';
     modelLabel.style.color = '';
   });
   importEl.appendChild(clearBtn);

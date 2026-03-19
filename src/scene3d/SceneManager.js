@@ -178,9 +178,11 @@ export class SceneManager {
   applyParams(params, dt = 0, inputs = {}) {
     const p = params;
 
-    // Geometry selection — use canonical list from GeometryFactory
+    // Geometry selection — skip when a model is imported (only apply on change)
     const geoIdx = p.get('scene3d.geo').value;
-    this.setGeometry(GEOMETRY_NAMES[geoIdx] ?? 'Sphere');
+    if (!this._importedModelName) {
+      this.setGeometry(GEOMETRY_NAMES[geoIdx] ?? 'Sphere');
+    }
 
     if (!this.mesh) return;
 
