@@ -22,8 +22,130 @@ import {
   BUFFER_TRANSFORM, INTERP,
   PIXELATE, EDGE, RGBSHIFT, POSTERIZE, SOLARIZE, COLOR_CORRECT, CHROMA_KEY,
   VIGNETTE, BLOOM_EXTRACT, BLOOM_BLUR, BLOOM_COMPOSITE, KALEIDOSCOPE, PIXEL_SORT,
-  FILM_GRAIN, FEEDBACK_ROTATE, QUAD_MIRROR, LEVELS, LUT3D,
+  FILM_GRAIN, FEEDBACK_ROTATE, QUAD_MIRROR, LEVELS, LUT3D, WHITE_BALANCE,
 } from '../shaders/index.js';
+
+export const DEFAULT_FX_ORDER = [
+  'pixelate','edge','rgbshift','kaleidoscope','quadmirror',
+  'posterize','solarize','vignette','bloom','levels','lut','whitebal','pixelsort','grain',
+];
+
+const _FX = {
+  pixelate: (pipe, tex, p) => {
+    const amt = p.get('effect.pixelate').value;
+    if (amt <= 1) return tex;
+    return pipe._pass(pipe.m.pixelate, {
+      uTexture: tex, uAmount: amt,
+      uResolution: new THREE.Vector2(pipe.width, pipe.height),
+    });
+  },
+  edge: (pipe, tex, p) => {
+    const amt = p.get('effect.edge').value / 100;
+    if (amt <= 0) return tex;
+    return pipe._pass(pipe.m.edge, {
+      uTexture: tex, uAmount: amt,
+      uInvert: p.get('effect.edge_inv').value,
+      uResolution: new THREE.Vector2(pipe.width, pipe.height),
+    });
+  },
+  rgbshift: (pipe, tex, p) => {
+    const amt = p.get('effect.rgbshift').value / 100;
+    if (amt <= 0) return tex;
+    return pipe._pass(pipe.m.rgbshift, {
+      uTexture: tex, uAmount: amt * 0.05,
+      uAngle: p.get('effect.rgbangle').value * Math.PI / 180,
+    });
+  },
+  kaleidoscope: (pipe, tex, p) => {
+    const segs = p.get('effect.kaleidoscope').value;
+    if (segs < 2) return tex;
+    return pipe._pass(pipe.m.kaleidoscope, {
+      uTexture: tex, uSegments: segs,
+      uRotation: p.get('effect.kalerot').value / 100,
+    });
+  },
+  quadmirror: (pipe, tex, p) => {
+    const mode = p.get('effect.quadmirror').value;
+    if (mode <= 0) return tex;
+    return pipe._pass(pipe.m.quadmirror, { uTexture: tex, uMode: mode - 1 });
+  },
+  posterize: (pipe, tex, p) => {
+    const lvl = p.get('effect.posterize').value;
+    if (lvl >= 32) return tex;
+    return pipe._pass(pipe.m.posterize, { uTexture: tex, uLevels: lvl });
+  },
+  solarize: (pipe, tex, p) => {
+    const thresh = p.get('effect.solarize').value / 100;
+    if (thresh >= 1) return tex;
+    return pipe._pass(pipe.m.solarize, { uTexture: tex, uThreshold: thresh });
+  },
+  vignette: (pipe, tex, p) => {
+    const amt = p.get('effect.vignette').value / 100;
+    if (amt <= 0) return tex;
+    return pipe._pass(pipe.m.vignette, {
+      uTexture: tex, uAmount: amt,
+      uRadius: p.get('effect.vigradius').value / 100,
+    });
+  },
+  bloom: (pipe, tex, p) => {
+    const amt = p.get('effect.bloom').value / 100;
+    if (amt <= 0) return tex;
+    const thresh = p.get('effect.bloomthresh').value / 100;
+    const res = new THREE.Vector2(pipe.width, pipe.height);
+    const bright = pipe._pass(pipe.m.bloomExtract, { uTexture: tex, uThreshold: thresh });
+    pipe.m.bloomBlurH.uniforms.uResolution.value.copy(res);
+    pipe.m.bloomBlurV.uniforms.uResolution.value.copy(res);
+    const blurH = pipe._pass(pipe.m.bloomBlurH, { uTexture: bright });
+    const blurV = pipe._pass(pipe.m.bloomBlurV, { uTexture: blurH });
+    return pipe._pass(pipe.m.bloomComposite, { uTexture: tex, uBloom: blurV, uStrength: amt * 3 });
+  },
+  levels: (pipe, tex, p) => {
+    const lvBlack = p.get('effect.lvblack').value / 100;
+    const lvWhite = p.get('effect.lvwhite').value / 100;
+    const lvGamma = p.get('effect.lvgamma').value / 100;
+    if (lvBlack <= 0 && lvWhite >= 1 && Math.abs(lvGamma - 1) < 0.001) return tex;
+    return pipe._pass(pipe.m.levels, {
+      uTexture: tex,
+      uBlack: lvBlack,
+      uWhite: Math.max(lvBlack + 0.001, lvWhite),
+      uGamma: Math.max(0.1, lvGamma),
+    });
+  },
+  lut: (pipe, tex, p) => {
+    if (!pipe._lutTex || !pipe._lutActive) return tex;
+    const lutAmt = (p.get('effect.lutamount')?.value ?? 100) / 100;
+    return pipe._pass(pipe.m.lut3d, {
+      uTexture: tex, uLUT: pipe._lutTex, uLUTSize: pipe._lutSize, uAmount: lutAmt,
+    });
+  },
+  whitebal: (pipe, tex, p) => {
+    const wbTemp = p.get('effect.wbtemp')?.value ?? 0;
+    const wbTint = p.get('effect.wbtint')?.value ?? 0;
+    if (wbTemp === 0 && wbTint === 0) return tex;
+    return pipe._pass(pipe.m.whitebal, { uTexture: tex, uTemperature: wbTemp, uTint: wbTint });
+  },
+  pixelsort: (pipe, tex, p) => {
+    const amt = p.get('effect.pixelsort').value / 100;
+    if (amt <= 0) return tex;
+    const res = new THREE.Vector2(pipe.width, pipe.height);
+    pipe.m.pixelsort.uniforms.uResolution.value.copy(res);
+    return pipe._pass(pipe.m.pixelsort, {
+      uTexture: tex,
+      uThreshold: p.get('effect.psortthresh').value / 100,
+      uLength: p.get('effect.psortlen').value * amt,
+      uDirection: p.get('effect.psortdir').value,
+      uMode: p.get('effect.psortmode').value,
+    });
+  },
+  grain: (pipe, tex, p) => {
+    const grainAmt = p.get('effect.grain').value / 100;
+    const scanAmt  = p.get('effect.scanlines').value / 100;
+    if (grainAmt <= 0 && scanAmt <= 0) return tex;
+    return pipe._pass(pipe.m.filmgrain, {
+      uTexture: tex, uGrain: grainAmt, uScanlines: scanAmt, uTime: pipe._noiseTime,
+    });
+  },
+};
 
 export class Pipeline {
   constructor(renderer, width, height) {
@@ -64,6 +186,9 @@ export class Pipeline {
     this._lutActive = false;
     this._lutSize   = 17;
     this._lutAmount = 1;
+
+    // Reorderable post-FX chain
+    this.fxOrder = [...DEFAULT_FX_ORDER];
   }
 
   // ── 3D LUT ───────────────────────────────────────────────────────────────
@@ -93,6 +218,11 @@ export class Pipeline {
     this._lutTex?.dispose();
     this._lutTex    = null;
     this._lutActive = false;
+  }
+
+  /** Set the post-FX execution order. Unknown IDs are silently dropped. */
+  setFxOrder(order) {
+    this.fxOrder = order.filter(id => id in _FX);
   }
 
   // ── Public: render one frame ──────────────────────────────────────────────
@@ -135,16 +265,26 @@ export class Pipeline {
     const fgHue    = p.get('fg.hue').value    / 360;
     const fgSat    = p.get('fg.sat').value    / 100;
     const fgBright = p.get('fg.bright').value / 100;
-    const correctedFG = (fgHue !== 0 || fgSat !== 1 || fgBright !== 1)
+    const fgOpacity = (p.get('fg.opacity')?.value ?? 100) / 100;
+    const fgColorChanged = fgHue !== 0 || fgSat !== 1 || fgBright !== 1;
+    let correctedFG = fgColorChanged
       ? this._pass(this.m.colorcorrect, { uTexture: fgTex, uHue: fgHue, uSat: fgSat, uBright: fgBright })
       : fgTex;
+    if (fgOpacity < 1) {
+      correctedFG = this._pass(this.m.fade, { uTexture: correctedFG, uAmount: fgOpacity });
+    }
 
     const bgHue    = p.get('bg.hue').value    / 360;
     const bgSat    = p.get('bg.sat').value    / 100;
     const bgBright = p.get('bg.bright').value / 100;
-    const correctedBG = (bgHue !== 0 || bgSat !== 1 || bgBright !== 1)
+    const bgOpacity = (p.get('bg.opacity')?.value ?? 100) / 100;
+    const bgColorChanged = bgHue !== 0 || bgSat !== 1 || bgBright !== 1;
+    let correctedBG = bgColorChanged
       ? this._pass(this.m.colorcorrect, { uTexture: bgTex, uHue: bgHue, uSat: bgSat, uBright: bgBright })
       : bgTex;
+    if (bgOpacity < 1) {
+      correctedBG = this._pass(this.m.fade, { uTexture: correctedBG, uAmount: bgOpacity });
+    }
 
     // Apply mirror to camera, movie, or buffer source if needed
     let workingFG = correctedFG;
@@ -238,11 +378,12 @@ export class Pipeline {
     // ── WarpMap ───────────────────────────────────────────────────────────
     let warped = chromaKeyed;
     const warpIdx = p.get('displace.warp').value;
-    if (warpIdx > 0 && inputs.warpMaps?.[warpIdx - 1]) {
+    const warpAmt = (p.get('displace.warpamt')?.value ?? 50) / 100;
+    if (warpIdx > 0 && warpAmt > 0 && inputs.warpMaps?.[warpIdx - 1]) {
       warped = this._pass(this.m.warp, {
         uFG:       chromaKeyed,
         uWarpMap:  inputs.warpMaps[warpIdx - 1],
-        uStrength: displAmt,
+        uStrength: warpAmt,
       });
     }
 
@@ -290,159 +431,14 @@ export class Pipeline {
       });
     }
 
-    // ── Pixelate ──────────────────────────────────────────────────────────
-    let pixelated = shifted;
-    const pixAmt = p.get('effect.pixelate').value;
-    if (pixAmt > 1) {
-      pixelated = this._pass(this.m.pixelate, {
-        uTexture: shifted, uAmount: pixAmt,
-        uResolution: new THREE.Vector2(this.width, this.height),
-      });
-    }
-
-    // ── Edge detect ───────────────────────────────────────────────────────
-    let edged = pixelated;
-    const edgeAmt = p.get('effect.edge').value / 100;
-    if (edgeAmt > 0) {
-      edged = this._pass(this.m.edge, {
-        uTexture: pixelated, uAmount: edgeAmt,
-        uInvert: p.get('effect.edge_inv').value,
-        uResolution: new THREE.Vector2(this.width, this.height),
-      });
-    }
-
-    // ── RGB shift ─────────────────────────────────────────────────────────
-    let rgbShifted = edged;
-    const rgbAmt = p.get('effect.rgbshift').value / 100;
-    if (rgbAmt > 0) {
-      rgbShifted = this._pass(this.m.rgbshift, {
-        uTexture: edged, uAmount: rgbAmt * 0.05,
-        uAngle: p.get('effect.rgbangle').value * Math.PI / 180,
-      });
-    }
-
-    // ── Kaleidoscope ──────────────────────────────────────────────────────
-    let kaleided = rgbShifted;
-    const kaleSegs = p.get('effect.kaleidoscope').value;
-    if (kaleSegs >= 2) {
-      kaleided = this._pass(this.m.kaleidoscope, {
-        uTexture:  rgbShifted,
-        uSegments: kaleSegs,
-        uRotation: p.get('effect.kalerot').value / 100,
-      });
-    }
-
-    // ── Quad Mirror ───────────────────────────────────────────────────────
-    let mirrored = kaleided;
-    const qmMode = p.get('effect.quadmirror').value;
-    if (qmMode > 0) {
-      mirrored = this._pass(this.m.quadmirror, {
-        uTexture: kaleided,
-        uMode:    qmMode - 1, // 1=quad→0, 2=diagonal→1
-      });
-    }
-
-    // ── Posterize ─────────────────────────────────────────────────────────
-    let posterized = mirrored;
-    const postLvl = p.get('effect.posterize').value;
-    if (postLvl < 32) {
-      posterized = this._pass(this.m.posterize, {
-        uTexture: mirrored, uLevels: postLvl,
-      });
-    }
-
-    // ── Solarize ──────────────────────────────────────────────────────────
-    let solarized = posterized;
-    const solThresh = p.get('effect.solarize').value / 100;
-    if (solThresh < 1) {
-      solarized = this._pass(this.m.solarize, {
-        uTexture: posterized, uThreshold: solThresh,
-      });
-    }
-
-    // ── Vignette ──────────────────────────────────────────────────────────
-    let vignetted = solarized;
-    const vigAmt = p.get('effect.vignette').value / 100;
-    if (vigAmt > 0) {
-      vignetted = this._pass(this.m.vignette, {
-        uTexture: solarized,
-        uAmount:  vigAmt,
-        uRadius:  p.get('effect.vigradius').value / 100,
-      });
-    }
-
-    // ── Bloom ─────────────────────────────────────────────────────────────
-    let bloomed = vignetted;
-    const bloomAmt = p.get('effect.bloom').value / 100;
-    if (bloomAmt > 0) {
-      const thresh = p.get('effect.bloomthresh').value / 100;
-      const res    = new THREE.Vector2(this.width, this.height);
-      const bright = this._pass(this.m.bloomExtract, { uTexture: vignetted, uThreshold: thresh });
-      this.m.bloomBlurH.uniforms.uResolution.value.copy(res);
-      this.m.bloomBlurV.uniforms.uResolution.value.copy(res);
-      const blurH  = this._pass(this.m.bloomBlurH, { uTexture: bright });
-      const blurV  = this._pass(this.m.bloomBlurV, { uTexture: blurH });
-      bloomed = this._pass(this.m.bloomComposite, {
-        uTexture: vignetted, uBloom: blurV, uStrength: bloomAmt * 3,
-      });
-    }
-
-    // ── Levels ────────────────────────────────────────────────────────────
-    let leveled = bloomed;
-    const lvBlack = p.get('effect.lvblack').value / 100;
-    const lvWhite = p.get('effect.lvwhite').value / 100;
-    const lvGamma = p.get('effect.lvgamma').value / 100;
-    if (lvBlack > 0 || lvWhite < 100 || lvGamma !== 1) {
-      leveled = this._pass(this.m.levels, {
-        uTexture: bloomed,
-        uBlack:   lvBlack,
-        uWhite:   Math.max(lvBlack + 0.001, lvWhite),
-        uGamma:   Math.max(0.1, lvGamma),
-      });
-    }
-
-    // ── 3D LUT colour grade ───────────────────────────────────────────────
-    let luted = leveled;
-    if (this._lutTex && this._lutActive) {
-      const lutAmt = (p.get('effect.lutamount')?.value ?? 100) / 100;
-      luted = this._pass(this.m.lut3d, {
-        uTexture: leveled,
-        uLUT:     this._lutTex,
-        uLUTSize: this._lutSize,
-        uAmount:  lutAmt,
-      });
-    }
-
-    // ── Pixel Sort ────────────────────────────────────────────────────────
-    let pixsorted = luted;
-    const psortAmt = p.get('effect.pixelsort').value / 100;
-    if (psortAmt > 0) {
-      const res = new THREE.Vector2(this.width, this.height);
-      this.m.pixelsort.uniforms.uResolution.value.copy(res);
-      pixsorted = this._pass(this.m.pixelsort, {
-        uTexture:   leveled,
-        uThreshold: p.get('effect.psortthresh').value / 100,
-        uLength:    p.get('effect.psortlen').value * psortAmt,
-        uDirection: p.get('effect.psortdir').value,
-        uMode:      p.get('effect.psortmode').value,
-      });
-    }
-
-    // ── Film Grain ────────────────────────────────────────────────────────
-    let grained = pixsorted;
-    const grainAmt = p.get('effect.grain').value / 100;
-    const scanAmt  = p.get('effect.scanlines').value / 100;
-    if (grainAmt > 0 || scanAmt > 0) {
-      grained = this._pass(this.m.filmgrain, {
-        uTexture:   pixsorted,
-        uGrain:     grainAmt,
-        uScanlines: scanAmt,
-        uTime:      this._noiseTime,
-      });
+    // ── Post-FX chain (reorderable) ───────────────────────────────────────
+    let postOut = shifted;
+    for (const fx of this.fxOrder) {
+      postOut = _FX[fx]?.(this, postOut, p) ?? postOut;
     }
 
     // ── Interlace ─────────────────────────────────────────────────────────
-    let interlaced = grained;
+    let interlaced = postOut;
     const il = p.get('output.interlace').value;
     if (il > 0) {
       interlaced = this._pass(this.m.interlace, {
@@ -561,8 +557,8 @@ export class Pipeline {
   // ── GPU noise generation ──────────────────────────────────────────────────
 
   /** Run the NOISE_GEN shader and return the resulting texture. */
-  generateNoise(time, type) {
-    return this._pass(this.m.noise, { uTime: time, uType: type });
+  generateNoise(time, type, scale = 1, color = 0) {
+    return this._pass(this.m.noise, { uTime: time, uType: type, uScale: scale, uColor: color });
   }
 
   // ── Resize ────────────────────────────────────────────────────────────────
@@ -632,7 +628,7 @@ export class Pipeline {
   }
 
   _resolveSource(inputs, sourceIdx) {
-    const SOURCES = ['camera', 'movie', 'buffer', 'color', 'noise', 'scene3d', 'draw', 'output', 'bg1', 'bg2', 'color2', 'text', 'sound', 'delay', 'scope', 'slitscan', 'particles'];
+    const SOURCES = ['camera', 'movie', 'buffer', 'color', 'noise', 'scene3d', 'draw', 'output', 'bg1', 'bg2', 'color2', 'text', 'sound', 'delay', 'scope', 'slitscan', 'particles', 'seq1', 'seq2', 'seq3'];
     const key = SOURCES[sourceIdx] ?? 'color';
 
     if (key === 'camera'  && inputs.camera)  return inputs.camera;
@@ -651,6 +647,9 @@ export class Pipeline {
     if (key === 'scope'    && inputs.scope)    return inputs.scope;
     if (key === 'slitscan'  && inputs.slitscan)  return inputs.slitscan;
     if (key === 'particles' && inputs.particles) return inputs.particles;
+    if (key === 'seq1'      && inputs.seq1)      return inputs.seq1;
+    if (key === 'seq2'      && inputs.seq2)      return inputs.seq2;
+    if (key === 'seq3'      && inputs.seq3)      return inputs.seq3;
     return inputs.color ?? this._getFallbackTexture();
   }
 
@@ -732,6 +731,7 @@ export class Pipeline {
       }),
       noise:       this._mat(NOISE_GEN, {
         uTime: { value: 0 }, uType: { value: 0 },
+        uScale: { value: 1 }, uColor: { value: 0 },
       }),
       bufferTransform: this._mat(BUFFER_TRANSFORM, {
         uPanX:  { value: 0 },
@@ -810,6 +810,10 @@ export class Pipeline {
         uLUT:     { value: null },
         uLUTSize: { value: 17 },
         uAmount:  { value: 1 },
+      }),
+      whitebal:   this._mat(WHITE_BALANCE, {
+        uTemperature: { value: 0 },
+        uTint:        { value: 0 },
       }),
     };
   }

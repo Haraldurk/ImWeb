@@ -158,26 +158,155 @@ export const TRANSFERMODE = /* glsl */ `
 
   varying vec2 vUv;
 
-  ivec3 floatToInt8(vec3 c) {
-    return ivec3(clamp(c * 255.0, 0.0, 255.0));
+  // ── bitwise helpers ──────────────────────────────────────────────────────────
+  ivec3 floatToInt8(vec3 c) { return ivec3(clamp(c * 255.0, 0.0, 255.0)); }
+  vec3 int8ToFloat(ivec3 i)  { return vec3(i) / 255.0; }
+
+  // ── photographic blend helpers ───────────────────────────────────────────────
+  vec3 blendMultiply(vec3 a, vec3 b)   { return a * b; }
+  vec3 blendScreen(vec3 a, vec3 b)     { return 1.0 - (1.0 - a) * (1.0 - b); }
+  vec3 blendAdd(vec3 a, vec3 b)        { return min(a + b, 1.0); }
+  vec3 blendDiff(vec3 a, vec3 b)       { return abs(a - b); }
+  vec3 blendExclude(vec3 a, vec3 b)    { return a + b - 2.0 * a * b; }
+  vec3 blendDodge(vec3 a, vec3 b)      { return min(a / max(1.0 - b, 0.001), 1.0); }
+  vec3 blendBurn(vec3 a, vec3 b)       { return 1.0 - min((1.0 - a) / max(b, 0.001), 1.0); }
+
+  float overlayF(float a, float b) {
+    return b < 0.5 ? 2.0 * a * b : 1.0 - 2.0 * (1.0 - a) * (1.0 - b);
+  }
+  vec3 blendOverlay(vec3 a, vec3 b) {
+    return vec3(overlayF(a.r,b.r), overlayF(a.g,b.g), overlayF(a.b,b.b));
   }
 
-  vec3 int8ToFloat(ivec3 i) {
-    return vec3(i) / 255.0;
+  float hardlightF(float a, float b) {
+    return b < 0.5 ? 2.0 * a * b : 1.0 - 2.0 * (1.0 - a) * (1.0 - b);
+  }
+  vec3 blendHardlight(vec3 a, vec3 b) {
+    // hardlight = overlay with layers swapped
+    return vec3(hardlightF(b.r,a.r), hardlightF(b.g,a.g), hardlightF(b.b,a.b));
+  }
+
+  float softlightF(float a, float b) {
+    if (b < 0.5) return a - (1.0 - 2.0*b) * a * (1.0 - a);
+    float d = a < 0.25 ? ((16.0*a - 12.0)*a + 4.0)*a : sqrt(a);
+    return a + (2.0*b - 1.0) * (d - a);
+  }
+  vec3 blendSoftlight(vec3 a, vec3 b) {
+    return vec3(softlightF(a.r,b.r), softlightF(a.g,b.g), softlightF(a.b,b.b));
+  }
+
+  // ── HSL helpers (for hue/sat/luma blend modes) ───────────────────────────────
+  vec3 rgb2hsl(vec3 c) {
+    float cmax = max(c.r, max(c.g, c.b));
+    float cmin = min(c.r, min(c.g, c.b));
+    float d = cmax - cmin;
+    float l = (cmax + cmin) * 0.5;
+    float s = d < 0.0001 ? 0.0 : d / (1.0 - abs(2.0*l - 1.0));
+    float h = 0.0;
+    if (d > 0.0001) {
+      if      (cmax == c.r) h = mod((c.g - c.b) / d, 6.0) / 6.0;
+      else if (cmax == c.g) h = ((c.b - c.r) / d + 2.0) / 6.0;
+      else                  h = ((c.r - c.g) / d + 4.0) / 6.0;
+    }
+    return vec3(h, s, l);
+  }
+
+  vec3 hsl2rgb(vec3 hsl) {
+    float h = hsl.x, s = hsl.y, l = hsl.z;
+    float c = (1.0 - abs(2.0*l - 1.0)) * s;
+    float x = c * (1.0 - abs(mod(h * 6.0, 2.0) - 1.0));
+    float m = l - c * 0.5;
+    vec3 rgb;
+    int hi = int(h * 6.0);
+    if      (hi == 0) rgb = vec3(c, x, 0);
+    else if (hi == 1) rgb = vec3(x, c, 0);
+    else if (hi == 2) rgb = vec3(0, c, x);
+    else if (hi == 3) rgb = vec3(0, x, c);
+    else if (hi == 4) rgb = vec3(x, 0, c);
+    else              rgb = vec3(c, 0, x);
+    return rgb + m;
+  }
+
+  // ── HSY (hue/sat from FG, luma from BG or vice-versa) ───────────────────────
+  vec3 blendHue(vec3 a, vec3 b) {          // FG hue, BG sat+luma
+    vec3 ha = rgb2hsl(a);
+    vec3 hb = rgb2hsl(b);
+    return hsl2rgb(vec3(ha.x, hb.y, hb.z));
+  }
+  vec3 blendSaturation(vec3 a, vec3 b) {   // FG sat, BG hue+luma
+    vec3 ha = rgb2hsl(a);
+    vec3 hb = rgb2hsl(b);
+    return hsl2rgb(vec3(hb.x, ha.y, hb.z));
+  }
+  vec3 blendColor(vec3 a, vec3 b) {        // FG hue+sat, BG luma
+    vec3 ha = rgb2hsl(a);
+    vec3 hb = rgb2hsl(b);
+    return hsl2rgb(vec3(ha.x, ha.y, hb.z));
+  }
+  vec3 blendLuminosity(vec3 a, vec3 b) {   // FG luma, BG hue+sat
+    vec3 ha = rgb2hsl(a);
+    vec3 hb = rgb2hsl(b);
+    return hsl2rgb(vec3(hb.x, hb.y, ha.z));
+  }
+  vec3 blendSubtract(vec3 a, vec3 b)    { return max(a - b, 0.0); }
+  vec3 blendDivide(vec3 a, vec3 b)      { return min(a / max(b, 0.001), 1.0); }
+  vec3 blendPinLight(vec3 a, vec3 b) {
+    return vec3(
+      b.r < 0.5 ? min(a.r, 2.0*b.r) : max(a.r, 2.0*b.r - 1.0),
+      b.g < 0.5 ? min(a.g, 2.0*b.g) : max(a.g, 2.0*b.g - 1.0),
+      b.b < 0.5 ? min(a.b, 2.0*b.b) : max(a.b, 2.0*b.b - 1.0)
+    );
+  }
+  vec3 blendVividLight(vec3 a, vec3 b) {
+    return vec3(
+      b.r < 0.5 ? 1.0 - min((1.0-a.r)/max(2.0*b.r,0.001),1.0) : min(a.r/max(2.0*(1.0-b.r),0.001),1.0),
+      b.g < 0.5 ? 1.0 - min((1.0-a.g)/max(2.0*b.g,0.001),1.0) : min(a.g/max(2.0*(1.0-b.g),0.001),1.0),
+      b.b < 0.5 ? 1.0 - min((1.0-a.b)/max(2.0*b.b,0.001),1.0) : min(a.b/max(2.0*(1.0-b.b),0.001),1.0)
+    );
   }
 
   void main() {
     vec4 fg = texture2D(uFG, vUv);
     vec4 bg = texture2D(uBG, vUv);
-    if (uMode == 0) { gl_FragColor = fg; return; }
-    ivec3 a = floatToInt8(fg.rgb);
-    ivec3 b = floatToInt8(bg.rgb);
-    ivec3 r;
-    if (uMode == 1)      r = a ^ b;
-    else if (uMode == 2) r = a | b;
-    else if (uMode == 3) r = a & b;
-    else                 r = a;
-    gl_FragColor = vec4(int8ToFloat(r), fg.a);
+    vec3 a = fg.rgb;
+    vec3 b = bg.rgb;
+    vec3 r;
+
+    // modes 0-3: bitwise
+    if (uMode < 4) {
+      if (uMode == 0) { gl_FragColor = fg; return; }
+      ivec3 ia = floatToInt8(a);
+      ivec3 ib = floatToInt8(b);
+      ivec3 ir;
+      if      (uMode == 1) ir = ia ^ ib;
+      else if (uMode == 2) ir = ia | ib;
+      else                 ir = ia & ib;
+      gl_FragColor = vec4(int8ToFloat(ir), fg.a);
+      return;
+    }
+
+    // modes 4+: photographic
+    if      (uMode ==  4) r = blendMultiply(a, b);
+    else if (uMode ==  5) r = blendScreen(a, b);
+    else if (uMode ==  6) r = blendAdd(a, b);
+    else if (uMode ==  7) r = blendDiff(a, b);
+    else if (uMode ==  8) r = blendExclude(a, b);
+    else if (uMode ==  9) r = blendOverlay(a, b);
+    else if (uMode == 10) r = blendHardlight(a, b);
+    else if (uMode == 11) r = blendSoftlight(a, b);
+    else if (uMode == 12) r = blendDodge(a, b);
+    else if (uMode == 13) r = blendBurn(a, b);
+    else if (uMode == 14) r = blendSubtract(a, b);
+    else if (uMode == 15) r = blendDivide(a, b);
+    else if (uMode == 16) r = blendPinLight(a, b);
+    else if (uMode == 17) r = blendVividLight(a, b);
+    else if (uMode == 18) r = blendHue(a, b);
+    else if (uMode == 19) r = blendSaturation(a, b);
+    else if (uMode == 20) r = blendColor(a, b);
+    else if (uMode == 21) r = blendLuminosity(a, b);
+    else r = a;
+
+    gl_FragColor = vec4(clamp(r, 0.0, 1.0), fg.a);
   }
 `;
 
@@ -218,22 +347,98 @@ export const COLORSHIFT = /* glsl */ `
 export const NOISE_GEN = /* glsl */ `
   uniform float uTime;
   uniform int   uType;
+  uniform float uScale;  // grain size: 1=pixel, >1=coarser
+  uniform int   uColor;  // 0=mono, 1=colour
   varying vec2 vUv;
 
   float hash(vec2 p) {
     return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
   }
+  float hash3(vec2 p, float seed) {
+    return fract(sin(dot(p + seed, vec2(127.1, 311.7))) * 43758.5453);
+  }
+
+  // Smooth value noise (bilinear interpolation of hash grid)
+  float valueNoise(vec2 p) {
+    vec2 i = floor(p);
+    vec2 f = fract(p);
+    vec2 u = f * f * (3.0 - 2.0 * f);
+    return mix(mix(hash(i + vec2(0,0)), hash(i + vec2(1,0)), u.x),
+               mix(hash(i + vec2(0,1)), hash(i + vec2(1,1)), u.x), u.y);
+  }
+
+  // Box-Muller: uniform → gaussian approximation
+  float gaussian(vec2 uv, float seed) {
+    float u1 = hash(uv + seed);
+    float u2 = hash(uv + seed + 0.5);
+    u1 = clamp(u1, 0.0001, 0.9999);
+    float g = sqrt(-2.0 * log(u1)) * cos(6.28318 * u2);
+    return clamp(g * 0.2 + 0.5, 0.0, 1.0);
+  }
 
   void main() {
+    float frame = floor(uTime * 60.0);
+    vec2 seed   = vec2(frame * 0.001, frame * 0.0007);
+    // Apply grain scale: coarser scale by flooring UV
+    vec2 scaledUv = floor(vUv * 1024.0 / uScale) / (1024.0 / uScale);
+
     float n;
     if (uType == 0) {
-      n = hash(vUv + floor(uTime * 60.0) * 0.001);
+      // White noise (all frequencies, pixel-grain)
+      n = hash(scaledUv + seed);
+
     } else if (uType == 1) {
-      n = hash(vec2(0.5, vUv.y) + floor(uTime * 60.0) * 0.001);
+      // Smooth / value noise (low-frequency blobs)
+      n = valueNoise(scaledUv * (8.0 / uScale) + seed * 37.0);
+
+    } else if (uType == 2) {
+      // Pink-ish: sum 4 octaves of value noise (1/f approximation)
+      float amp = 0.5, freq = 1.0, acc = 0.0, tot = 0.0;
+      for (int i = 0; i < 4; i++) {
+        acc += valueNoise(scaledUv * freq * (4.0 / uScale) + seed * (3.7 + float(i))) * amp;
+        tot += amp; amp *= 0.5; freq *= 2.0;
+      }
+      n = acc / tot;
+
+    } else if (uType == 3) {
+      // Brown (integrated): very low freq, warm rumble
+      float amp = 0.5, freq = 0.5, acc = 0.0, tot = 0.0;
+      for (int i = 0; i < 3; i++) {
+        acc += valueNoise(scaledUv * freq * (2.0 / uScale) + seed * (1.3 + float(i))) * amp;
+        tot += amp; amp *= 0.7; freq *= 1.5;
+      }
+      n = acc / tot;
+
+    } else if (uType == 4) {
+      // Gaussian (electronic) — normal distribution centred at 0.5
+      n = gaussian(scaledUv, frame * 0.0013);
+
+    } else if (uType == 5) {
+      // Salt & Pepper — sparse impulse noise
+      float r = hash(scaledUv + seed);
+      n = (r < 0.04) ? 1.0 : (r < 0.08) ? 0.0 : 0.5;
+
+    } else if (uType == 6) {
+      // Speckle (multiplicative) — mid-grey with random fluctuation
+      float base = 0.5;
+      float speckle = hash(scaledUv + seed) * 2.0 - 1.0;
+      n = clamp(base + base * speckle, 0.0, 1.0);
+
     } else {
-      n = hash(vec2(vUv.x, 0.5) + floor(uTime * 60.0) * 0.001);
+      // H-lines
+      n = hash(vec2(scaledUv.x, 0.5) + seed);
     }
-    gl_FragColor = vec4(vec3(n), 1.0);
+
+    vec3 col;
+    if (uColor == 1) {
+      col = vec3(hash3(scaledUv, 0.0 + frame * 0.001),
+                 hash3(scaledUv, 0.3 + frame * 0.001),
+                 hash3(scaledUv, 0.7 + frame * 0.001));
+      col = mix(vec3(n), col, 0.8);
+    } else {
+      col = vec3(n);
+    }
+    gl_FragColor = vec4(col, 1.0);
   }
 `;
 
@@ -843,5 +1048,33 @@ export const LEVELS = /* glsl */ `
     vec3 c = clamp((col.rgb - uBlack) / max(uWhite - uBlack, 0.001), 0.0, 1.0);
     c = pow(c, vec3(1.0 / max(uGamma, 0.001)));
     gl_FragColor = vec4(c, col.a);
+  }
+`;
+
+// ─── White Balance / Temperature ──────────────────────────────────────────────
+// uTemperature: -100 (warm/orange) to +100 (cool/blue)
+// uTint:        -100 (green) to +100 (magenta)
+export const WHITE_BALANCE = /* glsl */ `
+  uniform sampler2D uTexture;
+  uniform float uTemperature; // -100..100
+  uniform float uTint;        // -100..100
+  varying vec2 vUv;
+
+  void main() {
+    vec4 col = texture2D(uTexture, vUv);
+    vec3 c = col.rgb;
+
+    // Temperature: shift red-blue axis
+    float t = uTemperature / 100.0; // -1..1
+    c.r += t * 0.2;
+    c.b -= t * 0.2;
+
+    // Tint: shift green-magenta axis
+    float m = uTint / 100.0; // -1..1
+    c.g -= m * 0.15;
+    c.r += m * 0.07;
+    c.b += m * 0.07;
+
+    gl_FragColor = vec4(clamp(c, 0.0, 1.0), col.a);
   }
 `;

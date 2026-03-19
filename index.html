@@ -23,6 +23,19 @@
     <span id="status-osc"  class="indicator" title="OSC">OSC</span>
     <canvas id="status-vu" width="40" height="14" title="Audio input level" style="display:none;vertical-align:middle;border-radius:2px;"></canvas>
     <div class="status-right">
+      <button id="btn-reset-all"    title="Reset all parameters to defaults (Shift+Esc)">↺</button>
+      <button id="btn-collapse-all" title="Collapse / expand all sections">⊟</button>
+      <button id="btn-signal-path"  title="Signal path — float / dock (Shift+P)">┄</button>
+      <span class="status-sep"></span>
+      <button id="btn-res-fit"  class="res-btn active" data-res="0" title="Render at display size">fit</button>
+      <button id="btn-res-540"  class="res-btn" data-res="3" title="540p — 960×540">540</button>
+      <button id="btn-res-720"  class="res-btn" data-res="1" title="720p — 1280×720">720</button>
+      <button id="btn-res-1080" class="res-btn" data-res="2" title="1080p — 1920×1080">1080</button>
+      <button id="btn-res-half" class="res-btn" data-res="4" title="Half display size">½</button>
+      <span class="status-sep"></span>
+      <button id="btn-second-screen" title="Send output to second monitor / new window">⊡</button>
+      <button id="btn-ghost-mode"   title="Ghost mode — shrink main output to thumbnail">◫</button>
+      <button id="btn-spy"          title="Output spy preview (Shift+V)">◧</button>
       <button id="btn-fullscreen" title="Fullscreen output (Cmd+F)">⛶</button>
       <button id="btn-record"     title="Record output">⏺</button>
     </div>
@@ -36,7 +49,9 @@
       <canvas id="output-canvas"></canvas>
       <!-- Floating feedback indicators (repositionable) -->
       <div id="feedback-overlay"></div>
-      <!-- Video Out Spy (small preview for dual-monitor mode) -->
+      <!-- Ghost mode overlay label -->
+      <div id="ghost-label"><span>⊡</span>output on second screen</div>
+<!-- Video Out Spy (small preview for dual-monitor mode) -->
       <div id="video-spy" class="hidden">
         <canvas id="spy-canvas" width="160" height="90"></canvas>
         <span>output spy</span>
@@ -136,6 +151,10 @@
           <div class="section-header">Slit Scan</div>
           <div id="slitscan-params"></div>
         </div>
+        <div class="panel-section">
+          <div class="section-header">Sequences</div>
+          <div id="seq-params"></div>
+        </div>
       </div>
 
       <!-- BUFFER TAB -->
@@ -211,9 +230,12 @@
       <div id="tab-clips" class="tab-content">
         <div class="panel-section">
           <div class="section-header">Movie Clips</div>
-          <button id="btn-add-clip">+ Add Clip</button>
+          <div style="display:flex;gap:6px;padding:6px 8px 4px;align-items:center;">
+            <button id="btn-add-clip" class="import-btn" style="flex:1">+ Add Clip</button>
+            <button id="btn-clear-clips" class="import-btn" title="Remove all clips">✕ Clear</button>
+          </div>
           <div id="clips-list"></div>
-          <div id="clip-params"></div>
+          <div id="clip-params" style="border-top:1px solid var(--border);padding-top:2px;"></div>
         </div>
       </div>
 
@@ -310,8 +332,10 @@ void main() {
     <button class="menu-item" data-ctrl="midi-note">MIDI Note...</button>
     <button class="menu-item" data-ctrl="lfo-sine">LFO Sine</button>
     <button class="menu-item" data-ctrl="lfo-triangle">LFO Triangle</button>
-    <button class="menu-item" data-ctrl="lfo-sawtooth">LFO Sawtooth</button>
+    <button class="menu-item" data-ctrl="lfo-sawtooth">LFO Saw ↑</button>
+    <button class="menu-item" data-ctrl="lfo-rampdown">LFO Saw ↓</button>
     <button class="menu-item" data-ctrl="lfo-square">LFO Square</button>
+    <button class="menu-item" data-ctrl="lfo-sh">LFO S&amp;H</button>
     <button class="menu-item" data-ctrl="sound">Sound Level</button>
     <button class="menu-item" data-ctrl="sound-bass">Sound Bass</button>
     <button class="menu-item" data-ctrl="sound-mid">Sound Mid</button>
@@ -335,6 +359,12 @@ void main() {
     <button class="menu-item" data-action="lock">Toggle Lock</button>
     <button class="menu-item" data-action="table">Assign Table…</button>
     <button class="menu-item" data-action="slew">Set Slew…</button>
+    <div class="menu-section">External Mapping</div>
+    <button class="menu-item" data-action="xmap-hz">X-Map: mod LFO Hz…</button>
+    <button class="menu-item" data-action="xmap-amp">X-Map: mod Amplitude…</button>
+    <button class="menu-item" data-action="xmap-value">X-Map: direct override…</button>
+    <div id="ctx-xmap-list"></div>
+    <button class="menu-item" data-action="xmap-clear">Clear X-Maps</button>
     <canvas id="ctx-lfo-viz" width="160" height="40" style="display:none;margin:4px 8px;border-radius:3px;background:#0a0a0e;"></canvas>
   </div>
 

@@ -13,7 +13,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { OBJLoader }  from 'three/addons/loaders/OBJLoader.js';
 import { STLLoader }  from 'three/addons/loaders/STLLoader.js';
-import { GeometryFactory } from './GeometryFactory.js';
+import { GeometryFactory, GEOMETRY_NAMES } from './GeometryFactory.js';
 
 export class SceneManager {
   constructor(renderer, width, height) {
@@ -149,13 +149,12 @@ export class SceneManager {
 
   // ── Parameter-driven updates ───────────────────────────────────────────────
 
-  applyParams(params, dt = 0) {
+  applyParams(params, dt = 0, inputs = {}) {
     const p = params;
 
-    // Geometry selection
-    const geoNames = ['Sphere','Torus','Cube','Plane','Cylinder','Capsule','TorusKnot','Cone','Dodecahedron','Icosahedron'];
+    // Geometry selection — use canonical list from GeometryFactory
     const geoIdx = p.get('scene3d.geo').value;
-    this.setGeometry(geoNames[geoIdx] ?? 'Sphere');
+    this.setGeometry(GEOMETRY_NAMES[geoIdx] ?? 'Sphere');
 
     if (!this.mesh) return;
 
@@ -182,12 +181,27 @@ export class SceneManager {
 
     // Material
     if (this.material) {
+      const hue = (p.get('scene3d.mat.hue')?.value ?? 240) / 360;
+      const sat = (p.get('scene3d.mat.sat')?.value ?? 50) / 100;
+      this.material.color.setHSL(hue, sat, 0.5);
+      this.material.emissive.setHSL(hue, sat, 0.15 * (p.get('scene3d.mat.emissive')?.value ?? 0));
       this.material.roughness = p.get('scene3d.mat.roughness').value;
       this.material.metalness = p.get('scene3d.mat.metalness').value;
       this.material.emissiveIntensity = p.get('scene3d.mat.emissive').value;
       this.material.opacity  = p.get('scene3d.mat.opacity').value;
       this.material.transparent = this.material.opacity < 1;
       this.material.wireframe = !!p.get('scene3d.wireframe').value;
+
+      // Live texture source on mesh surface
+      const texSrcIdx = p.get('scene3d.mat.texsrc')?.value ?? 0;
+      const texSrcMap = [null, inputs.camera, inputs.movie, inputs.screen, inputs.draw, inputs.buffer];
+      const liveTex = texSrcMap[texSrcIdx] ?? null;
+      if (liveTex !== this._liveTex) {
+        this._liveTex = liveTex;
+        this.material.map = liveTex
+          ? Object.assign(liveTex, { wrapS: THREE.RepeatWrapping, wrapT: THREE.RepeatWrapping })
+          : null;
+      }
       this.material.needsUpdate = true;
     }
 
@@ -207,9 +221,8 @@ export class SceneManager {
 
   // ── Render ────────────────────────────────────────────────────────────────
 
-  render(params, dt = 0) {
-    if (!params.get('scene3d.active').value) return;
-    this.applyParams(params, dt);
+  render(params, dt = 0, inputs = {}) {
+    this.applyParams(params, dt, inputs);
     const prev = this.renderer.getRenderTarget();
     this.renderer.setRenderTarget(this.target);
     this.renderer.render(this.scene, this.camera);

@@ -38,6 +38,10 @@ export class ControllerManager {
     this.exprs = new Map();
     this._exprTime = 0; // cumulative time in seconds
 
+    // External Mapping (controller-of-controller)
+    // xLFOs keyed by `${paramId}:${xIndex}`
+    this._xLFOs = new Map();
+
     this._initKeyboard();
     this._initMouse();
     this._initMIDI();
@@ -47,10 +51,10 @@ export class ControllerManager {
 
   // ── Frame tick ────────────────────────────────────────────────────────────
 
-  tick(dt) {
+  tick(dt, beatPhase = 0) {
     // Tick all LFO controllers
     this.lfos.forEach((lfo, paramId) => {
-      const v = lfo.tick(dt);
+      const v = lfo.tick(dt, beatPhase);
       this.ps.setNormalized(paramId, v);
     });
 
@@ -82,6 +86,124 @@ export class ControllerManager {
 
     // Poll gamepads
     this._tickGamepad();
+
+    // Tick xControllers (External Mapping — controller-of-controller modulation)
+    // Runs AFTER primary controllers so 'value' target can also override them
+    this.ps.getAll().forEach(p => {
+      if (!p.xControllers?.length) return;
+      p.xControllers.forEach((xc, idx) => {
+        if (!xc) return;
+        const norm = this._evalXNorm(xc, `${p.id}:${idx}`, dt, beatPhase);
+        if (norm !== null) this._applyX(p, xc, norm);
+      });
+    });
+  }
+
+  // ── External Mapping helpers ──────────────────────────────────────────────
+
+  /** Evaluate an xController config to a 0-1 normalized value. */
+  _evalXNorm(xc, key, dt, beatPhase) {
+    const t = xc.type;
+    if (t?.startsWith('lfo-')) {
+      const lfo = this._xLFOs.get(key);
+      return lfo ? lfo.tick(dt, beatPhase) : null;
+    }
+    if (t === 'sound'      && this.sound) return Math.min(1, this.sound.level * 4);
+    if (t === 'sound-bass' && this.sound) return this.sound.bass;
+    if (t === 'sound-mid'  && this.sound) return this.sound.mid;
+    if (t === 'sound-high' && this.sound) return this.sound.high;
+    if (t === 'mouse-x') return this.mouse.x;
+    if (t === 'mouse-y') return this.mouse.y;
+    if (t === 'random') {
+      if (!xc._rState) xc._rState = { lastTick: 0, val: Math.random() };
+      const now = performance.now() / 1000;
+      if (now - xc._rState.lastTick > 1 / (xc.hz ?? 1)) {
+        xc._rState.val = Math.random();
+        xc._rState.lastTick = now;
+      }
+      return xc._rState.val;
+    }
+    return null;
+  }
+
+  /** Apply a normalized xController output to the appropriate target. */
+  _applyX(p, xc, norm) {
+    const target = xc.target ?? 'value';
+    if (target === 'hz') {
+      // Modulate primary LFO rate (0–20 Hz)
+      const lfo = this.lfos.get(p.id);
+      if (lfo && p.controller?.bpmDiv == null) {
+        const maxHz = xc.maxHz ?? 20;
+        lfo.lfo.hz = norm * maxHz;
+        if (p.controller) p.controller.hz = lfo.lfo.hz;
+      }
+    } else if (target === 'value') {
+      // Direct override: write normalized value to param
+      p.setNormalized(norm);
+    } else if (target === 'amp') {
+      // VCA-style: scale current normalized position toward min when norm is low
+      if (!p.locked) p.setNormalized(p.normalized * norm);
+    }
+  }
+
+  // ── External Mapping management ──────────────────────────────────────────
+
+  /**
+   * Assign an xController to a param at a given index.
+   * xConfig: { type, hz, phase, width, beatSync, beatDiv, target, maxHz }
+   */
+  assignX(paramId, xIndex, xConfig) {
+    const p = this.ps.get(paramId);
+    if (!p) return;
+    while (p.xControllers.length <= xIndex) p.xControllers.push(null);
+
+    const key = `${paramId}:${xIndex}`;
+    this._xLFOs.delete(key);
+    p.xControllers[xIndex] = xConfig ? { ...xConfig } : null;
+
+    if (!xConfig?.type?.startsWith('lfo-')) return;
+    const lfo = new LFOController({
+      shape:    xConfig.type.replace('lfo-', ''),
+      hz:       xConfig.hz       ?? 0.5,
+      phase:    xConfig.phase    ?? 0,
+      width:    xConfig.width    ?? 0.5,
+      beatSync: xConfig.beatSync ?? false,
+      beatDiv:  xConfig.beatDiv  ?? 1,
+    });
+    lfo.bpmDiv = xConfig.bpmDiv ?? null;
+    this._xLFOs.set(key, lfo);
+  }
+
+  removeX(paramId, xIndex) {
+    const p = this.ps.get(paramId);
+    if (!p) return;
+    if (xIndex < p.xControllers.length) p.xControllers[xIndex] = null;
+    this._xLFOs.delete(`${paramId}:${xIndex}`);
+    // Trim trailing nulls
+    while (p.xControllers.length && !p.xControllers[p.xControllers.length - 1]) {
+      p.xControllers.pop();
+    }
+  }
+
+  /** Rebuild xLFO instances from param.xControllers after preset load. */
+  rebuildXControllers() {
+    this._xLFOs.clear();
+    this.ps.getAll().forEach(p => {
+      (p.xControllers ?? []).forEach((xc, idx) => {
+        if (!xc?.type?.startsWith('lfo-')) return;
+        const key = `${p.id}:${idx}`;
+        const lfo = new LFOController({
+          shape:    xc.type.replace('lfo-', ''),
+          hz:       xc.hz       ?? 0.5,
+          phase:    xc.phase    ?? 0,
+          width:    xc.width    ?? 0.5,
+          beatSync: xc.beatSync ?? false,
+          beatDiv:  xc.beatDiv  ?? 1,
+        });
+        lfo.bpmDiv = xc.bpmDiv ?? null;
+        this._xLFOs.set(key, lfo);
+      });
+    });
   }
 
   // ── Assign controller to parameter ───────────────────────────────────────
@@ -103,11 +225,13 @@ export class ControllerManager {
 
     if (t.startsWith('lfo-')) {
       const lfo = new LFOController({
-        shape: t.replace('lfo-', ''),
-        hz:    controllerConfig.hz    ?? 0.5,
-        phase: controllerConfig.phase ?? 0,
-        mode:  controllerConfig.mode  ?? 'norm',
-        width: controllerConfig.width ?? 0.5,
+        shape:    t.replace('lfo-', ''),
+        hz:       controllerConfig.hz       ?? 0.5,
+        phase:    controllerConfig.phase    ?? 0,
+        mode:     controllerConfig.mode     ?? 'norm',
+        width:    controllerConfig.width    ?? 0.5,
+        beatSync: controllerConfig.beatSync ?? false,
+        beatDiv:  controllerConfig.beatDiv  ?? 1,
       });
       lfo.bpmDiv = controllerConfig.bpmDiv ?? null; // null = free Hz mode
       this.lfos.set(paramId, lfo);
@@ -177,6 +301,15 @@ export class ControllerManager {
           const p = this.ps.get(paramId);
           if (p?.controller) p.controller.hz = lfo.lfo.hz;
         }
+      }
+    });
+    // Sync xLFOs that are beat-synced
+    this._xLFOs.forEach((lfo, key) => {
+      if (lfo.bpmDiv != null) {
+        lfo.lfo.hz = (bpm / 60) * lfo.bpmDiv;
+        const [paramId, idxStr] = key.split(':');
+        const xc = this.ps.get(paramId)?.xControllers?.[parseInt(idxStr)];
+        if (xc) xc.hz = lfo.lfo.hz;
       }
     });
   }
@@ -512,6 +645,9 @@ export class ControllerManager {
           beatDetector.tick();
         }
       };
+
+      // Notify any listener that sound is ready (e.g. vectorscope)
+      if (typeof this.onSoundReady === 'function') this.onSoundReady(source, ctx);
 
       // Wire sound-assigned params
       setInterval(() => {

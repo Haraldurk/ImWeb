@@ -23,6 +23,7 @@ import { StepSequencer }   from './controls/StepSequencer.js';
 import { CameraInput }    from './inputs/CameraInput.js';
 import { MovieInput }     from './inputs/MovieInput.js';
 import { StillsBuffer }   from './inputs/StillsBuffer.js';
+import { SequenceBuffer } from './inputs/SequenceBuffer.js';
 import { VideoDelayLine }    from './inputs/VideoDelayLine.js';
 import { VectorscopeInput }  from './inputs/VectorscopeInput.js';
 import { SlitScanBuffer }    from './inputs/SlitScanBuffer.js';
@@ -35,11 +36,13 @@ import { Pipeline } from './core/Pipeline.js';
 import { PresetManager, openDB } from './state/Preset.js';
 import { OSCBridge }    from './io/OSCBridge.js';
 import { ProjectFile }  from './io/ProjectFile.js';
+import { importImX }    from './io/ImXImporter.js';
 import { parseCubeFile } from './io/CubeLoader.js';
 import {
   initTabs,
   buildLayerButtons,
   buildMappingPanels,
+  buildSeqParams,
   buildGeometryButtons,
   StateDots,
   SignalPath,
@@ -47,6 +50,7 @@ import {
   FeedbackOverlay,
   PresetsPanel,
   FPSDisplay,
+  DebugOverlay,
   TablesEditor,
 } from './ui/UI.js';
 
@@ -90,7 +94,6 @@ async function main() {
 
   const ctrl = new ControllerManager(ps);
   const automation    = new Automation(ps);
-  const stepSequencer = new StepSequencer(presetMgr);
 
   // ── 4. Input sources ──────────────────────────────────────────────────────
 
@@ -100,6 +103,9 @@ async function main() {
   const movieInput = new MovieInput();
 
   const stillsBuffer  = new StillsBuffer(renderer, W, H);
+  const seq1 = new SequenceBuffer(renderer, W, H, 60);
+  const seq2 = new SequenceBuffer(renderer, W, H, 60);
+  const seq3 = new SequenceBuffer(renderer, W, H, 60);
   const videoDelay    = new VideoDelayLine(renderer, W, H, 30);
   const vectorscope   = new VectorscopeInput();
   const slitScan      = new SlitScanBuffer(W, H);
@@ -133,11 +139,17 @@ async function main() {
   const color2Ctx = color2Canvas.getContext('2d');
   const color2Texture = new THREE.CanvasTexture(color2Canvas);
 
+  // Phase accumulator for Color2 gradient animation (driven by color2.speed)
+  let _color2Phase = 0;
+
   function updateColor2Texture() {
-    const h1 = ps.get('color1.hue').value / 100;
+    // Only apply phase offset when speed is non-zero (avoid permanent hue shift after stopping)
+    const _phaseActive = (ps.get('color2.speed')?.value ?? 0) !== 0;
+    const phaseOff = _phaseActive ? ((_color2Phase % 1) + 1) % 1 : 0;
+    const h1 = ((ps.get('color1.hue').value / 100) + phaseOff + 1) % 1;
     const s1 = ps.get('color1.sat').value / 100;
     const v1 = ps.get('color1.val').value / 100;
-    const h2 = ps.get('color2.hue').value / 100;
+    const h2 = ((ps.get('color2.hue').value / 100) + phaseOff + 1) % 1;
     const s2 = ps.get('color2.sat').value / 100;
     const v2 = ps.get('color2.val').value / 100;
     const type = ps.get('color2.type').value;
@@ -192,8 +204,9 @@ async function main() {
 
   // ── 6. Preset manager + Table manager ────────────────────────────────────
 
-  const presetMgr = new PresetManager(ps, ctrl);
+  const presetMgr = new PresetManager(ps, ctrl, pipeline);
   await presetMgr.init();
+  const stepSequencer = new StepSequencer(presetMgr);
 
   // MIDI Program Change → preset recall (PC 0–127 maps to preset index)
   ctrl.onMIDIPC = pcNum => presetMgr.activatePreset(pcNum);
@@ -255,15 +268,145 @@ async function main() {
   const contextMenu = new ContextMenu(ps, ctrl, presetMgr, tableManager);
   buildLayerButtons(ps, contextMenu);
   buildMappingPanels(ps, contextMenu);
+  buildSeqParams(ps, contextMenu);
   buildGeometryButtons(ps, scene3d);
 
-  // ── Collapsible section headers ───────────────────────────────────────────
+  // ── Collapsible section headers + Detach + Collapse-all ──────────────────
+
+  // Detached panel drag
+  function _makeDraggable(panel, handle) {
+    let ox = 0, oy = 0, dragging = false;
+    handle.addEventListener('mousedown', e => {
+      if (e.target.tagName === 'BUTTON') return;
+      dragging = true;
+      ox = e.clientX - panel.offsetLeft;
+      oy = e.clientY - panel.offsetTop;
+      e.preventDefault();
+    });
+    window.addEventListener('mousemove', e => {
+      if (!dragging) return;
+      panel.style.left = (e.clientX - ox) + 'px';
+      panel.style.top  = (e.clientY - oy) + 'px';
+    });
+    window.addEventListener('mouseup', () => { dragging = false; });
+  }
+
+  // Detach a panel-section into a floating window
+  function _detachSection(section) {
+    const title    = section.querySelector('.section-header')?.childNodes[0]?.textContent.trim() ?? 'Panel';
+    const origParent = section.parentElement;
+    const origNext   = section.nextSibling;
+
+    // Leave a slim placeholder so layout doesn't jump
+    const placeholder = document.createElement('div');
+    placeholder.className = 'detach-placeholder';
+    placeholder.style.cssText = 'height:28px;border-bottom:1px dashed var(--border);display:flex;align-items:center;padding:0 10px;font-family:var(--mono);font-size:10px;color:var(--text-2);cursor:pointer;';
+    placeholder.textContent = `↗ ${title} (detached)`;
+    origParent.insertBefore(placeholder, origNext);
+
+    const panel = document.createElement('div');
+    panel.className = 'detached-panel';
+    const rect = section.getBoundingClientRect();
+    panel.style.left = Math.min(rect.right + 8, window.innerWidth - 300) + 'px';
+    panel.style.top  = Math.max(4, rect.top) + 'px';
+
+    const titleBar = document.createElement('div');
+    titleBar.className = 'detached-panel-title';
+    titleBar.textContent = title;
+
+    const closeBtn = document.createElement('button');
+    closeBtn.textContent = '✕';
+    closeBtn.title = 'Re-attach';
+
+    const reattach = () => {
+      placeholder.replaceWith(section);
+      panel.remove();
+      section.classList.remove('collapsed');
+      section.querySelector('.section-header')?.classList.remove('collapsed');
+    };
+    closeBtn.addEventListener('click', reattach);
+    placeholder.addEventListener('click', reattach);
+
+    titleBar.appendChild(closeBtn);
+
+    const panelBody = document.createElement('div');
+    panelBody.className = 'detached-panel-body';
+    panelBody.appendChild(section);
+
+    panel.appendChild(titleBar);
+    panel.appendChild(panelBody);
+    document.body.appendChild(panel);
+    _makeDraggable(panel, titleBar);
+  }
+
+  let _allCollapsed = false;
   document.querySelectorAll('.section-header').forEach(hdr => {
-    hdr.addEventListener('click', () => {
+    // Collapse on click (but not if a button inside was clicked)
+    hdr.addEventListener('click', e => {
+      if (e.target.tagName === 'BUTTON') return;
       hdr.closest('.panel-section')?.classList.toggle('collapsed');
       hdr.classList.toggle('collapsed');
     });
+
+    // Add action buttons: detach + (collapse-all on first header of each tab)
+    const btns = document.createElement('div');
+    btns.className = 'section-header-btns';
+
+    const detachBtn = document.createElement('button');
+    detachBtn.textContent = '⊞';
+    detachBtn.title = 'Detach panel';
+    detachBtn.addEventListener('click', e => {
+      e.stopPropagation();
+      _detachSection(hdr.closest('.panel-section'));
+    });
+    btns.appendChild(detachBtn);
+    hdr.appendChild(btns);
   });
+
+  // Collapse / expand all sections
+  const collapseAllBtn = document.getElementById('btn-collapse-all');
+  collapseAllBtn?.addEventListener('click', () => {
+    _allCollapsed = !_allCollapsed;
+    document.querySelectorAll('.panel-section').forEach(sec => {
+      const hdr = sec.querySelector('.section-header');
+      sec.classList.toggle('collapsed', _allCollapsed);
+      hdr?.classList.toggle('collapsed', _allCollapsed);
+    });
+    collapseAllBtn.textContent = _allCollapsed ? '⊞' : '⊟';
+  });
+
+  // Collapse all sections except Layers
+  function _collapseToLayers() {
+    document.querySelectorAll('.panel-section').forEach(sec => {
+      const hdr = sec.querySelector('.section-header');
+      // Use the first text node to get the section title (ignoring child button elements)
+      const title = [...(hdr?.childNodes ?? [])].find(n => n.nodeType === 3)?.textContent.trim() ?? '';
+      const isLayers = title === 'Layers';
+      sec.classList.toggle('collapsed', !isLayers);
+      hdr?.classList.toggle('collapsed', !isLayers);
+    });
+  }
+
+  // Reset all params to defaults → clean camera state
+  async function _resetAllParams() {
+    if (!confirm('Reset all parameters to defaults?')) return;
+    ps.getAll().forEach(p => p.reset());
+    ps.set('layer.fg', 0);  // Camera
+    ps.set('layer.bg', 0);  // Camera
+    ps.set('layer.ds', 0);  // Camera
+    _collapseToLayers();
+    // Start camera if not already running
+    if (!camera3d.active) {
+      const ok = await camera3d.start(null);
+      if (ok) {
+        const btnCam = document.getElementById('btn-camera-on');
+        if (btnCam) btnCam.textContent = '■ Camera';
+        ps.set('camera.active', 1);
+      }
+    }
+  }
+  document.getElementById('btn-reset-all')?.addEventListener('click', _resetAllParams);
+
 
   // ── LUT loader ────────────────────────────────────────────────────────────
   const lutNameEl = document.getElementById('lut-name');
@@ -293,15 +436,277 @@ async function main() {
   // LUT amount updates are read directly from ps in pipeline.render()
 
   const stateDots   = new StateDots(presetMgr);
-  const signalPath  = new SignalPath(ps);
+  const signalPath  = new SignalPath({
+    ps,
+    pipeline,
+    onOrderChange: (order) => {
+      pipeline.setFxOrder(order);
+      signalPath._fxOrder = [...order];
+      signalPath._render();
+    },
+  });
   const feedbackOl  = new FeedbackOverlay(ps);
   const presetsPanel = new PresetsPanel(presetMgr);
   const fpsDisplay    = new FPSDisplay();
+  const debugOverlay  = new DebugOverlay(ps);
   const tablesEditor  = new TablesEditor(tableManager);
 
   // ── Preset save buttons ───────────────────────────────────────────────────
+
+  // ── Signal path float / dock ──────────────────────────────────────────────
+  (() => {
+    const spEl  = document.getElementById('signal-path');
+    const btn   = document.getElementById('btn-signal-path');
+    if (!spEl || !btn) return;
+
+    let _spFloating = false;
+    let _spDragOx = 0, _spDragOy = 0, _spDragging = false;
+
+    function _floatSP() {
+      _spFloating = true;
+      btn.style.color = 'var(--accent)';
+
+      // Remove from fixed-bottom layout: shrink the app area back
+      document.documentElement.style.setProperty('--signal-h', '0px');
+
+      // Build title bar
+      const titleBar = document.createElement('div');
+      titleBar.className = 'sp-float-titlebar';
+      titleBar.textContent = 'Signal Path';
+
+      const closeBtn = document.createElement('button');
+      closeBtn.textContent = '✕';
+      closeBtn.title = 'Dock signal path';
+      closeBtn.addEventListener('click', _dockSP);
+      titleBar.appendChild(closeBtn);
+
+      // Wrap display in a body div
+      const displayEl = document.getElementById('signal-path-display');
+      const body = document.createElement('div');
+      body.className = 'sp-float-body';
+      body.appendChild(displayEl);
+
+      spEl.innerHTML = '';
+      spEl.appendChild(titleBar);
+      spEl.appendChild(body);
+      spEl.classList.add('sp-float-panel');
+
+      // Position near top-left of output panel
+      const rect = document.getElementById('output-panel')?.getBoundingClientRect() ?? { left: 0, top: 40 };
+      spEl.style.left = (rect.left + 12) + 'px';
+      spEl.style.top  = (rect.top  + 12) + 'px';
+
+      // Drag on title bar
+      titleBar.addEventListener('mousedown', e => {
+        if (e.target.tagName === 'BUTTON') return;
+        _spDragging = true;
+        _spDragOx = e.clientX - spEl.offsetLeft;
+        _spDragOy = e.clientY - spEl.offsetTop;
+        e.preventDefault();
+      });
+    }
+
+    function _dockSP() {
+      _spFloating = false;
+      btn.style.color = '';
+      document.documentElement.style.removeProperty('--signal-h');
+
+      // Extract displayEl before clearing innerHTML
+      const displayEl = document.getElementById('signal-path-display');
+      if (displayEl) document.body.appendChild(displayEl); // temp parking
+
+      spEl.classList.remove('sp-float-panel');
+      spEl.style.left = '';
+      spEl.style.top  = '';
+      spEl.innerHTML = '';
+
+      if (displayEl) spEl.appendChild(displayEl);
+      signalPath._render();
+    }
+
+    window.addEventListener('mousemove', e => {
+      if (!_spDragging) return;
+      spEl.style.left = (e.clientX - _spDragOx) + 'px';
+      spEl.style.top  = (e.clientY - _spDragOy) + 'px';
+    });
+    window.addEventListener('mouseup', () => { _spDragging = false; });
+
+    btn.addEventListener('click', () => {
+      if (_spFloating) _dockSP(); else _floatSP();
+    });
+
+    // Shift+P shortcut
+    window.addEventListener('keydown', e => {
+      if (e.shiftKey && e.key === 'P' && !e.target.closest('input,textarea')) {
+        e.preventDefault();
+        if (_spFloating) _dockSP(); else _floatSP();
+      }
+    });
+  })();
+
+  // ── Resolution buttons (status bar) ──────────────────────────────────────
+  (() => {
+    const resBtns = document.querySelectorAll('.res-btn');
+    const updateActive = (idx) => {
+      resBtns.forEach(btn => btn.classList.toggle('active', parseInt(btn.dataset.res) === idx));
+    };
+    resBtns.forEach(btn => {
+      btn.addEventListener('click', () => {
+        const idx = parseInt(btn.dataset.res);
+        ps.set('output.resolution', idx);
+      });
+    });
+    ps.get('output.resolution').onChange(updateActive);
+    updateActive(ps.get('output.resolution').value);
+  })();
+
+  // ── Second screen output ──────────────────────────────────────────────────
+  (() => {
+    const btn = document.getElementById('btn-second-screen');
+    if (!btn) return;
+    let _outWin = null;
+
+    btn.addEventListener('click', () => {
+      // Close if already open
+      if (_outWin && !_outWin.closed) {
+        _outWin.close();
+        _outWin = null;
+        btn.classList.remove('active');
+        btn.title = 'Send output to second monitor / new window';
+        return;
+      }
+
+      // Open borderless output window
+      const w = screen.width;
+      const h = screen.height;
+      _outWin = window.open(
+        '', 'ImWebOutput',
+        `width=${w},height=${h},menubar=no,toolbar=no,location=no,status=no,scrollbars=no`
+      );
+      if (!_outWin) {
+        alert('Popup blocked — allow popups for this page to use second screen output.');
+        return;
+      }
+
+      btn.classList.add('active');
+      btn.title = 'Close second screen output (click again)';
+
+      _outWin.document.write(`<!DOCTYPE html>
+<html>
+<head>
+<title>ImWeb Output</title>
+<style>
+  * { margin:0;padding:0;box-sizing:border-box; }
+  html,body { width:100%;height:100%;background:#000;overflow:hidden; }
+  canvas { display:block;position:absolute;top:0;left:0; }
+</style>
+</head>
+<body>
+<canvas id="out"></canvas>
+<script>
+  const canvas = document.getElementById('out');
+  const ctx = canvas.getContext('2d');
+  let running = true;
+
+  function resize() {
+    canvas.width  = window.innerWidth;
+    canvas.height = window.innerHeight;
+  }
+  resize();
+  window.addEventListener('resize', resize);
+
+  function draw() {
+    if (!running) return;
+    try {
+      const src = window.opener && window.opener.document.getElementById('output-canvas');
+      if (src && src.width > 0) {
+        // Letterbox / pillarbox: scale to fill screen while keeping aspect ratio
+        const sw = canvas.width, sh = canvas.height;
+        const iw = src.width,   ih = src.height;
+        const scale = Math.min(sw / iw, sh / ih);
+        const dw = iw * scale, dh = ih * scale;
+        const dx = (sw - dw) / 2, dy = (sh - dh) / 2;
+        ctx.clearRect(0, 0, sw, sh);
+        ctx.drawImage(src, 0, 0, iw, ih, dx, dy, dw, dh);
+      }
+    } catch(e) { running = false; }
+    requestAnimationFrame(draw);
+  }
+  draw();
+
+  window.addEventListener('beforeunload', () => { running = false; });
+  // Fullscreen on double-click
+  canvas.addEventListener('dblclick', () => {
+    if (!document.fullscreenElement) canvas.requestFullscreen?.();
+    else document.exitFullscreen?.();
+  });
+<\/script>
+</body>
+</html>`);
+      _outWin.document.close();
+
+      // Detect popup closed by user
+      const _checkClosed = setInterval(() => {
+        if (_outWin?.closed) {
+          clearInterval(_checkClosed);
+          _outWin = null;
+          btn.classList.remove('active');
+          btn.title = 'Send output to second monitor / new window';
+          // Auto-exit ghost mode when second screen closes
+          document.body.classList.remove('ghost-mode');
+          document.getElementById('btn-ghost-mode')?.classList.remove('active');
+        }
+      }, 1000);
+
+      // Auto-enter ghost mode when second screen opens
+      document.body.classList.add('ghost-mode');
+      document.getElementById('btn-ghost-mode')?.classList.add('active');
+    });
+  })();
+
+  // ── Ghost mode toggle ─────────────────────────────────────────────────────
+  document.getElementById('btn-ghost-mode')?.addEventListener('click', () => {
+    document.body.classList.toggle('ghost-mode');
+    document.getElementById('btn-ghost-mode').classList.toggle('active',
+      document.body.classList.contains('ghost-mode'));
+  });
+
+  // ── Video Out Spy ─────────────────────────────────────────────────────────
+  const _spyCanvas = document.getElementById('spy-canvas');
+  const _spyCtx    = _spyCanvas?.getContext('2d') ?? null;
+
+  // Toggle spy panel visibility
+  const _toggleSpy = () => document.getElementById('video-spy')?.classList.toggle('hidden');
+  document.getElementById('btn-spy')?.addEventListener('click', _toggleSpy);
+
+  // Keyboard shortcut: Shift+Esc = reset all params
+  window.addEventListener('keydown', e => {
+    if (e.shiftKey && e.key === 'Escape' && !e.target.closest('input,textarea')) {
+      e.preventDefault();
+      _resetAllParams();
+    }
+  });
+
+  // Keyboard shortcut: Shift+V = toggle spy
+  window.addEventListener('keydown', e => {
+    if (e.shiftKey && e.key === 'V' && !e.target.closest('input,textarea')) {
+      e.preventDefault();
+      document.getElementById('video-spy')?.classList.toggle('hidden');
+    }
+  });
+
+  /** Capture a 160×90 JPEG thumbnail of the current output canvas. */
+  function capturePresetThumb() {
+    const t = document.createElement('canvas');
+    t.width = 160; t.height = 90;
+    t.getContext('2d').drawImage(canvas, 0, 0, 160, 90);
+    return t.toDataURL('image/jpeg', 0.7);
+  }
+
   document.getElementById('btn-save-preset')?.addEventListener('click', async () => {
+    if (presetMgr.current) presetMgr.current.thumbnail = capturePresetThumb();
     await presetMgr.saveCurrentPreset();
+    presetsPanel._refresh();
     const btn = document.getElementById('btn-save-preset');
     const orig = btn.textContent;
     btn.textContent = '✓ Saved';
@@ -352,8 +757,11 @@ async function main() {
       const inp = document.createElement('input');
       inp.type = 'file';
       inp.accept = '.imweb,application/json';
+      inp.style.display = 'none';
+      document.body.appendChild(inp);
       inp.onchange = async e => {
         const file = e.target.files[0];
+        document.body.removeChild(inp);
         if (!file) return;
         try {
           const name = await projectFile.import(file);
@@ -380,8 +788,29 @@ async function main() {
       });
     });
 
+    // ImX import
+    const btnImportImX = document.createElement('button');
+    btnImportImX.className = 'import-btn';
+    btnImportImX.textContent = '⬆ Import .imx';
+    btnImportImX.title = 'Import ImX preset file (.imx)';
+    btnImportImX.addEventListener('click', () => {
+      const inp = document.createElement('input');
+      inp.type = 'file';
+      inp.accept = '.imx';
+      inp.style.display = 'none';
+      document.body.appendChild(inp);
+      inp.onchange = async e => {
+        const file = e.target.files[0];
+        document.body.removeChild(inp);
+        if (!file) return;
+        _doImportImX(file);
+      };
+      inp.click();
+    });
+
     ioRow.appendChild(btnExport);
     ioRow.appendChild(btnImport);
+    ioRow.appendChild(btnImportImX);
     ioRow.appendChild(btnRandomize);
     presetsSection.appendChild(ioRow);
 
@@ -556,6 +985,7 @@ async function main() {
   cameraRow.style.cssText = 'display:flex;align-items:center;gap:6px;padding:8px 10px;';
 
   const btnCameraOn = document.createElement('button');
+  btnCameraOn.id = 'btn-camera-on';
   btnCameraOn.className = 'import-btn';
   btnCameraOn.textContent = '▶ Camera';
 
@@ -567,16 +997,27 @@ async function main() {
   cameraRow.appendChild(btnCameraOn);
   cameraRow.appendChild(camDeviceSel);
 
-  // Vectorscope mic button
+  // Vectorscope — auto-connect to ctrl.sound when audio is ready
+  ctrl.onSoundReady = (sourceNode, audioCtx) => {
+    vectorscope.connectSource(sourceNode, audioCtx);
+    btnScope.textContent = '⌖ Scope ✓';
+    btnScope.classList.add('active');
+  };
+
+  // Manual scope button — also enables sound (which triggers onSoundReady above)
   const btnScope = document.createElement('button');
   btnScope.className = 'import-btn';
   btnScope.textContent = '⌖ Scope';
-  btnScope.title = 'Enable vectorscope input (uses microphone)';
+  btnScope.title = 'Enable vectorscope (uses microphone or shared sound input)';
   btnScope.addEventListener('click', async () => {
-    const ok = await vectorscope.initMic();
-    if (ok) {
-      btnScope.textContent = '⌖ Scope ✓';
-      btnScope.classList.add('active');
+    if (ctrl.sound) {
+      // Sound already running — just connect scope directly
+      vectorscope.connectSource(ctrl.sound.ctx.createMediaStreamSource
+        ? vectorscope._source ?? ctrl.sound.analyser // fallback
+        : ctrl.sound.analyser, ctrl.sound.ctx);
+    } else {
+      const ok = await vectorscope.initMic();
+      if (ok) { btnScope.textContent = '⌖ Scope ✓'; btnScope.classList.add('active'); }
     }
   });
   cameraRow.appendChild(btnScope);
@@ -633,16 +1074,79 @@ async function main() {
   function refreshClipsList() {
     if (!clipsList) return;
     clipsList.innerHTML = '';
+    if (!movieInput.clips.length) {
+      const empty = document.createElement('div');
+      empty.className = 'clip-empty';
+      empty.textContent = 'Drop video files here or click + Add Clip';
+      clipsList.appendChild(empty);
+      return;
+    }
     movieInput.clips.forEach((clip, i) => {
+      const isActive = i === movieInput.currentIndex;
       const item = document.createElement('div');
-      item.className = `clip-item ${i === movieInput.currentIndex ? 'active' : ''}`;
-      const shortcut = i < 8 ? `<kbd style="font-size:9px;background:var(--bg-4);border:1px solid var(--border);border-radius:2px;padding:0 3px;">⇧${i+1}</kbd>` : '';
-      item.innerHTML = `${shortcut}<span style="flex:1;overflow:hidden;text-overflow:ellipsis">${clip.name}</span><span style="color:var(--text-2)">${clip.duration.toFixed(1)}s</span>`;
+      item.className = `clip-item${isActive ? ' active' : ''}`;
+
+      // Thumbnail
+      const thumb = document.createElement('div');
+      thumb.className = 'clip-thumb';
+      if (clip.thumb) {
+        const img = document.createElement('img');
+        img.src = clip.thumb;
+        img.width = 80; img.height = 45;
+        thumb.appendChild(img);
+      } else {
+        thumb.textContent = '▶';
+      }
+      if (isActive) {
+        const playing = document.createElement('div');
+        playing.className = 'clip-thumb-playing';
+        playing.textContent = '▶';
+        thumb.appendChild(playing);
+      }
+
+      // Info
+      const info = document.createElement('div');
+      info.className = 'clip-info';
+
+      const nameLine = document.createElement('div');
+      nameLine.className = 'clip-name';
+      nameLine.textContent = clip.name.replace(/\.[^/.]+$/, ''); // strip extension
+      nameLine.title = clip.name;
+
+      const metaLine = document.createElement('div');
+      metaLine.className = 'clip-meta';
+
+      const dur = document.createElement('span');
+      dur.textContent = clip.duration >= 60
+        ? `${Math.floor(clip.duration/60)}m${Math.round(clip.duration%60)}s`
+        : `${clip.duration.toFixed(1)}s`;
+
+      const key = document.createElement('kbd');
+      key.className = 'clip-key';
+      key.textContent = i < 8 ? `⇧${i+1}` : '';
+
+      const rmBtn = document.createElement('button');
+      rmBtn.className = 'clip-remove';
+      rmBtn.textContent = '✕';
+      rmBtn.title = 'Remove clip';
+      rmBtn.addEventListener('click', e => {
+        e.stopPropagation();
+        movieInput.removeClip(i);
+        refreshClipsList();
+      });
+
+      metaLine.appendChild(dur);
+      metaLine.appendChild(key);
+      metaLine.appendChild(rmBtn);
+      info.appendChild(nameLine);
+      info.appendChild(metaLine);
+
+      item.appendChild(thumb);
+      item.appendChild(info);
+
       item.addEventListener('click', () => {
         movieInput.selectClip(i);
-        if (ps.get('movie.active').value) {
-          clip.video.play().catch(() => {});
-        }
+        if (ps.get('movie.active').value) clip.video.play().catch(() => {});
         refreshClipsList();
       });
       item.addEventListener('contextmenu', e => {
@@ -650,9 +1154,21 @@ async function main() {
         movieInput.removeClip(i);
         refreshClipsList();
       });
+
       clipsList.appendChild(item);
     });
   }
+
+  refreshClipsList(); // show empty state on startup
+
+  document.getElementById('btn-clear-clips')?.addEventListener('click', () => {
+    if (!movieInput.clips.length) return;
+    if (!confirm('Remove all clips?')) return;
+    // removeClip shifts indices — remove from end
+    for (let i = movieInput.clips.length - 1; i >= 0; i--) movieInput.removeClip(i);
+    ps.set('movie.active', 0);
+    refreshClipsList();
+  });
 
   btnAddClip?.addEventListener('click', () => {
     const input = document.createElement('input');
@@ -678,6 +1194,20 @@ async function main() {
 
   // ── Drag-and-drop: video → clip, image → stills buffer ───────────────────
 
+  async function _doImportImX(file, bufPromise) {
+    try {
+      const buf     = await (bufPromise ?? file.arrayBuffer());
+      const presets = await importImX(buf);
+      await presetMgr.importAll(presets);
+      await presetMgr.activatePreset(0);
+      presetsPanel._refresh();
+      alert(`Imported ${presets.length} preset(s) from "${file.name}"`);
+    } catch (err) {
+      alert(`ImX import failed: ${err.message}`);
+      console.error('[ImXImporter]', err);
+    }
+  }
+
   document.body.addEventListener('dragover', e => {
     e.preventDefault();
     e.dataTransfer.dropEffect = 'copy';
@@ -686,6 +1216,11 @@ async function main() {
   document.body.addEventListener('drop', async e => {
     e.preventDefault();
     const files = Array.from(e.dataTransfer.files);
+    // Read .imx buffers immediately before any await (DataTransfer expires after first yield)
+    const imxBuffers = new Map();
+    for (const file of files) {
+      if (/\.imx$/i.test(file.name)) imxBuffers.set(file, file.arrayBuffer());
+    }
     for (const file of files) {
       if (file.type.startsWith('video/') || /\.(mp4|webm|mov|avi|mkv)$/i.test(file.name)) {
         try {
@@ -693,6 +1228,8 @@ async function main() {
           refreshClipsList();
           if (!ps.get('movie.active').value) ps.set('movie.active', 1);
         } catch (err) { console.error('[DnD] video load failed:', err); }
+      } else if (/\.imx$/i.test(file.name)) {
+        _doImportImX(file, await imxBuffers.get(file));
       } else if (file.type.startsWith('image/') || /\.(png|jpg|jpeg|gif|bmp|webp)$/i.test(file.name)) {
         try {
           const bitmap = await createImageBitmap(file);
@@ -734,17 +1271,36 @@ async function main() {
 
   // ── Buffer capture helpers ────────────────────────────────────────────────
 
-  const BUFFER_SIZES = [4, 8, 16, 32];
-
   // Per-capture-button pinned target slots (null = auto-advance write head)
-  const captureTargetSlots = { screen: null, camera: null, movie: null, draw: null };
+  const captureTargetSlots = { screen: null, camera: null, movie: null, draw: null, fg: null, bg: null, '3d': null };
+
+  /** Resolve a raw layer-source index to its current texture (matches Pipeline._resolveSource). */
+  function _resolveLayerTex(idx) {
+    const keys = ['camera','movie','buffer','color','noise','scene3d','draw','output',
+                  'bg1','bg2','color2','text','sound','delay','scope','slitscan','particles',
+                  'seq1','seq2','seq3'];
+    const key = keys[idx];
+    if (key === 'camera')   return camera3d.active   ? camera3d.currentTexture   : null;
+    if (key === 'movie')    return movieInput.active  ? movieInput.currentTexture : null;
+    if (key === 'scene3d')  return scene3d.texture;
+    if (key === 'draw')     return drawLayer.texture;
+    if (key === 'buffer')   return stillsBuffer.texture;
+    if (key === 'output')   return pipeline.prev.texture;
+    if (key === 'seq1')     return seq1.texture;
+    if (key === 'seq2')     return seq2.texture;
+    if (key === 'seq3')     return seq3.texture;
+    return pipeline.prev.texture;
+  }
 
   /** Resolve texture for source key. */
   function texForSource(src) {
-    if (src === 'screen') return pipeline.prev.texture;
-    if (src === 'camera') return camera3d.active  ? camera3d.currentTexture  : null;
-    if (src === 'movie')  return movieInput.active ? movieInput.currentTexture : null;
-    if (src === 'draw')   return drawLayer.texture;
+    if (src === 'screen')   return pipeline.prev.texture;
+    if (src === 'camera')   return camera3d.active   ? camera3d.currentTexture   : null;
+    if (src === 'movie')    return movieInput.active  ? movieInput.currentTexture : null;
+    if (src === 'draw')     return drawLayer.texture;
+    if (src === 'fg')       return _resolveLayerTex(ps.get('layer.fg').value);
+    if (src === 'bg')       return _resolveLayerTex(ps.get('layer.bg').value);
+    if (src === '3d')       return scene3d.texture;
     return null;
   }
 
@@ -761,7 +1317,7 @@ async function main() {
   /** Used by auto-capture and keyboard shortcut C — respects buffer.source SELECT. */
   function captureFromSource() {
     const srcIdx = ps.get('buffer.source').value;
-    const keys   = ['screen', 'camera', 'movie', 'draw'];
+    const keys   = ['screen', 'camera', 'movie', 'draw', 'fg', 'bg', '3d'];
     captureSource(keys[srcIdx] ?? 'screen');
   }
 
@@ -774,16 +1330,19 @@ async function main() {
   ps.get('screen.bg1').onTrigger(() => stillsBuffer.captureBG(0, pipeline.prev.texture));
   ps.get('screen.bg2').onTrigger(() => stillsBuffer.captureBG(1, pipeline.prev.texture));
 
-  // Buffer size change — resize slot array, rebuild grid
-  ps.get('buffer.size').onChange(idx => {
-    const n = BUFFER_SIZES[idx] ?? 16;
+  // Buffer rows/cols change — resize slot array, update fs max, rebuild grid
+  function _updateBufferSize() {
+    const rows = Math.round(ps.get('buffer.rows').value);
+    const cols = Math.round(ps.get('buffer.cols').value);
+    const n = Math.min(rows * cols, 64);
     stillsBuffer.setFrameCount(n);
-    // Clamp fs1 max to new size
-    const fs1 = ps.get('buffer.fs1');
-    fs1.max = n - 1;
-    fs1.value = Math.min(fs1.value, n - 1);
+    ps.get('buffer.fs1').max = n - 1;
+    ps.get('buffer.fs2').max = n - 1;
     rebuildBufferGrid();
-  });
+  }
+  ps.get('buffer.rows').onChange(_updateBufferSize);
+  ps.get('buffer.cols').onChange(_updateBufferSize);
+  // _updateBufferSize() called below after bufferCanvas is initialised
 
   // Draw layer triggers
   ps.get('draw.clear').onTrigger(() => drawLayer.clear());
@@ -793,6 +1352,13 @@ async function main() {
 
   // Slit scan clear trigger
   ps.get('slitscan.clear').onTrigger(() => slitScan.clear());
+
+  // Sequence buffer param listeners
+  [1, 2, 3].forEach(n => {
+    const seq = [seq1, seq2, seq3][n - 1];
+    ps.get(`seq${n}.speed`).onChange(v => { seq.speed = v / 100; });
+    ps.get(`seq${n}.size`).onChange(v => { seq.setFrameCount(Math.round(v)); });
+  });
 
   // ── Draw tab UI ───────────────────────────────────────────────────────────
 
@@ -887,65 +1453,74 @@ async function main() {
 
   // ── Buffer tab UI ─────────────────────────────────────────────────────────
 
-  const bufferCanvas  = document.getElementById('buffer-canvas');
-  const bufferCtx     = bufferCanvas?.getContext('2d');
-  const CANVAS_W      = bufferCanvas?.width  ?? 320;
-  const CANVAS_H      = bufferCanvas?.height ?? 240;
-  const BCOLS         = 4; // always 4 columns; rows scale with frame count
+  let bufferCanvas  = document.getElementById('buffer-canvas');
+  let bufferCtx     = bufferCanvas?.getContext('2d');
+  const CANVAS_W    = bufferCanvas?.width ?? 320;
+  _updateBufferSize();
+  // Target cell width ~60px — more frames → more columns → smaller cells
+  const CELL_TARGET_W = 60;
 
-  // Computed per refresh based on current frameCount
-  function gridCellSize() {
-    const rows = Math.ceil(stillsBuffer.frameCount / BCOLS);
-    return { cw: CANVAS_W / BCOLS, ch: CANVAS_H / rows };
+  function gridLayout() {
+    const n    = stillsBuffer.frameCount;
+    const cols = Math.round(ps.get('buffer.cols').value);
+    const cw   = CANVAS_W / cols;
+    const ch   = Math.round(cw * 0.6); // keep ~5:3 aspect (video-ish)
+    const rows = Math.ceil(n / cols);
+    return { cols, rows, cw, ch, totalH: rows * ch };
   }
 
   function refreshBufferGrid() {
     if (!bufferCtx) return;
-    const { cw, ch } = gridCellSize();
+    const { cols, cw, ch } = gridLayout();
     const n = stillsBuffer.frameCount;
+    const canvasH = bufferCanvas.height;
 
-    bufferCtx.clearRect(0, 0, CANVAS_W, CANVAS_H);
+    bufferCtx.clearRect(0, 0, CANVAS_W, canvasH);
 
     for (let i = 0; i < n; i++) {
-      const col = i % BCOLS;
-      const row = Math.floor(i / BCOLS);
+      const col = i % cols;
+      const row = Math.floor(i / cols);
       const x   = col * cw;
       const y   = row * ch;
-      const isRead  = i === stillsBuffer.readIndex;
-      const isWrite = i === ((stillsBuffer.writeIndex - 1 + n) % n) && stillsBuffer._hasFrame[i];
+      const isRead      = i === stillsBuffer.readIndex;
+      const isWrite     = i === ((stillsBuffer.writeIndex - 1 + n) % n) && stillsBuffer._hasFrame[i];
+      const isProtected = stillsBuffer.isProtected(i);
 
       // Cell background
       bufferCtx.fillStyle = isRead ? '#2a2a3a' : '#111118';
       bufferCtx.fillRect(x, y, cw - 1, ch - 1);
 
-      // Thumbnail
+      // Thumbnail — scale proportionally to cell
       if (stillsBuffer._hasFrame[i]) {
-        const thumbH = Math.min(ch - 2, 45 * (cw / 80));
-        bufferCtx.drawImage(
-          stillsBuffer.thumbnailCanvases[i],
-          x, y + Math.floor((ch - thumbH) / 2), cw - 1, thumbH,
-        );
+        bufferCtx.drawImage(stillsBuffer.thumbnailCanvases[i], x, y, cw - 1, ch - 1);
       }
 
-      // Frame index label
-      bufferCtx.fillStyle = isRead ? '#e8c840' : isWrite ? '#60a0e0' : '#404050';
-      bufferCtx.font = '9px monospace';
-      bufferCtx.fillText(`${i}`, x + 3, y + 10);
+      // Protected slot — tint with semi-transparent overlay
+      if (isProtected) {
+        bufferCtx.fillStyle = 'rgba(255,160,0,0.18)';
+        bufferCtx.fillRect(x, y, cw - 1, ch - 1);
+      }
 
-      // Write-head marker
+      // Frame index label (only if cell tall enough)
+      if (ch >= 12) {
+        bufferCtx.fillStyle = isRead ? '#e8c840' : isWrite ? '#60a0e0' : isProtected ? '#ffa020' : '#404050';
+        bufferCtx.font = `${Math.max(7, Math.min(9, ch * 0.25))}px monospace`;
+        bufferCtx.fillText(`${i}${isProtected ? '🔒' : ''}`, x + 2, y + Math.max(8, ch * 0.28));
+      }
+
+      // Write-head marker (blue for normal, amber for protected)
       if (i === stillsBuffer.writeIndex) {
-        bufferCtx.strokeStyle = '#60a0e0';
+        bufferCtx.strokeStyle = isProtected ? '#ffa020' : '#60a0e0';
         bufferCtx.lineWidth = 1;
         bufferCtx.strokeRect(x + 0.5, y + 0.5, cw - 2, ch - 2);
       }
     }
   }
 
-  /** Rebuild grid canvas size when slot count changes. */
+  /** Rebuild grid canvas height when slot count changes. */
   function rebuildBufferGrid() {
     if (!bufferCanvas) return;
-    const rows = Math.ceil(stillsBuffer.frameCount / BCOLS);
-    bufferCanvas.height = rows * (CANVAS_W / BCOLS); // keep cell aspect ~4:3
+    bufferCanvas.height = gridLayout().totalH;
     refreshBufferGrid();
   }
 
@@ -1108,29 +1683,45 @@ async function main() {
     autoRow.appendChild(rateInput);
     autoRow.appendChild(fpsLbl);
 
-    // ── Size selector ────────────────────────────────────────────────────
+    // ── Rows × Cols selector ─────────────────────────────────────────────
     const sizeRow = document.createElement('div');
     sizeRow.style.cssText = 'display:flex;align-items:center;gap:6px;padding:0 10px 6px;flex-wrap:wrap;';
 
     const sizeLabel = document.createElement('span');
-    sizeLabel.textContent = 'Slots:';
+    sizeLabel.textContent = 'Grid:';
     sizeLabel.style.cssText = 'font-size:11px;color:var(--text-2);min-width:36px;';
     sizeRow.appendChild(sizeLabel);
 
-    const sizeParam = ps.get('buffer.size');
-    const sizeBtns  = [];
-    BUFFER_SIZES.forEach((n, i) => {
-      const btn = document.createElement('button');
-      btn.className = 'source-btn';
-      btn.textContent = String(n);
-      btn.classList.toggle('active', i === sizeParam.value);
-      btn.addEventListener('click', () => {
-        sizeParam.value = i;
-        sizeBtns.forEach((b, j) => b.classList.toggle('active', j === i));
+    ['buffer.rows', 'buffer.cols'].forEach((paramId, pIdx) => {
+      const lbl = document.createElement('span');
+      lbl.textContent = pIdx === 0 ? 'R' : 'C';
+      lbl.style.cssText = 'font-size:11px;color:var(--text-2);';
+      sizeRow.appendChild(lbl);
+
+      const inp = document.createElement('input');
+      inp.type = 'number';
+      inp.min = '1'; inp.max = '8'; inp.step = '1';
+      inp.value = ps.get(paramId).value;
+      inp.style.cssText = 'width:36px;font-size:11px;background:var(--bg-4);border:1px solid var(--border);color:var(--text-1);padding:2px 4px;border-radius:3px;';
+      inp.addEventListener('input', () => {
+        const v = parseInt(inp.value, 10);
+        if (!isNaN(v)) ps.set(paramId, v);
       });
-      sizeBtns.push(btn);
-      sizeRow.appendChild(btn);
+      ps.get(paramId).onChange(v => { inp.value = Math.round(v); });
+      sizeRow.appendChild(inp);
     });
+
+    const slotsLbl = document.createElement('span');
+    slotsLbl.style.cssText = 'font-size:11px;color:var(--text-2);';
+    function _updateSlotsLabel() {
+      const r = Math.round(ps.get('buffer.rows').value);
+      const c = Math.round(ps.get('buffer.cols').value);
+      slotsLbl.textContent = `= ${r * c} slots`;
+    }
+    _updateSlotsLabel();
+    ps.get('buffer.rows').onChange(_updateSlotsLabel);
+    ps.get('buffer.cols').onChange(_updateSlotsLabel);
+    sizeRow.appendChild(slotsLbl);
 
     // ── Scan controls ────────────────────────────────────────────────────
     const scanRow = document.createElement('div');
@@ -1198,53 +1789,102 @@ async function main() {
   // Click to select frame
   bufferCanvas?.addEventListener('click', e => {
     const rect = bufferCanvas.getBoundingClientRect();
-    const { cw, ch } = gridCellSize();
+    const { cols, cw, ch } = gridLayout();
     const mx  = (e.clientX - rect.left) * (CANVAS_W / rect.width);
     const my  = (e.clientY - rect.top)  * (bufferCanvas.height / rect.height);
-    const idx = Math.floor(my / ch) * BCOLS + Math.floor(mx / cw);
+    const idx = Math.floor(my / ch) * cols + Math.floor(mx / cw);
     if (idx >= 0 && idx < stillsBuffer.frameCount) {
       ps.set('buffer.fs1', idx);
       refreshBufferGrid();
     }
   });
 
-  // Right-click on buffer cell → save frame as PNG
+  // Right-click on buffer cell → protect/PNG menu
   bufferCanvas?.addEventListener('contextmenu', e => {
     e.preventDefault();
     const rect = bufferCanvas.getBoundingClientRect();
-    const { cw, ch } = gridCellSize();
+    const { cols, cw, ch } = gridLayout();
     const mx  = (e.clientX - rect.left) * (CANVAS_W / rect.width);
     const my  = (e.clientY - rect.top)  * (bufferCanvas.height / rect.height);
-    const idx = Math.floor(my / ch) * BCOLS + Math.floor(mx / cw);
-    if (idx >= 0 && idx < stillsBuffer.frameCount && stillsBuffer._hasFrame[idx]) {
-      // Read full-res pixels from the frame's render target
-      const rt     = stillsBuffer.frames[idx];
-      const w      = rt.width;
-      const h      = rt.height;
-      const pixels = new Uint8Array(w * h * 4);
-      renderer.readRenderTargetPixels(rt, 0, 0, w, h, pixels);
-
-      // Flip Y and write to a temp canvas
-      const tmpCanvas = document.createElement('canvas');
-      tmpCanvas.width  = w;
-      tmpCanvas.height = h;
-      const tmpCtx    = tmpCanvas.getContext('2d');
-      const imgData   = tmpCtx.createImageData(w, h);
-      for (let row = 0; row < h; row++) {
-        const srcRow = (h - 1 - row) * w * 4;
-        imgData.data.set(pixels.subarray(srcRow, srcRow + w * 4), row * w * 4);
-      }
-      tmpCtx.putImageData(imgData, 0, 0);
-
-      tmpCanvas.toBlob(blob => {
-        const a = document.createElement('a');
-        a.href = URL.createObjectURL(blob);
-        a.download = `imweb-frame-${idx}.png`;
-        a.click();
-        setTimeout(() => URL.revokeObjectURL(a.href), 5000);
-      }, 'image/png');
+    const idx = Math.floor(my / ch) * cols + Math.floor(mx / cw);
+    if (idx >= 0 && idx < stillsBuffer.frameCount) {
+      // Show small context menu for this slot
+      _showBufferSlotMenu(idx, e.clientX, e.clientY);
     }
   });
+
+  // ── Buffer slot context menu (protect / save PNG) ─────────────────────────
+  const _bufSlotMenu    = document.createElement('div');
+  _bufSlotMenu.className = 'context-menu hidden';
+  _bufSlotMenu.style.cssText = 'min-width:130px;';
+  document.body.appendChild(_bufSlotMenu);
+  let _bufSlotMenuIdx = -1;
+
+  function _saveBufSlotPNG(idx) {
+    if (!stillsBuffer._hasFrame[idx]) return;
+    const rt     = stillsBuffer.frames[idx];
+    const w      = rt.width;
+    const h      = rt.height;
+    const pixels = new Uint8Array(w * h * 4);
+    renderer.readRenderTargetPixels(rt, 0, 0, w, h, pixels);
+    const tmpCanvas = document.createElement('canvas');
+    tmpCanvas.width = w; tmpCanvas.height = h;
+    const tmpCtx  = tmpCanvas.getContext('2d');
+    const imgData = tmpCtx.createImageData(w, h);
+    for (let row = 0; row < h; row++) {
+      const srcRow = (h - 1 - row) * w * 4;
+      imgData.data.set(pixels.subarray(srcRow, srcRow + w * 4), row * w * 4);
+    }
+    tmpCtx.putImageData(imgData, 0, 0);
+    tmpCanvas.toBlob(blob => {
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `imweb-frame-${idx}.png`;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+    }, 'image/png');
+  }
+
+  function _showBufferSlotMenu(idx, x, y) {
+    _bufSlotMenuIdx = idx;
+    _bufSlotMenu.innerHTML = '';
+
+    const header = document.createElement('div');
+    header.className = 'menu-header';
+    header.textContent = `Slot ${idx}`;
+    _bufSlotMenu.appendChild(header);
+
+    // Protect/unprotect
+    const protBtn = document.createElement('button');
+    protBtn.className = 'menu-item';
+    protBtn.textContent = stillsBuffer.isProtected(idx) ? '🔓 Unprotect slot' : '🔒 Protect slot';
+    protBtn.addEventListener('click', () => {
+      stillsBuffer.toggleProtect(idx);
+      refreshBufferGrid();
+      _bufSlotMenu.classList.add('hidden');
+    });
+    _bufSlotMenu.appendChild(protBtn);
+
+    // Save PNG (only if frame has content)
+    if (stillsBuffer._hasFrame[idx]) {
+      const pngBtn = document.createElement('button');
+      pngBtn.className = 'menu-item';
+      pngBtn.textContent = '↓ Save as PNG';
+      pngBtn.addEventListener('click', () => {
+        _saveBufSlotPNG(idx);
+        _bufSlotMenu.classList.add('hidden');
+      });
+      _bufSlotMenu.appendChild(pngBtn);
+    }
+
+    _bufSlotMenu.style.left = `${Math.min(x, window.innerWidth - 160)}px`;
+    _bufSlotMenu.style.top  = `${Math.min(y, window.innerHeight - 120)}px`;
+    _bufSlotMenu.classList.remove('hidden');
+
+    setTimeout(() => document.addEventListener('click', _hideBufSlotMenu, { once: true }), 0);
+  }
+
+  function _hideBufSlotMenu() { _bufSlotMenu.classList.add('hidden'); }
 
   ps.get('buffer.fs1').onChange(refreshBufferGrid);
   rebuildBufferGrid();
@@ -1604,6 +2244,8 @@ void main() {
     if (e.key === 'b' && !e.metaKey) { e.preventDefault(); ps.toggle('blend.active'); }
     // s = Solo
     if (e.key === 's' && !e.metaKey) { e.preventDefault(); ps.toggle('output.solo'); }
+    // d = Debug overlay
+    if (e.key === 'd' && !e.metaKey) { e.preventDefault(); ps.toggle('global.debug'); }
     // k = Keyer
     if (e.key === 'k' && !e.metaKey) { e.preventDefault(); ps.toggle('keyer.active'); }
     // x = ExtKey
@@ -1724,7 +2366,6 @@ void main() {
     const preset = RENDER_RESOLUTIONS[idx];
     let rW, rH;
     if (idx === 4) {
-      // Quarter of display size
       rW = Math.max(320, Math.round(canvas.parentElement.clientWidth  / 2));
       rH = Math.max(180, Math.round(canvas.parentElement.clientHeight / 2));
     } else if (preset) {
@@ -1735,14 +2376,20 @@ void main() {
     }
     W = rW; H = rH;
     renderer.setSize(rW, rH);
-    renderer.domElement.style.width  = '100%';
-    renderer.domElement.style.height = '100%';
+    // "fit" and "½" fill the container; fixed resolutions display at natural size (letterboxed/pillarboxed)
+    const fills = (idx === 0 || idx === 4);
+    renderer.domElement.style.width    = fills ? '100%' : '';
+    renderer.domElement.style.height   = fills ? '100%' : '';
+    renderer.domElement.style.maxWidth = fills ? '' : '100%';
     pipeline.resize(rW, rH);
     scene3d.resize(rW, rH);
     stillsBuffer.resize(rW, rH);
     videoDelay.resize(rW, rH);
     slitScan.resize(rW, rH);
     particles.resize(rW, rH);
+    seq1.resize(rW, rH);
+    seq2.resize(rW, rH);
+    seq3.resize(rW, rH);
   }
 
   ps.get('output.resolution').onChange(idx => applyResolution(idx));
@@ -1750,6 +2397,7 @@ void main() {
   // ── Resize handler ────────────────────────────────────────────────────────
 
   const resizeObserver = new ResizeObserver(() => {
+    if (document.body.classList.contains('ghost-mode')) return; // ghost mode: keep render res fixed
     const idx = ps.get('output.resolution').value;
     if (idx === 0 || idx === 4) {
       applyResolution(idx);
@@ -1757,6 +2405,27 @@ void main() {
     // Fixed resolutions don't change with container size
   });
   resizeObserver.observe(canvas.parentElement);
+
+  // ── Startup: collapse sections + auto-start camera ───────────────────────
+
+  // Always collapse all sections except Layers for clean first impression
+  _collapseToLayers();
+
+  // Auto-start camera on first load (silently; user can stop it)
+  camera3d.start(null).then(ok => {
+    if (!ok) return;
+    const btnCam = document.getElementById('btn-camera-on');
+    if (btnCam) btnCam.textContent = '■ Camera';
+    ps.set('camera.active', 1);
+    // Only route to layers if no preset restored a different source
+    const fg = ps.get('layer.fg').value;
+    const bg = ps.get('layer.bg').value;
+    const ds = ps.get('layer.ds').value;
+    // 3=Color, 4=Noise → default untouched states; route to camera
+    if (fg === 3 || fg === 4) ps.set('layer.fg', 0);
+    if (bg === 3 || bg === 4) ps.set('layer.bg', 0);
+    if (ds === 3 || ds === 4) ps.set('layer.ds', 0);
+  });
 
   // ── Render loop ───────────────────────────────────────────────────────────
 
@@ -1778,8 +2447,23 @@ void main() {
     // Tick slew (parameter lag/smoothing)
     ps.tickSlew(dt);
 
-    // Tick controllers (LFOs, random, etc.)
-    ctrl.tick(dt);
+    // Advance beat phase first so LFOs get current beat position
+    const bpm = ps.get('global.bpm')?.value ?? 120;
+    beatPhase += dt * (bpm / 60);
+
+    // Beat detection: auto-update global.bpm from audio when opted in
+    if (ps.get('global.beatdetect')?.value && ctrl.sound?.beatDetector?.beat) {
+      const detectedBpm = ctrl.sound.beatDetector.bpm;
+      if (detectedBpm > 0) {
+        const cur = ps.get('global.bpm')?.value ?? 120;
+        const smoothed = Math.round(cur * 0.7 + detectedBpm * 0.3);
+        ps.set('global.bpm', smoothed);
+        ctrl.retriggerLFOs();
+      }
+    }
+
+    // Tick controllers (LFOs with beat phase, random, expression, etc.)
+    ctrl.tick(dt, beatPhase);
 
     // Tick preset morph animation
     presetMgr.tickMorph(dt);
@@ -1793,27 +2477,29 @@ void main() {
     // Update camera texture
     camera3d.tick();
 
-    // Beat detection: auto-update global.bpm from audio when opted in
-    if (ps.get('global.beatdetect')?.value && ctrl.sound?.beatDetector?.beat) {
-      const detectedBpm = ctrl.sound.beatDetector.bpm;
-      if (detectedBpm > 0) {
-        // Smooth: blend detected BPM toward current (avoid jumpy updates)
-        const cur = ps.get('global.bpm')?.value ?? 120;
-        const smoothed = Math.round(cur * 0.7 + detectedBpm * 0.3);
-        ps.set('global.bpm', smoothed);
-        ctrl.retriggerLFOs();
-      }
-    }
-
-    // Advance beat phase
-    const bpm = ps.get('global.bpm')?.value ?? 120;
-    beatPhase += dt * (bpm / 60);
-
     // Update movie clip
     movieInput.tick(ps, beatPhase);
 
     // Tick stills buffer (reads fs1 → readIndex)
     stillsBuffer.tick(ps);
+
+    // Tick and capture sequence buffers
+    const _seqSrcTex = idx => [
+      pipeline.prev.texture,       // 0 Output
+      camera3d.currentTexture,     // 1 Camera
+      movieInput.texture,          // 2 Movie
+      _resolveLayerTex(ps.get('layer.fg').value), // 3 FG
+      _resolveLayerTex(ps.get('layer.bg').value), // 4 BG
+      stillsBuffer.texture,        // 5 Buffer
+      drawLayer.texture,           // 6 Draw
+    ][idx] ?? pipeline.prev.texture;
+
+    [seq1, seq2, seq3].forEach((seq, i) => {
+      seq.tick();
+      if (ps.get(`seq${i + 1}.active`).value) {
+        seq.capture(_seqSrcTex(ps.get(`seq${i + 1}.source`).value));
+      }
+    });
 
     // Buffer frame scan
     if (ps.get('buffer.scan').value) {
@@ -1890,18 +2576,36 @@ void main() {
     // Tick particle system
     particles.tick(ps, dt);
 
+    // Animate Color2 gradient when speed is non-zero
+    const _c2speed = ps.get('color2.speed')?.value ?? 0;
+    if (_c2speed !== 0) {
+      _color2Phase += dt * _c2speed * 0.005; // 200 = 1 full cycle/sec
+      updateColor2Texture();
+    }
+
     // Generate GPU noise every 2 frames
     if (frameCount % 2 === 0) {
       noiseTexture = pipeline.generateNoise(
         lastTime / 1000,
         ps.get('noise.type').value,
+        ps.get('noise.scale')?.value ?? 1,
+        ps.get('noise.color')?.value ?? 0,
       );
     }
 
-    // Render 3D scene to its render target
-    if (ps.get('scene3d.active').value) {
-      scene3d.render(ps, dt);
-    }
+    // Render 3D scene if active OR used as a layer source
+    const SCENE3D_IDX = 5; // index in SOURCES array
+    const scene3dNeeded = ps.get('scene3d.active').value
+      || ps.get('layer.fg').value === SCENE3D_IDX
+      || ps.get('layer.bg').value === SCENE3D_IDX
+      || ps.get('layer.ds').value === SCENE3D_IDX;
+    if (scene3dNeeded) scene3d.render(ps, dt, {
+      camera: camera3d.active ? camera3d.currentTexture : null,
+      movie:  movieInput.active ? movieInput.currentTexture : null,
+      screen: pipeline.prev.texture,
+      draw:   drawLayer.texture,
+      buffer: stillsBuffer.texture,
+    });
 
     // Assemble input sources
     const inputs = {
@@ -1911,7 +2615,7 @@ void main() {
       buffer2: stillsBuffer.texture2,
       bg1:     stillsBuffer.bgTexture(0),
       bg2:     stillsBuffer.bgTexture(1),
-      scene3d: ps.get('scene3d.active').value ? scene3d.texture : null,
+      scene3d: scene3dNeeded ? scene3d.texture : null,
       color:   colorTexture,
       color2:  color2Texture,
       sound:   soundTexture,
@@ -1922,6 +2626,9 @@ void main() {
       scope:    vectorscope.texture,
       slitscan:  slitScan.texture,
       particles: particles.texture,
+      seq1:      seq1.texture,
+      seq2:      seq2.texture,
+      seq3:      seq3.texture,
       warpMaps,
     };
 
@@ -1948,8 +2655,14 @@ void main() {
     // Capture output into video delay ring buffer
     videoDelay.capture(pipeline.prev.texture);
 
-    // FPS counter
+    // FPS counter + debug overlay
     fpsDisplay.tick();
+    debugOverlay.tick(fpsDisplay._fps);
+
+    // Video Out Spy — copy output canvas to spy preview (when visible)
+    if (_spyCanvas && !document.getElementById('video-spy')?.classList.contains('hidden')) {
+      _spyCtx.drawImage(canvas, 0, 0, 160, 90);
+    }
   }
 
   requestAnimationFrame(render);
