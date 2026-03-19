@@ -31,6 +31,7 @@ import { ParticleSystem }    from './inputs/ParticleSystem.js';
 import { DrawLayer }      from './inputs/DrawLayer.js';
 import { TextLayer }      from './inputs/TextLayer.js';
 import { buildWarpMaps }  from './inputs/WarpMaps.js';
+import { WarpMapEditor } from './inputs/WarpMapEditor.js';
 import { SceneManager } from './scene3d/SceneManager.js';
 import { Pipeline } from './core/Pipeline.js';
 import { PresetManager, openDB } from './state/Preset.js';
@@ -44,6 +45,7 @@ import {
   buildMappingPanels,
   buildSeqParams,
   buildGeometryButtons,
+  buildWarpEditor,
   StateDots,
   SignalPath,
   ContextMenu,
@@ -111,6 +113,8 @@ async function main() {
   const slitScan      = new SlitScanBuffer(W, H);
   const particles     = new ParticleSystem(renderer, W, H);
   const warpMaps     = buildWarpMaps(); // 8 procedural warp map textures (map1–map8)
+  const warpEditor   = new WarpMapEditor(); // interactive editor → warpMaps[8] (Custom)
+  warpMaps.push(warpEditor.texture);        // index 9 in SELECT = warpMaps[8]
   const drawLayer    = new DrawLayer();
   const textLayer    = new TextLayer();
 
@@ -270,6 +274,7 @@ async function main() {
   buildMappingPanels(ps, contextMenu);
   buildSeqParams(ps, contextMenu);
   buildGeometryButtons(ps, scene3d);
+  buildWarpEditor(warpEditor, ps);
 
   // Update model status label after drag-and-drop or button import
   function _refreshModelLabel() {

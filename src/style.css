@@ -630,6 +630,78 @@ body.dnd-active::after {
   z-index: 9000;
 }
 
+/* ── WARPMAP EDITOR ──────────────────────────────────────────────────────── */
+
+#warp-editor-container {
+  padding: 8px 10px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.warp-canvas {
+  width: 100%;
+  aspect-ratio: 288 / 200;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  cursor: crosshair;
+  display: block;
+  background: #0d0d14;
+}
+.warp-canvas:hover { border-color: var(--border-hi); }
+.warp-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.warp-ctrl-label {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text-2);
+  white-space: nowrap;
+}
+.warp-slider {
+  flex: 1;
+  min-width: 60px;
+  height: 3px;
+  accent-color: var(--accent);
+}
+.warp-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.warp-preset-btn {
+  font-family: var(--mono);
+  font-size: 10px;
+  padding: 3px 7px;
+  background: var(--bg-3);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  color: var(--text-2);
+  cursor: pointer;
+  transition: all 0.1s;
+}
+.warp-preset-btn:hover { color: var(--text-0); border-color: var(--border-hi); }
+.warp-slots {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+.warp-slot-btn {
+  font-family: var(--mono);
+  font-size: 10px;
+  padding: 3px 8px;
+  background: var(--bg-3);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  color: var(--text-1);
+  cursor: pointer;
+  transition: all 0.1s;
+}
+.warp-slot-btn:hover { color: var(--accent); border-color: var(--accent-dim); }
+
 /* ── TABLES EDITOR ───────────────────────────────────────────────────────── */
 
 .table-list-row {

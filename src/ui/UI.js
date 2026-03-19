@@ -1548,6 +1548,219 @@ export class DebugOverlay {
 
 // ── FPS display ───────────────────────────────────────────────────────────────
 
+// ── WarpMap Editor ────────────────────────────────────────────────────────────
+
+/**
+ * Build the interactive WarpMap editor canvas UI.
+ * Mounted inside #warp-editor-container in the Mapping tab.
+ *
+ * @param {WarpMapEditor} editor
+ * @param {ParameterSystem} ps
+ */
+export function buildWarpEditor(editor, ps) {
+  const container = document.getElementById('warp-editor-container');
+  if (!container) return;
+
+  const CW = 288, CH = 200; // canvas display size in px
+  const DISP_SCALE = 2.5;   // amplify displacements for visual clarity
+
+  // ── Canvas ────────────────────────────────────────────────────────────────
+  const canvas = document.createElement('canvas');
+  canvas.width  = CW;
+  canvas.height = CH;
+  canvas.className = 'warp-canvas';
+  container.appendChild(canvas);
+  const ctx = canvas.getContext('2d');
+
+  // ── Controls row ──────────────────────────────────────────────────────────
+  const controlRow = document.createElement('div');
+  controlRow.className = 'warp-controls';
+  container.appendChild(controlRow);
+
+  // Brush radius
+  const radiusLabel = document.createElement('span');
+  radiusLabel.className = 'warp-ctrl-label';
+  radiusLabel.textContent = 'Radius';
+  let brushRadius = 0.20;
+  const radiusSlider = document.createElement('input');
+  radiusSlider.type = 'range'; radiusSlider.min = '0.05'; radiusSlider.max = '0.50';
+  radiusSlider.step = '0.01'; radiusSlider.value = String(brushRadius);
+  radiusSlider.className = 'warp-slider';
+  radiusSlider.addEventListener('input', () => { brushRadius = parseFloat(radiusSlider.value); });
+
+  // Strength
+  const strLabel = document.createElement('span');
+  strLabel.className = 'warp-ctrl-label';
+  strLabel.textContent = 'Strength';
+  let brushStrength = 0.015;
+  const strSlider = document.createElement('input');
+  strSlider.type = 'range'; strSlider.min = '0.002'; strSlider.max = '0.08';
+  strSlider.step = '0.001'; strSlider.value = String(brushStrength);
+  strSlider.className = 'warp-slider';
+  strSlider.addEventListener('input', () => { brushStrength = parseFloat(strSlider.value); });
+
+  controlRow.append(radiusLabel, radiusSlider, strLabel, strSlider);
+
+  // ── Preset buttons ────────────────────────────────────────────────────────
+  const presetRow = document.createElement('div');
+  presetRow.className = 'warp-presets';
+  container.appendChild(presetRow);
+
+  const presets = ['H-Wave','V-Wave','Radial','Pinch','Spiral','Shear','Random','Reset'];
+  presets.forEach(name => {
+    const btn = document.createElement('button');
+    btn.className = 'warp-preset-btn';
+    btn.textContent = name;
+    btn.addEventListener('click', () => {
+      if (name === 'Reset') editor.reset();
+      else editor.applyPreset(name);
+      drawMesh();
+    });
+    presetRow.appendChild(btn);
+  });
+
+  // ── Save / Load slots ─────────────────────────────────────────────────────
+  const slotRow = document.createElement('div');
+  slotRow.className = 'warp-slots';
+  container.appendChild(slotRow);
+
+  function refreshSlots() {
+    slotRow.innerHTML = '';
+    const slotLabel = document.createElement('span');
+    slotLabel.className = 'warp-ctrl-label';
+    slotLabel.textContent = 'Slots:';
+    slotRow.appendChild(slotLabel);
+    // Save buttons 1-4
+    for (let i = 1; i <= 4; i++) {
+      const btn = document.createElement('button');
+      btn.className = 'warp-slot-btn';
+      const hasSaved = editor.getSavedSlots().includes(String(i));
+      btn.textContent = hasSaved ? `▶ ${i}` : `+ ${i}`;
+      btn.title = hasSaved ? `Load slot ${i} (right-click to save)` : `Save to slot ${i}`;
+      btn.addEventListener('click', () => {
+        if (hasSaved) { editor.load(String(i)); drawMesh(); }
+        else { editor.save(String(i)); refreshSlots(); }
+      });
+      btn.addEventListener('contextmenu', e => {
+        e.preventDefault();
+        editor.save(String(i));
+        refreshSlots();
+      });
+      slotRow.appendChild(btn);
+    }
+  }
+  refreshSlots();
+
+  // ── Canvas drawing ────────────────────────────────────────────────────────
+
+  function warpedPos(ni, nj) {
+    const { dx, dy } = editor.dispAt(ni, nj);
+    return {
+      x: (ni + dx * DISP_SCALE) * CW,
+      y: (nj + dy * DISP_SCALE) * CH,
+    };
+  }
+
+  function drawMesh() {
+    ctx.clearRect(0, 0, CW, CH);
+    ctx.fillStyle = '#0d0d14';
+    ctx.fillRect(0, 0, CW, CH);
+
+    const c = editor.cols, r = editor.rows;
+
+    // Draw mesh lines
+    ctx.strokeStyle = 'rgba(140,140,180,0.45)';
+    ctx.lineWidth = 0.8;
+
+    // Horizontal lines
+    for (let j = 0; j < r; j++) {
+      ctx.beginPath();
+      for (let i = 0; i < c; i++) {
+        const { x, y } = warpedPos(i / (c-1), j / (r-1));
+        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+    }
+    // Vertical lines
+    for (let i = 0; i < c; i++) {
+      ctx.beginPath();
+      for (let j = 0; j < r; j++) {
+        const { x, y } = warpedPos(i / (c-1), j / (r-1));
+        if (j === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+    }
+
+    // Control point dots at every 3rd intersection
+    ctx.fillStyle = 'rgba(232,200,64,0.55)';
+    for (let j = 0; j < r; j += 3) {
+      for (let i = 0; i < c; i += 3) {
+        const { x, y } = warpedPos(i / (c-1), j / (r-1));
+        ctx.beginPath();
+        ctx.arc(x, y, 2.2, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
+    // Cursor circle
+    if (_hover) {
+      ctx.strokeStyle = 'rgba(232,200,64,0.5)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.arc(_hover.cx, _hover.cy, brushRadius * CW, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+  }
+
+  // ── Mouse interaction ─────────────────────────────────────────────────────
+
+  let _drag = false;
+  let _lastX = 0, _lastY = 0;
+  let _hover = null;
+  let _rightBtn = false;
+
+  function evToNorm(e) {
+    const rect = canvas.getBoundingClientRect();
+    return {
+      nx: (e.clientX - rect.left) / rect.width,
+      ny: (e.clientY - rect.top)  / rect.height,
+      cx: e.clientX - rect.left,
+      cy: e.clientY - rect.top,
+    };
+  }
+
+  canvas.addEventListener('mousedown', e => {
+    e.preventDefault();
+    _drag = true;
+    _rightBtn = (e.button === 2);
+    const { nx, ny } = evToNorm(e);
+    _lastX = nx; _lastY = ny;
+    // Activate Custom warp mode automatically
+    ps.set('displace.warp', 9);
+    ps.set('displace.warpamt', 80);
+  });
+  canvas.addEventListener('contextmenu', e => e.preventDefault());
+
+  canvas.addEventListener('mousemove', e => {
+    const { nx, ny, cx, cy } = evToNorm(e);
+    _hover = { cx, cy };
+    if (_drag) {
+      const ddx = (nx - _lastX);
+      const ddy = (ny - _lastY);
+      const sign = _rightBtn ? -1 : 1;
+      editor.brush(nx, ny, brushRadius, brushStrength * 60, ddx * sign, ddy * sign);
+      _lastX = nx; _lastY = ny;
+    }
+    drawMesh();
+  });
+
+  canvas.addEventListener('mouseup',   () => { _drag = false; });
+  canvas.addEventListener('mouseleave', () => { _drag = false; _hover = null; drawMesh(); });
+
+  // Initial draw
+  drawMesh();
+}
+
 export class FPSDisplay {
   constructor() {
     this.el    = document.getElementById('status-fps');
