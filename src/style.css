@@ -484,7 +484,7 @@ button {
   cursor: pointer;
 }
 
-/* Select row */
+/* Select row — native fallback (large option sets) */
 .param-select {
   background: var(--bg-3);
   border: 1px solid var(--border);
@@ -498,6 +498,39 @@ button {
   outline: none;
 }
 .param-select:focus { border-color: var(--accent); }
+
+/* Select row — button group (≤8 options) */
+.param-btn-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  width: 100%;
+}
+.param-opt-btn {
+  flex: 1 1 auto;
+  padding: 2px 3px;
+  background: var(--bg-3);
+  border: 1px solid var(--border);
+  color: var(--text-2);
+  font-family: var(--mono);
+  font-size: 9px;
+  cursor: pointer;
+  border-radius: 2px;
+  white-space: nowrap;
+  text-align: center;
+  min-width: 0;
+  line-height: 1.4;
+}
+.param-opt-btn:hover {
+  background: var(--bg-4);
+  color: var(--text-0);
+  border-color: var(--border-hi);
+}
+.param-opt-btn.active {
+  background: var(--accent-dim);
+  border-color: var(--accent);
+  color: var(--accent);
+}
 
 /* ── BUFFER CANVAS ───────────────────────────────────────────────────────── */
 

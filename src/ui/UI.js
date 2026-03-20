@@ -47,7 +47,8 @@ export function buildParamRow(param, contextMenu) {
   valueEl.className = 'param-value';
 
   const updateDisplay = () => {
-    valueEl.textContent = param.displayValue;
+    // SELECT with button group manages its own valueEl; skip textContent overwrite
+    if (param.type !== PARAM_TYPE.SELECT) valueEl.textContent = param.displayValue;
     ctrlEl.textContent  = param.controllerLabel;
     ctrlEl.className    = `param-ctrl ${param.controllerClass}`;
     row.classList.toggle('active', !!param.controller);
@@ -135,19 +136,46 @@ export function buildParamRow(param, contextMenu) {
     });
 
   } else if (param.type === PARAM_TYPE.SELECT) {
-    const sel = document.createElement('select');
-    sel.className = 'param-select';
-    (param.options ?? []).forEach((opt, i) => {
-      const o = document.createElement('option');
-      o.value = i; o.textContent = opt;
-      sel.appendChild(o);
-    });
-    sel.value = param.value;
-    sel.addEventListener('change', e => {
-      param.value = parseInt(e.target.value);
-      updateDisplay();
-    });
-    valueEl.appendChild(sel);
+    const opts = param.options ?? [];
+    if (opts.length <= 8) {
+      // Button group — compact, tactile, performance-friendly
+      const group = document.createElement('div');
+      group.className = 'param-btn-group';
+      const btns = opts.map((opt, i) => {
+        const btn = document.createElement('button');
+        btn.className = 'param-opt-btn' + (i === param.value ? ' active' : '');
+        // Smart abbreviation: if option contains '-', use the part after the last '-'
+        const abbr = opt.includes('-') ? opt.split('-').pop().slice(0, 6)
+                   : opt.length <= 6   ? opt : opt.slice(0, 4);
+        btn.textContent = abbr;
+        btn.title = opt;
+        btn.addEventListener('click', () => {
+          param.value = i;
+          btns.forEach((b, j) => b.classList.toggle('active', j === param.value));
+          updateDisplay();
+        });
+        group.appendChild(btn);
+        return btn;
+      });
+      param.onChange(() => btns.forEach((b, j) => b.classList.toggle('active', j === param.value)));
+      valueEl.appendChild(group);
+    } else {
+      // Fallback: native select for large option sets
+      const sel = document.createElement('select');
+      sel.className = 'param-select';
+      opts.forEach((opt, i) => {
+        const o = document.createElement('option');
+        o.value = i; o.textContent = opt;
+        sel.appendChild(o);
+      });
+      sel.value = param.value;
+      sel.addEventListener('change', e => {
+        param.value = parseInt(e.target.value);
+        updateDisplay();
+      });
+      param.onChange(() => { sel.value = param.value; });
+      valueEl.appendChild(sel);
+    }
 
   } else if (param.type === PARAM_TYPE.TRIGGER) {
     const btn = document.createElement('button');
