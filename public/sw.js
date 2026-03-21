@@ -3,12 +3,16 @@
  * Cache-first strategy for app shell; network-first for anything else.
  */
 
-const CACHE = 'imweb-v0.3';
+const CACHE = 'imweb-v0.4';
 
 const APP_SHELL = [
   '/',
+  '/index.html',
   '/src/main.js',
   '/src/style.css',
+  '/src/core/Pipeline.js',
+  '/src/controls/ParameterSystem.js',
+  '/src/controls/ControllerManager.js',
 ];
 
 self.addEventListener('install', e => {

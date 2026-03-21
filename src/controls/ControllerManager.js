@@ -512,6 +512,7 @@ export class ControllerManager {
 
       // MIDI clock: 0xF8 = timing tick (24 per quarter note)
       if (status === 0xF8 && this._midiClockEnabled) {
+        if (typeof this.onMidiTick === 'function') this.onMidiTick();
         const now = performance.now();
         this._midiClockTimes.push(now);
         if (this._midiClockTimes.length > 24) this._midiClockTimes.shift();

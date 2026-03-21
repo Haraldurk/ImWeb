@@ -645,6 +645,12 @@ export function registerCoreParameters(ps) {
   // ── Global BPM / Tap Tempo / Morph ───────────────────────────────────────
   ps.register({ id: 'global.bpm',   label: 'BPM',       group: 'global',
     min: 20, max: 300, value: 120, unit: 'bpm' });
+  ps.register({ id: 'global.midisync', label: 'MidiSync', group: 'global',
+    type: PARAM_TYPE.TOGGLE, value: 0 });
+  ps.register({ id: 'global.autosync', label: 'AutoSync', group: 'global',
+    min: 1, max: 1000, value: 1, unit: 'div' });
+  ps.register({ id: 'global.framedone', label: 'FrameDonePulse', group: 'global',
+    type: PARAM_TYPE.TOGGLE, value: 0 });
   ps.register({ id: 'global.tap',   label: 'Tap Tempo', group: 'global',
     type: PARAM_TYPE.TRIGGER });
   ps.register({ id: 'global.morph', label: 'Morph',     group: 'global',

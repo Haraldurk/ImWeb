@@ -69,6 +69,14 @@ export class ProjectFile {
       try { warpSlots = JSON.parse(localStorage.getItem('imweb-warpmaps') ?? '{}'); } catch { warpSlots = {}; }
     }
 
+    // 3D scene metadata
+    let scene3dMetadata = null;
+    if (this.extras.scene3d) {
+      scene3dMetadata = {
+        modelName: this.extras.scene3d.importedModelName,
+      };
+    }
+
     return {
       _type:        'imweb-project',
       _version:     FORMAT_VERSION,
@@ -80,6 +88,7 @@ export class ProjectFile {
       tables,
       warpMap,
       warpSlots,
+      scene3d:      scene3dMetadata,
     };
   }
 
@@ -134,6 +143,11 @@ export class ProjectFile {
     }
     if (data.warpSlots) {
       localStorage.setItem('imweb-warpmaps', JSON.stringify(data.warpSlots));
+    }
+
+    // 3D Model reminder
+    if (data.scene3d?.modelName) {
+      console.info(`[Project] Session uses 3D model: ${data.scene3d.modelName}. Please re-import if not already loaded.`);
     }
 
     return data._name ?? data.name ?? 'project';
