@@ -576,6 +576,8 @@ export function registerCoreParameters(ps) {
     min: -180, max: 180, value: 0, unit: '°/s' });
   ps.register({ id: 'scene3d.depth.active', label: 'DepthPass', group: 'scene3d',
     type: PARAM_TYPE.TOGGLE, value: 0 });
+  ps.register({ id: 'scene3d.depth.mode', label: 'DepthMode', group: 'scene3d',
+    type: PARAM_TYPE.SELECT, options: ['Distance','Normals'], value: 0 });
 
   // ── Draw ──────────────────────────────────────────────────────────────────
   ps.register({ id: 'draw.pensize',   label: 'DrawPenSize',  group: 'draw',
