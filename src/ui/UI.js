@@ -1658,13 +1658,16 @@ export function buildWarpEditor(editor, ps) {
     slotLabel.className = 'warp-ctrl-label';
     slotLabel.textContent = 'Slots:';
     slotRow.appendChild(slotLabel);
-    // Save buttons 1-4
-    for (let i = 1; i <= 4; i++) {
+    // Save buttons 1-16
+    for (let i = 1; i <= 16; i++) {
       const btn = document.createElement('button');
       btn.className = 'warp-slot-btn';
       const hasSaved = editor.getSavedSlots().includes(String(i));
-      btn.textContent = hasSaved ? `▶ ${i}` : `+ ${i}`;
+      btn.textContent = hasSaved ? `${i}` : `·`;
       btn.title = hasSaved ? `Load slot ${i} (right-click to save)` : `Save to slot ${i}`;
+      btn.style.width = '24px';
+      btn.style.padding = '3px 0';
+      if (hasSaved) btn.style.color = 'var(--accent)';
       btn.addEventListener('click', () => {
         if (hasSaved) { editor.load(String(i)); drawMesh(); }
         else { editor.save(String(i)); refreshSlots(); }

@@ -24,6 +24,7 @@ export class SceneManager {
 
     // Three.js scene
     this.scene    = new THREE.Scene();
+    this.scene.background = new THREE.Color(0x020205); // Very dark blue instead of pure black
     this.camera   = new THREE.PerspectiveCamera(60, width / height, 0.01, 1000);
     this.camera.position.z = 5;
 
@@ -64,6 +65,11 @@ export class SceneManager {
     // Imported model tracking
     this._importedModelName = null;
 
+    // Fallback texture for uWarpMap if null (avoid shader errors)
+    const d = new Uint8Array([0, 0, 0, 255]);
+    this._fallback = new THREE.DataTexture(d, 1, 1, THREE.RGBAFormat);
+    this._fallback.needsUpdate = true;
+
     // Lights
     this._setupLights();
 
@@ -98,7 +104,7 @@ export class SceneManager {
   _replaceMesh(geo) {
     if (this.mesh) {
       this.scene.remove(this.mesh);
-      this.mesh.geometry.dispose();
+      if (this.mesh.geometry) this.mesh.geometry.dispose();
     }
 
     if (!this.material) {
@@ -107,6 +113,31 @@ export class SceneManager {
         roughness: 0.5,
         metalness: 0.1,
       });
+
+      // Inject custom uniforms for WarpMap displacement on UVs
+      this.material.onBeforeCompile = (shader) => {
+        shader.uniforms.uWarpMap   = { value: this._fallback };
+        shader.uniforms.uWarpAmt   = { value: 0 };
+        this.material._shader = shader;
+
+        // Header injection
+        shader.vertexShader = `
+          uniform sampler2D uWarpMap;
+          uniform float uWarpAmt;
+          ${shader.vertexShader}
+        `.replace(
+          '#include <uv_vertex>',
+          `
+          #include <uv_vertex>
+          #ifdef USE_UV
+            if (uWarpAmt > 0.0) {
+              vec4 warp = texture2D(uWarpMap, vUv);
+              vUv += (warp.rg - 0.5) * uWarpAmt * 0.3;
+            }
+          #endif
+          `
+        );
+      };
     }
 
     this.mesh = new THREE.Mesh(geo, this.material);
@@ -243,7 +274,7 @@ export class SceneManager {
 
       // Live texture source on mesh surface
       const texSrcIdx = p.get('scene3d.mat.texsrc')?.value ?? 0;
-      const texSrcMap = [null, inputs.camera, inputs.movie, inputs.screen, inputs.draw, inputs.buffer];
+      const texSrcMap = [null, inputs.camera, inputs.movie, inputs.screen, inputs.draw, inputs.buffer, inputs.noise];
       const liveTex = texSrcMap[texSrcIdx] ?? null;
       if (liveTex !== this._liveTex) {
         this._liveTex = liveTex;
@@ -251,6 +282,15 @@ export class SceneManager {
           ? Object.assign(liveTex, { wrapS: THREE.RepeatWrapping, wrapT: THREE.RepeatWrapping })
           : null;
       }
+
+      // WarpMap displacement on UVs
+      if (this.material._shader) {
+        const warpIdx = p.get('displace.warp').value;
+        const activeWarp = (warpIdx > 0 && inputs.warpMaps?.[warpIdx - 1]) ? inputs.warpMaps[warpIdx - 1] : null;
+        this.material._shader.uniforms.uWarpMap.value = activeWarp || this._fallback;
+        this.material._shader.uniforms.uWarpAmt.value = p.get('displace.warpamt').value / 100;
+      }
+
       this.material.needsUpdate = true;
     }
 

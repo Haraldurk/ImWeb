@@ -42,6 +42,13 @@ export class ControllerManager {
     // xLFOs keyed by `${paramId}:${xIndex}`
     this._xLFOs = new Map();
 
+    // Independent global noise oscillators (rand1, rand2, rand3)
+    this.rand = [
+      { val: 0.5, target: 0.5, slew: 0.1 },
+      { val: 0.5, target: 0.5, slew: 0.05 },
+      { val: 0.5, target: 0.5, slew: 0.2 },
+    ];
+
     this._initKeyboard();
     this._initMouse();
     this._initMIDI();
@@ -81,6 +88,20 @@ export class ControllerManager {
       }
     });
 
+    // Tick global rand oscillators (Phase 3)
+    this.rand.forEach(r => {
+      if (Math.random() < 0.05) r.target = Math.random();
+      r.val += (r.target - r.val) * r.slew;
+    });
+
+    // Drive parameters assigned to rand1/2/3
+    this.ps.getAll().forEach(p => {
+      if (!p.controller) return;
+      if (p.controller.type === 'rand1') p.setNormalized(this.rand[0].val);
+      if (p.controller.type === 'rand2') p.setNormalized(this.rand[1].val);
+      if (p.controller.type === 'rand3') p.setNormalized(this.rand[2].val);
+    });
+
     // Update sound controller if active
     if (this.sound) this.sound.tick();
 
@@ -114,6 +135,9 @@ export class ControllerManager {
     if (t === 'sound-high' && this.sound) return this.sound.high;
     if (t === 'mouse-x') return this.mouse.x;
     if (t === 'mouse-y') return this.mouse.y;
+    if (t === 'rand1') return this.rand[0].val;
+    if (t === 'rand2') return this.rand[1].val;
+    if (t === 'rand3') return this.rand[2].val;
     if (t === 'random') {
       if (!xc._rState) xc._rState = { lastTick: 0, val: Math.random() };
       const now = performance.now() / 1000;

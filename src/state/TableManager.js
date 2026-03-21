@@ -14,7 +14,7 @@
  */
 
 const DB_STORE = 'tables';
-const N        = 256; // LUT resolution
+const N        = 16384; // High resolution LUT (matches ImOs9 specification)
 
 // ── ResponseCurve ─────────────────────────────────────────────────────────────
 
@@ -24,9 +24,13 @@ export class ResponseCurve {
     this.points = Float32Array.from(points);
   }
 
+  /** Map input 0..1 to output 0..1 via LUT with linear interpolation. */
   apply(n) {
-    const idx = Math.max(0, Math.min(N - 1, Math.round(n * (N - 1))));
-    return this.points[idx];
+    const findex = n * (N - 1);
+    const i0     = Math.floor(findex);
+    const i1     = Math.min(i0 + 1, N - 1);
+    const t      = findex - i0;
+    return this.points[i0] + (this.points[i1] - this.points[i0]) * t;
   }
 
   clone() { return new ResponseCurve(this.points); }
@@ -39,9 +43,9 @@ const BUILTINS = {
   log:      i => Math.pow(i / (N - 1), 0.35),
   exp:      i => Math.pow(i / (N - 1), 2.8),
   'S-curve':i => { const x = i / (N - 1); return x < 0.5 ? 2*x*x : 1 - Math.pow(-2*x+2,2)/2; },
-  step:     i => i < 128 ? 0 : 1,
+  step:     i => i < (N / 2) ? 0 : 1,
   invert:   i => 1 - i / (N - 1),
-  gate:     i => (i > 38 && i < 218) ? 1 : 0,
+  gate:     i => { const x = i / (N - 1); return (x > 0.15 && x < 0.85) ? 1 : 0; },
 };
 
 function makeBuiltin(fn) {

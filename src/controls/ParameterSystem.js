@@ -565,7 +565,7 @@ export function registerCoreParameters(ps) {
     min: 0, max: 100, value: 50, unit: '%' });
   ps.register({ id: 'scene3d.mat.texsrc', label: 'TexSrc', group: 'scene3d',
     type: PARAM_TYPE.SELECT,
-    options: ['None','Camera','Movie','Screen','Draw','Buffer'], value: 0 });
+    options: ['None','Camera','Movie','Screen','Draw','Buffer','Noise'], value: 0 });
   ps.register({ id: 'scene3d.light.intensity', label: 'Light Int.', group: 'scene3d',
     min: 0, max: 5, value: 1.0 });
   ps.register({ id: 'scene3d.spin.x', label: 'Spin X', group: 'scene3d',

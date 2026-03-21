@@ -1362,9 +1362,9 @@ body.sp-floating #signal-path-docked-space {
 
 .hidden { display: none !important; }
 
-/* Ghost mode — dim main canvas, overlay label; panel size unchanged (no renderer resize) */
+/* Ghost mode — hide main canvas, overlay label; panel size unchanged (no renderer resize) */
 body.ghost-mode #output-canvas {
-  opacity: 0.18;
+  visibility: hidden; /* Hide from compositor to save GPU blits */
 }
 body.ghost-mode #ghost-label {
   display: flex;

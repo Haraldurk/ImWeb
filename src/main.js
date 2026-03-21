@@ -592,10 +592,10 @@ async function main() {
   })();
 
   // ── Second screen output ──────────────────────────────────────────────────
+  let _outWin = null;
   (() => {
     const btn = document.getElementById('btn-second-screen');
     if (!btn) return;
-    let _outWin = null;
 
     btn.addEventListener('click', () => {
       // Close if already open
@@ -637,35 +637,33 @@ async function main() {
 <script>
   const canvas = document.getElementById('out');
   const ctx = canvas.getContext('2d');
-  let running = true;
+  let lastBitmap = null;
 
   function resize() {
     canvas.width  = window.innerWidth;
     canvas.height = window.innerHeight;
+    draw();
   }
-  resize();
   window.addEventListener('resize', resize);
+  resize();
+
+  window.addEventListener('message', e => {
+    if (lastBitmap) lastBitmap.close();
+    lastBitmap = e.data;
+    draw();
+  });
 
   function draw() {
-    if (!running) return;
-    try {
-      const src = window.opener && window.opener.document.getElementById('output-canvas');
-      if (src && src.width > 0) {
-        // Letterbox / pillarbox: scale to fill screen while keeping aspect ratio
-        const sw = canvas.width, sh = canvas.height;
-        const iw = src.width,   ih = src.height;
-        const scale = Math.min(sw / iw, sh / ih);
-        const dw = iw * scale, dh = ih * scale;
-        const dx = (sw - dw) / 2, dy = (sh - dh) / 2;
-        ctx.clearRect(0, 0, sw, sh);
-        ctx.drawImage(src, 0, 0, iw, ih, dx, dy, dw, dh);
-      }
-    } catch(e) { running = false; }
-    requestAnimationFrame(draw);
+    if (!lastBitmap) return;
+    const sw = canvas.width, sh = canvas.height;
+    const iw = lastBitmap.width, ih = lastBitmap.height;
+    const scale = Math.min(sw / iw, sh / ih);
+    const dw = iw * scale, dh = ih * scale;
+    const dx = (sw - dw) / 2, dy = (sh - dh) / 2;
+    ctx.clearRect(0, 0, sw, sh);
+    ctx.drawImage(lastBitmap, 0, 0, iw, ih, dx, dy, dw, dh);
   }
-  draw();
 
-  window.addEventListener('beforeunload', () => { running = false; });
   // Fullscreen on double-click
   canvas.addEventListener('dblclick', () => {
     if (!document.fullscreenElement) canvas.requestFullscreen?.();
@@ -1343,11 +1341,16 @@ async function main() {
   function sync3DActive() {
     const fg = ps.get('layer.fg').value;
     const bg = ps.get('layer.bg').value;
-    const needs3D = fg === 5 || bg === 5;
+    const ds = ps.get('layer.ds').value;
+    const SCENE3D_IDX = 5;
+    const DEPTH3D_IDX = 20;
+    const needs3D = fg === SCENE3D_IDX || bg === SCENE3D_IDX || ds === SCENE3D_IDX ||
+                    fg === DEPTH3D_IDX || bg === DEPTH3D_IDX || ds === DEPTH3D_IDX;
     ps.set('scene3d.active', needs3D ? 1 : 0);
   }
   ps.get('layer.fg').onChange(sync3DActive);
   ps.get('layer.bg').onChange(sync3DActive);
+  ps.get('layer.ds').onChange(sync3DActive);
 
   // ── Buffer capture helpers ────────────────────────────────────────────────
 
@@ -2571,7 +2574,6 @@ void main() {
   // ── Resize handler ────────────────────────────────────────────────────────
 
   const resizeObserver = new ResizeObserver(() => {
-    if (document.body.classList.contains('ghost-mode')) return; // ghost mode: keep render res fixed
     const idx = ps.get('output.resolution').value;
     if (idx === 0 || idx === 4) {
       applyResolution(idx);
@@ -2794,7 +2796,9 @@ void main() {
       || ps.get('layer.bg').value === DEPTH3D_IDX
       || ps.get('layer.ds').value === DEPTH3D_IDX;
     // Auto-enable depth pass when the depth3d source is routed
-    if (depthUsed) ps.get('scene3d.depth.active').value = 1;
+    if (depthUsed && !ps.get('scene3d.depth.active').value) {
+      ps.set('scene3d.depth.active', 1);
+    }
     const scene3dNeeded = ps.get('scene3d.active').value
       || ps.get('layer.fg').value === SCENE3D_IDX
       || ps.get('layer.bg').value === SCENE3D_IDX
@@ -2806,6 +2810,7 @@ void main() {
       screen: pipeline.prev.texture,
       draw:   drawLayer.texture,
       buffer: stillsBuffer.texture,
+      warpMaps,
     });
 
     // Assemble input sources
@@ -2864,6 +2869,22 @@ void main() {
     // Video Out Spy — copy output canvas to spy preview (when visible)
     if (_spyCanvas && !document.getElementById('video-spy')?.classList.contains('hidden')) {
       _spyCtx.drawImage(canvas, 0, 0, 160, 90);
+    }
+
+    // Second screen — transfer frame via postMessage (extremely fast cross-window transfer)
+    if (_outWin && !_outWin.closed) {
+      if (!window._outCvs) {
+        window._outCvs = document.createElement('canvas');
+        window._outCtx = window._outCvs.getContext('2d');
+      }
+      const oc = window._outCvs, octx = window._outCtx;
+      if (oc.width !== canvas.width || oc.height !== canvas.height) {
+        oc.width = canvas.width; oc.height = canvas.height;
+      }
+      octx.drawImage(canvas, 0, 0);
+      createImageBitmap(oc).then(bmp => {
+        _outWin.postMessage(bmp, '*', [bmp]);
+      }).catch(() => {});
     }
   }
 

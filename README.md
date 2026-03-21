@@ -214,6 +214,7 @@ src/
 ## Credits
 
 Original Image/ine software: **Tom Demeyer**, STEIM Foundation, Amsterdam
+Co-conspirator: **Steina Vasulka** (without her, Image/ine would not exist)
 ImOs9 manual: Sher Doruff
 ImWeb: H. Karlsson
 
