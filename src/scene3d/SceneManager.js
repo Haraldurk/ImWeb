@@ -11,6 +11,7 @@
 
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
 import { OBJLoader }  from 'three/addons/loaders/OBJLoader.js';
 import { STLLoader }  from 'three/addons/loaders/STLLoader.js';
 import { GeometryFactory, GEOMETRY_NAMES } from './GeometryFactory.js';
@@ -48,6 +49,7 @@ export class SceneManager {
     this._depthMat = new THREE.MeshDepthMaterial({
       depthPacking: THREE.BasicDepthPacking,
     });
+    this._normalMat = new THREE.MeshNormalMaterial();
 
     // Current mesh
     this.mesh     = null;
@@ -55,7 +57,12 @@ export class SceneManager {
     this._geoKey  = null;
 
     // Loaders
+    this.dracoLoader = new DRACOLoader();
+    this.dracoLoader.setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5.6/');
+    
     this.gltfLoader = new GLTFLoader();
+    this.gltfLoader.setDRACOLoader(this.dracoLoader);
+    
     this.objLoader  = new OBJLoader();
     this.stlLoader  = new STLLoader();
 
@@ -113,35 +120,37 @@ export class SceneManager {
         roughness: 0.5,
         metalness: 0.1,
       });
-
-      // Inject custom uniforms for WarpMap displacement on UVs
-      this.material.onBeforeCompile = (shader) => {
-        shader.uniforms.uWarpMap   = { value: this._fallback };
-        shader.uniforms.uWarpAmt   = { value: 0 };
-        this.material._shader = shader;
-
-        // Header injection
-        shader.vertexShader = `
-          uniform sampler2D uWarpMap;
-          uniform float uWarpAmt;
-          ${shader.vertexShader}
-        `.replace(
-          '#include <uv_vertex>',
-          `
-          #include <uv_vertex>
-          #ifdef USE_UV
-            if (uWarpAmt > 0.0) {
-              vec4 warp = texture2D(uWarpMap, vUv);
-              vUv += (warp.rg - 0.5) * uWarpAmt * 0.3;
-            }
-          #endif
-          `
-        );
-      };
+      this._setupMaterial(this.material);
     }
 
     this.mesh = new THREE.Mesh(geo, this.material);
     this.scene.add(this.mesh);
+  }
+
+  _setupMaterial(mat) {
+    mat.onBeforeCompile = (shader) => {
+      shader.uniforms.uWarpMap = { value: this._fallback };
+      shader.uniforms.uWarpAmt = { value: 0 };
+      mat._shader = shader;
+
+      shader.vertexShader = `
+        uniform sampler2D uWarpMap;
+        uniform float uWarpAmt;
+        ${shader.vertexShader}
+      `.replace(
+        '#include <uv_vertex>',
+        `
+        #include <uv_vertex>
+        #ifdef USE_UV
+          if (uWarpAmt > 0.0) {
+            vec4 warp = texture2D(uWarpMap, vUv);
+            vUv += (warp.rg - 0.5) * uWarpAmt * 0.3;
+          }
+        #endif
+        `
+      );
+    };
+    mat.customProgramCacheKey = () => 'warpuniv'; // ensure unique cache key for this hack
   }
 
   // ── Model import ───────────────────────────────────────────────────────────
@@ -151,6 +160,11 @@ export class SceneManager {
       this.gltfLoader.load(url, gltf => {
         const model = gltf.scene;
         this._fitToView(model);
+        model.traverse(child => {
+          if (child.isMesh && child.material) {
+            this._setupMaterial(child.material);
+          }
+        });
         if (this.mesh) this.scene.remove(this.mesh);
         this.mesh = model;
         this._geoKey = '__imported__';
@@ -165,6 +179,11 @@ export class SceneManager {
     return new Promise((resolve, reject) => {
       this.objLoader.load(url, obj => {
         this._fitToView(obj);
+        obj.traverse(child => {
+          if (child.isMesh && child.material) {
+            this._setupMaterial(child.material);
+          }
+        });
         if (this.mesh) this.scene.remove(this.mesh);
         this.mesh = obj;
         this._geoKey = '__imported__';
@@ -283,17 +302,37 @@ export class SceneManager {
           : null;
       }
 
+      // If a texture source is active, override imported model materials with our pipeline-ready material
+      if (this._importedModelName && this.mesh && texSrcIdx > 0) {
+        this.mesh.traverse(child => {
+          if (child.isMesh) child.material = this.material;
+        });
+      }
+
       // WarpMap displacement on UVs
-      if (this.material._shader) {
-        const warpIdx = p.get('displace.warp').value;
-        const activeWarp = (warpIdx > 0 && inputs.warpMaps?.[warpIdx - 1]) ? inputs.warpMaps[warpIdx - 1] : null;
-        this.material._shader.uniforms.uWarpMap.value = activeWarp || this._fallback;
-        this.material._shader.uniforms.uWarpAmt.value = p.get('displace.warpamt').value / 100;
+      const warpIdx = p.get('displace.warp').value;
+      const activeWarp = (warpIdx > 0 && inputs.warpMaps?.[warpIdx - 1]) ? inputs.warpMaps[warpIdx - 1] : null;
+      const warpAmt = p.get('displace.warpamt').value / 100;
+
+      const updateMat = (m) => {
+        if (m._shader) {
+          m._shader.uniforms.uWarpMap.value = activeWarp || this._fallback;
+          m._shader.uniforms.uWarpAmt.value = warpAmt;
+        }
+      };
+
+      updateMat(this.material);
+      if (this._importedModelName && this.mesh) {
+        this.mesh.traverse(child => {
+          if (child.isMesh && child.material) {
+            if (Array.isArray(child.material)) child.material.forEach(updateMat);
+            else updateMat(child.material);
+          }
+        });
       }
 
       this.material.needsUpdate = true;
-    }
-
+      }
     // Camera
     this.camera.fov = p.get('scene3d.cam.fov').value;
     this.camera.position.set(
@@ -320,7 +359,8 @@ export class SceneManager {
 
     // Depth pass — only when scene3d.depth.active is set, to avoid wasting GPU
     if (params.get('scene3d.depth.active')?.value) {
-      this.scene.overrideMaterial = this._depthMat;
+      const mode = params.get('scene3d.depth.mode')?.value ?? 0;
+      this.scene.overrideMaterial = (mode === 1) ? this._normalMat : this._depthMat;
       this.renderer.setRenderTarget(this.depthTarget);
       this.renderer.render(this.scene, this.camera);
       this.scene.overrideMaterial = null;
