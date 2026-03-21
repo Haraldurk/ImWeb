@@ -49,13 +49,20 @@ export class WarpMapEditor {
    * @param {number} ddy     y direction (-1..1, normalized)
    */
   brush(nx, ny, radius, strength, ddx, ddy) {
+    const r2 = radius * radius;
     for (let j = 0; j < this.rows; j++) {
       for (let i = 0; i < this.cols; i++) {
         const px = i / (this.cols - 1);
         const py = j / (this.rows - 1);
-        const d  = Math.sqrt((px - nx) ** 2 + (py - ny) ** 2);
-        if (d >= radius) continue;
-        const w = Math.cos((d / radius) * Math.PI * 0.5); // smooth edge
+        const dx = px - nx;
+        const dy = py - ny;
+        const dist2 = dx * dx + dy * dy;
+        if (dist2 >= r2) continue;
+
+        const dist = Math.sqrt(dist2);
+        // Gaussian-ish falloff for smoother liquid feel
+        const w = Math.exp(-dist2 / (r2 * 0.5)); 
+        
         const idx = j * this.cols + i;
         this.dx[idx] = Math.max(-0.49, Math.min(0.49, this.dx[idx] + ddx * strength * w));
         this.dy[idx] = Math.max(-0.49, Math.min(0.49, this.dy[idx] + ddy * strength * w));

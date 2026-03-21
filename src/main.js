@@ -751,7 +751,7 @@ async function main() {
 
   // ── OSC bridge ────────────────────────────────────────────────────────────
   const oscBridge  = new OSCBridge(ps, presetMgr);
-  const projectFile = new ProjectFile(ps, presetMgr, tableManager, { warpEditor });
+  const projectFile = new ProjectFile(ps, presetMgr, tableManager, { warpEditor, scene3d: scene3d });
 
   // Click OSC indicator → prompt for WebSocket URL and connect
   document.getElementById('status-osc')?.addEventListener('click', () => {
@@ -2021,7 +2021,8 @@ async function main() {
     const liveHeader = document.createElement('div');
     liveHeader.className = 'menu-header';
     liveHeader.style.fontSize = '9px';
-    liveHeader.textContent = 'Insert live feed';
+    liveHeader.style.color = 'var(--accent)';
+    liveHeader.textContent = 'INSERT VIDEO TO BUFFER (LIVE)';
     _bufSlotMenu.appendChild(liveHeader);
     const currentLive = liveSlots.get(idx);
     const liveSrcs = [
@@ -2613,12 +2614,24 @@ void main() {
   let strobePhase = 0; // 0–1 phase within one strobe cycle
   let beatPhase = 0;   // accumulated beat counter (beats, increases at BPM rate)
 
+  // MidiSync tracking
+  let _midiClockTickCount = 0;
+  let _pendingMidiFrame = false;
+  ctrl.onMidiTick = () => {
+    _midiClockTickCount++;
+    // In ImOs9, sync was usually 1 frame per N ticks. Default to 1 tick = 1 frame trigger
+    // if MidiSync is active.
+    _pendingMidiFrame = true;
+  };
+
   function render(now) {
     requestAnimationFrame(render);
 
     const dt = Math.min((now - lastTime) / 1000, 0.1); // cap at 100ms
     lastTime = now;
-    frameCount++;
+
+    // 1. Logic Tick (Always runs at 60fps for smooth LFOs/animations)
+    // ────────────────────────────────────────────────────────────────────────
 
     // Tick slew (parameter lag/smoothing)
     ps.tickSlew(dt);
@@ -2646,6 +2659,35 @@ void main() {
 
     // Tick automation playback
     automation.tick(dt);
+
+    // 2. Render Gating (MidiSync / AutoSync)
+    // ────────────────────────────────────────────────────────────────────────
+    
+    let shouldRender = true;
+
+    // MidiSync: wait for external MIDI clock trigger
+    const midiSyncActive = ps.get('global.midisync').value;
+    if (midiSyncActive) {
+      if (!_pendingMidiFrame) shouldRender = false;
+      _pendingMidiFrame = false;
+    }
+
+    // AutoSync: divisor-based frame skipping (1 = realtime, 2 = half speed, etc)
+    const autoSyncDiv = Math.max(1, Math.round(ps.get('global.autosync').value));
+    if (autoSyncDiv > 1) {
+      if (frameCount % autoSyncDiv !== 0) shouldRender = false;
+    }
+
+    if (!shouldRender) {
+      // Still need to increment frameCount so AutoSync math works next time
+      frameCount++;
+      return;
+    }
+
+    frameCount++;
+
+    // 3. Main Render Pass
+    // ────────────────────────────────────────────────────────────────────────
 
     // Tick step sequencer
     stepSequencer.tick(beatPhase);
@@ -2885,6 +2927,13 @@ void main() {
       createImageBitmap(oc).then(bmp => {
         _outWin.postMessage(bmp, '*', [bmp]);
       }).catch(() => {});
+    }
+
+    // FrameDonePulse — send MIDI CC pulse on frame completion (Phase 5)
+    if (ps.get('global.framedone').value && ctrl.midi) {
+      // Send CC 120 (unassigned) pulse on channel 16
+      ctrl.sendCC(16, 120, 127);
+      setTimeout(() => ctrl.sendCC(16, 120, 0), 5); // short 5ms pulse
     }
   }
 
