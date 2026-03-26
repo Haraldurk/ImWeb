@@ -1,151 +1,200 @@
 # CLAUDE.md — ImWeb Development Context
 
-This file gives an AI assistant working on ImWeb the context needed to contribute effectively.
+This file gives Claude Code the context needed to contribute effectively to ImWeb. Read it fully before touching anything.
 
 ---
 
 ## What this project is
 
-**ImWeb** is a browser-based real-time video synthesis instrument — a ground-up reimplementation of Tom Demeyer's *Image/ine* (STEIM Amsterdam, 1997/2008) in the modern browser. It is an artistic and technical project by H. Karlsson.
+**ImWeb** is a browser-based real-time video synthesis instrument — a ground-up reimplementation of Tom Demeyer and Steina Vasulka's *Image/ine* (STEIM Amsterdam, 1997/2008) in the modern browser.
 
-The instrument composites video sources (camera, movie clips, 3D scene, stills buffer, etc.) through a signal chain of effects (keyer, displacement, warp, blend, color shift, interlace, fade) and renders to a WebGL canvas. Every visual parameter is mappable to a controller (MIDI, LFO, audio, mouse, key, random, expression).
+The instrument composites video sources through a signal chain of effects and renders to a WebGL canvas. Every visual parameter is mappable to a controller (MIDI, LFO, audio, mouse, key, random, expression). The interface is also the performance — no edit/perform mode split.
 
 ---
 
 ## Tech stack
 
-| Layer | Technology |
-|-------|-----------|
-| Renderer | Three.js (WebGL, `WebGLRenderTarget` ping-pong) |
-| Build | Vite (ES modules, no transpilation needed for dev) |
-| UI | Vanilla JS + DOM; no React/Vue |
-| Style | Single `src/style.css`; CSS variables for theming |
-| Persistence | IndexedDB (presets); localStorage (settings) |
-| Input | WebRTC (camera), File API (video/images), Web MIDI API |
-| Audio | Web Audio API (`AnalyserNode` for FFT/VU) |
+| Layer       | Technology                                                      |
+|-------------|-----------------------------------------------------------------|
+| Renderer    | Three.js r160+ (WebGL, WebGLRenderTarget ping-pong)             |
+| Build       | Vite 5.4 (ES modules, HMR)                                      |
+| UI          | Vanilla JS + DOM; no React/Vue                                  |
+| Style       | src/style.css; CSS variables for theming                        |
+| Persistence | IndexedDB (presets, tables); localStorage (AI config, settings) |
+| Input       | WebRTC (camera), File API, Web MIDI API                         |
+| Audio       | Web Audio API (AnalyserNode FFT/VU)                             |
+| AI          | Switchable provider (Anthropic / Gemini / OpenAI / Ollama)      |
 
 ---
 
 ## Project structure
-
-```
 src/
-  main.js                   Bootstrap, render loop, event wiring, all feature glue
-  style.css                 All styles — dark performance UI
+main.js                   Bootstrap, render loop, all feature wiring
+style.css                 All styles — dark performance UI
+ai/
+AIFeatures.js           AI provider system: narrator, coach, preset
+generator. Provider/key config persisted to
+localStorage 'imweb-ai-config'. All calls
+route through _call(systemPrompt, userPrompt).
+controls/
+ParameterSystem.js      All parameters declared here; reactive onChange
+ControllerManager.js    Mouse, MIDI, LFO, Sound, Key, Random,
+Expression, Gamepad, Wacom, OSC drivers
+LFO.js                  Sine/Triangle/Sawtooth/Square/S&H + beat sync
+Automation.js           Record/play parameter movements, loop playback
+core/
+Pipeline.js             WebGL compositing chain — all render passes
+shaders/
+index.js                All GLSL effect shaders as named exports
+inputs/
+CameraInput.js          WebRTC getUserMedia → VideoTexture
+MovieInput.js           Video file → VideoTexture; speed/loop/BPM sync
+StillsBuffer.js         Frame capture store
+SlitScanBuffer.js       Rolling slit scan effect
+TextLayer.js            Canvas 2D text → Texture
+DrawLayer.js            Freehand canvas → Texture (Wacom pressure)
+ParticleSystem.js       GPU particle field as pipeline source
+io/
+ProjectFile.js          .imweb JSON save/load — full session
+OSCBridge.js            WebSocket ↔ UDP OSC relay
+LUTLoader.js            .cube file import
+scene3d/
+SceneManager.js         Three.js 3D scene → RenderTarget
+GeometryFactory.js      13 procedural geometry generators
+state/
+Preset.js               Presets + 128 Display States, IndexedDB
+ui/
+UI.js                   All UI builders: param rows, tabs, signal path,
+context menus, seq cards, WarpMap editor,
+controller badge popovers
 
-  controls/
-    ParameterSystem.js      All parameters declared here; reactive onChange
-    ControllerManager.js    Mouse, MIDI, LFO, Sound, Key, Random, Expression drivers
-    LFO.js                  Sine / Triangle / Sawtooth / Square + beat sync
-
-  core/
-    Pipeline.js             WebGL compositing chain — all render passes
-
-  shaders/
-    index.js                All GLSL effect shaders as template literals
-
-  inputs/
-    CameraInput.js          WebRTC getUserMedia → VideoTexture
-    MovieInput.js           Video file → VideoTexture; speed/loop/scrub/BPM sync
-    StillsBuffer.js         Frame capture store (up to 16 frames)
-    SlitScanBuffer.js       Rolling slit scan effect
-    TextLayer.js            Canvas 2D text → Texture
-
-  scene3d/
-    SceneManager.js         Three.js 3D scene → RenderTarget; auto-spin, model import
-
-  state/
-    Preset.js               Preset save/load, Display States, IndexedDB
-
-  ui/
-    UI.js                   All UI builders: param rows, tabs, signal path,
-                            context menu, seq cards, buildSeqParams()
-```
-
-`main.js` is the integration hub. It is large (~1800 lines). Most features are wired here.
+main.js is the integration hub (~2000 lines). Most feature wiring lives here. Do not split it without a clear architectural reason.
 
 ---
 
 ## Key conventions
 
 ### Parameters
-All controllable values live in `ParameterSystem`. Each has a namespace (e.g. `movie.speed`, `seq1.source`, `output.resolution`). Types:
-- `CONTINUOUS` — float with min/max/step
-- `TOGGLE` — boolean
-- `SELECT` — integer index into an options array
-- `TRIGGER` — fire-once event
+All controllable values live in ParameterSystem. Each has a namespace (e.g. movie.speed, seq1.source). Types:
+- CONTINUOUS — float with min/max/step
+- TOGGLE — boolean
+- SELECT — integer index into options array
+- TRIGGER — fire-once event
 
-Use `ps.get('name').value` to read, `ps.set('name', v)` to write with notifications.
+Read: ps.get('name').value
+Write: ps.set('name', v) — fires onChange callbacks
+
+### Controllers
+Each parameter can have one controller assigned. Controller object shape: { type: 'random'|'lfo'|'fixed'|'midi'|..., hz, slew, tableId, value, ... }. Settings edited via badge popover (right-click or Ctrl+click on badge in param row).
+
+### Parameter row UI pattern
+[label]  [ctrlBadge]  [minField]  [maxField]  [valueDisplay]
+- ctrlBadge — shows controller type (RND, LFO, MIDI…); right-click → _openCtrlPopover()
+- minField / maxField — drag (ns-resize cursor) or double-click to type; enforce min≤max
+- Drag delta: (startY - currentY) × 0.1; Shift = × step
+- Double-click opens inline text input; Enter commits, Escape cancels
+
+### Controller badge popover (_openCtrlPopover)
+Opens dark panel adjacent to badge. Closes on click-outside or Escape.
+- Random: Rate (hz), Slew (s), Table
+- LFO: Shape, Freq, Phase, Slew, Table
+- Fixed: Value
+All fields use same drag/dblclick pattern as range fields.
+
+### CSS variables (key values)
+--text-1: #e0e0f0        primary text
+--text-2: #8888a0        muted/inactive text
+--accent: #c8a020        primary yellow
+--accent-dim: #8c7a28    dimmed accent
+--bg-1: #12121a          main background
+--bg-2: #18181f          panel background
+--bg-3: #1f1f25          section background
+--bg-4: #26262e          hover state
 
 ### Adding a new feature
-1. Declare any new parameters in `ParameterSystem.js`
-2. Implement the logic in the relevant `src/inputs/` or `src/core/` module
-3. Wire it in `main.js` (tick loop and/or onChange callbacks)
-4. If it needs UI: add a builder function to `UI.js` and call it from `main.js`
-5. Add styles to `style.css`
+1. Declare parameters in ParameterSystem.js
+2. Implement logic in relevant src/inputs/ or src/core/ module
+3. Wire in main.js (tick loop and/or onChange callbacks)
+4. UI: add builder to UI.js, call from main.js
+5. Styles: add to style.css
+6. Document in CHANGELOG.md
 
 ### Shaders
-All GLSL is in `src/shaders/index.js` as named exports. Each shader is a minimal fragment shader that reads from `tDiffuse` (or named uniforms) and writes to `gl_FragColor`. Added to the pipeline via `Pipeline.addPass()`.
-
-### Signal path display
-The signal path is rendered by `UI.js`'s `_render()` method inside `SignalPath`. It reads live from `ps` values and regenerates HTML each frame. Node order: FG → BG → DS → TransferMode → Displacement → WarpMap → Keyer → Blend → ColorShift → LUT → Interlace → Fade.
-
-### Second monitor
-`⊡` opens `window.open()` popup. The popup reads `window.opener.document.getElementById('output-canvas')` directly (same-origin, `preserveDrawingBuffer: true` on renderer). Letterbox scaling via `ctx.drawImage(src, 0,0,iw,ih, dx,dy,dw,dh)`.
-
-### Ghost mode
-Purely visual: `body.classList.toggle('ghost-mode')`. CSS dims `#output-canvas` to `opacity: 0.18` and shows `#ghost-label` overlay. No layout changes — the ResizeObserver is guarded to ignore resize events when ghost mode is active.
+All GLSL in src/shaders/index.js as named exports. Minimal fragment shaders reading from tDiffuse. Add to pipeline via Pipeline.addPass().
 
 ---
 
 ## What NOT to do
 
-- Do not use React, Vue, or any component framework — this is intentional vanilla JS
-- Do not add a bundled state management library — `ParameterSystem` is the state
-- Do not refactor `main.js` into many small files without a clear reason — the current structure is intentional; `main.js` is the single integration point
-- Do not change the Three.js render loop structure without understanding the ping-pong buffer chain in `Pipeline.js`
-- Do not add TypeScript; this project stays plain ES modules
+- Do not use React, Vue, or any component framework
+- Do not add bundled state management — ParameterSystem is the state
+- Do not rewrite whole files — surgical str_replace edits only
+- Do not refactor main.js into many small files without clear reason
+- Do not change the Three.js render loop without understanding the ping-pong buffer chain in Pipeline.js
+- Do not add TypeScript
+- Do not hardcode API keys anywhere
 
 ---
 
-## Current version: 0.3.0
+## Collaboration model
 
-See `CHANGELOG.md` for full history. The git tag `v0.3.0` marks the Phase 3 checkpoint.
+Claude Code handles: multi-file wiring, complex JS logic, Pipeline/shader work, AIFeatures.js.
+Gemini CLI (see GEMINI.md) handles: grep/recon, browser screenshots via Chrome DevTools MCP, GLSL drafting, docs.
 
-### What was completed in Phase 3
-- Sequence recorders with variable frame count
-- Second monitor output (window.open + letterbox)
-- Ghost mode
-- Movie clip thumbnails
-- Signal path float/dock
-- LUT node in signal path
-- Status bar resolution buttons
-- Startup defaults (camera on, layers set, sections collapsed)
-- Cmd+S quick-save
+### Standard prompt template
+You are working on ImWeb. Codebase: ~/Documents/GitHub/ImWeb
+Rules: NEVER rewrite whole files. Surgical edits only.
+One feature per prompt.
+BEFORE TOUCHING ANYTHING:
 
-### What is still planned
-See the Phase 3–5 items in `README.md`. Priority candidates for next session:
-- WarpMode editor
-- Draw layer improvements
-- `.imweb` project file format (save/restore full session)
-- PWA manifest
+git log --oneline -5
+git status
+Read [relevant file]
+
+TASK: [single clearly scoped task]
+ACCEPTANCE: [what done looks like]
+AFTER: git add [files] && git commit -m "[message]" && git push
+
+---
+
+## Current version: 0.4.0
+
+See CHANGELOG.md for full history.
+
+### Completed through Phase 4
+- Full signal chain: 18+ sources, 20+ effect passes
+- All ImOs9 features restored (WarpMap with interactive brush editor,
+  Tables 16k, ExternalMapping, Sequencers ×3, FrameSelect, TransferMode 22 modes, rand1/2/3)
+- 3D scene integration (Three.js → pipeline; 13 geometries; GLB/GLTF/OBJ/STL; depth pass; live video texture on mesh)
+- AI provider system (Anthropic/Gemini/OpenAI/Ollama switchable, key management UI)
+- .imweb project file format
+- PWA manifest + service worker
+- ~180+ parameters, all MIDI/LFO-assignable
+- Controller badge popover (right-click RND/LFO/etc for Rate, Slew, Table, Shape)
+- Min/Max range fields: drag or double-click to edit
+
+### Remaining (Phase 5)
+- MidiSync / AutoSync (frame rate locked to MIDI clock)
+- Non-realtime capture mode
+- Performance profiling / GPU display
+- Tutorial / onboarding mode
 
 ---
 
 ## Running the project
-
 ```bash
 npm install
-npm run dev     # Vite dev server at localhost:3000
+npm run dev     # Vite dev server at localhost:5173
 npm run build   # Production build to dist/
 ```
 
-Chrome 113+ recommended for best WebGL performance. Firefox works; Safari works with minor WebGL limitations.
+Chrome 113+ recommended. Firefox and Safari work with minor WebGL limitations.
 
 ---
 
 ## Credits
 
-Original Image/ine: Tom Demeyer, STEIM Foundation, Amsterdam
+Original Image/ine: Tom Demeyer and Steina Vasulka, STEIM Foundation, Amsterdam
 ImOs9 manual: Sher Doruff
 ImWeb: H. Karlsson
+---
