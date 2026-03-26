@@ -1,6 +1,6 @@
 # ImWeb
 
-**A browser-based reimagining of Tom Demeyer's Image/ine video synthesis instrument (STEIM, Amsterdam)**
+**A browser-based reimagining of Tom Demeyer's and Steina Vasulka's Image/ine video synthesis instrument (STEIM, Amsterdam)**
 
 Real-time video compositing, 3D scene integration, and a complete parameter/controller mapping system — all in a Progressive Web App.
 
@@ -23,7 +23,7 @@ Works on Firefox and Safari in WebGL mode with minor limitations.
 
 ## What This Is
 
-Image/ine was a real-time video synthesis environment created by Tom Demeyer at STEIM Amsterdam. It ran on Mac OS 9 (1997) and later OS X (2008). ImWeb is a ground-up reimplementation for the modern browser, restoring features lost between versions and adding a full 3D scene pipeline.
+Image/ine was a real-time video synthesis environment created by Tom Demeyer and Steina Vasulka at STEIM Amsterdam. It ran on Mac OS 9 (1997) and later OS X (2008). ImWeb is a ground-up reimplementation for the modern browser, restoring features lost between versions and adding a full 3D scene pipeline.
 
 **Signal path:**
 ```
