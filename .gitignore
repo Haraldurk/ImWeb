@@ -141,3 +141,4 @@ vite.config.ts.timestamp-*
 .DS_Store
 **/.DS_Store
 .aider*
+\n# AI / Editor specific\n.aider*\n.claude/\n.gemini/\n\n# Backups\nindex_v4_working_do_not_touch.html
