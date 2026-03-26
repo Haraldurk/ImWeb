@@ -1,5 +1,7 @@
 # ImWeb
 
+![ImWeb Preview](assets/preview.png)
+
 **A browser-based reimagining of Tom Demeyer's and Steina Vasulka's Image/ine video synthesis instrument (STEIM, Amsterdam)**
 
 Real-time video compositing, 3D scene integration, and a complete parameter/controller mapping system — all in a Progressive Web App.
