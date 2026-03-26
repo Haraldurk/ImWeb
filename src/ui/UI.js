@@ -91,13 +91,15 @@ function _openCtrlPopover(param, anchorEl, ctrl, tables) {
 
     span.addEventListener('dblclick', e => {
       e.stopPropagation();
+      e.preventDefault();
       const input = document.createElement('input');
       input.type  = 'number'; input.value = get(); input.step = 'any';
-      input.style.cssText = 'width:58px;font-size:10px;font-family:var(--mono);background:var(--bg-4);border:1px solid var(--accent);color:var(--text-0);padding:1px 3px;border-radius:2px;';
+      input.style.cssText = 'width:64px;font:inherit;font-size:inherit;background:#1f1f25;color:#e0e0f0;border:1px solid #c8a020;border-radius:3px;padding:1px 4px;outline:none;';
       span.innerHTML = '';
       span.appendChild(input);
-      input.focus(); input.select();
+      setTimeout(() => { input.focus(); input.select(); }, 0);
       const commit = () => { const v = parseFloat(input.value); if (!isNaN(v)) set(v); refresh(); };
+      input.addEventListener('mousedown', e2 => e2.stopPropagation());
       input.addEventListener('blur', commit);
       input.addEventListener('keydown', e2 => {
         if (e2.key === 'Enter')  { commit(); e2.stopPropagation(); }
@@ -467,16 +469,17 @@ export function buildParamRow(param, contextMenu) {
 
       el.addEventListener('dblclick', e => {
         e.stopPropagation();
+        e.preventDefault();
         const current = which === 'min' ? (param.ctrlMin ?? param.min) : (param.ctrlMax ?? param.max);
         const input = document.createElement('input');
         input.type  = 'number';
         input.value = current;
         input.step  = 'any';
-        input.style.cssText = 'width:36px;font-size:10px;font-family:var(--mono);background:var(--bg-4);border:1px solid var(--accent);color:var(--text-0);padding:1px 2px;border-radius:2px;';
+        input.style.cssText = 'width:64px;font:inherit;font-size:inherit;background:#1f1f25;color:#e0e0f0;border:1px solid #c8a020;border-radius:3px;padding:1px 4px;outline:none;';
         el.innerHTML = '';
         el.appendChild(input);
-        input.focus();
-        input.select();
+        input.addEventListener('mousedown', e2 => e2.stopPropagation());
+        setTimeout(() => { input.focus(); input.select(); }, 0);
         const commit = () => {
           const v = parseFloat(input.value);
           if (!isNaN(v)) {
