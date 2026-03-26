@@ -15,10 +15,10 @@
 
   --text-0:      #e8e8f0;   /* primary */
   --text-1:      #9090a8;   /* secondary */
-  --text-2:      #585868;   /* muted */
+  --text-2:      #8888a0;   /* muted */
 
   --accent:      #e8c840;   /* yellow — active/assigned (matches ImOs9 feedback) */
-  --accent-dim:  #6b5c1a;
+  --accent-dim:  #8c7a28;
   --green:       #40c878;   /* active/on */
   --green-dim:   #1a5430;
   --red:         #e84040;   /* recording */
@@ -175,6 +175,16 @@ button {
   /* default: fill container (overridden by applyResolution for fixed resolutions) */
   width: 100%;
   height: 100%;
+}
+
+#warp-grid-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 5;
 }
 
 #feedback-overlay {
@@ -913,6 +923,81 @@ body.dnd-active::after {
   border: 1px solid var(--border);
   cursor: crosshair;
 }
+
+/* ── CONTROLLER MAP PANEL ────────────────────────────────────────────────── */
+
+#ctrl-map-panel {
+  position: fixed;
+  z-index: 900;
+  min-width: 260px;
+  max-width: 340px;
+  max-height: 420px;
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  box-shadow: 0 4px 20px rgba(0,0,0,.6);
+  font-size: 11px;
+  display: flex;
+  flex-direction: column;
+}
+.cm-titlebar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 8px;
+  background: var(--bg3);
+  border-bottom: 1px solid var(--border);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--fg2);
+}
+.cm-titlebar span { flex: 1; }
+.cm-titlebar button {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--fg2);
+  border-radius: 2px;
+  padding: 1px 5px;
+  font-size: 10px;
+  cursor: pointer;
+}
+.cm-titlebar button:hover { background: var(--accent); color: #fff; }
+.cm-list {
+  overflow-y: auto;
+  flex: 1;
+  padding: 4px 0;
+}
+.cm-empty {
+  padding: 12px;
+  color: var(--fg3);
+  text-align: center;
+  font-style: italic;
+}
+.cm-group { border-bottom: 1px solid var(--border); padding: 2px 0; }
+.cm-group:last-child { border-bottom: none; }
+.cm-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px;
+  cursor: default;
+}
+.cm-row:hover { background: var(--bg3); }
+.cm-pid   { flex: 1; color: var(--fg1); font-family: monospace; font-size: 10px; }
+.cm-type  { color: var(--accent); min-width: 52px; }
+.cm-detail{ color: var(--fg3); min-width: 44px; font-size: 10px; }
+.cm-remove {
+  background: none;
+  border: none;
+  color: var(--fg3);
+  cursor: pointer;
+  font-size: 10px;
+  padding: 0 2px;
+  opacity: 0.5;
+}
+.cm-remove:hover { color: #f55; opacity: 1; }
 
 /* ── SIGNAL PATH ─────────────────────────────────────────────────────────── */
 

@@ -22,6 +22,218 @@ export function initTabs() {
   });
 }
 
+// ── Controller badge popover ──────────────────────────────────────────────────
+
+/**
+ * Open a small settings popover for the currently-assigned controller.
+ * Supports: random (rate, slew), lfo-* (shape, freq, phase, slew), fixed (value).
+ * All number fields support drag (up=increase) and double-click to type.
+ */
+function _openCtrlPopover(param, anchorEl, ctrl, tables) {
+  document.querySelectorAll('.ctrl-popover').forEach(p => p.remove());
+
+  const c = param.controller;
+  if (!c) return;
+
+  const popover = document.createElement('div');
+  popover.className = 'ctrl-popover';
+  popover.style.cssText = [
+    'position:fixed;z-index:3000;',
+    'background:var(--bg-3);border:1px solid var(--border-hi);border-radius:4px;',
+    'padding:6px 8px;box-shadow:0 4px 14px rgba(0,0,0,.55);min-width:170px;',
+    'font-size:11px;font-family:var(--mono);color:var(--text-1);',
+  ].join('');
+
+  // ── Shared helpers ────────────────────────────────────────────────────────
+
+  const makeRow = (label, valueEl) => {
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:8px;padding:2px 0;';
+    const lbl = document.createElement('span');
+    lbl.style.cssText = 'color:var(--text-2);';
+    lbl.textContent   = label;
+    row.appendChild(lbl);
+    row.appendChild(valueEl);
+    return row;
+  };
+
+  /** Draggable + double-click-to-type number span. */
+  const makeDragNum = (get, set, { decimals = 2, fineStep = 0.1, coarseStep = 1 } = {}) => {
+    const span = document.createElement('span');
+    span.style.cssText = [
+      'cursor:ns-resize;user-select:none;',
+      'padding:1px 5px;background:var(--bg-4);',
+      'border:1px solid var(--border);border-radius:2px;',
+      'min-width:52px;display:inline-block;text-align:right;',
+    ].join('');
+
+    const refresh = () => {
+      const v = get();
+      span.textContent = typeof v === 'number' ? v.toFixed(decimals) : String(v);
+    };
+    refresh();
+
+    let dragging = false, startY = 0, startVal = 0;
+    span.addEventListener('mousedown', e => {
+      if (e.button !== 0) return;
+      dragging = true; startY = e.clientY; startVal = get();
+      e.preventDefault(); e.stopPropagation();
+    });
+    const onMove = e => {
+      if (!dragging) return;
+      const step = e.shiftKey ? coarseStep : fineStep;
+      set(startVal + (startY - e.clientY) * step);
+      refresh();
+    };
+    const onUp = () => { dragging = false; };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup',   onUp);
+
+    span.addEventListener('dblclick', e => {
+      e.stopPropagation();
+      const input = document.createElement('input');
+      input.type  = 'number'; input.value = get(); input.step = 'any';
+      input.style.cssText = 'width:58px;font-size:10px;font-family:var(--mono);background:var(--bg-4);border:1px solid var(--accent);color:var(--text-0);padding:1px 3px;border-radius:2px;';
+      span.innerHTML = '';
+      span.appendChild(input);
+      input.focus(); input.select();
+      const commit = () => { const v = parseFloat(input.value); if (!isNaN(v)) set(v); refresh(); };
+      input.addEventListener('blur', commit);
+      input.addEventListener('keydown', e2 => {
+        if (e2.key === 'Enter')  { commit(); e2.stopPropagation(); }
+        if (e2.key === 'Escape') { refresh(); e2.stopPropagation(); }
+      });
+    });
+
+    return span;
+  };
+
+  /** Slew row (shared by random and lfo). */
+  const addSlewRow = () => {
+    popover.appendChild(makeRow('Slew (s)', makeDragNum(
+      () => param.slew ?? 0,
+      v  => { param.slew = Math.max(0, v); },
+      { decimals: 3, fineStep: 0.01, coarseStep: 0.1 }
+    )));
+  };
+
+  /** Table select row (shared by random and lfo). */
+  const addTableRow = () => {
+    const sel = document.createElement('select');
+    sel.style.cssText = 'font-size:10px;font-family:var(--mono);background:var(--bg-4);border:1px solid var(--border);color:var(--text-1);padding:1px 2px;border-radius:2px;';
+    const noneOpt = document.createElement('option');
+    noneOpt.value = ''; noneOpt.textContent = 'none';
+    sel.appendChild(noneOpt);
+    (tables ? tables.getNames() : []).forEach(name => {
+      const opt = document.createElement('option');
+      opt.value = name; opt.textContent = name;
+      sel.appendChild(opt);
+    });
+    sel.value = param.table ?? '';
+    sel.addEventListener('change', () => { param.table = sel.value || null; });
+    popover.appendChild(makeRow('Table', sel));
+  };
+
+  // ── Type-specific fields ──────────────────────────────────────────────────
+
+  const t = c.type;
+
+  if (t === 'random') {
+    const rndState = ctrl?.randoms?.get(param.id);
+    popover.appendChild(makeRow('Rate (Hz)', makeDragNum(
+      () => c.hz ?? 1,
+      v  => { v = Math.max(0.01, v); c.hz = v; if (rndState) rndState.hz = v; }
+    )));
+    addSlewRow();
+    addTableRow();
+
+  } else if (t.startsWith('lfo-')) {
+    const lfoCtrl = ctrl?.lfos?.get(param.id);
+    const lfo     = lfoCtrl?.lfo;
+
+    // Shape
+    const shapeSel = document.createElement('select');
+    shapeSel.style.cssText = 'font-size:10px;font-family:var(--mono);background:var(--bg-4);border:1px solid var(--border);color:var(--text-1);padding:1px 2px;border-radius:2px;';
+    const SHAPES       = ['sine','triangle','sawtooth','rampdown','square','sh'];
+    const SHAPE_LABELS = ['Sine','Triangle','Sawtooth','Ramp↓','Square','S+H'];
+    SHAPES.forEach((s, i) => {
+      const opt = document.createElement('option');
+      opt.value = s; opt.textContent = SHAPE_LABELS[i];
+      if ((lfo?.shape ?? t.replace('lfo-', '')) === s) opt.selected = true;
+      shapeSel.appendChild(opt);
+    });
+    shapeSel.addEventListener('change', () => {
+      const s = shapeSel.value;
+      if (lfo) lfo.shape = s;
+      c.type = `lfo-${s}`;
+      param.controller = { ...c };
+    });
+    popover.appendChild(makeRow('Shape', shapeSel));
+
+    popover.appendChild(makeRow('Freq (Hz)', makeDragNum(
+      () => lfo?.hz ?? c.hz ?? 0.5,
+      v  => { v = Math.max(0.001, v); if (lfo) lfo.hz = v; c.hz = v; }
+    )));
+
+    popover.appendChild(makeRow('Phase', makeDragNum(
+      () => lfo?.phase ?? c.phase ?? 0,
+      v  => { v = Math.max(0, Math.min(1, v)); if (lfo) lfo.phase = v; c.phase = v; },
+      { decimals: 2, fineStep: 0.01, coarseStep: 0.1 }
+    )));
+
+    addSlewRow();
+    addTableRow();
+
+  } else if (t === 'fixed') {
+    const decimals = param.step && param.step >= 1 ? 0 : 3;
+    popover.appendChild(makeRow('Value', makeDragNum(
+      () => param.value,
+      v  => {
+        v = Math.max(param.min, Math.min(param.max, v));
+        c.value = v; param.value = v;
+      },
+      { decimals, fineStep: (param.max - param.min) * 0.005, coarseStep: (param.max - param.min) * 0.05 }
+    )));
+  }
+
+  // ── Position & close wiring ───────────────────────────────────────────────
+
+  document.body.appendChild(popover);
+
+  const r = anchorEl.getBoundingClientRect();
+  popover.style.left = `${r.right + 4}px`;
+  popover.style.top  = `${r.top}px`;
+
+  requestAnimationFrame(() => {
+    const pr  = popover.getBoundingClientRect();
+    let left  = r.right + 4;
+    let top   = r.top;
+    if (left + pr.width  > window.innerWidth)  left = r.left - pr.width - 4;
+    if (top  + pr.height > window.innerHeight) top  = window.innerHeight - pr.height - 4;
+    popover.style.left = `${Math.max(4, left)}px`;
+    popover.style.top  = `${Math.max(4, top)}px`;
+  });
+
+  const closeClick = e => {
+    if (!popover.contains(e.target) && e.target !== anchorEl) {
+      popover.remove();
+      document.removeEventListener('click',   closeClick, true);
+      document.removeEventListener('keydown', closeKey,   true);
+    }
+  };
+  const closeKey = e => {
+    if (e.key === 'Escape') {
+      popover.remove();
+      document.removeEventListener('click',   closeClick, true);
+      document.removeEventListener('keydown', closeKey,   true);
+    }
+  };
+  setTimeout(() => {
+    document.addEventListener('click',   closeClick, true);
+    document.addEventListener('keydown', closeKey,   true);
+  }, 0);
+}
+
 // ── ParamRow builder ──────────────────────────────────────────────────────────
 
 /**
@@ -42,6 +254,21 @@ export function buildParamRow(param, contextMenu) {
   const ctrlEl = document.createElement('span');
   ctrlEl.className = `param-ctrl ${param.controllerClass}`;
   ctrlEl.textContent = param.controllerLabel;
+
+  // Right-click or Ctrl+click on badge → controller settings popover
+  ctrlEl.addEventListener('contextmenu', e => {
+    if (!param.controller) return;
+    e.preventDefault();
+    e.stopPropagation();
+    _openCtrlPopover(param, ctrlEl, contextMenu?.ctrl, contextMenu?.tables);
+  });
+  ctrlEl.addEventListener('click', e => {
+    if ((e.ctrlKey || e.metaKey) && param.controller) {
+      e.preventDefault();
+      e.stopPropagation();
+      _openCtrlPopover(param, ctrlEl, contextMenu?.ctrl, contextMenu?.tables);
+    }
+  });
 
   const valueEl = document.createElement('span');
   valueEl.className = 'param-value';
@@ -216,7 +443,29 @@ export function buildParamRow(param, contextMenu) {
       refresh();
       param.onChange(refresh);
 
-      el.addEventListener('click', e => {
+      // Drag up/down to adjust value; double-click to type
+      el.style.cursor = 'ns-resize';
+      let _rdrag = false, _rstartY = 0, _rstartVal = 0;
+      el.addEventListener('mousedown', e => {
+        if (e.button !== 0) return;
+        _rdrag    = true;
+        _rstartY  = e.clientY;
+        _rstartVal = which === 'min' ? (param.ctrlMin ?? param.min) : (param.ctrlMax ?? param.max);
+        e.preventDefault();
+        e.stopPropagation();
+      });
+      window.addEventListener('mousemove', e => {
+        if (!_rdrag) return;
+        const step  = e.shiftKey ? (param.step ?? 1) : 0.1;
+        let v = _rstartVal + (_rstartY - e.clientY) * step;
+        const other = which === 'min' ? (param.ctrlMax ?? param.max) : (param.ctrlMin ?? param.min);
+        if (which === 'min') { v = Math.min(v, other); param.ctrlMin = v; }
+        else                 { v = Math.max(v, other); param.ctrlMax = v; }
+        refresh();
+      });
+      window.addEventListener('mouseup', () => { _rdrag = false; });
+
+      el.addEventListener('dblclick', e => {
         e.stopPropagation();
         const current = which === 'min' ? (param.ctrlMin ?? param.min) : (param.ctrlMax ?? param.max);
         const input = document.createElement('input');
@@ -231,22 +480,16 @@ export function buildParamRow(param, contextMenu) {
         const commit = () => {
           const v = parseFloat(input.value);
           if (!isNaN(v)) {
-            if (which === 'min') param.ctrlMin = v;
-            else                 param.ctrlMax = v;
+            const other = which === 'min' ? (param.ctrlMax ?? param.max) : (param.ctrlMin ?? param.min);
+            if (which === 'min') param.ctrlMin = Math.min(v, other);
+            else                 param.ctrlMax = Math.max(v, other);
           }
           refresh();
         };
-        input.addEventListener('blur', commit);
+        input.addEventListener('blur',    commit);
         input.addEventListener('keydown', e2 => {
           if (e2.key === 'Enter')  { commit(); e2.stopPropagation(); }
           if (e2.key === 'Escape') { refresh(); e2.stopPropagation(); }
-        });
-        input.addEventListener('dblclick', e2 => {
-          e2.stopPropagation();
-          // Double-click resets to natural range
-          if (which === 'min') param.ctrlMin = null;
-          else                 param.ctrlMax = null;
-          refresh();
         });
       });
       return el;
@@ -464,7 +707,7 @@ export function buildSeqParams(ps, contextMenu) {
 
 // ── 3D geometry buttons ───────────────────────────────────────────────────────
 
-export function buildGeometryButtons(ps, sceneManager) {
+export function buildGeometryButtons(ps, sceneManager, contextMenu) {
   const el = document.getElementById('geometry-controls');
   if (!el) return;
 
@@ -498,6 +741,58 @@ export function buildGeometryButtons(ps, sceneManager) {
     el.appendChild(btn);
   });
 
+  // ── Transform section ────────────────────────────────────────────────────
+  const transformEl = document.getElementById('transform-params');
+  if (transformEl) {
+    // Screen XY toggle — sits above the position rows as a mode switch
+    const screenRow = buildParamRow(ps.get('scene3d.pos.screenspace'), contextMenu);
+    const hint = document.createElement('div');
+    hint.className = 'import-note';
+    hint.style.cssText = 'margin:2px 0 6px 0; color:var(--text-2);';
+    const updateHint = () => {
+      hint.textContent = ps.get('scene3d.pos.screenspace').value
+        ? 'X/Y: ±1 = screen edge  ·  Z: world units'
+        : 'X/Y/Z: world units  ·  default cam at z=5';
+    };
+    updateHint();
+    ps.get('scene3d.pos.screenspace').onChange(updateHint);
+    transformEl.appendChild(screenRow);
+    transformEl.appendChild(hint);
+
+    ['scene3d.pos.x','scene3d.pos.y','scene3d.pos.z',
+     'scene3d.rot.x','scene3d.rot.y','scene3d.rot.z',
+     'scene3d.spin.x','scene3d.spin.y','scene3d.spin.z',
+     'scene3d.scale','scene3d.norm',
+    ].forEach(id => {
+      const p = ps.get(id);
+      if (p) transformEl.appendChild(buildParamRow(p, contextMenu));
+    });
+  }
+
+  // ── Camera section ───────────────────────────────────────────────────────
+  const cameraEl = document.getElementById('camera3d-params');
+  if (cameraEl) {
+    ['scene3d.cam.fov','scene3d.cam.x','scene3d.cam.y','scene3d.cam.z',
+    ].forEach(id => {
+      const p = ps.get(id);
+      if (p) cameraEl.appendChild(buildParamRow(p, contextMenu));
+    });
+  }
+
+  // ── Material section ─────────────────────────────────────────────────────
+  const materialEl = document.getElementById('material-params');
+  if (materialEl) {
+    ['scene3d.mat.hue','scene3d.mat.sat','scene3d.mat.roughness',
+     'scene3d.mat.metalness','scene3d.mat.emissive','scene3d.mat.opacity',
+     'scene3d.mat.texsrc','scene3d.wireframe',
+     'scene3d.light.intensity',
+     'scene3d.depth.active','scene3d.depth.mode',
+    ].forEach(id => {
+      const p = ps.get(id);
+      if (p) materialEl.appendChild(buildParamRow(p, contextMenu));
+    });
+  }
+
   // Model import buttons
   const importEl = document.getElementById('model-import');
   if (!importEl) return;
@@ -506,37 +801,54 @@ export function buildGeometryButtons(ps, sceneManager) {
   const modelLabel = document.createElement('div');
   modelLabel.id = 'model-status-label';
   modelLabel.className = 'import-note';
-  modelLabel.textContent = 'No model loaded — drop .glb/.obj/.stl here or use buttons below';
+  modelLabel.textContent = 'No model loaded — drop .glb/.obj/.stl/.dae here or use buttons below';
   importEl.appendChild(modelLabel);
 
   const importBtn = document.createElement('button');
   importBtn.className = 'import-btn';
-  importBtn.textContent = '+ Import Model (GLB / OBJ / STL)';
+  importBtn.textContent = '+ Import Model (GLB / OBJ / STL / DAE)';
+  const _doImport = async (files) => {
+    const modelFile = files.find(f => /\.(glb|gltf|obj|stl|dae)$/i.test(f.name));
+    if (!modelFile) return;
+    importBtn.textContent = '⏳ Loading…';
+    try {
+      await sceneManager.loadModel(modelFile, ps, files);
+      modelLabel.textContent = `✓ ${modelFile.name} (+${files.length - 1} assets)`;
+      modelLabel.style.color = 'var(--green)';
+      importBtn.textContent = '+ Import Model';
+      importEl.dispatchEvent(new CustomEvent('modelLoaded', { bubbles: true, detail: { name: modelFile.name } }));
+    } catch (err) {
+      console.error('[Import]', err);
+      modelLabel.textContent = `✗ Error: ${err.message}`;
+      modelLabel.style.color = 'var(--red, #e05)';
+      importBtn.textContent = '+ Import Model';
+    }
+  };
+
   importBtn.addEventListener('click', () => {
     const input = document.createElement('input');
     input.type = 'file';
-    input.accept = '.gltf,.glb,.obj,.stl';
-    input.onchange = async e => {
-      const file = e.target.files[0];
-      if (!file) return;
-      importBtn.textContent = `⏳ Loading…`;
-      try {
-        await sceneManager.loadModel(file);
-        modelLabel.textContent = `✓ ${file.name}`;
-        modelLabel.style.color = 'var(--green)';
-        importBtn.textContent = '+ Import Model (GLB / OBJ / STL)';
-        // Fire event so main.js can update layer routing
-        importEl.dispatchEvent(new CustomEvent('modelLoaded', { bubbles: true, detail: { name: file.name } }));
-      } catch (err) {
-        console.error('[Import]', err);
-        modelLabel.textContent = `✗ Error: ${err.message}`;
-        modelLabel.style.color = 'var(--red, #e05)';
-        importBtn.textContent = '+ Import Model (GLB / OBJ / STL)';
-      }
-    };
+    // Accept model formats + common texture formats so they survive the file picker filter
+    input.accept = '.gltf,.glb,.obj,.stl,.dae,.jpg,.jpeg,.png,.webp,.bmp,.tga,.mtl,.bin';
+    input.multiple = true;
+    input.onchange = e => _doImport(Array.from(e.target.files));
     input.click();
   });
   importEl.appendChild(importBtn);
+
+  // Folder import — picks entire directory; best for DAE/OBJ + textures
+  const folderBtn = document.createElement('button');
+  folderBtn.className = 'import-btn';
+  folderBtn.textContent = '📁 Import Folder (DAE / OBJ + textures)';
+  folderBtn.title = 'Select the folder containing the model and its textures';
+  folderBtn.addEventListener('click', () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.webkitdirectory = true;
+    input.onchange = e => _doImport(Array.from(e.target.files));
+    input.click();
+  });
+  importEl.appendChild(folderBtn);
 
   const clearBtn = document.createElement('button');
   clearBtn.className = 'import-btn';
@@ -549,7 +861,7 @@ export function buildGeometryButtons(ps, sceneManager) {
     sceneManager._importedModelName = null;
     sceneManager._geoKey = null;  // invalidate so setGeometry actually runs
     sceneManager.setGeometry(geoName);
-    modelLabel.textContent = 'No model loaded — drop .glb/.obj/.stl here or use button below';
+    modelLabel.textContent = 'No model loaded — drop .glb/.obj/.stl/.dae here or use button below';
     modelLabel.style.color = '';
   });
   importEl.appendChild(clearBtn);
@@ -559,6 +871,46 @@ export function buildGeometryButtons(ps, sceneManager) {
   note.style.marginTop = '4px';
   note.textContent = 'Tip: drag & drop model files anywhere onto the app window';
   importEl.appendChild(note);
+
+  // ── Model size controls (shown when a model is imported) ──────────────────
+  const sizeSection = document.createElement('div');
+  sizeSection.id = 'model-size-controls';
+  sizeSection.style.cssText = 'display:none; margin-top:10px; border-top:1px solid var(--border); padding-top:8px;';
+
+  const sizeLabel = document.createElement('div');
+  sizeLabel.className = 'import-note';
+  sizeLabel.style.cssText = 'margin-bottom:4px; font-weight:bold; color:var(--text-1);';
+  sizeLabel.textContent = 'Model Size';
+  sizeSection.appendChild(sizeLabel);
+  sizeSection.appendChild(buildParamRow(ps.get('scene3d.norm'), contextMenu));
+  sizeSection.appendChild(buildParamRow(ps.get('scene3d.scale'), contextMenu));
+  importEl.appendChild(sizeSection);
+
+  // ── Animation controls (shown when model has animations) ──────────────────
+  const animSection = document.createElement('div');
+  animSection.id = 'model-anim-controls';
+  animSection.style.cssText = 'display:none; margin-top:10px; border-top:1px solid var(--border); padding-top:8px;';
+
+  const animLabel = document.createElement('div');
+  animLabel.className = 'import-note';
+  animLabel.style.cssText = 'margin-bottom:4px; font-weight:bold; color:var(--text-1);';
+  animLabel.textContent = 'Animations';
+  animSection.appendChild(animLabel);
+  animSection.appendChild(buildParamRow(ps.get('scene3d.anim.active'), contextMenu));
+  animSection.appendChild(buildParamRow(ps.get('scene3d.anim.select'), contextMenu));
+  animSection.appendChild(buildParamRow(ps.get('scene3d.anim.speed'), contextMenu));
+  importEl.appendChild(animSection);
+
+  // Show/hide model sections when a model is loaded or cleared
+  const refreshModelSections = () => {
+    const hasModel = !!sceneManager.importedModelName;
+    const hasAnims = hasModel && sceneManager.actions && sceneManager.actions.length > 0;
+    sizeSection.style.display = hasModel ? '' : 'none';
+    animSection.style.display = hasAnims ? '' : 'none';
+  };
+
+  importEl.addEventListener('modelLoaded', refreshModelSections);
+  clearBtn.addEventListener('click', refreshModelSections);
 }
 
 // ── State dots ────────────────────────────────────────────────────────────────
@@ -1605,6 +1957,26 @@ export function buildWarpEditor(editor, ps) {
   controlRow.className = 'warp-controls';
   container.appendChild(controlRow);
 
+  // Tool Selection
+  let activeTool = 'push';
+  const tools = ['push', 'smooth', 'erase'];
+  const toolGroup = document.createElement('div');
+  toolGroup.style.display = 'flex'; toolGroup.style.gap = '2px'; toolGroup.style.marginRight = '8px';
+  tools.forEach(t => {
+    const btn = document.createElement('button');
+    btn.className = 'warp-preset-btn';
+    btn.textContent = t.toUpperCase();
+    btn.style.padding = '2px 5px';
+    btn.classList.toggle('active', t === activeTool);
+    btn.addEventListener('click', () => {
+      activeTool = t;
+      toolGroup.querySelectorAll('button').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+    });
+    toolGroup.appendChild(btn);
+  });
+  controlRow.appendChild(toolGroup);
+
   // Brush radius
   const radiusLabel = document.createElement('span');
   radiusLabel.className = 'warp-ctrl-label';
@@ -1722,13 +2094,19 @@ export function buildWarpEditor(editor, ps) {
       ctx.stroke();
     }
 
-    // Control point dots at every 3rd intersection
-    ctx.fillStyle = 'rgba(232,200,64,0.55)';
-    for (let j = 0; j < r; j += 3) {
-      for (let i = 0; i < c; i += 3) {
+    // Control point dots at every intersection
+    for (let j = 0; j < r; j++) {
+      for (let i = 0; i < c; i++) {
+        const { dx, dy } = editor.dispAt(i / (c-1), j / (r-1));
+        const mag = Math.sqrt(dx*dx + dy*dy) * 15; // normalize for color
         const { x, y } = warpedPos(i / (c-1), j / (r-1));
+        
+        ctx.fillStyle = mag > 0.01 
+          ? `hsla(${180 - mag * 100}, 80%, 60%, ${0.3 + mag * 0.7})` 
+          : 'rgba(140,140,180,0.2)';
+        
         ctx.beginPath();
-        ctx.arc(x, y, 2.2, 0, Math.PI * 2);
+        ctx.arc(x, y, 1.5, 0, Math.PI * 2);
         ctx.fill();
       }
     }
@@ -1779,7 +2157,15 @@ export function buildWarpEditor(editor, ps) {
       const ddx = (nx - _lastX);
       const ddy = (ny - _lastY);
       const sign = _rightBtn ? -1 : 1;
-      editor.brush(nx, ny, brushRadius, brushStrength * 60, ddx * sign, ddy * sign);
+      
+      if (activeTool === 'push') {
+        editor.brush(nx, ny, brushRadius, brushStrength * 60, ddx * sign, ddy * sign);
+      } else if (activeTool === 'smooth') {
+        editor.smooth(nx, ny, brushRadius, brushStrength * 5);
+      } else if (activeTool === 'erase') {
+        editor.erase(nx, ny, brushRadius, brushStrength * 10);
+      }
+      
       _lastX = nx; _lastY = ny;
     }
     drawMesh();
@@ -1792,22 +2178,74 @@ export function buildWarpEditor(editor, ps) {
   drawMesh();
 }
 
-export class FPSDisplay {
+export class Profiler {
   constructor() {
     this.el    = document.getElementById('status-fps');
     this._last = performance.now();
     this._frames = 0;
     this._fps = 0;
+    this._cpuTime = 0;
+    this._vram = 0;
+    this._startTime = 0;
   }
 
-  tick() {
+  /** Call at start of render() */
+  begin() {
+    this._startTime = performance.now();
+  }
+
+  /** Call at end of render() */
+  end() {
+    this._cpuTime += (performance.now() - this._startTime);
+  }
+
+  tick(pipeline, sequencerManager) {
     this._frames++;
     const now = performance.now();
-    if (now - this._last >= 500) {
-      this._fps = Math.round(this._frames * 1000 / (now - this._last));
+    if (now - this._last >= 1000) {
+      const duration = now - this._last;
+      this._fps = Math.round(this._frames * 1000 / duration);
+      const avgCpu = (this._cpuTime / this._frames).toFixed(1);
+      
+      // Calculate VRAM estimate (MB)
+      let bytes = 0;
+      if (pipeline) {
+        // Approximate VRAM from active render targets
+        const targets = [
+          pipeline.target1, pipeline.target2, pipeline.noiseTarget,
+          pipeline.scene3d?.target, pipeline.scene3d?.depthTarget
+        ];
+        targets.forEach(t => {
+          if (t) bytes += t.width * t.height * 4;
+        });
+        
+        // Include sequencers from the manager if provided
+        if (sequencerManager) {
+          sequencerManager.sequencers.forEach(s => {
+            if (s && s.frames) {
+              bytes += s.width * s.height * 4 * s.frames.length;
+            }
+          });
+        }
+
+        // Plus some overhead for stills buffer (16 slots of 1280x720)
+        bytes += 1280 * 720 * 4 * 16; 
+      }
+      const mb = Math.round(bytes / (1024 * 1024));
+
+      if (this.el) {
+        this.el.innerHTML = `
+          <span title="Frames per second">${this._fps} fps</span>
+          <span style="color:var(--text-2);margin:0 4px">|</span>
+          <span title="Logic time per frame">${avgCpu}ms CPU</span>
+          <span style="color:var(--text-2);margin:0 4px">|</span>
+          <span title="Estimated VRAM usage" style="color:${mb > 800 ? 'var(--red)' : 'var(--green)'}">${mb}MB VRAM</span>
+        `;
+      }
+
       this._frames = 0;
+      this._cpuTime = 0;
       this._last = now;
-      if (this.el) this.el.textContent = `${this._fps} fps`;
     }
   }
 }
