@@ -443,7 +443,7 @@ export class Pipeline {
     const il = p.get('output.interlace').value;
     if (il > 0) {
       interlaced = this._pass(this.m.interlace, {
-        uTexture: grained, uResY: this.height, uAmount: il, uTime: this._noiseTime,
+        uTexture: postOut, uResY: this.height, uAmount: il, uTime: this._noiseTime,
       });
     }
 

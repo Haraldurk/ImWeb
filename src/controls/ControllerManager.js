@@ -303,6 +303,17 @@ export class ControllerManager {
     this.exprs.delete(paramId);
   }
 
+  /** Remove every controller assignment from every parameter. Called on reset. */
+  clearAllAssignments() {
+    this.ps.getAll().forEach(p => {
+      this._removeController(p.id);
+      // Clear xLFOs for this param
+      (p.xControllers ?? []).forEach((_, i) => this._xLFOs.delete(`${p.id}:${i}`));
+      p.controller   = null;
+      p.xControllers = [];
+    });
+  }
+
   // ── Retrigger all LFOs (on DisplayState recall) ───────────────────────────
 
   retriggerLFOs() {

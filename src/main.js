@@ -56,7 +56,7 @@ import {
   ContextMenu,
   FeedbackOverlay,
   PresetsPanel,
-  FPSDisplay,
+  Profiler,
   DebugOverlay,
   TablesEditor,
 } from './ui/UI.js';
@@ -124,6 +124,11 @@ async function main() {
   const textLayer    = new TextLayer();
 
   const scene3d = new SceneManager(renderer, W, H);
+
+  // Helper to manage sequence buffers for profiler/VRAM estimation
+  const sequencerManager = {
+    sequencers: [seq1, seq2, seq3]
+  };
 
   // Color input — generates a solid color texture from HSV params
   const colorCanvas = document.createElement('canvas');
@@ -224,6 +229,10 @@ async function main() {
   setTableManager(tableManager);
   await tableManager.init(await openDB());
 
+  // ── Cached status bar elements ────────────────────────────────────────────
+  const _vuCanvas = document.getElementById('status-vu');
+  const _vuCtx    = _vuCanvas?.getContext('2d');
+
   // ── BPM / Tap Tempo ───────────────────────────────────────────────────────
   const bpmEl = document.getElementById('status-bpm');
   ps.get('global.bpm').onChange(bpm => {
@@ -278,7 +287,7 @@ async function main() {
   buildLayerButtons(ps, contextMenu);
   buildMappingPanels(ps, contextMenu);
   buildSeqParams(ps, contextMenu);
-  buildGeometryButtons(ps, scene3d);
+  buildGeometryButtons(ps, scene3d, contextMenu);
   buildWarpEditor(warpEditor, ps);
 
   // Update model status label after drag-and-drop or button import
@@ -299,6 +308,7 @@ async function main() {
   document.getElementById('model-import')?.addEventListener('modelLoaded', e => {
     if (ps.get('layer.fg').value === 0) ps.set('layer.fg', 5);
     ps.set('scene3d.active', 1);
+    ps.set('scene3d.anim.active', 1);
     _refreshModelLabel();
   });
 
@@ -421,6 +431,7 @@ async function main() {
   // Reset all params to defaults → clean camera state
   async function _resetAllParams() {
     if (!confirm('Reset all parameters to defaults?')) return;
+    ctrl.clearAllAssignments();
     ps.getAll().forEach(p => p.reset());
     ps.set('layer.fg', 0);  // Camera
     ps.set('layer.bg', 0);  // Camera
@@ -478,7 +489,7 @@ async function main() {
   });
   const feedbackOl  = new FeedbackOverlay(ps);
   const presetsPanel = new PresetsPanel(presetMgr);
-  const fpsDisplay    = new FPSDisplay();
+  const profiler     = new Profiler();
   const debugOverlay  = new DebugOverlay(ps);
   const tablesEditor  = new TablesEditor(tableManager);
 
@@ -575,6 +586,124 @@ async function main() {
     });
   })();
 
+  // ── Controller assignment map panel ──────────────────────────────────────
+  (() => {
+    const btn = document.getElementById('btn-ctrl-map');
+    if (!btn) return;
+
+    let panel = null;
+    let _pollId = null;
+
+    const TYPE_LABEL = {
+      'lfo-sine':     'LFO ~',
+      'lfo-triangle': 'LFO △',
+      'lfo-sawtooth': 'LFO /',
+      'lfo-square':   'LFO ⊓',
+      'midi-cc':      'MIDI CC',
+      'midi-note':    'MIDI Note',
+      'mouse-x':      'Mouse X',
+      'mouse-y':      'Mouse Y',
+      'sound-vu':     'Sound VU',
+      'sound-fft':    'Sound FFT',
+      'key':          'Key',
+      'random':       'Random',
+      'expr':         'Expr',
+      'fixed':        'Fixed',
+    };
+
+    function _ctrlDetail(c) {
+      if (!c) return '';
+      if (c.type === 'midi-cc')   return `CH${c.channel ?? '?'} CC${c.cc}`;
+      if (c.type === 'midi-note') return `CH${c.channel ?? '?'} N${c.note}`;
+      if (c.type === 'lfo-sine' || c.type === 'lfo-triangle' ||
+          c.type === 'lfo-sawtooth' || c.type === 'lfo-square') {
+        return c.beatSync ? `÷${c.beatDiv ?? 1}` : `${(c.hz ?? 1).toFixed(2)}hz`;
+      }
+      if (c.type === 'key') return `[${c.key}]`;
+      if (c.type === 'expr') return c.expr?.slice(0, 16) + (c.expr?.length > 16 ? '…' : '');
+      return '';
+    }
+
+    function _render() {
+      if (!panel) return;
+      const assigned = ps.getAll().filter(p => p.controller);
+      const list = panel.querySelector('.cm-list');
+
+      if (!assigned.length) {
+        list.innerHTML = '<div class="cm-empty">No active assignments</div>';
+        return;
+      }
+
+      // Group by controller type
+      const groups = {};
+      assigned.forEach(p => {
+        const t = p.controller.type;
+        (groups[t] ??= []).push(p);
+      });
+
+      list.innerHTML = Object.entries(groups).map(([type, params]) => {
+        const label = TYPE_LABEL[type] ?? type;
+        const rows = params.map(p => {
+          const detail = _ctrlDetail(p.controller);
+          return `<div class="cm-row" data-id="${p.id}">
+            <span class="cm-pid">${p.id}</span>
+            <span class="cm-type">${label}</span>
+            <span class="cm-detail">${detail}</span>
+            <button class="cm-remove" data-id="${p.id}" title="Remove assignment">✕</button>
+          </div>`;
+        }).join('');
+        return `<div class="cm-group">${rows}</div>`;
+      }).join('');
+
+      list.querySelectorAll('.cm-remove').forEach(b => {
+        b.addEventListener('click', e => {
+          e.stopPropagation();
+          ctrl.assign(b.dataset.id, null);
+          _render();
+        });
+      });
+    }
+
+    function _open() {
+      panel = document.createElement('div');
+      panel.id = 'ctrl-map-panel';
+      panel.innerHTML = `
+        <div class="cm-titlebar">
+          <span>Active Controllers</span>
+          <button id="cm-clear-all" title="Clear all assignments">Clear All</button>
+          <button id="cm-close">✕</button>
+        </div>
+        <div class="cm-list"></div>`;
+      document.body.appendChild(panel);
+
+      // Position near the button
+      const r = btn.getBoundingClientRect();
+      panel.style.left = Math.max(4, r.left - 220) + 'px';
+      panel.style.top  = (r.top - panel.offsetHeight - 4) + 'px';
+
+      panel.querySelector('#cm-close').addEventListener('click', _close);
+      panel.querySelector('#cm-clear-all').addEventListener('click', () => {
+        ctrl.clearAllAssignments();
+        _render();
+      });
+
+      _render();
+      // Reposition now that height is known
+      panel.style.top = (r.top - panel.offsetHeight - 4) + 'px';
+      _pollId = setInterval(_render, 1000);
+      btn.classList.add('active');
+    }
+
+    function _close() {
+      panel?.remove();
+      panel = null;
+      clearInterval(_pollId);
+      btn.classList.remove('active');
+    }
+
+    btn.addEventListener('click', () => { panel ? _close() : _open(); });
+  })();
+
   // ── Resolution buttons (status bar) ──────────────────────────────────────
   (() => {
     const resBtns = document.querySelectorAll('.res-btn');
@@ -593,6 +722,8 @@ async function main() {
 
   // ── Second screen output ──────────────────────────────────────────────────
   let _outWin = null;
+  let _outWinReady = false;
+  let _outFrameTick = 0;
   (() => {
     const btn = document.getElementById('btn-second-screen');
     if (!btn) return;
@@ -602,8 +733,12 @@ async function main() {
       if (_outWin && !_outWin.closed) {
         _outWin.close();
         _outWin = null;
+        _outWinReady = false;
         btn.classList.remove('active');
         btn.title = 'Send output to second monitor / new window';
+        // Auto-exit ghost mode
+        document.body.classList.remove('ghost-mode');
+        document.getElementById('btn-ghost-mode')?.classList.remove('active');
         return;
       }
 
@@ -629,33 +764,25 @@ async function main() {
 <style>
   * { margin:0;padding:0;box-sizing:border-box; }
   html,body { width:100%;height:100%;background:#000;overflow:hidden; }
-  canvas { display:block;position:absolute;top:0;left:0; }
+  canvas { display:block;width:100%;height:100%; }
 </style>
 </head>
 <body>
 <canvas id="out"></canvas>
 <script>
-  const canvas = document.getElementById('out');
-  const ctx = canvas.getContext('2d');
+  const c = document.getElementById('out');
+  const ctx = c.getContext('2d');
   let lastBitmap = null;
 
   function resize() {
-    canvas.width  = window.innerWidth;
-    canvas.height = window.innerHeight;
+    c.width  = window.innerWidth;
+    c.height = window.innerHeight;
     draw();
   }
-  window.addEventListener('resize', resize);
-  resize();
-
-  window.addEventListener('message', e => {
-    if (lastBitmap) lastBitmap.close();
-    lastBitmap = e.data;
-    draw();
-  });
 
   function draw() {
     if (!lastBitmap) return;
-    const sw = canvas.width, sh = canvas.height;
+    const sw = c.width, sh = c.height;
     const iw = lastBitmap.width, ih = lastBitmap.height;
     const scale = Math.min(sw / iw, sh / ih);
     const dw = iw * scale, dh = ih * scale;
@@ -664,21 +791,33 @@ async function main() {
     ctx.drawImage(lastBitmap, 0, 0, iw, ih, dx, dy, dw, dh);
   }
 
-  // Fullscreen on double-click
-  canvas.addEventListener('dblclick', () => {
-    if (!document.fullscreenElement) canvas.requestFullscreen?.();
+  window.addEventListener('resize', resize);
+  resize();
+
+  window.addEventListener('message', e => {
+    if (!e.data?.bitmap) return;
+    if (lastBitmap) lastBitmap.close();
+    lastBitmap = e.data.bitmap;
+    draw();
+  });
+
+  window.addEventListener('dblclick', () => {
+    if (!document.fullscreenElement) document.body.requestFullscreen?.();
     else document.exitFullscreen?.();
   });
 <\/script>
 </body>
 </html>`);
       _outWin.document.close();
+      _outWinReady = true;
+      _outFrameTick = 0;
 
       // Detect popup closed by user
       const _checkClosed = setInterval(() => {
         if (_outWin?.closed) {
           clearInterval(_checkClosed);
           _outWin = null;
+          _outWinReady = false;
           btn.classList.remove('active');
           btn.title = 'Send output to second monitor / new window';
           // Auto-exit ghost mode when second screen closes
@@ -751,7 +890,12 @@ async function main() {
 
   // ── OSC bridge ────────────────────────────────────────────────────────────
   const oscBridge  = new OSCBridge(ps, presetMgr);
-  const projectFile = new ProjectFile(ps, presetMgr, tableManager, { warpEditor, scene3d: scene3d });
+  const projectFile = new ProjectFile(ps, presetMgr, tableManager, {
+    warpEditor,
+    drawLayer,
+    stillsBuffer,
+    scene3d: scene3d
+  });
 
   // Click OSC indicator → prompt for WebSocket URL and connect
   document.getElementById('status-osc')?.addEventListener('click', () => {
@@ -813,6 +957,15 @@ async function main() {
           const inp = document.getElementById('project-name-input');
           if (inp) inp.value = name;
           setStatus(`✓ Loaded "${name}"`, 'var(--green)');
+
+          // Refresh UI
+          presetsPanel?._refresh?.();
+          refreshBufferGrid();
+          // Update WarpMap UI if active
+          if (document.getElementById('warp-slots-list')) {
+             const slots = warpEditor.getSavedSlots();
+             document.getElementById('warp-slots-list').innerHTML = slots.map(s => `<button class="warp-slot-btn">${s}</button>`).join('');
+          }
         } catch (err) {
           setStatus(`✗ ${err.message}`, 'var(--red)');
         }
@@ -1297,12 +1450,13 @@ async function main() {
           refreshClipsList();
           if (!ps.get('movie.active').value) ps.set('movie.active', 1);
         } catch (err) { console.error('[DnD] video load failed:', err); }
-      } else if (/\.(glb|gltf|obj|stl)$/i.test(file.name)) {
+      } else if (/\.(glb|gltf|obj|stl|dae)$/i.test(file.name)) {
         try {
-          await scene3d.loadModel(file);
+          await scene3d.loadModel(file, ps, files);
           // Auto-activate 3D: if FG is not already a useful source, route it to 3D
-          if (ps.get('layer.fg').value === 0 /* Color */) ps.set('layer.fg', 5); // 5 = 3D scene
+          if (ps.get('layer.fg').value === 3 /* Color */) ps.set('layer.fg', 5); // 5 = 3D scene
           ps.set('scene3d.active', 1);
+          ps.set('scene3d.anim.active', 1);
           _refreshModelLabel();
           console.info(`[3D] Loaded model: ${file.name}`);
         } catch (err) { console.error('[DnD] 3D model load failed:', err); }
@@ -2026,10 +2180,10 @@ async function main() {
     _bufSlotMenu.appendChild(liveHeader);
     const currentLive = liveSlots.get(idx);
     const liveSrcs = [
-      { key: 'camera', label: '📷 Camera' },
-      { key: 'movie',  label: '🎬 Movie'  },
-      { key: 'screen', label: '🖥 Screen' },
-      { key: 'fg',     label: '▲ FG layer' },
+      { key: 'camera', label: '📷 Insert Camera' },
+      { key: 'movie',  label: '🎬 Insert Movie'  },
+      { key: 'screen', label: '🖥 Insert Screen' },
+      { key: 'fg',     label: '▲ Insert FG layer' },
     ];
     liveSrcs.forEach(({ key, label }) => {
       const btn = document.createElement('button');
@@ -2575,11 +2729,14 @@ void main() {
   // ── Resize handler ────────────────────────────────────────────────────────
 
   const resizeObserver = new ResizeObserver(() => {
+    // If in ghost mode, the main canvas is hidden and should NOT be resized
+    // as it's not the primary focus and might trigger unnecessary re-renders
+    if (document.body.classList.contains('ghost-mode')) return;
+
     const idx = ps.get('output.resolution').value;
     if (idx === 0 || idx === 4) {
       applyResolution(idx);
     }
-    // Fixed resolutions don't change with container size
   });
   resizeObserver.observe(canvas.parentElement);
 
@@ -2614,14 +2771,14 @@ void main() {
   let strobePhase = 0; // 0–1 phase within one strobe cycle
   let beatPhase = 0;   // accumulated beat counter (beats, increases at BPM rate)
 
-  // MidiSync tracking
   let _midiClockTickCount = 0;
   let _pendingMidiFrame = false;
   ctrl.onMidiTick = () => {
     _midiClockTickCount++;
-    // In ImOs9, sync was usually 1 frame per N ticks. Default to 1 tick = 1 frame trigger
-    // if MidiSync is active.
-    _pendingMidiFrame = true;
+    const res = Math.max(1, Math.round(ps.get('global.midisyncres').value));
+    if (_midiClockTickCount % res === 0) {
+      _pendingMidiFrame = true;
+    }
   };
 
   function render(now) {
@@ -2630,13 +2787,36 @@ void main() {
     const dt = Math.min((now - lastTime) / 1000, 0.1); // cap at 100ms
     lastTime = now;
 
-    // 1. Logic Tick (Always runs at 60fps for smooth LFOs/animations)
+    // 1. Render Gating (MidiSync / AutoSync) — True Engine Lock
+    // ────────────────────────────────────────────────────────────────────────
+    let shouldRender = true;
+
+    // MidiSync: wait for external MIDI clock trigger (0xF8)
+    const midiSyncActive = ps.get('global.midisync').value;
+    if (midiSyncActive) {
+      if (!_pendingMidiFrame) shouldRender = false;
+    }
+
+    // AutoSync: divisor-based frame skipping (1 = realtime, 2 = half speed, etc)
+    const autoSyncDiv = Math.max(1, Math.round(ps.get('global.autosync').value));
+    if (autoSyncDiv > 1) {
+      if (frameCount % autoSyncDiv !== 0) shouldRender = false;
+    }
+
+    if (!shouldRender) return;
+
+    // From here on, we are rendering a frame
+    _pendingMidiFrame = false;
+    frameCount++;
+    profiler.begin();
+
+    // 2. Logic Tick (Engine simulation advances only when rendering)
     // ────────────────────────────────────────────────────────────────────────
 
     // Tick slew (parameter lag/smoothing)
     ps.tickSlew(dt);
 
-    // Advance beat phase first so LFOs get current beat position
+    // Advance beat phase
     const bpm = ps.get('global.bpm')?.value ?? 120;
     beatPhase += dt * (bpm / 60);
 
@@ -2660,38 +2840,11 @@ void main() {
     // Tick automation playback
     automation.tick(dt);
 
-    // 2. Render Gating (MidiSync / AutoSync)
-    // ────────────────────────────────────────────────────────────────────────
-    
-    let shouldRender = true;
-
-    // MidiSync: wait for external MIDI clock trigger
-    const midiSyncActive = ps.get('global.midisync').value;
-    if (midiSyncActive) {
-      if (!_pendingMidiFrame) shouldRender = false;
-      _pendingMidiFrame = false;
-    }
-
-    // AutoSync: divisor-based frame skipping (1 = realtime, 2 = half speed, etc)
-    const autoSyncDiv = Math.max(1, Math.round(ps.get('global.autosync').value));
-    if (autoSyncDiv > 1) {
-      if (frameCount % autoSyncDiv !== 0) shouldRender = false;
-    }
-
-    if (!shouldRender) {
-      // Still need to increment frameCount so AutoSync math works next time
-      frameCount++;
-      return;
-    }
-
-    frameCount++;
-
     // 3. Main Render Pass
     // ────────────────────────────────────────────────────────────────────────
 
     // Tick step sequencer
     stepSequencer.tick(beatPhase);
-
     // Update camera texture
     camera3d.tick();
 
@@ -2780,20 +2933,18 @@ void main() {
       soundTexture.needsUpdate = true;
 
       // VU meter in status bar
-      const vuCanvas = document.getElementById('status-vu');
-      if (vuCanvas) {
-        vuCanvas.style.display = 'inline-block';
-        const vCtx = vuCanvas.getContext('2d');
-        const W = vuCanvas.width, H = vuCanvas.height;
-        vCtx.clearRect(0, 0, W, H);
+      if (_vuCanvas) {
+        _vuCanvas.style.display = 'inline-block';
+        const W = _vuCanvas.width, H = _vuCanvas.height;
+        _vuCtx.clearRect(0, 0, W, H);
         const bars = 4;
         const barW = W / bars - 1;
         const levels = [ctrl.sound.bass, ctrl.sound.mid, ctrl.sound.high, ctrl.sound.level];
         const colors = ['#4080ff', '#40c040', '#c0c040', '#e84040'];
         levels.forEach((lv, i) => {
           const h = Math.round(Math.min(1, lv) * H);
-          vCtx.fillStyle = colors[i];
-          vCtx.fillRect(i * (barW + 1), H - h, barW, h);
+          _vuCtx.fillStyle = colors[i];
+          _vuCtx.fillRect(i * (barW + 1), H - h, barW, h);
         });
       }
     }
@@ -2904,29 +3055,67 @@ void main() {
     // Capture output into video delay ring buffer
     videoDelay.capture(pipeline.prev.texture);
 
-    // FPS counter + debug overlay
-    fpsDisplay.tick();
-    debugOverlay.tick(fpsDisplay._fps);
+    // Profiler + debug overlay
+    profiler.end();
+    profiler.tick(pipeline, sequencerManager);
+    debugOverlay.tick(profiler._fps);
 
-    // Video Out Spy — copy output canvas to spy preview (when visible)
-    if (_spyCanvas && !document.getElementById('video-spy')?.classList.contains('hidden')) {
-      _spyCtx.drawImage(canvas, 0, 0, 160, 90);
+    // Video Out Spy + Second Screen — createImageBitmap shared path
+    const spyVisible = _spyCanvas && !document.getElementById('video-spy')?.classList.contains('hidden');
+    const outWinOpen = _outWin && !_outWin.closed && _outWinReady;
+    // Second screen throttled to every 2nd frame (~30fps) to reduce GPU readback pressure
+    const outWinDue  = outWinOpen && (++_outFrameTick % 2 === 0);
+
+    if (spyVisible || outWinDue) {
+      createImageBitmap(canvas).then(bitmap => {
+        if (spyVisible) _spyCtx.drawImage(bitmap, 0, 0, 160, 90);
+        if (outWinDue && !_outWin?.closed) {
+          _outWin.postMessage({ bitmap }, '*', [bitmap]);
+        } else {
+          bitmap.close();
+        }
+      });
     }
 
-    // Second screen — transfer frame via postMessage (extremely fast cross-window transfer)
-    if (_outWin && !_outWin.closed) {
-      if (!window._outCvs) {
-        window._outCvs = document.createElement('canvas');
-        window._outCtx = window._outCvs.getContext('2d');
+    // ── Warp Grid Overlay ───────────────────────────────────────────────────
+    const warpGridOn = ps.get('global.showwarpgrid').value;
+    const overlayCvs = document.getElementById('warp-grid-overlay');
+    const overlayCtx = overlayCvs?.getContext('2d');
+    if (overlayCtx) {
+      if (!warpGridOn) {
+        overlayCtx.clearRect(0, 0, overlayCvs.width, overlayCvs.height);
+      } else {
+        const rect = canvas.getBoundingClientRect();
+        if (overlayCvs.width !== rect.width || overlayCvs.height !== rect.height) {
+          overlayCvs.width = rect.width;
+          overlayCvs.height = rect.height;
+        }
+        const w = overlayCvs.width, h = overlayCvs.height;
+        overlayCtx.clearRect(0, 0, w, h);
+        overlayCtx.strokeStyle = 'rgba(0, 255, 255, 0.35)';
+        overlayCtx.lineWidth = 1;
+        const cols = warpEditor.cols, rows = warpEditor.rows;
+        // Horizontal lines
+        for (let j = 0; j < rows; j++) {
+          overlayCtx.beginPath();
+          for (let i = 0; i < cols; i++) {
+            const ni = i / (cols - 1), nj = j / (rows - 1);
+            const { dx, dy } = warpEditor.dispAt(ni, nj);
+            overlayCtx.lineTo((ni + dx) * w, (nj + dy) * h);
+          }
+          overlayCtx.stroke();
+        }
+        // Vertical lines
+        for (let i = 0; i < cols; i++) {
+          overlayCtx.beginPath();
+          for (let j = 0; j < rows; j++) {
+            const ni = i / (cols - 1), nj = j / (rows - 1);
+            const { dx, dy } = warpEditor.dispAt(ni, nj);
+            overlayCtx.lineTo((ni + dx) * w, (nj + dy) * h);
+          }
+          overlayCtx.stroke();
+        }
       }
-      const oc = window._outCvs, octx = window._outCtx;
-      if (oc.width !== canvas.width || oc.height !== canvas.height) {
-        oc.width = canvas.width; oc.height = canvas.height;
-      }
-      octx.drawImage(canvas, 0, 0);
-      createImageBitmap(oc).then(bmp => {
-        _outWin.postMessage(bmp, '*', [bmp]);
-      }).catch(() => {});
     }
 
     // FrameDonePulse — send MIDI CC pulse on frame completion (Phase 5)

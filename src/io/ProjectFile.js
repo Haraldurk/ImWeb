@@ -18,20 +18,20 @@
  *   - 3D imported models
  */
 
-const FORMAT_VERSION = 2;
+const FORMAT_VERSION = 3;
 
 export class ProjectFile {
   /**
    * @param {object} ps           ParameterSystem
    * @param {object} presetMgr    PresetManager
    * @param {object} tableManager TableManager (optional)
-   * @param {object} extras       Extra save/restore hooks: { warpEditor }
+   * @param {object} extras       Extra save/restore hooks: { warpEditor, drawLayer, stillsBuffer, scene3d }
    */
   constructor(ps, presetMgr, tableManager, extras = {}) {
     this.ps      = ps;
     this.presets = presetMgr;
     this.tables  = tableManager;
-    this.extras  = extras; // { warpEditor }
+    this.extras  = extras; // { warpEditor, drawLayer, stillsBuffer, scene3d }
   }
 
   // ── Export ────────────────────────────────────────────────────────────────
@@ -60,13 +60,32 @@ export class ProjectFile {
       });
     }
 
-    // Warp map editor state (if provided)
+    // Warp map editor state
     let warpMap  = null;
     let warpSlots = null;
     if (this.extras.warpEditor) {
       const ed = this.extras.warpEditor;
       warpMap   = { dx: Array.from(ed.dx), dy: Array.from(ed.dy) };
       try { warpSlots = JSON.parse(localStorage.getItem('imweb-warpmaps') ?? '{}'); } catch { warpSlots = {}; }
+    }
+
+    // DrawLayer content (512x512)
+    let drawData = null;
+    if (this.extras.drawLayer) {
+      drawData = this.extras.drawLayer.canvas.toDataURL('image/png');
+    }
+
+    // StillsBuffer metadata (thumbnails + protection)
+    // We don't save full-res frames to JSON as it would be too large (>100MB)
+    let stillsMetadata = null;
+    if (this.extras.stillsBuffer) {
+      const sb = this.extras.stillsBuffer;
+      stillsMetadata = {
+        frameCount: sb.frameCount,
+        protected:  Array.from(sb._protected),
+        thumbs:     sb.thumbnailCanvases.map(c => c.toDataURL('image/jpeg', 0.6)),
+        hasFrame:   [...sb._hasFrame],
+      };
     }
 
     // 3D scene metadata
@@ -88,6 +107,8 @@ export class ProjectFile {
       tables,
       warpMap,
       warpSlots,
+      drawData,
+      stills:       stillsMetadata,
       scene3d:      scene3dMetadata,
     };
   }
@@ -102,7 +123,6 @@ export class ProjectFile {
   }
 
   async _apply(data) {
-    // Accept both v1/v2 (_type) and the inline format (format:'imweb')
     const isLegacy = data._type === 'imweb-project';
     const isInline = data.format === 'imweb';
     if (!isLegacy && !isInline) throw new Error('Not a valid .imweb project file');
@@ -144,6 +164,52 @@ export class ProjectFile {
     if (data.warpSlots) {
       localStorage.setItem('imweb-warpmaps', JSON.stringify(data.warpSlots));
     }
+
+    // Restore DrawLayer
+    const drawPromise = (data.drawData && this.extras.drawLayer) ? new Promise(resolve => {
+      const img = new Image();
+      img.onload = () => {
+        const ctx = this.extras.drawLayer.ctx;
+        ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+        ctx.drawImage(img, 0, 0);
+        this.extras.drawLayer.texture.needsUpdate = true;
+        resolve();
+      };
+      img.onerror = () => resolve(); // continue anyway
+      img.src = data.drawData;
+    }) : Promise.resolve();
+
+    // Restore StillsBuffer metadata
+    const stillsPromises = [];
+    if (data.stills && this.extras.stillsBuffer) {
+      const sb = this.extras.stillsBuffer;
+      if (data.stills.frameCount) sb.setFrameCount(data.stills.frameCount);
+      if (data.stills.protected) {
+        sb._protected.clear();
+        data.stills.protected.forEach(idx => sb._protected.add(idx));
+      }
+      // Restore thumbnails (async)
+      if (data.stills.thumbs) {
+        data.stills.thumbs.forEach((url, i) => {
+          if (!url || i >= sb.frameCount) return;
+          stillsPromises.push(new Promise(resolve => {
+            const img = new Image();
+            img.onload = () => {
+              const ctx = sb.thumbnailCanvases[i].getContext('2d');
+              ctx.drawImage(img, 0, 0);
+              resolve();
+            };
+            img.onerror = () => resolve();
+            img.src = url;
+          }));
+        });
+      }
+      if (data.stills.hasFrame) {
+        sb._hasFrame = [...data.stills.hasFrame];
+      }
+    }
+
+    await Promise.all([drawPromise, ...stillsPromises]);
 
     // 3D Model reminder
     if (data.scene3d?.modelName) {

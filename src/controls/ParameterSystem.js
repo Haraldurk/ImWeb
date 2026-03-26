@@ -533,14 +533,18 @@ export function registerCoreParameters(ps) {
     min: 0, max: 360, value: 0, unit: '°', feedbackVisible: true });
   ps.register({ id: 'scene3d.rot.z',     label: 'Rotation Z',  group: 'scene3d',
     min: 0, max: 360, value: 0, unit: '°' });
+  ps.register({ id: 'scene3d.pos.screenspace', label: 'Screen XY', group: 'scene3d',
+    type: PARAM_TYPE.TOGGLE, value: 0 });
   ps.register({ id: 'scene3d.pos.x',     label: 'Position X',  group: 'scene3d',
-    min: -10, max: 10, value: 0 });
+    min: -5, max: 5, value: 0, step: 0.01 });
   ps.register({ id: 'scene3d.pos.y',     label: 'Position Y',  group: 'scene3d',
-    min: -10, max: 10, value: 0 });
+    min: -5, max: 5, value: 0, step: 0.01 });
   ps.register({ id: 'scene3d.pos.z',     label: 'Position Z',  group: 'scene3d',
-    min: -20, max: 20, value: 0 });
+    min: -10, max: 10, value: 0, step: 0.01 });
   ps.register({ id: 'scene3d.scale',     label: 'Scale',       group: 'scene3d',
     min: 0.01, max: 5, value: 1 });
+  ps.register({ id: 'scene3d.norm',      label: 'Normalization', group: 'scene3d',
+    min: 0.1, max: 10, value: 2.0 });
   ps.register({ id: 'scene3d.wireframe', label: 'Wireframe',   group: 'scene3d',
     type: PARAM_TYPE.TOGGLE, value: 0 });
   ps.register({ id: 'scene3d.cam.fov',   label: 'Cam FOV',     group: 'scene3d',
@@ -560,9 +564,9 @@ export function registerCoreParameters(ps) {
   ps.register({ id: 'scene3d.mat.opacity',   label: 'Opacity',   group: 'scene3d',
     min: 0, max: 1, value: 1.0 });
   ps.register({ id: 'scene3d.mat.hue',       label: 'MatHue',    group: 'scene3d',
-    min: 0, max: 360, value: 240, unit: '°' });
+    min: 0, max: 360, value: 0, unit: '°' });
   ps.register({ id: 'scene3d.mat.sat',       label: 'MatSat',    group: 'scene3d',
-    min: 0, max: 100, value: 50, unit: '%' });
+    min: 0, max: 100, value: 0, unit: '%' });
   ps.register({ id: 'scene3d.mat.texsrc', label: 'TexSrc', group: 'scene3d',
     type: PARAM_TYPE.SELECT,
     options: ['None','Camera','Movie','Screen','Draw','Buffer','Noise'], value: 0 });
@@ -578,6 +582,14 @@ export function registerCoreParameters(ps) {
     type: PARAM_TYPE.TOGGLE, value: 0 });
   ps.register({ id: 'scene3d.depth.mode', label: 'DepthMode', group: 'scene3d',
     type: PARAM_TYPE.SELECT, options: ['Distance','Normals'], value: 0 });
+
+  // ── 3D Animation ──────────────────────────────────────────────────────────
+  ps.register({ id: 'scene3d.anim.active', label: 'Anim On', group: 'scene3d',
+    type: PARAM_TYPE.TOGGLE, value: 0 });
+  ps.register({ id: 'scene3d.anim.select', label: 'Animation', group: 'scene3d',
+    type: PARAM_TYPE.SELECT, options: ['None'], value: 0 });
+  ps.register({ id: 'scene3d.anim.speed',  label: 'Anim Speed', group: 'scene3d',
+    min: -2, max: 2, value: 1.0, step: 0.1 });
 
   // ── Draw ──────────────────────────────────────────────────────────────────
   ps.register({ id: 'draw.pensize',   label: 'DrawPenSize',  group: 'draw',
@@ -647,6 +659,8 @@ export function registerCoreParameters(ps) {
     min: 20, max: 300, value: 120, unit: 'bpm' });
   ps.register({ id: 'global.midisync', label: 'MidiSync', group: 'global',
     type: PARAM_TYPE.TOGGLE, value: 0 });
+  ps.register({ id: 'global.midisyncres', label: 'MidiSyncRes', group: 'global',
+    min: 1, max: 120, value: 1, unit: 'p/f' });
   ps.register({ id: 'global.autosync', label: 'AutoSync', group: 'global',
     min: 1, max: 1000, value: 1, unit: 'div' });
   ps.register({ id: 'global.framedone', label: 'FrameDonePulse', group: 'global',
@@ -661,7 +675,8 @@ export function registerCoreParameters(ps) {
     type: PARAM_TYPE.TOGGLE, value: 0 });
   ps.register({ id: 'global.debug',     label: 'Debug',    group: 'global',
     type: PARAM_TYPE.TOGGLE, value: 0 });
-
+  ps.register({ id: 'global.showwarpgrid', label: 'WarpGrid', group: 'global',
+    type: PARAM_TYPE.TOGGLE, value: 0 });
   // ── Per-layer color correction ────────────────────────────────────────────
   ps.register({ id: 'fg.hue',     label: 'FG Hue',     group: 'fg',
     min: -180, max: 180, value: 0, unit: '°' });

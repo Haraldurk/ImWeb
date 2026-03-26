@@ -50,6 +50,8 @@ export class WarpMapEditor {
    */
   brush(nx, ny, radius, strength, ddx, ddy) {
     const r2 = radius * radius;
+    const invR2 = 1 / (r2 * 0.4); // Tightened Gaussian denominator
+    
     for (let j = 0; j < this.rows; j++) {
       for (let i = 0; i < this.cols; i++) {
         const px = i / (this.cols - 1);
@@ -59,15 +61,70 @@ export class WarpMapEditor {
         const dist2 = dx * dx + dy * dy;
         if (dist2 >= r2) continue;
 
-        const dist = Math.sqrt(dist2);
-        // Gaussian-ish falloff for smoother liquid feel
-        const w = Math.exp(-dist2 / (r2 * 0.5)); 
+        // Tighter Gaussian falloff for more "liquid" precision
+        const w = Math.exp(-dist2 * invR2); 
         
         const idx = j * this.cols + i;
         this.dx[idx] = Math.max(-0.49, Math.min(0.49, this.dx[idx] + ddx * strength * w));
         this.dy[idx] = Math.max(-0.49, Math.min(0.49, this.dy[idx] + ddy * strength * w));
+
+        // Liquid Auto-Smooth: small Laplacian-like relaxation during brush to keep mesh clean
+        if (i > 0 && i < this.cols - 1 && j > 0 && j < this.rows - 1) {
+          const l = idx - 1, r = idx + 1, u = idx - this.cols, d = idx + this.cols;
+          const avgX = (this.dx[l] + this.dx[r] + this.dx[u] + this.dx[d]) / 4;
+          const avgY = (this.dy[l] + this.dy[r] + this.dy[u] + this.dy[d]) / 4;
+          this.dx[idx] += (avgX - this.dx[idx]) * (w * 0.05);
+          this.dy[idx] += (avgY - this.dy[idx]) * (w * 0.05);
+        }
       }
     }
+    this._rebuild();
+  }
+
+  /** Restore control points to zero displacement within radius. */
+  erase(nx, ny, radius, strength) {
+    const r2 = radius * radius;
+    for (let j = 0; j < this.rows; j++) {
+      for (let i = 0; i < this.cols; i++) {
+        const px = i / (this.cols - 1);
+        const py = j / (this.rows - 1);
+        const dist2 = (px - nx) ** 2 + (py - ny) ** 2;
+        if (dist2 >= r2) continue;
+        const w = Math.exp(-dist2 / (r2 * 0.5)) * strength;
+        const idx = j * this.cols + i;
+        this.dx[idx] *= (1 - w);
+        this.dy[idx] *= (1 - w);
+      }
+    }
+    this._rebuild();
+  }
+
+  /** Average displacements with neighbors to smooth out sharp spikes. */
+  smooth(nx, ny, radius, strength) {
+    const r2 = radius * radius;
+    const nextDx = new Float32Array(this.dx);
+    const nextDy = new Float32Array(this.dy);
+
+    for (let j = 1; j < this.rows - 1; j++) {
+      for (let i = 1; i < this.cols - 1; i++) {
+        const px = i / (this.cols - 1);
+        const py = j / (this.rows - 1);
+        const dist2 = (px - nx) ** 2 + (py - ny) ** 2;
+        if (dist2 >= r2) continue;
+
+        const w = Math.exp(-dist2 / (r2 * 0.5)) * strength;
+        const idx = j * this.cols + i;
+        
+        // Simple 4-neighbor average
+        const avgX = (this.dx[idx-1] + this.dx[idx+1] + this.dx[idx-this.cols] + this.dx[idx+this.cols]) / 4;
+        const avgY = (this.dy[idx-1] + this.dy[idx+1] + this.dy[idx-this.cols] + this.dy[idx+this.cols]) / 4;
+        
+        nextDx[idx] = this.dx[idx] + (avgX - this.dx[idx]) * w;
+        nextDy[idx] = this.dy[idx] + (avgY - this.dy[idx]) * w;
+      }
+    }
+    this.dx = nextDx;
+    this.dy = nextDy;
     this._rebuild();
   }
 

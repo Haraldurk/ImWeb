@@ -14,6 +14,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
 import { OBJLoader }  from 'three/addons/loaders/OBJLoader.js';
 import { STLLoader }  from 'three/addons/loaders/STLLoader.js';
+import { ColladaLoader } from 'three/addons/loaders/ColladaLoader.js';
 import { GeometryFactory, GEOMETRY_NAMES } from './GeometryFactory.js';
 
 export class SceneManager {
@@ -65,12 +66,17 @@ export class SceneManager {
     
     this.objLoader  = new OBJLoader();
     this.stlLoader  = new STLLoader();
+    this.colladaLoader = new ColladaLoader();
 
     // Geometry factory — must be before setGeometry()
     this.geoFactory = new GeometryFactory();
 
     // Imported model tracking
     this._importedModelName = null;
+    this._importedBaseScale = 1.0;
+    this.mixer    = null;
+    this.actions  = [];
+    this._curAnimIdx = -1;
 
     // Fallback texture for uWarpMap if null (avoid shader errors)
     const d = new Uint8Array([0, 0, 0, 255]);
@@ -116,7 +122,7 @@ export class SceneManager {
 
     if (!this.material) {
       this.material = new THREE.MeshStandardMaterial({
-        color:     0x8888cc,
+        color:     0xffffff,
         roughness: 0.5,
         metalness: 0.1,
       });
@@ -155,22 +161,45 @@ export class SceneManager {
 
   // ── Model import ───────────────────────────────────────────────────────────
 
-  async loadGLTF(url, name = '') {
+  /**
+   * Wrap a loaded model in a pivot Group so that:
+   *  - The model's geometric center sits at the pivot's local origin
+   *  - applyParams controls only the pivot (rotation = around center, position = linear)
+   * Returns the pivot.
+   */
+  _wrapInPivot(model) {
+    // Measure raw bounding box before any of our transforms
+    const box    = new THREE.Box3().setFromObject(model);
+    const size   = box.getSize(new THREE.Vector3());
+    const center = box.getCenter(new THREE.Vector3());
+    const maxDim = Math.max(size.x, size.y, size.z);
+
+    // Offset the model inside the pivot so its geometric center = pivot origin
+    model.position.sub(center);
+
+    // Store normalization scale (1 unit cube baseline; scene3d.norm scales on top)
+    this._importedBaseScale = maxDim > 0 ? 1 / maxDim : 1;
+
+    const pivot = new THREE.Group();
+    pivot.add(model);
+    return pivot;
+  }
+
+  async loadGLTF(url, name = '', params = null) {
     return new Promise((resolve, reject) => {
       this.gltfLoader.load(url, gltf => {
         const model = gltf.scene;
-        this._fitToView(model);
         model.traverse(child => {
-          if (child.isMesh && child.material) {
-            this._setupMaterial(child.material);
-          }
+          if (child.isMesh && child.material) this._setupMaterial(child.material);
         });
+        this._setupAnimations(model, gltf.animations, params);
+        const pivot = this._wrapInPivot(model);
         if (this.mesh) this.scene.remove(this.mesh);
-        this.mesh = model;
+        this.mesh = pivot;
         this._geoKey = '__imported__';
         this._importedModelName = name;
-        this.scene.add(model);
-        resolve(model);
+        this.scene.add(pivot);
+        resolve(pivot);
       }, undefined, reject);
     });
   }
@@ -178,18 +207,17 @@ export class SceneManager {
   async loadOBJ(url, name = '') {
     return new Promise((resolve, reject) => {
       this.objLoader.load(url, obj => {
-        this._fitToView(obj);
         obj.traverse(child => {
-          if (child.isMesh && child.material) {
-            this._setupMaterial(child.material);
-          }
+          if (child.isMesh && child.material) this._setupMaterial(child.material);
         });
+        this._setupAnimations(null, [], null);
+        const pivot = this._wrapInPivot(obj);
         if (this.mesh) this.scene.remove(this.mesh);
-        this.mesh = obj;
+        this.mesh = pivot;
         this._geoKey = '__imported__';
         this._importedModelName = name;
-        this.scene.add(obj);
-        resolve(obj);
+        this.scene.add(pivot);
+        resolve(pivot);
       }, undefined, reject);
     });
   }
@@ -197,43 +225,112 @@ export class SceneManager {
   async loadSTL(url, name = '') {
     return new Promise((resolve, reject) => {
       this.stlLoader.load(url, geo => {
-        const mesh = new THREE.Mesh(geo, this.material ?? new THREE.MeshStandardMaterial({ color: 0x8888cc }));
-        this._fitToView(mesh);
+        const model = new THREE.Mesh(geo, this.material ?? new THREE.MeshStandardMaterial({ color: 0xffffff }));
+        this._setupAnimations(null, [], null);
+        const pivot = this._wrapInPivot(model);
         if (this.mesh) this.scene.remove(this.mesh);
-        this.mesh = mesh;
+        this.mesh = pivot;
         this._geoKey = '__imported__';
         this._importedModelName = name;
-        this.scene.add(mesh);
-        resolve(mesh);
+        this.scene.add(pivot);
+        resolve(pivot);
       }, undefined, reject);
     });
   }
 
-  /**
-   * Load a 3D model from a File object, routing by extension.
-   */
-  async loadModel(file) {
-    const url = URL.createObjectURL(file);
-    const ext = file.name.split('.').pop().toLowerCase();
-    try {
-      if (ext === 'glb' || ext === 'gltf') return await this.loadGLTF(url, file.name);
-      if (ext === 'obj')                   return await this.loadOBJ(url, file.name);
-      if (ext === 'stl')                   return await this.loadSTL(url, file.name);
-      throw new Error(`Unsupported format: .${ext}`);
-    } finally {
-      URL.revokeObjectURL(url);
+  async loadCollada(url, name = '', params = null) {
+    return new Promise((resolve, reject) => {
+      this.colladaLoader.load(url, collada => {
+        const model = collada.scene;
+        model.traverse(child => {
+          if (child.isMesh && child.material) this._setupMaterial(child.material);
+        });
+
+        // Wrap first so the pivot is the animation root
+        const pivot = this._wrapInPivot(model);
+        if (this.mesh) this.scene.remove(this.mesh);
+        this.mesh = pivot;
+        this._geoKey = '__imported__';
+        this._importedModelName = name;
+        this.scene.add(pivot);
+
+        // Animations — use collada.scene.animations (collada.animations is deprecated)
+        const clips = collada.scene.animations ?? [];
+        this._setupAnimations(model, clips, params);
+
+        resolve(pivot);
+      }, undefined, reject);
+    });
+  }
+
+  _setupAnimations(model, animations, params) {
+    if (this.mixer) {
+      this.mixer.stopAllAction();
+      this.mixer = null;
+      this.actions = [];
+      this._curAnimIdx = -1;
+    }
+
+    if (!model || !animations || !animations.length) {
+      if (params) {
+        params.get('scene3d.anim.select').options = ['None'];
+        params.get('scene3d.anim.select').value = 0;
+      }
+      return;
+    }
+
+    this.mixer = new THREE.AnimationMixer(model);
+    this.actions = animations.map(clip => this.mixer.clipAction(clip));
+
+    if (params) {
+      const p = params.get('scene3d.anim.select');
+      p.options = animations.map((c, i) => c.name || `Anim ${i}`);
+      p.value = 0;
     }
   }
 
-  _fitToView(obj) {
-    const box = new THREE.Box3().setFromObject(obj);
-    const size = box.getSize(new THREE.Vector3());
-    const maxDim = Math.max(size.x, size.y, size.z);
-    const scale = 2 / maxDim;
-    obj.scale.setScalar(scale);
-    const center = box.getCenter(new THREE.Vector3());
-    obj.position.sub(center.multiplyScalar(scale));
+  /**
+   * Load a 3D model from a File object, routing by extension.
+   * If the file is part of a folder (e.g. from a drag-and-drop of multiple files),
+   * we can try to resolve textures if provided.
+   */
+  async loadModel(file, params = null, extraFiles = []) {
+    const url = URL.createObjectURL(file);
+    const ext = file.name.split('.').pop().toLowerCase();
+    
+    // Create a loading manager to handle internal resources (textures, etc)
+    const manager = new THREE.LoadingManager();
+    const objectURLs = [];
+
+    manager.setURLModifier(path => {
+      // If the path matches one of our extra files, use that blob URL
+      const fileName = path.split('/').pop();
+      const match = extraFiles.find(f => f.name === fileName);
+      if (match) {
+        const blobUrl = URL.createObjectURL(match);
+        objectURLs.push(blobUrl);
+        return blobUrl;
+      }
+      return path;
+    });
+
+    // Update specific loaders to use the manager
+    this.gltfLoader.manager = manager;
+    this.objLoader.manager  = manager;
+    this.colladaLoader.manager = manager;
+
+    try {
+      if (ext === 'glb' || ext === 'gltf') return await this.loadGLTF(url, file.name, params);
+      if (ext === 'obj')                   return await this.loadOBJ(url, file.name);
+      if (ext === 'stl')                   return await this.loadSTL(url, file.name);
+      if (ext === 'dae')                   return await this.loadCollada(url, file.name, params);
+      throw new Error(`Unsupported format: .${ext}`);
+    } finally {
+      URL.revokeObjectURL(url);
+      objectURLs.forEach(u => URL.revokeObjectURL(u));
+    }
   }
+
 
   // ── Parameter-driven updates ───────────────────────────────────────────────
 
@@ -247,6 +344,27 @@ export class SceneManager {
     }
 
     if (!this.mesh) return;
+
+    // Animation playback
+    if (this.mixer) {
+      const active = !!p.get('scene3d.anim.active').value;
+      const speed  = p.get('scene3d.anim.speed').value;
+      const animIdx = p.get('scene3d.anim.select').value;
+
+      if (active) {
+        if (animIdx !== this._curAnimIdx) {
+          if (this.actions[this._curAnimIdx]) this.actions[this._curAnimIdx].stop();
+          this._curAnimIdx = animIdx;
+          if (this.actions[animIdx]) this.actions[animIdx].play();
+        }
+        this.mixer.update(dt * speed);
+      } else {
+        if (this._curAnimIdx !== -1) {
+          if (this.actions[this._curAnimIdx]) this.actions[this._curAnimIdx].stop();
+          this._curAnimIdx = -1;
+        }
+      }
+    }
 
     // Transform
     const toRad = Math.PI / 180;
@@ -263,17 +381,36 @@ export class SceneManager {
       this.mesh.rotation.y = p.get('scene3d.rot.y').value * toRad;
       this.mesh.rotation.z = p.get('scene3d.rot.z').value * toRad;
     }
-    this.mesh.position.x = p.get('scene3d.pos.x').value;
-    this.mesh.position.y = p.get('scene3d.pos.y').value;
-    this.mesh.position.z = p.get('scene3d.pos.z').value;
+    // Scale
     const s = p.get('scene3d.scale').value;
-    this.mesh.scale.setScalar(s);
+    const n = p.get('scene3d.norm').value;
+    const S = this._importedModelName
+      ? s * n * this._importedBaseScale
+      : s;
+    this.mesh.scale.setScalar(S);
+
+    // Position
+    const px = p.get('scene3d.pos.x').value;
+    const py = p.get('scene3d.pos.y').value;
+    const pz = p.get('scene3d.pos.z').value;
+
+    if (p.get('scene3d.pos.screenspace')?.value) {
+      // Screen-space mode: pos.x/y treated as normalised screen coords (±1 = screen edge).
+      // Convert to world units using camera FOV and distance from origin.
+      const fovRad  = (p.get('scene3d.cam.fov').value * Math.PI) / 180;
+      const camDist = Math.abs(p.get('scene3d.cam.z').value);
+      const halfH   = Math.tan(fovRad / 2) * camDist;
+      const halfW   = halfH * (this.width / this.height);
+      this.mesh.position.set(px * halfW, py * halfH, pz);
+    } else {
+      this.mesh.position.set(px, py, pz);
+    }
 
     // Material
     if (this.material) {
       const hue = (p.get('scene3d.mat.hue')?.value ?? 240) / 360;
       const sat = (p.get('scene3d.mat.sat')?.value ?? 50) / 100;
-      this.material.color.setHSL(hue, sat, 0.5);
+      this.material.color.setHSL(hue, sat, sat > 0 ? 0.5 : 1.0);
       this.material.emissive.setHSL(hue, sat, 0.15 * (p.get('scene3d.mat.emissive')?.value ?? 0));
       this.material.roughness = p.get('scene3d.mat.roughness').value;
       this.material.metalness = p.get('scene3d.mat.metalness').value;
@@ -340,7 +477,7 @@ export class SceneManager {
       p.get('scene3d.cam.y').value,
       p.get('scene3d.cam.z').value
     );
-    this.camera.lookAt(this.mesh.position);
+    this.camera.lookAt(0, 0, 0);
     this.camera.updateProjectionMatrix();
 
     // Light
