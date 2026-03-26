@@ -6,6 +6,7 @@
 
 import { PARAM_TYPE } from '../controls/ParameterSystem.js';
 import { DEFAULT_FX_ORDER } from '../core/Pipeline.js';
+import { PROVIDERS } from '../ai/AIFeatures.js';
 const DEFAULT_FX_ORDER_SP = DEFAULT_FX_ORDER;
 
 // ── Tab switching ──────────────────────────────────────────────────────────────
@@ -2251,4 +2252,213 @@ export class Profiler {
       this._last = now;
     }
   }
+}
+
+// ── AI Settings Panel ─────────────────────────────────────────────────────────
+
+/**
+ * Populate an existing panel element with the multi-provider AI settings UI.
+ * ai — AIFeatures instance (getConfig, setActiveProvider, setProviderKey,
+ *       setProviderModel, testConnection)
+ * panelEl — the container element to populate (replaces its innerHTML)
+ */
+export function buildAISettingsPanel(ai, panelEl) {
+  if (!panelEl) return;
+
+  const cfg = ai.getConfig();
+
+  // ── Helpers ────────────────────────────────────────────────────────────────
+
+  const row = (label, child, note) => {
+    const wrap = document.createElement('div');
+    wrap.className = 'ai-prov-row';
+    if (label) {
+      const lbl = document.createElement('span');
+      lbl.className = 'ai-prov-label';
+      lbl.textContent = label;
+      wrap.appendChild(lbl);
+    }
+    if (child) wrap.appendChild(child);
+    if (note) {
+      const n = document.createElement('span');
+      n.className = 'ai-prov-note';
+      n.textContent = note;
+      wrap.appendChild(n);
+    }
+    return wrap;
+  };
+
+  const makeSelect = (opts, current, onChange) => {
+    const sel = document.createElement('select');
+    sel.className = 'ai-prov-select';
+    opts.forEach(({ value, label }) => {
+      const opt = document.createElement('option');
+      opt.value = value; opt.textContent = label;
+      if (value === current) opt.selected = true;
+      sel.appendChild(opt);
+    });
+    sel.addEventListener('change', () => onChange(sel.value));
+    return sel;
+  };
+
+  // ── Build UI ───────────────────────────────────────────────────────────────
+
+  panelEl.innerHTML = '';
+
+  // Header
+  const hdr = document.createElement('div');
+  hdr.className = 'ai-settings-hdr';
+  hdr.textContent = '✦ AI PROVIDER';
+  panelEl.appendChild(hdr);
+
+  // Status line
+  const statusEl = document.createElement('div');
+  statusEl.className = 'ai-key-status';
+  panelEl.appendChild(statusEl);
+
+  // Provider selector
+  const provSel = makeSelect(
+    Object.values(PROVIDERS).map(p => ({ value: p.id, label: p.name })),
+    cfg.activeProvider,
+    id => {
+      ai.setActiveProvider(id);
+      refreshProviderUI(id);
+    }
+  );
+  panelEl.appendChild(row('Provider', provSel));
+
+  // Provider-specific fields (key, model, link) — rebuilt on provider change
+  const provFields = document.createElement('div');
+  panelEl.appendChild(provFields);
+
+  // Test + status
+  const testBtn = document.createElement('button');
+  testBtn.className = 'import-btn';
+  testBtn.textContent = '⟳ Test connection';
+  testBtn.style.marginTop = '8px';
+  testBtn.addEventListener('click', async () => {
+    testBtn.disabled = true;
+    testBtn.textContent = '⏳ Testing…';
+    statusEl.textContent = '';
+    statusEl.className = 'ai-key-status';
+    try {
+      await ai.testConnection();
+      statusEl.textContent = '✓ Connected';
+      statusEl.className = 'ai-key-status ok';
+    } catch (err) {
+      statusEl.textContent = `✗ ${err.message}`;
+      statusEl.className = 'ai-key-status error';
+    } finally {
+      testBtn.disabled = false;
+      testBtn.textContent = '⟳ Test connection';
+    }
+  });
+  panelEl.appendChild(testBtn);
+
+  // Storage note
+  const note = document.createElement('div');
+  note.className = 'ai-settings-note';
+  note.textContent = 'Keys stored in browser localStorage only.';
+  panelEl.appendChild(note);
+
+  // ── Per-provider fields renderer ───────────────────────────────────────────
+
+  function refreshProviderUI(providerId) {
+    const pDef  = PROVIDERS[providerId];
+    const pCfg  = ai.getConfig().providers[providerId] ?? {};
+    provFields.innerHTML = '';
+
+    // Key / Base URL field
+    const keyWrap = document.createElement('div');
+    keyWrap.className = 'ai-prov-row';
+    keyWrap.style.flexWrap = 'wrap';
+    keyWrap.style.gap = '4px';
+
+    const keyLbl = document.createElement('span');
+    keyLbl.className = 'ai-prov-label';
+    keyLbl.textContent = pDef.keyLabel;
+    keyWrap.appendChild(keyLbl);
+
+    const keyInput = document.createElement('input');
+    keyInput.type        = pDef.needsKey ? 'password' : 'text';
+    keyInput.className   = 'ai-key-input';
+    keyInput.placeholder = pDef.keyPlaceholder;
+    keyInput.value       = pCfg.apiKey ?? '';
+    keyInput.style.flex  = '1';
+    keyWrap.appendChild(keyInput);
+
+    if (pDef.needsKey) {
+      // Show/hide toggle
+      const toggle = document.createElement('button');
+      toggle.className   = 'import-btn';
+      toggle.textContent = '👁';
+      toggle.title       = 'Show/hide key';
+      toggle.style.cssText = 'padding:2px 6px;min-width:0;font-size:12px;';
+      toggle.addEventListener('click', () => {
+        keyInput.type = keyInput.type === 'password' ? 'text' : 'password';
+      });
+      keyWrap.appendChild(toggle);
+    }
+
+    // Save key on blur or Enter
+    const saveKey = () => {
+      ai.setProviderKey(providerId, keyInput.value.trim());
+      updateStatusFromKey(providerId);
+    };
+    keyInput.addEventListener('blur', saveKey);
+    keyInput.addEventListener('keydown', e => { if (e.key === 'Enter') { saveKey(); keyInput.blur(); } });
+
+    provFields.appendChild(keyWrap);
+
+    // "Get API key" link
+    const link = document.createElement('a');
+    link.className   = 'ai-prov-link';
+    link.textContent = pDef.keyUrlLabel;
+    link.href        = pDef.keyUrl;
+    link.target      = '_blank';
+    link.rel         = 'noopener noreferrer';
+    provFields.appendChild(link);
+
+    // Model selector
+    const modelOpts = pDef.models.map(m => ({ value: m, label: m }));
+    const customModel = pCfg.model && !pDef.models.includes(pCfg.model)
+      ? pCfg.model : null;
+    if (customModel) modelOpts.push({ value: customModel, label: `${customModel} (custom)` });
+    modelOpts.push({ value: '__custom__', label: 'Custom…' });
+
+    const modelSel = makeSelect(modelOpts, pCfg.model ?? pDef.defaultModel, val => {
+      if (val === '__custom__') {
+        const m = prompt('Enter model name:', pCfg.model ?? pDef.defaultModel);
+        if (m) {
+          ai.setProviderModel(providerId, m.trim());
+          refreshProviderUI(providerId); // rebuild with new custom model in list
+        } else {
+          modelSel.value = pCfg.model ?? pDef.defaultModel;
+        }
+      } else {
+        ai.setProviderModel(providerId, val);
+      }
+    });
+    provFields.appendChild(row('Model', modelSel));
+
+    updateStatusFromKey(providerId);
+  }
+
+  function updateStatusFromKey(providerId) {
+    const pDef = PROVIDERS[providerId];
+    const pCfg = ai.getConfig().providers[providerId] ?? {};
+    if (!pDef.needsKey) {
+      statusEl.textContent = `Ollama at ${pCfg.apiKey || 'http://localhost:11434'}`;
+      statusEl.className = 'ai-key-status';
+    } else if (pCfg.apiKey) {
+      statusEl.textContent = `Key set: ${pCfg.apiKey.slice(0, 8)}…`;
+      statusEl.className = 'ai-key-status ok';
+    } else {
+      statusEl.textContent = 'No key set';
+      statusEl.className = 'ai-key-status';
+    }
+  }
+
+  // Initial render
+  refreshProviderUI(cfg.activeProvider);
 }

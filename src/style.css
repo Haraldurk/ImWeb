@@ -1661,3 +1661,56 @@ body.fullscreen-output #app {
 #btn-ai-narrator.active { color: var(--accent) !important; border-color: var(--accent-dim) !important; }
 #btn-ai-coach.active    { color: var(--green) !important; border-color: var(--green-dim) !important; }
 #btn-ai-settings.active { color: var(--accent) !important; }
+
+/* ── AI provider settings panel ──────────────────────────────────────────── */
+
+.ai-prov-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 5px 0;
+}
+
+.ai-prov-label {
+  font-size: 10px;
+  color: var(--text-2);
+  min-width: 52px;
+  flex-shrink: 0;
+}
+
+.ai-prov-note {
+  font-size: 10px;
+  color: var(--text-2);
+  opacity: 0.7;
+}
+
+.ai-prov-select {
+  flex: 1;
+  background: var(--bg-3);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  color: var(--text-1);
+  font-family: var(--mono);
+  font-size: 10px;
+  padding: 2px 4px;
+  min-width: 0;
+}
+
+.ai-prov-select:focus {
+  outline: none;
+  border-color: var(--accent-dim);
+}
+
+.ai-prov-link {
+  display: block;
+  font-size: 10px;
+  color: var(--accent-dim);
+  text-decoration: none;
+  padding: 2px 0 4px 0;
+  transition: color 0.15s;
+}
+
+.ai-prov-link:hover {
+  color: var(--accent);
+  text-decoration: underline;
+}

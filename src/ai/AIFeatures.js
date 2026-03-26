@@ -1,53 +1,223 @@
 /**
- * ImWeb AI Features
+ * ImWeb AI Features — multi-provider system
  *
- * Three AI-powered features using the Anthropic API (user-supplied key).
+ * Providers: Anthropic, Google Gemini, OpenAI, Ollama (local)
+ * Config persisted to localStorage key 'imweb-ai-config'.
  *
- * Feature 1: AI Preset Generator — describe a look, get parameter values
- * Feature 2: Parameter Narrator  — live one-sentence description of signal path
- * Feature 3: Performance Coach   — 30-second activity watch, one actionable suggestion
- *
- * API key stored in localStorage as 'imweb-anthropic-key'.
- * All calls go directly to api.anthropic.com (requires browser CORS header).
+ * Exports:
+ *   PROVIDERS                              — provider definitions for UI
+ *   AIFeatures (class)                     — constructor(ps, ui)
+ *   getApiKey / setApiKey / clearApiKey    — backward-compat (active provider)
+ *   generatePreset / narrateState /
+ *   coachSuggestion                        — backward-compat feature functions
+ *   buildStateSnapshot /
+ *   buildActivitySnapshot                  — pure state helpers
  */
 
-const API_URL   = 'https://api.anthropic.com/v1/messages';
-const MODEL     = 'claude-sonnet-4-6';
-const KEY_STORE = 'imweb-anthropic-key';
+// ── Provider definitions ──────────────────────────────────────────────────────
 
-// ── Core API call ─────────────────────────────────────────────────────────────
+export const PROVIDERS = {
+  anthropic: {
+    id:          'anthropic',
+    name:        'Anthropic',
+    keyLabel:    'API Key',
+    keyUrl:      'https://console.anthropic.com/settings/keys',
+    keyUrlLabel: 'Get API key →',
+    keyPlaceholder: 'sk-ant-…',
+    models:      ['claude-opus-4-6', 'claude-sonnet-4-6', 'claude-haiku-4-5-20251001'],
+    defaultModel:'claude-sonnet-4-6',
+    needsKey:    true,
+  },
+  gemini: {
+    id:          'gemini',
+    name:        'Google Gemini',
+    keyLabel:    'API Key',
+    keyUrl:      'https://aistudio.google.com/app/apikey',
+    keyUrlLabel: 'Get API key →',
+    keyPlaceholder: 'AIza…',
+    models:      ['gemini-2.5-pro', 'gemini-2.0-flash', 'gemini-1.5-flash'],
+    defaultModel:'gemini-2.0-flash',
+    needsKey:    true,
+  },
+  openai: {
+    id:          'openai',
+    name:        'OpenAI',
+    keyLabel:    'API Key',
+    keyUrl:      'https://platform.openai.com/api-keys',
+    keyUrlLabel: 'Get API key →',
+    keyPlaceholder: 'sk-…',
+    models:      ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo'],
+    defaultModel:'gpt-4o-mini',
+    needsKey:    true,
+  },
+  ollama: {
+    id:          'ollama',
+    name:        'Ollama (local)',
+    keyLabel:    'Base URL',
+    keyUrl:      'http://localhost:11434',
+    keyUrlLabel: 'Run locally — no key needed',
+    keyPlaceholder: 'http://localhost:11434',
+    models:      ['llama3.2', 'mistral', 'phi3', 'qwen2.5', 'deepseek-r1'],
+    defaultModel:'llama3.2',
+    needsKey:    false,
+  },
+};
 
-async function callClaude(apiKey, systemPrompt, userPrompt, maxTokens = 512) {
-  const res = await fetch(API_URL, {
+// ── Config management ─────────────────────────────────────────────────────────
+
+const CONFIG_KEY = 'imweb-ai-config';
+
+function buildDefaultConfig() {
+  return {
+    activeProvider: 'anthropic',
+    providers: {
+      anthropic: { apiKey: '', model: 'claude-sonnet-4-6' },
+      gemini:    { apiKey: '', model: 'gemini-2.0-flash'  },
+      openai:    { apiKey: '', model: 'gpt-4o-mini'       },
+      ollama:    { apiKey: 'http://localhost:11434', model: 'llama3.2' },
+    },
+  };
+}
+
+function loadConfig() {
+  try {
+    const raw = localStorage.getItem(CONFIG_KEY);
+    if (!raw) return buildDefaultConfig();
+    const saved = JSON.parse(raw);
+    // Merge so any new provider defaults are present
+    const def = buildDefaultConfig();
+    return { ...def, ...saved, providers: { ...def.providers, ...saved.providers } };
+  } catch {
+    return buildDefaultConfig();
+  }
+}
+
+function saveConfig(cfg) {
+  localStorage.setItem(CONFIG_KEY, JSON.stringify(cfg));
+}
+
+// Module-level config singleton — loaded once on first use
+let _cfg = null;
+function _config() { return (_cfg ??= loadConfig()); }
+
+// ── Provider API callers ──────────────────────────────────────────────────────
+
+async function callAnthropic(pcfg, system, user, maxTokens) {
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': apiKey,
+      'Content-Type':  'application/json',
+      'x-api-key':     pcfg.apiKey,
       'anthropic-version': '2023-06-01',
       'anthropic-dangerous-direct-browser-access': 'true',
     },
     body: JSON.stringify({
-      model: MODEL,
+      model:      pcfg.model,
       max_tokens: maxTokens,
-      system: systemPrompt,
-      messages: [{ role: 'user', content: userPrompt }],
+      system,
+      messages: [{ role: 'user', content: user }],
     }),
   });
   if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.error?.message ?? `API error ${res.status}`);
+    const e = await res.json().catch(() => ({}));
+    throw new Error(e.error?.message ?? `Anthropic error ${res.status}`);
   }
-  const data = await res.json();
-  return data.content?.[0]?.text ?? '';
+  return (await res.json()).content?.[0]?.text ?? '';
 }
 
-// ── API key management ────────────────────────────────────────────────────────
+async function callGemini(pcfg, system, user, maxTokens) {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(pcfg.model)}:generateContent?key=${pcfg.apiKey}`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      contents: [{ role: 'user', parts: [{ text: `${system}\n\n${user}` }] }],
+      generationConfig: { maxOutputTokens: maxTokens },
+    }),
+  });
+  if (!res.ok) {
+    const e = await res.json().catch(() => ({}));
+    throw new Error(e.error?.message ?? `Gemini error ${res.status}`);
+  }
+  return (await res.json()).candidates?.[0]?.content?.parts?.[0]?.text ?? '';
+}
 
-export function getApiKey() { return localStorage.getItem(KEY_STORE) ?? ''; }
-export function setApiKey(k) { localStorage.setItem(KEY_STORE, k); }
-export function clearApiKey() { localStorage.removeItem(KEY_STORE); }
+async function callOpenAI(pcfg, system, user, maxTokens) {
+  const res = await fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Content-Type':  'application/json',
+      'Authorization': `Bearer ${pcfg.apiKey}`,
+    },
+    body: JSON.stringify({
+      model:      pcfg.model,
+      max_tokens: maxTokens,
+      messages: [
+        { role: 'system', content: system },
+        { role: 'user',   content: user   },
+      ],
+    }),
+  });
+  if (!res.ok) {
+    const e = await res.json().catch(() => ({}));
+    throw new Error(e.error?.message ?? `OpenAI error ${res.status}`);
+  }
+  return (await res.json()).choices?.[0]?.message?.content ?? '';
+}
 
-// ── System prompt helpers ─────────────────────────────────────────────────────
+async function callOllama(pcfg, system, user, _maxTokens) {
+  const base = (pcfg.apiKey || 'http://localhost:11434').replace(/\/$/, '');
+  const res = await fetch(`${base}/api/chat`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model:  pcfg.model,
+      stream: false,
+      messages: [
+        { role: 'system', content: system },
+        { role: 'user',   content: user   },
+      ],
+    }),
+  });
+  if (!res.ok) throw new Error(`Ollama ${res.status} — is it running at ${base}?`);
+  return (await res.json()).message?.content ?? '';
+}
+
+// ── Module-level call router ──────────────────────────────────────────────────
+
+async function _call(system, user, maxTokens = 512) {
+  const cfg  = _config();
+  const id   = cfg.activeProvider;
+  const pcfg = cfg.providers[id];
+  if (!pcfg) throw new Error('No provider configured');
+  if (PROVIDERS[id]?.needsKey && !pcfg.apiKey) throw new Error('no-key');
+  switch (id) {
+    case 'anthropic': return callAnthropic(pcfg, system, user, maxTokens);
+    case 'gemini':    return callGemini   (pcfg, system, user, maxTokens);
+    case 'openai':    return callOpenAI   (pcfg, system, user, maxTokens);
+    case 'ollama':    return callOllama   (pcfg, system, user, maxTokens);
+    default:          throw new Error(`Unknown provider: ${id}`);
+  }
+}
+
+// ── Backward-compatible API key helpers ───────────────────────────────────────
+
+export function getApiKey() {
+  const cfg = _config();
+  return cfg.providers[cfg.activeProvider]?.apiKey ?? '';
+}
+export function setApiKey(k) {
+  const cfg = _config();
+  (cfg.providers[cfg.activeProvider] ??= {}).apiKey = k;
+  saveConfig(cfg);
+}
+export function clearApiKey() {
+  const cfg = _config();
+  if (cfg.providers[cfg.activeProvider]) cfg.providers[cfg.activeProvider].apiKey = '';
+  saveConfig(cfg);
+}
+
+// ── System prompts ────────────────────────────────────────────────────────────
 
 const PARAM_REFERENCE = `
 ImWeb parameter reference (id → range/options, description):
@@ -137,13 +307,8 @@ Set only the parameters that matter for the described look. Use musically/visual
 Important: layer.fg/bg/ds must be integers, all booleans are 0 or 1 (not true/false).`;
 
 export async function generatePreset(description) {
-  const key = getApiKey();
-  if (!key) throw new Error('no-key');
-
-  const text = await callClaude(key, PRESET_SYSTEM,
+  const text = await _call(PRESET_SYSTEM,
     `Create ImWeb parameters for this look: "${description}"`, 600);
-
-  // Extract JSON from response (in case there's any surrounding text)
   const match = text.match(/\{[\s\S]*\}/);
   if (!match) throw new Error('Bad response: no JSON found');
   const data = JSON.parse(match[0]);
@@ -159,10 +324,7 @@ what is visually happening — like "Camera keyed over noise with slow displacem
 Be specific about what's active. No punctuation at end. No preamble.`;
 
 export async function narrateState(stateSnapshot) {
-  const key = getApiKey();
-  if (!key) throw new Error('no-key');
-  return callClaude(key, NARRATOR_SYSTEM,
-    `Current signal path: ${stateSnapshot}`, 80);
+  return _call(NARRATOR_SYSTEM, `Current signal path: ${stateSnapshot}`, 80);
 }
 
 export function buildStateSnapshot(ps) {
@@ -183,11 +345,11 @@ export function buildStateSnapshot(ps) {
     parts.push(`mode=${modes[tm-1] ?? tm}`);
   }
   if (ps.get('colorshift.amount')?.value > 0.05) parts.push('colorshift');
-  if (ps.get('effect.bloom')?.value)    parts.push('bloom');
-  if (ps.get('effect.kaleid')?.value)   parts.push('kaleidoscope');
-  if (ps.get('effect.mirror')?.value)   parts.push('quad-mirror');
-  if (ps.get('effect.strobe')?.value)   parts.push('strobe');
-  if (ps.get('effect.pixsort')?.value)  parts.push('pixel-sort');
+  if (ps.get('effect.bloom')?.value)   parts.push('bloom');
+  if (ps.get('effect.kaleid')?.value)  parts.push('kaleidoscope');
+  if (ps.get('effect.mirror')?.value)  parts.push('quad-mirror');
+  if (ps.get('effect.strobe')?.value)  parts.push('strobe');
+  if (ps.get('effect.pixsort')?.value) parts.push('pixel-sort');
   if (Math.abs(ps.get('feedback.x')?.value ?? 0) > 0.02 || Math.abs(ps.get('feedback.y')?.value ?? 0) > 0.02) {
     parts.push('feedback-drift');
   }
@@ -203,10 +365,7 @@ Examples: "Try routing Noise to FG for more texture" or "Increase feedback.x to 
 No preamble, no explanation, just the suggestion.`;
 
 export async function coachSuggestion(activitySnapshot) {
-  const key = getApiKey();
-  if (!key) throw new Error('no-key');
-  return callClaude(key, COACH_SYSTEM,
-    `30-second performance activity: ${activitySnapshot}`, 80);
+  return _call(COACH_SYSTEM, `30-second performance activity: ${activitySnapshot}`, 80);
 }
 
 export function buildActivitySnapshot(recentChanges, ps) {
@@ -219,4 +378,32 @@ export function buildActivitySnapshot(recentChanges, ps) {
   const fg = srcNames[ps.get('layer.fg').value] ?? '?';
   const bg = srcNames[ps.get('layer.bg').value] ?? '?';
   return `Current FG=${fg}, BG=${bg}. Recently changed: ${changed}. Untouched: ${unchanged}.`;
+}
+
+// ── AIFeatures class ──────────────────────────────────────────────────────────
+
+export class AIFeatures {
+  constructor(ps, ui) {
+    this.ps = ps;
+    this.ui = ui;
+  }
+
+  // Config accessors
+  getConfig()             { return _config(); }
+  setActiveProvider(id)   { _config().activeProvider = id; saveConfig(_config()); }
+  setProviderKey(id, key) { (_config().providers[id] ??= {}).apiKey = key; saveConfig(_config()); }
+  setProviderModel(id, m) { (_config().providers[id] ??= {}).model  = m;   saveConfig(_config()); }
+
+  // Internal call router (delegates to module-level _call)
+  async _call(system, user, maxTokens = 512) { return _call(system, user, maxTokens); }
+
+  // Test the active provider with a minimal request
+  async testConnection() {
+    return _call('Reply with exactly the word: ok', 'ok', 10);
+  }
+
+  // Feature methods (delegates to module-level functions)
+  async generatePreset(description)    { return generatePreset(description); }
+  async narrateState()                 { return narrateState(buildStateSnapshot(this.ps)); }
+  async coachSuggestion(recentChanges) { return coachSuggestion(buildActivitySnapshot(recentChanges, this.ps)); }
 }
