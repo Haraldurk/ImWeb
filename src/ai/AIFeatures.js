@@ -35,8 +35,8 @@ export const PROVIDERS = {
     keyUrl:      'https://aistudio.google.com/app/apikey',
     keyUrlLabel: 'Get API key →',
     keyPlaceholder: 'AIza…',
-    models:      ['gemini-2.5-pro', 'gemini-2.0-flash', 'gemini-1.5-flash'],
-    defaultModel:'gemini-2.0-flash',
+    models:      ['gemini-3.1-pro', 'gemini-3.1-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'],
+    defaultModel:'gemini-3.1-pro',
     needsKey:    true,
   },
   openai: {
@@ -69,10 +69,10 @@ const CONFIG_KEY = 'imweb-ai-config';
 
 function buildDefaultConfig() {
   return {
-    activeProvider: 'anthropic',
+    activeProvider: 'gemini',
     providers: {
       anthropic: { apiKey: '', model: 'claude-sonnet-4-6' },
-      gemini:    { apiKey: '', model: 'gemini-2.0-flash'  },
+      gemini:    { apiKey: '', model: 'gemini-3.1-pro'   },
       openai:    { apiKey: '', model: 'gpt-4o-mini'       },
       ollama:    { apiKey: 'http://localhost:11434', model: 'llama3.2' },
     },
