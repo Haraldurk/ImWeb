@@ -40,6 +40,7 @@ import { ProjectFile }  from './io/ProjectFile.js';
 import { importImX }    from './io/ImXImporter.js';
 import { parseCubeFile } from './io/CubeLoader.js';
 import {
+  AIFeatures,
   getApiKey, setApiKey, clearApiKey,
   generatePreset, narrateState, buildStateSnapshot,
   coachSuggestion, buildActivitySnapshot,
