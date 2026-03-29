@@ -3135,40 +3135,19 @@ void main() {
     const panel = document.createElement('div');
     panel.id = 'ai-settings-panel';
     panel.className = 'ai-settings-panel hidden';
-    panel.innerHTML = `
-      <div class="ai-settings-hdr">AI Settings (Anthropic API key)</div>
-      <div id="ai-key-status" class="ai-key-status"></div>
-      <div style="display:flex;gap:6px;margin-top:8px;">
-        <input id="ai-key-input" type="password" placeholder="sk-ant-..." class="ai-key-input" />
-        <button id="ai-key-save" class="import-btn">Save</button>
-      </div>
-      <button id="ai-key-clear" class="import-btn" style="margin-top:6px;width:100%">✕ Clear key</button>
-      <div class="ai-settings-note">Your key is stored only in this browser's localStorage.<br>
-        Get a key at console.anthropic.com</div>
-    `;
     document.body.appendChild(panel);
 
-    function updateKeyStatus() {
-      const el = document.getElementById('ai-key-status');
-      const k  = getApiKey();
-      el.textContent = k ? `Key set: ${k.slice(0,8)}…` : 'No key set';
-      el.style.color = k ? 'var(--green)' : 'var(--text-2)';
-    }
-    updateKeyStatus();
+    const aiFeatures = new AIFeatures(ps, null); // UI.js handles its own building
+
+    import('./ui/UI.js').then(UI => {
+      UI.buildAISettingsPanel(aiFeatures, panel);
+    });
 
     document.getElementById('btn-ai-settings')?.addEventListener('click', e => {
       panel.classList.toggle('hidden');
-      updateKeyStatus();
       e.stopPropagation();
     });
-    document.getElementById('ai-key-save')?.addEventListener('click', () => {
-      const k = document.getElementById('ai-key-input').value.trim();
-      if (k) { setApiKey(k); document.getElementById('ai-key-input').value = ''; }
-      updateKeyStatus();
-    });
-    document.getElementById('ai-key-clear')?.addEventListener('click', () => {
-      clearApiKey(); updateKeyStatus();
-    });
+
     document.addEventListener('click', e => {
       if (!panel.contains(e.target) && e.target.id !== 'btn-ai-settings') {
         panel.classList.add('hidden');
