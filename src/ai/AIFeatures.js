@@ -36,7 +36,7 @@ export const PROVIDERS = {
     keyUrlLabel: 'Get API key →',
     keyPlaceholder: 'AIza…',
     models:      ['gemini-3.1-pro', 'gemini-3.1-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'],
-    defaultModel:'gemini-3.1-pro',
+    defaultModel:'gemini-2.0-flash',
     needsKey:    true,
   },
   openai: {
@@ -72,7 +72,7 @@ function buildDefaultConfig() {
     activeProvider: 'gemini',
     providers: {
       anthropic: { apiKey: '', model: 'claude-sonnet-4-6' },
-      gemini:    { apiKey: '', model: 'gemini-3.1-pro'   },
+      gemini:    { apiKey: '', model: 'gemini-2.0-flash' },
       openai:    { apiKey: '', model: 'gpt-4o-mini'       },
       ollama:    { apiKey: 'http://localhost:11434', model: 'llama3.2' },
     },
