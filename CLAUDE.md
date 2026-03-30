@@ -174,10 +174,13 @@ See CHANGELOG.md for full history.
 - Min/Max range fields: drag or double-click to edit
 
 ### Remaining (Phase 5)
-- MidiSync / AutoSync (frame rate locked to MIDI clock)
-- Non-realtime capture mode
-- Performance profiling / GPU display
-- Tutorial / onboarding mode
+- [ ] Factory demo presets (4–6, no camera required; startup loads preset 0)
+- [ ] First-visit onboarding overlay (what this is, 3 gestures, link to manual; localStorage dismiss flag)
+- [ ] Keyboard shortcut lock toggle (status bar button; blocks 0–9/letter keys when typing in fields)
+- [ ] MidiSync / AutoSync (frame rate locked to MIDI clock)
+- [ ] Non-realtime capture mode (frame-by-frame export)
+- [ ] Performance profiling / GPU display
+- [ ] Projection mapping (Phase 6 — homography corner-pin, second monitor output)
 
 ---
 

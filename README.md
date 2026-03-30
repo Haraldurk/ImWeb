@@ -6,7 +6,7 @@
 
 Real-time video compositing, 3D scene integration, and a complete parameter/controller mapping system — all in a Progressive Web App.
 
-Current version: **v0.3.0**
+Current version: **v0.4.0**
 
 ---
 
@@ -193,23 +193,15 @@ src/
 
 ## Planned
 
-### Phase 3 (remaining)
-- [ ] WarpMode editor (32 storable warp maps, Wave V/H/Randomize)
-- [ ] Tables (16,384-point response curve editor)
-- [ ] External Mapping (controller-of-controller)
-- [ ] rand1/rand2/rand3 noise sources
-
-### Phase 4 (3D depth)
-- [ ] Depth pass → DisplaceSrc (3D geometry distorts video)
-- [ ] WarpMap on 3D UV coordinates
-- [ ] 3D material: video texture from input sources
-- [ ] Post-processing on 3D output (bloom, chromatic aberration)
-
-### Phase 5
-- [ ] `.imweb` project file format (save/load full session)
-- [ ] PWA manifest + service worker
-- [ ] Non-realtime capture (frame-by-frame export)
-- [ ] OSC via WebSocket bridge
+### Phase 5 (in progress)
+- [ ] Factory demo presets (4–6, no camera required)
+- [ ] First-visit onboarding overlay
+- [ ] Keyboard shortcut lock toggle
+- [ ] MidiSync / AutoSync (frame rate locked to MIDI clock)
+- [ ] Non-realtime capture mode
+- [ ] Performance profiling / GPU display
+### Phase 6
+- [ ] Projection mapping (single quad corner-pin homography → multi-quad)
 
 ---
 

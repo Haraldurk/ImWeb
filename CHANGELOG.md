@@ -6,6 +6,31 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
 
 ---
 
+## [0.4.0] — 2026-03-20
+
+### Added
+- **MeshoptDecoder support** — GLB files compressed with Meshopt now load correctly (setMeshoptDecoder wired in SceneManager.js)
+- **3D depth pass → DisplaceSrc** — dual mode: Distance (grayscale depth map) and Normals (surface orientation as RGB); auto-activates when 3D Depth routed to any layer
+- **WarpMap on 3D UV coordinates** — hand-drawn warp displacement applied to mesh UV skin
+- **Live video texture on 3D mesh** — Camera / Movie / Screen / Draw / Buffer / Noise routable as mesh texture across all sub-meshes
+- **Robust GLB/GLTF import** — Draco compression support via DRACOLoader; material propagation across sub-meshes
+- **High-resolution Tables** — upgraded from 256 to 16,384 points; linear interpolation for smooth response curves
+- **Zero-latency second monitor** — replaced cross-window polling with ImageBitmap + postMessage transfer
+- **Ghost mode optimisation** — main canvas uses visibility:hidden (not opacity) when outputting to second monitor; saves GPU compositor cycles
+- **rand1 / rand2 / rand3** — three independent global noise oscillators added to ControllerManager
+- **WarpMap slots** — expanded from 4 to 16 storable slots
+- **Resolution buttons renamed** — FAST (540p) / MED (720p) / MAX (1080p) / LOW (half) for clearer performance context
+- **AI provider system** — switchable Anthropic / Gemini / OpenAI / Ollama; key management UI; Narrator (N) and Coach (P) features
+
+### Fixed
+- 3D models invisible after WarpMap update — added fallback textures and safety guards for UV-less geometry
+- Switching from imported models to primitives crashed — safe disposal checks in _replaceMesh
+- 3D Depth UI not updating — use ps.set() instead of direct property write for scene3d.depth.active
+- Second screen slowdown in Chrome — switched to postMessage frame transfer
+- ResizeObserver guard issue in ghost mode resolved
+
+---
+
 ## [0.3.0] — 2026-03-19
 
 ### Added
@@ -94,3 +119,5 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
 [0.3.0]: https://github.com/haraldurkarlsson/ImWeb/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/haraldurkarlsson/ImWeb/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/haraldurkarlsson/ImWeb/releases/tag/v0.1.0
+
+[0.4.0]: https://github.com/haraldurkarlsson/ImWeb/compare/v0.3.0...v0.4.0
