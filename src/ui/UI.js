@@ -783,20 +783,6 @@ export function buildGeometryButtons(ps, sceneManager, contextMenu) {
     });
   }
 
-  // ── Material section ─────────────────────────────────────────────────────
-  const materialEl = document.getElementById('material-params');
-  if (materialEl) {
-    ['scene3d.mat.hue','scene3d.mat.sat','scene3d.mat.roughness',
-     'scene3d.mat.metalness','scene3d.mat.emissive','scene3d.mat.opacity',
-     'scene3d.mat.texsrc','scene3d.wireframe',
-     'scene3d.light.intensity',
-     'scene3d.depth.active','scene3d.depth.mode',
-    ].forEach(id => {
-      const p = ps.get(id);
-      if (p) materialEl.appendChild(buildParamRow(p, contextMenu));
-    });
-  }
-
   // Model import buttons
   const importEl = document.getElementById('model-import');
   if (!importEl) return;
