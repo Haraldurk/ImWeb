@@ -572,6 +572,16 @@ export function registerCoreParameters(ps) {
     options: ['None','Camera','Movie','Screen','Draw','Buffer','Noise'], value: 0 });
   ps.register({ id: 'scene3d.light.intensity', label: 'Light Int.', group: 'scene3d',
     min: 0, max: 5, value: 1.0 });
+  ps.register({ id: 'scene3d.light.ambient',   label: 'Ambient',    group: 'scene3d',
+    min: 0, max: 2, step: 0.01, value: 0.4 });
+  ps.register({ id: 'scene3d.light.point',     label: 'Point Int.', group: 'scene3d',
+    min: 0, max: 5, step: 0.01, value: 0.6 });
+  ps.register({ id: 'scene3d.light.dirX',      label: 'Light X',    group: 'scene3d',
+    min: -10, max: 10, step: 0.1, value: 3.0 });
+  ps.register({ id: 'scene3d.light.dirY',      label: 'Light Y',    group: 'scene3d',
+    min: -10, max: 10, step: 0.1, value: 5.0 });
+  ps.register({ id: 'scene3d.light.dirZ',      label: 'Light Z',    group: 'scene3d',
+    min: -10, max: 10, step: 0.1, value: 3.0 });
   ps.register({ id: 'scene3d.spin.x', label: 'Spin X', group: 'scene3d',
     min: -180, max: 180, value: 0, unit: '°/s' });
   ps.register({ id: 'scene3d.spin.y', label: 'Spin Y', group: 'scene3d',

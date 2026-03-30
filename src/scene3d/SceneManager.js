@@ -15,6 +15,7 @@ import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
 import { OBJLoader }  from 'three/addons/loaders/OBJLoader.js';
 import { STLLoader }  from 'three/addons/loaders/STLLoader.js';
 import { ColladaLoader } from 'three/addons/loaders/ColladaLoader.js';
+import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { GeometryFactory, GEOMETRY_NAMES } from './GeometryFactory.js';
 
 export class SceneManager {
@@ -63,7 +64,8 @@ export class SceneManager {
     
     this.gltfLoader = new GLTFLoader();
     this.gltfLoader.setDRACOLoader(this.dracoLoader);
-    
+    this.gltfLoader.setMeshoptDecoder(MeshoptDecoder);
+
     this.objLoader  = new OBJLoader();
     this.stlLoader  = new STLLoader();
     this.colladaLoader = new ColladaLoader();
@@ -482,6 +484,13 @@ export class SceneManager {
 
     // Light
     this.lights.directional.intensity = p.get('scene3d.light.intensity').value;
+    this.lights.ambient.intensity     = p.get('scene3d.light.ambient').value;
+    this.lights.point.intensity       = p.get('scene3d.light.point').value;
+    this.lights.directional.position.set(
+      p.get('scene3d.light.dirX').value,
+      p.get('scene3d.light.dirY').value,
+      p.get('scene3d.light.dirZ').value
+    );
   }
 
   // ── Render ────────────────────────────────────────────────────────────────
