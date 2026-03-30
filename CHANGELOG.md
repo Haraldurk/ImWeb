@@ -8,6 +8,11 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
 
 ## [0.4.0] — 2026-03-20
 
+### Fixed (2026-03-30)
+- **Duplicate material params** — removed double-append to #material-params in UI.js; bulk sections loop is now the single source of truth
+- **3D light parameters expanded** — added Ambient, Point Int., Light X, Light Y, Light Z params; all MIDI/LFO-assignable; wired to AmbientLight, PointLight, and DirectionalLight.position in SceneManager
+- **MeshoptDecoder** — GLB files compressed with Meshopt now load correctly
+
 ### Added
 - **MeshoptDecoder support** — GLB files compressed with Meshopt now load correctly (setMeshoptDecoder wired in SceneManager.js)
 - **3D depth pass → DisplaceSrc** — dual mode: Distance (grayscale depth map) and Normals (surface orientation as RGB); auto-activates when 3D Depth routed to any layer

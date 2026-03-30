@@ -198,7 +198,6 @@ src/
 - [ ] First-visit onboarding overlay
 - [ ] Keyboard shortcut lock toggle
 - [ ] MidiSync / AutoSync (frame rate locked to MIDI clock)
-- [ ] Non-realtime capture mode
 - [ ] Performance profiling / GPU display
 ### Phase 6
 - [ ] Projection mapping (single quad corner-pin homography → multi-quad)
