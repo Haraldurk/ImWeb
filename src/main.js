@@ -873,8 +873,7 @@ async function main() {
   }
 
   document.getElementById('btn-save-preset')?.addEventListener('click', async () => {
-    if (presetMgr.current) presetMgr.current.thumbnail = capturePresetThumb();
-    await presetMgr.saveCurrentPreset();
+    await presetMgr.saveCurrentPreset(capturePresetThumb());
     presetsPanel._refresh();
     const btn = document.getElementById('btn-save-preset');
     const orig = btn.textContent;
@@ -2612,7 +2611,8 @@ void main() {
     // Cmd/Ctrl+S = quick-save current state to active preset
     if ((e.metaKey || e.ctrlKey) && e.key === 's' && !e.target.closest('textarea,input')) {
       e.preventDefault();
-      presetMgr.saveCurrentPreset().then(() => {
+      presetMgr.saveCurrentPreset(capturePresetThumb()).then(() => {
+        presetsPanel._refresh();
         const btn = document.getElementById('btn-save-preset');
         if (btn) {
           const orig = btn.textContent;

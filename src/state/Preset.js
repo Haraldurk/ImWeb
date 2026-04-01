@@ -300,10 +300,11 @@ export class PresetManager extends EventTarget {
     await this.activatePreset(prev);
   }
 
-  async saveCurrentPreset() {
+  async saveCurrentPreset(thumbnail = null) {
     const p = this.current;
     if (!p) return;
     p.controllers = this.ps.serializeControllers();
+    if (thumbnail) p.thumbnail = thumbnail;
     await p.save();
   }
 
