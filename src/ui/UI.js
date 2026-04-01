@@ -773,16 +773,6 @@ export function buildGeometryButtons(ps, sceneManager, contextMenu) {
     });
   }
 
-  // ── Camera section ───────────────────────────────────────────────────────
-  const cameraEl = document.getElementById('camera3d-params');
-  if (cameraEl) {
-    ['scene3d.cam.fov','scene3d.cam.x','scene3d.cam.y','scene3d.cam.z',
-    ].forEach(id => {
-      const p = ps.get(id);
-      if (p) cameraEl.appendChild(buildParamRow(p, contextMenu));
-    });
-  }
-
   // Model import buttons
   const importEl = document.getElementById('model-import');
   if (!importEl) return;
