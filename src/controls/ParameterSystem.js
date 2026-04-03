@@ -627,6 +627,12 @@ export function registerCoreParameters(ps) {
     min: 0.1, max: 10, value: 1.0, step: 0.05 });
   ps.register({ id: 'scene3d.clone.scalestep', label: 'ScaleStep',  group: 'scene3d',
     min: -2, max: 2, value: 0, step: 0.05 });
+  ps.register({ id: 'scene3d.blob.amount', label: 'BlobAmt',   group: 'scene3d',
+    min: 0, max: 5, value: 0, step: 0.05, unit: 'u' });
+  ps.register({ id: 'scene3d.blob.scale',  label: 'BlobScale', group: 'scene3d',
+    min: 0.1, max: 10, value: 1.0, step: 0.05 });
+  ps.register({ id: 'scene3d.blob.speed',  label: 'BlobSpeed', group: 'scene3d',
+    min: -5, max: 5, value: 1.0, step: 0.05, unit: 'Hz' });
 
   // ── Draw ──────────────────────────────────────────────────────────────────
   ps.register({ id: 'draw.pensize',   label: 'DrawPenSize',  group: 'draw',

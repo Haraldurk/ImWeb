@@ -65,6 +65,9 @@ export class SceneManager {
     this._cloneTime  = 0;      // accumulated time for wave animation
     this._dummy      = new THREE.Object3D(); // reusable dummy for matrix composition
 
+    // Blob state
+    this._blobTime   = 0;      // accumulated time for blob animation
+
     // Loaders
     this.dracoLoader = new DRACOLoader();
     this.dracoLoader.setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5.6/');
@@ -246,15 +249,40 @@ export class SceneManager {
 
   _setupMaterial(mat) {
     mat.onBeforeCompile = (shader) => {
-      shader.uniforms.uWarpMap = { value: this._fallback };
-      shader.uniforms.uWarpAmt = { value: 0 };
+      shader.uniforms.uWarpMap    = { value: this._fallback };
+      shader.uniforms.uWarpAmt    = { value: 0 };
+      shader.uniforms.uTime       = { value: 0 };
+      shader.uniforms.uBlobAmount = { value: 0 };
+      shader.uniforms.uBlobScale  = { value: 1 };
+      shader.uniforms.uBlobSpeed  = { value: 1 };
       mat._shader = shader;
 
       shader.vertexShader = `
         uniform sampler2D uWarpMap;
         uniform float uWarpAmt;
+        uniform float uTime;
+        uniform float uBlobAmount;
+        uniform float uBlobScale;
+        uniform float uBlobSpeed;
+
+        float _bHash(vec3 p) {
+          p = fract(p * vec3(127.1, 311.7, 74.7));
+          p += dot(p, p + 19.19);
+          return fract(p.x * p.y * p.z);
+        }
+        float _bNoise(vec3 p) {
+          vec3 i = floor(p); vec3 f = fract(p);
+          vec3 u = f * f * (3.0 - 2.0 * f);
+          return mix(
+            mix(mix(_bHash(i),             _bHash(i+vec3(1,0,0)), u.x),
+                mix(_bHash(i+vec3(0,1,0)), _bHash(i+vec3(1,1,0)), u.x), u.y),
+            mix(mix(_bHash(i+vec3(0,0,1)), _bHash(i+vec3(1,0,1)), u.x),
+                mix(_bHash(i+vec3(0,1,1)), _bHash(i+vec3(1,1,1)), u.x), u.y), u.z
+          ) * 2.0 - 1.0;
+        }
         ${shader.vertexShader}
-      `.replace(
+      `
+      .replace(
         '#include <uv_vertex>',
         `
         #include <uv_vertex>
@@ -265,9 +293,21 @@ export class SceneManager {
           }
         #endif
         `
+      )
+      .replace(
+        '#include <displacementmap_vertex>',
+        `#include <displacementmap_vertex>
+        if (uBlobAmount > 0.0) {
+          vec3 noisePos = position;
+          #ifdef USE_INSTANCING
+            noisePos += instanceMatrix[3].xyz;
+          #endif
+          float n = _bNoise(noisePos * uBlobScale + uTime * uBlobSpeed);
+          transformed += objectNormal * n * uBlobAmount;
+        }`
       );
     };
-    mat.customProgramCacheKey = () => 'warpuniv'; // ensure unique cache key for this hack
+    mat.customProgramCacheKey = () => 'warpblob'; // unique cache key for custom shader
   }
 
   // ── Model import ───────────────────────────────────────────────────────────
@@ -447,6 +487,7 @@ export class SceneManager {
 
   applyParams(params, dt = 0, inputs = {}) {
     const p = params;
+    this._blobTime += dt;
 
     // Geometry selection — skip when a model is imported (only apply on change)
     const geoIdx = p.get('scene3d.geo').value;
@@ -597,6 +638,28 @@ export class SceneManager {
           if (child.isMesh && child.material) {
             if (Array.isArray(child.material)) child.material.forEach(updateMat);
             else updateMat(child.material);
+          }
+        });
+      }
+
+      // Blob / Morph uniform updates
+      const blobAmt   = p.get('scene3d.blob.amount')?.value ?? 0;
+      const blobScale = p.get('scene3d.blob.scale')?.value  ?? 1;
+      const blobSpeed = p.get('scene3d.blob.speed')?.value  ?? 1;
+      const updateBlob = (m) => {
+        if (m._shader) {
+          m._shader.uniforms.uTime.value       = this._blobTime;
+          m._shader.uniforms.uBlobAmount.value = blobAmt;
+          m._shader.uniforms.uBlobScale.value  = blobScale;
+          m._shader.uniforms.uBlobSpeed.value  = blobSpeed;
+        }
+      };
+      updateBlob(this.material);
+      if (this._importedModelName && this.mesh) {
+        this.mesh.traverse(child => {
+          if (child.isMesh && child.material) {
+            if (Array.isArray(child.material)) child.material.forEach(updateBlob);
+            else updateBlob(child.material);
           }
         });
       }

@@ -787,6 +787,16 @@ export function buildGeometryButtons(ps, sceneManager, contextMenu) {
     });
   }
 
+  // ── Blob / Morph section ─────────────────────────────────────────────────
+  const blobEl = document.getElementById('blob-params');
+  if (blobEl) {
+    ['scene3d.blob.amount', 'scene3d.blob.scale', 'scene3d.blob.speed',
+    ].forEach(id => {
+      const p = ps.get(id);
+      if (p) blobEl.appendChild(buildParamRow(p, contextMenu));
+    });
+  }
+
   // Model import buttons
   const importEl = document.getElementById('model-import');
   if (!importEl) return;
