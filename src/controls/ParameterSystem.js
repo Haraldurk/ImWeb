@@ -840,5 +840,16 @@ export function registerCoreParameters(ps) {
   ps.register({ id: 'vectorscope.color', label: 'VScope Color', group: 'vectorscope',
     type: PARAM_TYPE.SELECT, options: ['Green','Cyan','Red','Gold'], value: 0 });
 
+  // ── Projection Mapping (corner-pin for second screen output) ──────────────
+  ps.register({ id: 'projmap.active', label: 'ProjMap On',  group: 'projmap', type: PARAM_TYPE.TOGGLE, value: 0 });
+  ps.register({ id: 'projmap.tl_x',  label: 'TL X', group: 'projmap', min: 0, max: 1, value: 0 });
+  ps.register({ id: 'projmap.tl_y',  label: 'TL Y', group: 'projmap', min: 0, max: 1, value: 0 });
+  ps.register({ id: 'projmap.tr_x',  label: 'TR X', group: 'projmap', min: 0, max: 1, value: 1 });
+  ps.register({ id: 'projmap.tr_y',  label: 'TR Y', group: 'projmap', min: 0, max: 1, value: 0 });
+  ps.register({ id: 'projmap.br_x',  label: 'BR X', group: 'projmap', min: 0, max: 1, value: 1 });
+  ps.register({ id: 'projmap.br_y',  label: 'BR Y', group: 'projmap', min: 0, max: 1, value: 1 });
+  ps.register({ id: 'projmap.bl_x',  label: 'BL X', group: 'projmap', min: 0, max: 1, value: 0 });
+  ps.register({ id: 'projmap.bl_y',  label: 'BL Y', group: 'projmap', min: 0, max: 1, value: 1 });
+
   return ps;
 }

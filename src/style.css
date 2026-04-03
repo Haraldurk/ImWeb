@@ -1521,6 +1521,32 @@ body.sp-floating #signal-path-docked-space {
 }
 #onboarding-dismiss:hover { background: var(--text-0); }
 
+/* ── PROJECTION MAPPING ──────────────────────────────────────────────────── */
+
+#projmap-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 6;
+}
+.corner-handle {
+  position: absolute;
+  width: 18px;
+  height: 18px;
+  margin: -9px 0 0 -9px;
+  border: 2px solid var(--accent);
+  border-radius: 50%;
+  background: rgba(0,0,0,0.5);
+  cursor: crosshair;
+  pointer-events: all;
+  touch-action: none;
+  box-shadow: 0 0 6px rgba(0,0,0,0.7);
+  transition: border-color 0.1s, transform 0.1s;
+}
+.corner-handle:hover  { border-color: #fff; transform: scale(1.3); }
+.corner-handle:active { border-color: #fff; transform: scale(1.2); background: rgba(255,255,255,0.15); }
+#btn-projmap.active   { color: var(--accent) !important; border-color: var(--accent-dim) !important; }
+
 /* ── UTILITY ─────────────────────────────────────────────────────────────── */
 
 .hidden { display: none !important; }

@@ -42,6 +42,7 @@
       <button id="btn-res-half" class="res-btn" data-res="4" title="Low: Half-resolution scaling">LOW</button>
       <span class="status-sep"></span>
       <button id="btn-second-screen" title="Send output to second monitor / new window">⊡</button>
+      <button id="btn-projmap"       title="Projection mapping — drag corner handles to reshape output">⬡</button>
       <button id="btn-ghost-mode"   title="Ghost mode — shrink main output to thumbnail">◫</button>
       <button id="btn-keylock"       title="Keyboard lock — block letter/number shortcuts (so typing in fields works)">⌨</button>
       <button id="btn-spy"          title="Output spy preview (Shift+V)">◧</button>
@@ -61,6 +62,13 @@
     <div id="output-panel">
       <canvas id="output-canvas"></canvas>
       <canvas id="warp-grid-overlay"></canvas>
+      <!-- Projection mapping corner-pin overlay -->
+      <div id="projmap-overlay" class="hidden">
+        <div class="corner-handle" id="ch-tl" data-corner="tl"></div>
+        <div class="corner-handle" id="ch-tr" data-corner="tr"></div>
+        <div class="corner-handle" id="ch-br" data-corner="br"></div>
+        <div class="corner-handle" id="ch-bl" data-corner="bl"></div>
+      </div>
       <!-- Floating feedback indicators (repositionable) -->
       <div id="feedback-overlay"></div>
       <!-- Ghost mode overlay label -->
@@ -107,6 +115,13 @@
         <div class="panel-section">
           <div class="section-header">Displacement</div>
           <div id="displace-params"></div>
+        </div>
+        <div class="panel-section">
+          <div class="section-header">Projection Mapping</div>
+          <div id="projmap-params"></div>
+          <div style="display:flex;gap:4px;padding:4px 10px;">
+            <button id="btn-projmap-reset" class="import-btn" title="Reset all corners to canvas edges">↺ Reset Corners</button>
+          </div>
         </div>
         <div class="panel-section">
           <div class="section-header">WarpMap Editor</div>

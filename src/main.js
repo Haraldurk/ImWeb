@@ -767,7 +767,7 @@ async function main() {
 <style>
   * { margin:0;padding:0;box-sizing:border-box; }
   html,body { width:100%;height:100%;background:#000;overflow:hidden; }
-  canvas { display:block;width:100%;height:100%; }
+  canvas { display:block;position:absolute;top:0;left:0;transform-origin:0 0; }
 </style>
 </head>
 <body>
@@ -776,22 +776,42 @@ async function main() {
   const c = document.getElementById('out');
   const ctx = c.getContext('2d');
   let lastBitmap = null;
+  let lastCorners = null;
+
+  function computeProjectiveMatrix(x0,y0,x1,y1,x2,y2,x3,y3) {
+    const dx1=x1-x2,dy1=y1-y2,dx2=x3-x2,dy2=y3-y2;
+    const dx3=x0-x1+x2-x3,dy3=y0-y1+y2-y3;
+    const det=dx1*dy2-dx2*dy1;
+    if(Math.abs(det)<1e-10)return null;
+    const h20=(dx3*dy2-dx2*dy3)/det,h21=(dx1*dy3-dx3*dy1)/det;
+    const h00=x1-x0+h20*x1,h01=x3-x0+h21*x3,h02=x0;
+    const h10=y1-y0+h20*y1,h11=y3-y0+h21*y3,h12=y0;
+    return [h00,h10,0,h20,h01,h11,0,h21,0,0,1,0,h02,h12,0,1].join(',');
+  }
+
+  function applyTransform() {
+    if (!lastCorners) { c.style.transform = 'none'; return; }
+    const W = window.innerWidth, H = window.innerHeight;
+    const m = computeProjectiveMatrix(
+      lastCorners.tl.x*W, lastCorners.tl.y*H,
+      lastCorners.tr.x*W, lastCorners.tr.y*H,
+      lastCorners.br.x*W, lastCorners.br.y*H,
+      lastCorners.bl.x*W, lastCorners.bl.y*H
+    );
+    c.style.transform = m ? 'matrix3d('+m+')' : 'none';
+  }
 
   function resize() {
     c.width  = window.innerWidth;
     c.height = window.innerHeight;
+    applyTransform();
     draw();
   }
 
   function draw() {
     if (!lastBitmap) return;
-    const sw = c.width, sh = c.height;
-    const iw = lastBitmap.width, ih = lastBitmap.height;
-    const scale = Math.min(sw / iw, sh / ih);
-    const dw = iw * scale, dh = ih * scale;
-    const dx = (sw - dw) / 2, dy = (sh - dh) / 2;
-    ctx.clearRect(0, 0, sw, sh);
-    ctx.drawImage(lastBitmap, 0, 0, iw, ih, dx, dy, dw, dh);
+    ctx.clearRect(0, 0, c.width, c.height);
+    ctx.drawImage(lastBitmap, 0, 0, c.width, c.height);
   }
 
   window.addEventListener('resize', resize);
@@ -801,6 +821,8 @@ async function main() {
     if (!e.data?.bitmap) return;
     if (lastBitmap) lastBitmap.close();
     lastBitmap = e.data.bitmap;
+    lastCorners = e.data.corners || null;
+    applyTransform();
     draw();
   });
 
@@ -835,11 +857,58 @@ async function main() {
     });
   })();
 
+  // ── Projection mapping homography (unit square → 4 destination points) ──────
+  function computeProjectiveMatrix(x0,y0, x1,y1, x2,y2, x3,y3) {
+    const dx1=x1-x2, dy1=y1-y2, dx2=x3-x2, dy2=y3-y2;
+    const dx3=x0-x1+x2-x3, dy3=y0-y1+y2-y3;
+    const det = dx1*dy2 - dx2*dy1;
+    if (Math.abs(det) < 1e-10) return null;
+    const h20=(dx3*dy2-dx2*dy3)/det, h21=(dx1*dy3-dx3*dy1)/det;
+    const h00=x1-x0+h20*x1, h01=x3-x0+h21*x3, h02=x0;
+    const h10=y1-y0+h20*y1, h11=y3-y0+h21*y3, h12=y0;
+    return [h00,h10,0,h20, h01,h11,0,h21, 0,0,1,0, h02,h12,0,1].join(',');
+  }
+
   // ── Ghost mode toggle ─────────────────────────────────────────────────────
   document.getElementById('btn-ghost-mode')?.addEventListener('click', () => {
     document.body.classList.toggle('ghost-mode');
     document.getElementById('btn-ghost-mode').classList.toggle('active',
       document.body.classList.contains('ghost-mode'));
+  });
+
+  // ── Projection Mapping corner-pin ────────────────────────────────────────
+  document.querySelectorAll('.corner-handle').forEach(handle => {
+    const corner = handle.dataset.corner;
+    const px = `projmap.${corner}_x`, py = `projmap.${corner}_y`;
+    const sync = () => {
+      const r = canvas.getBoundingClientRect();
+      handle.style.left = (ps.get(px).value * r.width)  + 'px';
+      handle.style.top  = (ps.get(py).value * r.height) + 'px';
+    };
+    ps.get(px).onChange(sync); ps.get(py).onChange(sync); sync();
+    handle.addEventListener('pointerdown', e => {
+      e.preventDefault();
+      handle.setPointerCapture(e.pointerId);
+      const onMove = e => {
+        const r = canvas.getBoundingClientRect();
+        ps.set(px, Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)));
+        ps.set(py, Math.max(0, Math.min(1, (e.clientY - r.top)  / r.height)));
+      };
+      handle.addEventListener('pointermove', onMove);
+      handle.addEventListener('pointerup', () => handle.removeEventListener('pointermove', onMove), { once: true });
+    });
+  });
+  ps.get('projmap.active').onChange(v => {
+    document.getElementById('projmap-overlay')?.classList.toggle('hidden', !v);
+    document.getElementById('btn-projmap')?.classList.toggle('active', !!v);
+  });
+  document.getElementById('btn-projmap')?.addEventListener('click', () =>
+    ps.set('projmap.active', ps.get('projmap.active').value ? 0 : 1));
+  document.getElementById('btn-projmap-reset')?.addEventListener('click', () => {
+    ps.set('projmap.tl_x', 0); ps.set('projmap.tl_y', 0);
+    ps.set('projmap.tr_x', 1); ps.set('projmap.tr_y', 0);
+    ps.set('projmap.br_x', 1); ps.set('projmap.br_y', 1);
+    ps.set('projmap.bl_x', 0); ps.set('projmap.bl_y', 1);
   });
 
   // ── Video Out Spy ─────────────────────────────────────────────────────────
@@ -3091,7 +3160,14 @@ void main() {
       createImageBitmap(canvas).then(bitmap => {
         if (spyVisible) _spyCtx.drawImage(bitmap, 0, 0, 160, 90);
         if (outWinDue && !_outWin?.closed) {
-          _outWin.postMessage({ bitmap }, '*', [bitmap]);
+          const _pmActive = ps.get('projmap.active').value;
+          const _pmCorners = _pmActive ? {
+            tl: { x: ps.get('projmap.tl_x').value, y: ps.get('projmap.tl_y').value },
+            tr: { x: ps.get('projmap.tr_x').value, y: ps.get('projmap.tr_y').value },
+            br: { x: ps.get('projmap.br_x').value, y: ps.get('projmap.br_y').value },
+            bl: { x: ps.get('projmap.bl_x').value, y: ps.get('projmap.bl_y').value },
+          } : null;
+          _outWin.postMessage({ bitmap, corners: _pmCorners }, '*', [bitmap]);
         } else {
           bitmap.close();
         }
