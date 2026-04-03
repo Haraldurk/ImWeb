@@ -169,7 +169,7 @@ export class SceneManager {
     this.scene.add(this.mesh);
   }
 
-  _updateClonerMatrices(count, mode, spread, wave, waveamp, wavefreq, twist, scatter, clonescale, dt) {
+  _updateClonerMatrices(count, mode, spread, wave, waveamp, wavefreq, twist, scatter, clonescale, scalestep, dt) {
     this._cloneTime += dt;
     const t     = this._cloneTime;
     const TAU   = Math.PI * 2;
@@ -216,8 +216,9 @@ export class SceneManager {
       const twistAngle = (i / Math.max(count - 1, 1)) * twist * DEG;
       dummy.rotation.set(0, twistAngle, 0);
 
-      // Scale: base clonescale × subtle organic pulse
-      dummy.scale.setScalar(clonescale * (1 + Math.sin(phase + Math.PI * 0.5) * 0.08));
+      // Scale: base clonescale × progressive taper × subtle organic pulse
+      const progressiveScale = Math.max(0, 1.0 + (i / Math.max(count - 1, 1)) * scalestep);
+      dummy.scale.setScalar(clonescale * progressiveScale * (1 + Math.sin(phase + Math.PI * 0.5) * 0.08));
 
       dummy.updateMatrix();
       mesh.setMatrixAt(i, dummy.matrix);
@@ -455,7 +456,8 @@ export class SceneManager {
       const twist       = p.get('scene3d.clone.twist')?.value     ?? 0;
       const scatter     = p.get('scene3d.clone.scatter')?.value   ?? 0;
       const clonescale  = p.get('scene3d.clone.scale')?.value     ?? 1;
-      this._updateClonerMatrices(cloneCount, cloneMode, spread, wave, waveamp, wavefreq, twist, scatter, clonescale, dt);
+      const scalestep   = p.get('scene3d.clone.scalestep')?.value ?? 0;
+      this._updateClonerMatrices(cloneCount, cloneMode, spread, wave, waveamp, wavefreq, twist, scatter, clonescale, scalestep, dt);
     }
 
     // Animation playback

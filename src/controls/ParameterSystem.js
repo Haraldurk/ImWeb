@@ -620,8 +620,10 @@ export function registerCoreParameters(ps) {
     min: -360, max: 360, value: 0, step: 1, unit: '°' });
   ps.register({ id: 'scene3d.clone.scatter',  label: 'Scatter',    group: 'scene3d',
     min: 0, max: 10, value: 0, step: 0.05, unit: 'u' });
-  ps.register({ id: 'scene3d.clone.scale',    label: 'CloneScale', group: 'scene3d',
+  ps.register({ id: 'scene3d.clone.scale',     label: 'CloneScale', group: 'scene3d',
     min: 0.1, max: 10, value: 1.0, step: 0.05 });
+  ps.register({ id: 'scene3d.clone.scalestep', label: 'ScaleStep',  group: 'scene3d',
+    min: -2, max: 2, value: 0, step: 0.05 });
 
   // ── Draw ──────────────────────────────────────────────────────────────────
   ps.register({ id: 'draw.pensize',   label: 'DrawPenSize',  group: 'draw',
