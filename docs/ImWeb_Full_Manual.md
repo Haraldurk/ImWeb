@@ -159,10 +159,10 @@ Load and play up to 8 independent video files.
 |-----------|-------|-------------|
 | `movie.active` | TOGGLE | Enable playback |
 | `movie.speed` | −1 – 3 | Playback speed; negative = reverse (manual frame stepping); 0 = pause |
-| `movie.pos` | 0–100% | Direct scrub — drag the slider or assign any controller |
+| `movie.pos` | 0–100% | Frame scrub — drag to seek; assign LFO/MIDI to scan through frames (overrides MovieSpeed when a controller is active) |
 | `movie.start` | 0–100% | Loop range start |
 | `movie.end` | 0–100% | Loop range end |
-| `movie.loop` | SELECT | Off / Forward / Backward / Ping-pong |
+| `movie.loop` | SELECT | Off / Loop / Ping-pong — Loop wraps in whichever direction MovieSpeed points |
 | `movie.mirror` | TOGGLE | Horizontal flip |
 | `movie.bpmsync` | TOGGLE | Lock playback to global BPM |
 | `movie.bpmbeats` | SELECT | ½ / 1 / 2 / 4 / 8 / 16 beats per loop |

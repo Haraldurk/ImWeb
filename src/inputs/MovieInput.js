@@ -155,28 +155,37 @@ export class MovieInput {
     const endT   = (params.get('movie.end').value   / 100) * clip.duration;
     const range  = Math.max(endT - startT, 0.001);
 
-    // Loop mode: 0=Off, 1=Forward, 2=Backward, 3=Ping-pong
-    const loopMode = params.get('movie.loop').value;
+    // ── Pos-drive mode ───────────────────────────────────────────────────────
+    // When a controller (LFO, MIDI, etc.) is assigned to movie.pos, pos owns
+    // the scrub entirely — speed and loop are bypassed. This is the frame-scan
+    // / LFO scrub use case (independent of MovieSpeed).
+    const posParam = params.get('movie.pos');
+    if (posParam.controller) {
+      if (!v.paused) v.pause();
+      const targetT = startT + (posParam.value / 100) * range;
+      if (Math.abs(v.currentTime - targetT) > 0.001) v.currentTime = targetT;
+      if (v.readyState >= v.HAVE_CURRENT_DATA) clip.texture.needsUpdate = true;
+      return;
+    }
 
-    // Speed control: movie.speed [-1..3], 1 = normal
-    // Negative values step currentTime backward manually (browser rejects negative playbackRate)
+    // ── Normal playback: speed + loop ────────────────────────────────────────
+    // Loop mode: 0=Off, 1=Loop (bidirectional), 2=Ping-pong
+    const loopMode = params.get('movie.loop').value;
     let speed = params.get('movie.speed').value;
 
-    // Ping-pong: override speed direction
-    if (loopMode === 3) {
+    // Ping-pong: flip direction at boundaries
+    if (loopMode === 2) {
       const absSpeed = Math.abs(speed) || 1;
-      if (v.currentTime >= endT)  this._pingDir = -1;
-      if (v.currentTime <= startT) this._pingDir = 1;
+      if (v.currentTime >= endT)   this._pingDir = -1;
+      if (v.currentTime <= startT) this._pingDir =  1;
       speed = absSpeed * this._pingDir;
     }
 
     if (speed < 0) {
-      // Reverse: pause native playback, accumulate time and seek at ~15fps
-      // (seeking every frame at 60fps causes browser decode stutter)
+      // Reverse: accumulate and seek at ~15fps to avoid decode stutter
       if (!v.paused) v.pause();
       this._revAccum += Math.abs(speed) * dt;
-      const frameStep = 1 / 15;
-      if (this._revAccum >= frameStep) {
+      if (this._revAccum >= 1 / 15) {
         v.currentTime = Math.max(startT, v.currentTime - this._revAccum);
         this._revAccum = 0;
       }
@@ -186,31 +195,24 @@ export class MovieInput {
       if (v.paused && speed > 0) v.play().catch(() => {});
     }
 
-    // Loop boundary enforcement
-    if (loopMode === 0) {
-      v.loop = false; // play once and stop at natural end
-    } else if (loopMode === 1) { // Forward
-      v.loop = false;
-      if (v.currentTime >= endT) v.currentTime = startT;
+    // Loop boundaries — Loop mode wraps in whichever direction speed points
+    v.loop = false;
+    if (loopMode === 1) { // Loop
+      if (speed >= 0 && v.currentTime >= endT)   v.currentTime = startT;
+      if (speed <  0 && v.currentTime <= startT) v.currentTime = endT;
+    } else if (loopMode === 2) { // Ping-pong — boundaries handled above
+      // clamp to range
+      if (v.currentTime > endT)   v.currentTime = endT;
       if (v.currentTime < startT) v.currentTime = startT;
-    } else if (loopMode === 2) { // Backward
-      v.loop = false;
-      if (v.currentTime <= startT) v.currentTime = endT;
-      if (v.currentTime > endT) v.currentTime = endT;
-    } else if (loopMode === 3) { // Ping-pong — boundaries already handled above
-      v.loop = false;
     }
+    // loopMode === 0: Off — play once, stop at natural end
 
-    // Position scrub: movie.pos (0–100%)
-    // When speed==0: hold position every tick (scrubber mode)
-    // When speed!=0: seek only when value changes (nudge mode)
-    const posParam = params.get('movie.pos');
-    const posVal   = posParam.value;
-    if (speed === 0 || posVal !== this._lastPos) {
+    // ── Manual pos seek (no controller) ─────────────────────────────────────
+    // Seek when the value changes (nudge mode); has no effect once released.
+    const posVal = posParam.value;
+    if (posVal !== this._lastPos) {
       this._lastPos = posVal;
-      const posPct  = posVal / 100;
-      const targetT = startT + posPct * range;
-      v.currentTime = targetT;
+      v.currentTime = startT + (posVal / 100) * range;
     }
 
     // Update texture
