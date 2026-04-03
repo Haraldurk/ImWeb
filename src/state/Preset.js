@@ -3,6 +3,8 @@
  * Presets and Display States, stored in IndexedDB.
  */
 
+import { DEMO_PRESETS } from './DemoPresets.js';
+
 // ── IndexedDB storage ─────────────────────────────────────────────────────────
 
 const DB_NAME    = 'imweb';
@@ -156,11 +158,16 @@ export class PresetManager extends EventTarget {
   async init() {
     const saved = await Preset.loadAll();
     if (saved.length === 0) {
-      // Create default preset 0
-      const p = new Preset(0);
-      p.name = 'Default';
-      this.presets[0] = p;
-      await p.save();
+      // Seed factory demo presets on first launch
+      for (const def of DEMO_PRESETS) {
+        const p = new Preset(def.index);
+        p.name = def.name;
+        p.controllers = def.controllers;
+        p.states = def.states;
+        p.activeState = def.activeState;
+        this.presets[def.index] = p;
+        await p.save();
+      }
     } else {
       saved.forEach(p => { this.presets[p.index] = p; });
     }
