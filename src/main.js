@@ -848,6 +848,16 @@ async function main() {
   const _toggleSpy = () => document.getElementById('video-spy')?.classList.toggle('hidden');
   document.getElementById('btn-spy')?.addEventListener('click', _toggleSpy);
 
+  // First-visit onboarding overlay
+  const _onboarding = document.getElementById('onboarding');
+  if (!localStorage.getItem('imweb-onboarding-dismissed')) {
+    _onboarding?.classList.remove('hidden');
+  }
+  document.getElementById('onboarding-dismiss')?.addEventListener('click', () => {
+    _onboarding?.classList.add('hidden');
+    localStorage.setItem('imweb-onboarding-dismissed', '1');
+  });
+
   // Keyboard lock toggle
   const _keylockBtn = document.getElementById('btn-keylock');
   ps.get('global.keylock').onChange(v => {

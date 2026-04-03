@@ -432,6 +432,29 @@ void main() {
     </div>
   </div>
 
+  <!-- FIRST-VISIT ONBOARDING OVERLAY -->
+  <div id="onboarding" class="hidden">
+    <div id="onboarding-box">
+      <div id="onboarding-title">ImWeb</div>
+      <div id="onboarding-sub">Real-time video synthesis instrument</div>
+      <div id="onboarding-gestures">
+        <div class="ob-gesture">
+          <div class="ob-icon">⇌</div>
+          <div class="ob-desc"><strong>Drag</strong> any value field to change it. Right-click a parameter badge to assign a controller — MIDI, LFO, random, audio.</div>
+        </div>
+        <div class="ob-gesture">
+          <div class="ob-icon">0–9</div>
+          <div class="ob-desc"><strong>Number keys</strong> recall Display States. <kbd>+</kbd> / <kbd>−</kbd> on numpad step through Presets. Press <kbd>?</kbd> for all shortcuts.</div>
+        </div>
+        <div class="ob-gesture">
+          <div class="ob-icon">⊡</div>
+          <div class="ob-desc"><strong>Second screen</strong> button sends output to a new window — open on a projector or second display for performance.</div>
+        </div>
+      </div>
+      <button id="onboarding-dismiss">Start</button>
+    </div>
+  </div>
+
   <script type="module" src="/src/main.js"></script>
 </body>
 </html>
