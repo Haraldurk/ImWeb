@@ -195,32 +195,37 @@ export class SceneManager {
 
     for (let i = 0; i < count; i++) {
       const phase = wave * TAU * t + (i / count) * wavefreq * TAU;
-      const waveY = waveform(phase) * waveamp;
+
+      // Progressive taper — calculated first so it gates position AND wave height
+      const progressiveScale = Math.max(0, 1.0 + (i / Math.max(count - 1, 1)) * scalestep);
+
+      // waveY tapers with progressiveScale: vanishing clones have no vertical offset
+      const waveY = waveform(phase) * waveamp * progressiveScale;
 
       if (mode === 1) {
-        // Grid — square arrangement centered at origin
+        // Grid — xz multiplied by progressiveScale to pack smaller clones closer
         const side = Math.ceil(Math.sqrt(count));
         const col  = i % side;
         const row  = Math.floor(i / side);
         dummy.position.set(
-          (col - (side - 1) / 2) * spread,
+          (col - (side - 1) / 2) * spread * progressiveScale,
           waveY,
-          (row - (side - 1) / 2) * spread
+          (row - (side - 1) / 2) * spread * progressiveScale
         );
       } else if (mode === 2) {
-        // Ring — evenly spaced on a circle of radius spread
+        // Ring — radius tapers with progressiveScale
         const angle = (i / count) * TAU;
         dummy.position.set(
-          Math.cos(angle) * spread,
+          Math.cos(angle) * spread * progressiveScale,
           waveY,
-          Math.sin(angle) * spread
+          Math.sin(angle) * spread * progressiveScale
         );
       } else {
-        // Line — evenly spaced along X, centered
-        dummy.position.set((i - (count - 1) / 2) * spread, waveY, 0);
+        // Line — spacing tapers with progressiveScale
+        dummy.position.set((i - (count - 1) / 2) * spread * progressiveScale, waveY, 0);
       }
 
-      // Scatter — symmetric ±scatter offset, deterministic per index
+      // Scatter — world-unit noise, NOT tapered (absolute chaos, independent of size)
       dummy.position.x += (frand(i * 3)     - 0.5) * scatter * 2;
       dummy.position.y += (frand(i * 3 + 1) - 0.5) * scatter * 2;
       dummy.position.z += (frand(i * 3 + 2) - 0.5) * scatter * 2;
@@ -229,8 +234,7 @@ export class SceneManager {
       const twistAngle = (i / Math.max(count - 1, 1)) * twist * DEG;
       dummy.rotation.set(0, twistAngle, 0);
 
-      // Scale: base clonescale × progressive taper × subtle organic pulse
-      const progressiveScale = Math.max(0, 1.0 + (i / Math.max(count - 1, 1)) * scalestep);
+      // Scale — progressiveScale already computed above
       dummy.scale.setScalar(clonescale * progressiveScale * (1 + Math.sin(phase + Math.PI * 0.5) * 0.08));
 
       dummy.updateMatrix();
