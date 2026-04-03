@@ -29,18 +29,26 @@ const SIM_FRAG = /* glsl */ `
   uniform sampler2D uPos;      // xy=pos, zw=life
   uniform sampler2D uVel;      // xy=vel, zw=unused
   uniform sampler2D uRand;     // random seeds
-  uniform sampler2D uMaskTex;  // luma mask source
+  uniform sampler2D uMaskTex;      // current frame mask
+  uniform sampler2D uPrevMaskTex;  // previous frame mask (motion diff)
   uniform float uDt;
   uniform float uSpeed;
   uniform float uGravity;
   uniform float uWind;
-  uniform float uLifeScale;    // 1/maxLife
-  uniform float uMaskAmt;      // 0..1
-  uniform float uSpread;       // spawn radius 0..1 (1 = full canvas)
+  uniform float uLifeScale;        // 1/maxLife
+  uniform float uMaskAmt;          // 0..1
+  uniform float uSpread;           // spawn radius 0..1 (1 = full canvas)
+  uniform float uMotionMode;       // 0=luma, 1=motion
+  uniform float uMThresh;          // motion threshold 0..1
   varying vec2 vUv;
 
   float hash(vec2 p){ return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5); }
-  float luma(vec2 uv){ return dot(texture2D(uMaskTex, uv).rgb, vec3(0.2126,0.7152,0.0722)); }
+  float maskValue(vec2 uv) {
+    float lumaVal   = dot(texture2D(uMaskTex, uv).rgb, vec3(0.2126,0.7152,0.0722));
+    float diff      = length(texture2D(uMaskTex, uv).rgb - texture2D(uPrevMaskTex, uv).rgb);
+    float motionVal = smoothstep(uMThresh, uMThresh + 0.1, diff);
+    return mix(lumaVal, motionVal, uMotionMode);
+  }
 
   void main() {
     vec4 pos = texture2D(uPos, vUv);
@@ -58,7 +66,7 @@ const SIM_FRAG = /* glsl */ `
       float baseLife = 0.5 + r.x * 0.5;
       // Luma mask: scale initial life by brightness at spawn point
       // Bright areas → full life; dark areas → particle dies almost instantly
-      float spawnLuma = luma(pos.xy);
+      float spawnLuma = maskValue(pos.xy);
       pos.z = mix(baseLife, baseLife * spawnLuma, uMaskAmt);
     } else {
       // Update
@@ -67,7 +75,7 @@ const SIM_FRAG = /* glsl */ `
       pos.x += vel.x    * uDt;
       pos.y += vel.y    * uDt;
       // Luma mask: decay slower in bright areas (bright zones accumulate particles)
-      float liveLuma    = luma(pos.xy);
+      float liveLuma    = maskValue(pos.xy);
       float decayScale  = mix(1.0, max(liveLuma, 0.05), uMaskAmt);
       pos.z -= (uLifeScale * uDt) / decayScale;
 
@@ -86,15 +94,23 @@ const VEL_FRAG = /* glsl */ `
   uniform sampler2D uPos;
   uniform sampler2D uVel;
   uniform sampler2D uRand;
-  uniform sampler2D uMaskTex;  // luma mask source
+  uniform sampler2D uMaskTex;      // current frame mask
+  uniform sampler2D uPrevMaskTex;  // previous frame mask (motion diff)
   uniform float uDt;
   uniform float uSpeed;
   uniform float uGravity;
   uniform float uWind;
-  uniform float uMaskAmt;      // 0..1
+  uniform float uMaskAmt;          // 0..1
+  uniform float uMotionMode;       // 0=luma, 1=motion
+  uniform float uMThresh;          // motion threshold 0..1
   varying vec2 vUv;
 
-  float luma(vec2 uv){ return dot(texture2D(uMaskTex, uv).rgb, vec3(0.2126,0.7152,0.0722)); }
+  float maskValue(vec2 uv) {
+    float lumaVal   = dot(texture2D(uMaskTex, uv).rgb, vec3(0.2126,0.7152,0.0722));
+    float diff      = length(texture2D(uMaskTex, uv).rgb - texture2D(uPrevMaskTex, uv).rgb);
+    float motionVal = smoothstep(uMThresh, uMThresh + 0.1, diff);
+    return mix(lumaVal, motionVal, uMotionMode);
+  }
 
   void main() {
     vec4 pos = texture2D(uPos, vUv);
@@ -112,10 +128,10 @@ const VEL_FRAG = /* glsl */ `
       if(pos.y < 0.0 || pos.y > 1.0) vel.y = -vel.y;
       // Luma gradient: attract particles toward bright areas
       float eps = 0.01;
-      float lR = luma(pos.xy + vec2(eps, 0.0));
-      float lL = luma(pos.xy - vec2(eps, 0.0));
-      float lU = luma(pos.xy + vec2(0.0, eps));
-      float lD = luma(pos.xy - vec2(0.0, eps));
+      float lR = maskValue(pos.xy + vec2(eps, 0.0));
+      float lL = maskValue(pos.xy - vec2(eps, 0.0));
+      float lU = maskValue(pos.xy + vec2(0.0, eps));
+      float lD = maskValue(pos.xy - vec2(0.0, eps));
       vec2 lumaGrad = vec2(lR - lL, lU - lD) * 0.5;
       vel.xy += lumaGrad * uMaskAmt * 0.3 * uSpeed;
     }
@@ -215,6 +231,22 @@ export class ParticleSystem {
     fb.needsUpdate = true;
     this._fallbackTex = fb;
 
+    // Previous-frame mask buffer for motion detection.
+    // Lives in the constructor (not _init) so it persists across count changes.
+    this._prevMaskRT = new THREE.WebGLRenderTarget(width, height, {
+      minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter,
+      format: THREE.RGBAFormat, type: THREE.UnsignedByteType, generateMipmaps: false,
+    });
+
+    // Passthrough copy shader — blits maskSrc → _prevMaskRT at end of each tick.
+    this._copyMat = new THREE.ShaderMaterial({
+      uniforms: { uTex: { value: null } },
+      vertexShader: SIM_VERT,
+      fragmentShader: `uniform sampler2D uTex; varying vec2 vUv;
+        void main(){ gl_FragColor = texture2D(uTex, vUv); }`,
+      depthTest: false, depthWrite: false,
+    });
+
     this._init(0); // default: 1k particles
   }
 
@@ -268,6 +300,7 @@ export class ParticleSystem {
         uWind: { value: 0 }, uLifeScale: { value: 1 },
         uMaskTex: { value: this._fallbackTex }, uMaskAmt: { value: 0 },
         uSpread: { value: 0.1 },
+        uPrevMaskTex: { value: this._fallbackTex }, uMotionMode: { value: 0 }, uMThresh: { value: 0.15 },
       },
       vertexShader: SIM_VERT, fragmentShader: SIM_FRAG, depthTest: false, depthWrite: false,
     });
@@ -276,6 +309,7 @@ export class ParticleSystem {
         uPos: { value: null }, uVel: { value: null }, uRand: { value: this._randTex },
         uDt: { value: 0.016 }, uSpeed: { value: 0.3 }, uGravity: { value: 0.1 }, uWind: { value: 0 },
         uMaskTex: { value: this._fallbackTex }, uMaskAmt: { value: 0 },
+        uPrevMaskTex: { value: this._fallbackTex }, uMotionMode: { value: 0 }, uMThresh: { value: 0.15 },
       },
       vertexShader: SIM_VERT, fragmentShader: VEL_FRAG, depthTest: false, depthWrite: false,
     });
@@ -394,13 +428,23 @@ export class ParticleSystem {
     // Spread: spawn radius (0=tight centre cluster, 1=full canvas fill)
     this._posMat.uniforms.uSpread.value = ps.get('particle.spread').value / 100;
 
-    // Luma mask uniforms — use fallback when no source selected (maskAmt=0 = bypass)
-    const maskAmt = ps.get('particle.maskamt').value / 100;
-    const maskSrc = maskTex ?? this._fallbackTex;
-    this._velMat.uniforms.uMaskTex.value = maskSrc;
-    this._velMat.uniforms.uMaskAmt.value = maskAmt;
-    this._posMat.uniforms.uMaskTex.value = maskSrc;
-    this._posMat.uniforms.uMaskAmt.value = maskAmt;
+    // Mask uniforms — luma and motion mode
+    const maskAmt    = ps.get('particle.maskamt').value / 100;
+    const motionMode = ps.get('particle.motion').value;
+    const mthresh    = ps.get('particle.mthresh').value / 100;
+    const maskSrc    = maskTex ?? this._fallbackTex;
+
+    this._velMat.uniforms.uMaskTex.value     = maskSrc;
+    this._velMat.uniforms.uMaskAmt.value     = maskAmt;
+    this._velMat.uniforms.uPrevMaskTex.value = this._prevMaskRT.texture;
+    this._velMat.uniforms.uMotionMode.value  = motionMode;
+    this._velMat.uniforms.uMThresh.value     = mthresh;
+
+    this._posMat.uniforms.uMaskTex.value     = maskSrc;
+    this._posMat.uniforms.uMaskAmt.value     = maskAmt;
+    this._posMat.uniforms.uPrevMaskTex.value = this._prevMaskRT.texture;
+    this._posMat.uniforms.uMotionMode.value  = motionMode;
+    this._posMat.uniforms.uMThresh.value     = mthresh;
 
     const curPos = this._curPos;
     const nxtPos = curPos ^ 1;
@@ -442,6 +486,19 @@ export class ParticleSystem {
     this.renderer.render(this._renderScene, this._renderCamera);
     this.renderer.setRenderTarget(null);
 
+    // Blit current mask into _prevMaskRT for next-frame motion differencing.
+    // Guard skips the blit when no mask source is active (fallback → diff = 0).
+    if (maskSrc !== this._fallbackTex) {
+      this._copyMat.uniforms.uTex.value = maskSrc;
+      this._posQuad.material = this._copyMat;
+      this._simScene.add(this._posQuad);
+      this._simScene.remove(this._velQuad);
+      this.renderer.setRenderTarget(this._prevMaskRT);
+      this.renderer.render(this._simScene, this._simCamera);
+      this.renderer.setRenderTarget(null);
+      this._posQuad.material = this._posMat; // restore for next tick
+    }
+
     this._curPos = nxtPos;
   }
 
@@ -449,6 +506,7 @@ export class ParticleSystem {
     this.width  = w;
     this.height = h;
     this._outputRT?.setSize(w, h);
+    this._prevMaskRT?.setSize(w, h);
   }
 
   dispose() {
@@ -457,6 +515,8 @@ export class ParticleSystem {
     this._outputRT?.dispose();
     this._randTex?.dispose();
     this._fallbackTex?.dispose();
+    this._prevMaskRT?.dispose();
+    this._copyMat?.dispose();
     this._posMat?.dispose();
     this._velMat?.dispose();
     this._pointsMat?.dispose();

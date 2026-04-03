@@ -810,6 +810,10 @@ export function registerCoreParameters(ps) {
     options: ['None', 'Camera', 'Movie', 'Buffer', 'Output', 'Draw'] });
   ps.register({ id: 'particle.maskamt', label: 'PMaskAmt', group: 'particle',
     min: 0, max: 100, value: 0, unit: '%' });
+  ps.register({ id: 'particle.motion',  label: 'PMotion',  group: 'particle',
+    type: PARAM_TYPE.TOGGLE, value: 0 });
+  ps.register({ id: 'particle.mthresh', label: 'PMThresh', group: 'particle',
+    min: 0, max: 100, value: 15, unit: '%' });
 
   // ── Slit Scan ─────────────────────────────────────────────────────────────
   ps.register({ id: 'slitscan.active', label: 'SlitScan',   group: 'slitscan',
