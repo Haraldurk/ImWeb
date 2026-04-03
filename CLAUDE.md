@@ -4,6 +4,13 @@ This file gives Claude Code the context needed to contribute effectively to ImWe
 
 ---
 
+## Editing Rules
+
+- Always run grep/search recon BEFORE editing any file. Verify the exact code block exists and check for duplicates or related code that may be affected.
+- When implementing features, write code immediately after a brief targeted recon (max 5-10 tool calls). Do NOT spend an entire session exploring without producing code unless explicitly asked to explore only.
+
+---
+
 ## What this project is
 
 **ImWeb** is a browser-based real-time video synthesis instrument — a ground-up reimplementation of Tom Demeyer and Steina Vasulka's *Image/ine* (STEIM Amsterdam, 1997/2008) in the modern browser.
@@ -133,6 +140,18 @@ All GLSL in src/shaders/index.js as named exports. Minimal fragment shaders read
 - Do not change the Three.js render loop without understanding the ping-pong buffer chain in Pipeline.js
 - Do not add TypeScript
 - Do not hardcode API keys anywhere
+
+---
+
+## Project-Specific Notes
+
+For barlowgen.html and ImWeb projects: these are large single-file HTML/JS apps. Use surgical edits — never rewrite entire files. Always verify edit targets with grep first, and check that updateDisplay() or similar refresh functions won't overwrite new UI elements.
+
+---
+
+## Git Workflow
+
+After completing each task, commit with a descriptive message and move to the next task. Follow git discipline: commit early and often.
 
 ---
 
