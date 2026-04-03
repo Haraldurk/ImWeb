@@ -612,6 +612,16 @@ export function registerCoreParameters(ps) {
     min: 0.1, max: 10, value: 2.0, step: 0.05 });
   ps.register({ id: 'scene3d.clone.wave',   label: 'Wave',      group: 'scene3d',
     min: -5, max: 5, value: 0, step: 0.01, unit: 'Hz' });
+  ps.register({ id: 'scene3d.clone.waveamp',  label: 'WaveAmp',    group: 'scene3d',
+    min: 0, max: 10, value: 0, step: 0.05, unit: 'u' });
+  ps.register({ id: 'scene3d.clone.wavefreq', label: 'WaveFreq',   group: 'scene3d',
+    min: 0.1, max: 10, value: 1.0, step: 0.1 });
+  ps.register({ id: 'scene3d.clone.twist',    label: 'Twist',      group: 'scene3d',
+    min: -360, max: 360, value: 0, step: 1, unit: '°' });
+  ps.register({ id: 'scene3d.clone.scatter',  label: 'Scatter',    group: 'scene3d',
+    min: 0, max: 10, value: 0, step: 0.05, unit: 'u' });
+  ps.register({ id: 'scene3d.clone.scale',    label: 'CloneScale', group: 'scene3d',
+    min: 0.1, max: 10, value: 1.0, step: 0.05 });
 
   // ── Draw ──────────────────────────────────────────────────────────────────
   ps.register({ id: 'draw.pensize',   label: 'DrawPenSize',  group: 'draw',

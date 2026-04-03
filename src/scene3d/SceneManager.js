@@ -169,16 +169,20 @@ export class SceneManager {
     this.scene.add(this.mesh);
   }
 
-  _updateClonerMatrices(count, mode, spread, wave, dt) {
+  _updateClonerMatrices(count, mode, spread, wave, waveamp, wavefreq, twist, scatter, clonescale, dt) {
     this._cloneTime += dt;
     const t     = this._cloneTime;
     const TAU   = Math.PI * 2;
+    const DEG   = Math.PI / 180;
     const mesh  = this.mesh;
     const dummy = this._dummy;
 
+    // Deterministic per-clone hash — stable every frame, no GC
+    const frand = (seed) => ((Math.sin(seed * 127.1 + 311.7) * 43758.5453) % 1 + 1) % 1;
+
     for (let i = 0; i < count; i++) {
-      const phase = wave * TAU * t + (i / count) * TAU;
-      const waveY = Math.sin(phase) * spread * 0.25;
+      const phase = wave * TAU * t + (i / count) * wavefreq * TAU;
+      const waveY = Math.sin(phase) * waveamp;
 
       if (mode === 1) {
         // Grid — square arrangement centered at origin
@@ -203,8 +207,18 @@ export class SceneManager {
         dummy.position.set((i - (count - 1) / 2) * spread, waveY, 0);
       }
 
-      dummy.rotation.set(0, 0, 0);
-      dummy.scale.setScalar(1 + Math.sin(phase + Math.PI * 0.5) * 0.08);
+      // Scatter — symmetric ±scatter offset, deterministic per index
+      dummy.position.x += (frand(i * 3)     - 0.5) * scatter * 2;
+      dummy.position.y += (frand(i * 3 + 1) - 0.5) * scatter * 2;
+      dummy.position.z += (frand(i * 3 + 2) - 0.5) * scatter * 2;
+
+      // Twist — cumulative Y rotation; clone 0 = 0°, clone N-1 = full twist
+      const twistAngle = (i / Math.max(count - 1, 1)) * twist * DEG;
+      dummy.rotation.set(0, twistAngle, 0);
+
+      // Scale: base clonescale × subtle organic pulse
+      dummy.scale.setScalar(clonescale * (1 + Math.sin(phase + Math.PI * 0.5) * 0.08));
+
       dummy.updateMatrix();
       mesh.setMatrixAt(i, dummy.matrix);
     }
@@ -434,9 +448,14 @@ export class SceneManager {
     }
 
     if (cloneMode > 0 && this.mesh?.isInstancedMesh) {
-      const spread = p.get('scene3d.clone.spread')?.value ?? 2;
-      const wave   = p.get('scene3d.clone.wave')?.value   ?? 0;
-      this._updateClonerMatrices(cloneCount, cloneMode, spread, wave, dt);
+      const spread      = p.get('scene3d.clone.spread')?.value    ?? 2;
+      const wave        = p.get('scene3d.clone.wave')?.value      ?? 0;
+      const waveamp     = p.get('scene3d.clone.waveamp')?.value   ?? 0;
+      const wavefreq    = p.get('scene3d.clone.wavefreq')?.value  ?? 1;
+      const twist       = p.get('scene3d.clone.twist')?.value     ?? 0;
+      const scatter     = p.get('scene3d.clone.scatter')?.value   ?? 0;
+      const clonescale  = p.get('scene3d.clone.scale')?.value     ?? 1;
+      this._updateClonerMatrices(cloneCount, cloneMode, spread, wave, waveamp, wavefreq, twist, scatter, clonescale, dt);
     }
 
     // Animation playback
