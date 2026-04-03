@@ -769,9 +769,9 @@ async function main() {
   html,body{width:100%;height:100%;background:#000;overflow:hidden}
   canvas{display:block;position:absolute;top:0;left:0;transform-origin:0 0}
   #ho{position:fixed;inset:0;pointer-events:none;display:none}
-  .h{position:absolute;width:24px;height:24px;margin:-12px 0 0 -12px;border:2px solid #c8a020;border-radius:50%;background:rgba(0,0,0,0.6);cursor:crosshair;pointer-events:all;touch-action:none;box-shadow:0 0 8px rgba(0,0,0,0.8);transition:border-color .1s,transform .1s}
-  .h:hover{border-color:#fff;transform:scale(1.3)}
-  .h:active{border-color:#fff;transform:scale(1.2)}
+  .h{position:absolute;width:40px;height:40px;margin:-20px 0 0 -20px;border:2px solid #c8a020;border-radius:50%;background:rgba(0,0,0,0.5);cursor:crosshair;pointer-events:all;touch-action:none;box-shadow:0 0 10px rgba(0,0,0,0.9);transition:border-color .1s,transform .1s}
+  .h:hover{border-color:#fff;transform:scale(1.2)}
+  .h:active{border-color:#fff;background:rgba(255,255,255,0.15)}
 </style>
 </head>
 <body>
@@ -811,13 +811,19 @@ async function main() {
   function applyTransform(){
     if(!lastCorners){c.style.transform='none';return;}
     const W=window.innerWidth,H=window.innerHeight;
-    const m=computeProjectiveMatrix(
+    const raw=computeProjectiveMatrix(
       lastCorners.tl.x*W,lastCorners.tl.y*H,
       lastCorners.tr.x*W,lastCorners.tr.y*H,
       lastCorners.br.x*W,lastCorners.br.y*H,
       lastCorners.bl.x*W,lastCorners.bl.y*H
     );
-    c.style.transform=m?'matrix3d('+m+')':'none';
+    if(!raw){c.style.transform='none';return;}
+    // The formula maps from unit square; canvas is W×H, so normalise
+    // columns 0 and 1 by 1/W and 1/H to get correct CSS matrix3d.
+    const v=raw.split(',').map(Number);
+    for(let i=0;i<4;i++)v[i]/=W;
+    for(let i=4;i<8;i++)v[i]/=H;
+    c.style.transform='matrix3d('+v.join(',')+')';
   }
 
   function resize(){
