@@ -158,15 +158,42 @@ Load and play up to 8 independent video files.
 | Parameter | Range | Description |
 |-----------|-------|-------------|
 | `movie.active` | TOGGLE | Enable playback |
-| `movie.speed` | −1 – 3 | Playback speed; negative = reverse; 0 = pause |
-| `movie.pos` | 0–100% | Direct scrub (active only when a controller is assigned) |
+| `movie.speed` | −1 – 3 | Playback speed; negative = reverse (manual frame stepping); 0 = pause |
+| `movie.pos` | 0–100% | Direct scrub — drag the slider or assign any controller |
 | `movie.start` | 0–100% | Loop range start |
-| `movie.loop` | 0–100% | Loop range end |
+| `movie.end` | 0–100% | Loop range end |
+| `movie.loop` | SELECT | Off / Forward / Backward / Ping-pong |
 | `movie.mirror` | TOGGLE | Horizontal flip |
 | `movie.bpmsync` | TOGGLE | Lock playback to global BPM |
 | `movie.bpmbeats` | SELECT | ½ / 1 / 2 / 4 / 8 / 16 beats per loop |
 
+**Clip context menu:** Right-click a clip card to assign a MIDI controller to `movie.speed` or remove the clip.
+
 Each clip maintains its own playback state. Thumbnails (160×90) are captured at 10% of the clip duration to avoid black frames.
+
+#### Recommended video formats
+
+| Format | Codec | Notes |
+|--------|-------|-------|
+| `.mp4` | H.264 | Best compatibility; hardware-accelerated decode in all browsers |
+| `.webm` | VP9 | Smaller files; slightly slower random-seek |
+| `.mov` | ProRes 422 | High quality; large files; Chrome/Chromium only |
+
+Avoid interlaced sources, HEVC `.mov`, and very high bitrates (>20 Mbps) — they stress the JS decode path and cause seek jitter.
+
+#### Handbrake settings for real-time performance
+
+```
+Container:   MP4
+Video codec: H.264 (x264)
+Quality:     RF 20–23  (lower number = better quality, larger file)
+Framerate:   Same as source  (or cap at 30 fps if source is higher)
+Audio:       Remove  (saves decode overhead)
+Filters:     Deinterlace if source is interlaced
+x264 tune:   Film  (or Grain for textured/analog material)
+```
+
+Target bitrate: **4–10 Mbps** for smooth scrubbing and seek. Above 15 Mbps, Chrome's MediaElement seek latency becomes noticeable.
 
 ---
 

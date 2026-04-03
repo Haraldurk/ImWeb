@@ -7,7 +7,7 @@
  *
  * Flow:
  *   File → <video> element → THREE.VideoTexture → Pipeline source
- *   ParameterSystem controls: movie.speed, movie.pos, movie.start, movie.loop, movie.mirror
+ *   ParameterSystem controls: movie.speed, movie.pos, movie.start, movie.end, movie.loop, movie.mirror
  */
 
 import * as THREE from 'three';
@@ -19,6 +19,8 @@ export class MovieInput {
     this.clips    = [];      // [{ name, url, video, texture, duration }]
     this.active   = false;
     this._current = -1;      // index of active clip
+    this._pingDir = 1;       // ping-pong direction: 1 = forward, -1 = backward
+    this._lastPos = -1;      // last seen movie.pos value (for change detection)
   }
 
   /**
@@ -112,8 +114,9 @@ export class MovieInput {
    * Called each frame from the render loop.
    * @param {ParameterSystem} params
    * @param {number} beatPhase - accumulated beat counter (increases at BPM rate)
+   * @param {number} dt - delta time in seconds
    */
-  tick(params, beatPhase = 0) {
+  tick(params, beatPhase = 0, dt = 0.016) {
     if (!this.active || this._current < 0) return;
 
     const clip = this.clips[this._current];
@@ -135,36 +138,57 @@ export class MovieInput {
       return;
     }
 
+    // Range bounds
+    const startT = (params.get('movie.start').value / 100) * clip.duration;
+    const endT   = (params.get('movie.end').value   / 100) * clip.duration;
+    const range  = Math.max(endT - startT, 0.001);
+
+    // Loop mode: 0=Off, 1=Forward, 2=Backward, 3=Ping-pong
+    const loopMode = params.get('movie.loop').value;
+
     // Speed control: movie.speed [-1..3], 1 = normal
-    const speed = params.get('movie.speed').value;
-    v.playbackRate = Math.max(0.01, Math.abs(speed));
+    // Negative values step currentTime backward manually (browser rejects negative playbackRate)
+    let speed = params.get('movie.speed').value;
 
-    // Ensure playing when active
-    if (v.paused && speed !== 0) {
-      v.play().catch(() => {});
+    // Ping-pong: override speed direction
+    if (loopMode === 3) {
+      const absSpeed = Math.abs(speed) || 1;
+      if (v.currentTime >= endT)  this._pingDir = -1;
+      if (v.currentTime <= startT) this._pingDir = 1;
+      speed = absSpeed * this._pingDir;
     }
 
-    // Loop range: movie.start (0–100%) and movie.loop (0–100%)
-    const startPct = params.get('movie.start').value / 100;
-    const loopPct  = params.get('movie.loop').value / 100;
-    const startT   = startPct * clip.duration;
-    const endT     = loopPct  * clip.duration;
-
-    // Enforce loop boundaries
-    if (endT > startT && v.currentTime >= endT) {
-      v.currentTime = startT;
-    }
-    if (v.currentTime < startT) {
-      v.currentTime = startT;
+    if (speed < 0) {
+      // Reverse: pause native playback, step backward
+      if (!v.paused) v.pause();
+      v.currentTime = Math.max(startT, v.currentTime + speed * dt);
+    } else {
+      v.playbackRate = Math.max(0.01, speed);
+      if (v.paused && speed > 0) v.play().catch(() => {});
     }
 
-    // Position scrub: movie.pos (0–100%) — direct scrub overrides playback
-    // Only scrub when controlled (non-zero controller assignment)
+    // Loop boundary enforcement
+    if (loopMode === 0) {
+      v.loop = false; // play once and stop at natural end
+    } else if (loopMode === 1) { // Forward
+      v.loop = false;
+      if (v.currentTime >= endT) v.currentTime = startT;
+      if (v.currentTime < startT) v.currentTime = startT;
+    } else if (loopMode === 2) { // Backward
+      v.loop = false;
+      if (v.currentTime <= startT) v.currentTime = endT;
+      if (v.currentTime > endT) v.currentTime = endT;
+    } else if (loopMode === 3) { // Ping-pong — boundaries already handled above
+      v.loop = false;
+    }
+
+    // Position scrub: movie.pos (0–100%) — seek when value changes
     const posParam = params.get('movie.pos');
-    if (posParam.controller) {
-      const posPct = posParam.value / 100;
-      const targetT = startT + posPct * (endT - startT || clip.duration);
-      // Only scrub if significantly different (avoid jitter)
+    const posVal   = posParam.value;
+    if (posVal !== this._lastPos) {
+      this._lastPos = posVal;
+      const posPct  = posVal / 100;
+      const targetT = startT + posPct * range;
       if (Math.abs(v.currentTime - targetT) > 0.05) {
         v.currentTime = targetT;
       }

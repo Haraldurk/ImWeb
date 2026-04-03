@@ -1492,8 +1492,30 @@ async function main() {
       });
       item.addEventListener('contextmenu', e => {
         e.preventDefault();
-        movieInput.removeClip(i);
-        refreshClipsList();
+        // Remove any existing clip context menu
+        document.querySelector('.clip-ctx-menu')?.remove();
+        const menu = document.createElement('div');
+        menu.className = 'clip-ctx-menu ctx-menu';
+        menu.innerHTML =
+          `<div class="ctx-item" data-action="midi">Assign MIDI controller</div>` +
+          `<div class="ctx-item ctx-danger" data-action="remove">Remove clip</div>`;
+        menu.style.cssText = `position:fixed;left:${e.clientX}px;top:${e.clientY}px;z-index:999`;
+        document.body.appendChild(menu);
+        menu.querySelector('[data-action="midi"]').addEventListener('click', () => {
+          menu.remove();
+          // Trigger the controller badge popover for movie.speed
+          const badge = document.querySelector('[data-param-id="movie.speed"] .param-ctrl');
+          if (badge) badge.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+        });
+        menu.querySelector('[data-action="remove"]').addEventListener('click', () => {
+          menu.remove();
+          movieInput.removeClip(i);
+          refreshClipsList();
+        });
+        const dismiss = ev => {
+          if (!menu.contains(ev.target)) { menu.remove(); document.removeEventListener('pointerdown', dismiss); }
+        };
+        setTimeout(() => document.addEventListener('pointerdown', dismiss), 0);
       });
 
       clipsList.appendChild(item);
@@ -2977,7 +2999,7 @@ void main() {
     camera3d.tick();
 
     // Update movie clip
-    movieInput.tick(ps, beatPhase);
+    movieInput.tick(ps, beatPhase, dt);
 
     // Tick stills buffer (reads fs1 → readIndex)
     stillsBuffer.tick(ps);
@@ -2986,7 +3008,7 @@ void main() {
     const _seqSrcTex = idx => [
       pipeline.prev.texture,       // 0 Output
       camera3d.currentTexture,     // 1 Camera
-      movieInput.texture,          // 2 Movie
+      movieInput.currentTexture,   // 2 Movie
       _resolveLayerTex(ps.get('layer.fg').value), // 3 FG
       _resolveLayerTex(ps.get('layer.bg').value), // 4 BG
       stillsBuffer.texture,        // 5 Buffer

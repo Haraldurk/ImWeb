@@ -6,6 +6,20 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
 
 ---
 
+## [0.4.1] — 2026-04-03
+
+### Added
+- **Movie reverse playback** — negative `MovieSpeed` now steps frames backward manually (browser rejects negative `playbackRate`)
+- **MovieEnd parameter** — clip end-point moved from `MovieLoop` to new `MovieEnd %` param (0–100%)
+- **MovieLoop modes** — `MovieLoop` is now a SELECT: Off / Forward / Backward / Ping-pong
+- **MoviePos always scrubs** — position scrub no longer requires a controller assigned; responds to any drag/set of the param
+- **Clip right-click menu** — right-clicking a clip card now shows "Assign MIDI controller" and "Remove clip" instead of instant delete
+
+### Fixed
+- `movieInput.texture` undefined — corrected to `movieInput.currentTexture` in render loop
+
+---
+
 ## [0.4.0] — 2026-03-20
 
 ### Fixed (2026-03-30)

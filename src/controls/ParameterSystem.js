@@ -504,8 +504,11 @@ export function registerCoreParameters(ps) {
     min: 0, max: 100, value: 0, unit: '%' });
   ps.register({ id: 'movie.start',   label: 'MovieStart', group: 'movie',
     min: 0, max: 100, value: 0, unit: '%' });
-  ps.register({ id: 'movie.loop',    label: 'MovieLoop',  group: 'movie',
+  ps.register({ id: 'movie.end',     label: 'MovieEnd',   group: 'movie',
     min: 0, max: 100, value: 100, unit: '%' });
+  ps.register({ id: 'movie.loop',    label: 'MovieLoop',  group: 'movie',
+    type: PARAM_TYPE.SELECT, value: 1,
+    options: ['Off', 'Forward', 'Backward', 'Ping-pong'] });
   ps.register({ id: 'movie.mirror',  label: 'MirrorMovie',group: 'movie',
     type: PARAM_TYPE.TOGGLE, value: 0 });
   ps.register({ id: 'movie.bpmsync', label: 'BPM Sync',   group: 'movie',

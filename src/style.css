@@ -1547,6 +1547,27 @@ body.sp-floating #signal-path-docked-space {
 .corner-handle:active { border-color: #fff; transform: scale(1.2); background: rgba(255,255,255,0.15); }
 #btn-projmap.active   { color: var(--accent) !important; border-color: var(--accent-dim) !important; }
 
+/* ── CONTEXT MENU (clip cards, etc.) ─────────────────────────────────────── */
+
+.ctx-menu {
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 4px 0;
+  min-width: 170px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+  user-select: none;
+}
+.ctx-item {
+  padding: 6px 14px;
+  font-size: 11px;
+  color: var(--text-1);
+  cursor: pointer;
+}
+.ctx-item:hover { background: var(--bg-4); }
+.ctx-item.ctx-danger { color: #e05050; }
+.ctx-item.ctx-danger:hover { background: rgba(200,40,40,0.15); }
+
 /* ── UTILITY ─────────────────────────────────────────────────────────────── */
 
 .hidden { display: none !important; }
