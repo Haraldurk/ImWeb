@@ -28,6 +28,7 @@ import { VideoDelayLine }    from './inputs/VideoDelayLine.js';
 import { VectorscopeInput }  from './inputs/VectorscopeInput.js';
 import { SlitScanBuffer }    from './inputs/SlitScanBuffer.js';
 import { ParticleSystem }    from './inputs/ParticleSystem.js';
+import { SDFGenerator }      from './inputs/SDFGenerator.js';
 import { DrawLayer }      from './inputs/DrawLayer.js';
 import { TextLayer }      from './inputs/TextLayer.js';
 import { buildWarpMaps }  from './inputs/WarpMaps.js';
@@ -118,6 +119,7 @@ async function main() {
   const vectorscope   = new VectorscopeInput();
   const slitScan      = new SlitScanBuffer(W, H);
   const particles     = new ParticleSystem(renderer, W, H);
+  const sdfGen        = new SDFGenerator(renderer, W, H);
   const warpMaps     = buildWarpMaps(); // 8 procedural warp map textures (map1–map8)
   const warpEditor   = new WarpMapEditor(); // interactive editor → warpMaps[8] (Custom)
   warpMaps.push(warpEditor.texture);        // index 9 in SELECT = warpMaps[8]
@@ -3124,6 +3126,7 @@ void main() {
       drawLayer.texture,                                            // 5 Draw
     ];
     particles.tick(ps, dt, _pmSrcMap[ps.get('particle.masksrc').value] ?? null);
+    sdfGen.tick(ps, dt);
 
     // Animate Color2 gradient when speed is non-zero
     const _c2speed = ps.get('color2.speed')?.value ?? 0;
@@ -3193,6 +3196,7 @@ void main() {
       scope:    vectorscope.texture,
       slitscan:  slitScan.texture,
       particles: particles.texture,
+      sdf:       sdfGen.texture,
       seq1:      seq1.texture,
       seq2:      seq2.texture,
       seq3:      seq3.texture,

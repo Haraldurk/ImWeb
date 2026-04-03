@@ -588,6 +588,7 @@ export function buildMappingPanels(ps, contextMenu) {
     'effect-params':   ps.getGroup('effect'),
     'global-params':       ps.getGroup('global'),
     'particle-params':     ps.getGroup('particle'),
+    'sdf-params':          ps.getGroup('sdf'),
     'delay-params':        ps.getGroup('delay'),
     'vectorscope-params':  ps.getGroup('vectorscope'),
     'slitscan-params':     ps.getGroup('slitscan'),

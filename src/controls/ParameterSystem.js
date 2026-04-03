@@ -328,7 +328,7 @@ export class ParameterSystem extends EventTarget {
 export function registerCoreParameters(ps) {
 
   // ── Layer source selection ────────────────────────────────────────────────
-  const SOURCES = ['Camera', 'Movie', 'Buffer', 'Color', 'Noise', '3D Scene', 'Draw', 'Output', 'BG1', 'BG2', 'Color2', 'Text', 'Sound', 'Delay', 'Scope', 'SlitScan', 'Particles', 'Seq1', 'Seq2', 'Seq3', '3D Depth'];
+  const SOURCES = ['Camera', 'Movie', 'Buffer', 'Color', 'Noise', '3D Scene', 'Draw', 'Output', 'BG1', 'BG2', 'Color2', 'Text', 'Sound', 'Delay', 'Scope', 'SlitScan', 'Particles', 'Seq1', 'Seq2', 'Seq3', '3D Depth', 'SDF'];
 
   ps.register({ id: 'layer.fg', label: 'Foreground', group: 'layers',
     type: PARAM_TYPE.SELECT, options: SOURCES, value: 0, feedbackVisible: true }); // default: Camera
@@ -633,6 +633,14 @@ export function registerCoreParameters(ps) {
     min: 0.1, max: 10, value: 1.0, step: 0.05 });
   ps.register({ id: 'scene3d.blob.speed',  label: 'BlobSpeed', group: 'scene3d',
     min: -5, max: 5, value: 1.0, step: 0.05, unit: 'Hz' });
+
+  // ── SDF Generator ────────────────────────────────────────────────────────
+  ps.register({ id: 'sdf.active',   label: 'SDFActive', group: 'sdf',
+    type: PARAM_TYPE.TOGGLE, value: 0 });
+  ps.register({ id: 'sdf.blend',    label: 'SDFBlend',  group: 'sdf',
+    min: 0, max: 2.0, value: 0.5, step: 0.01 });
+  ps.register({ id: 'sdf.distance', label: 'SDFDist',   group: 'sdf',
+    min: 0, max: 5.0, value: 1.5, step: 0.05, unit: 'u' });
 
   // ── Draw ──────────────────────────────────────────────────────────────────
   ps.register({ id: 'draw.pensize',   label: 'DrawPenSize',  group: 'draw',
