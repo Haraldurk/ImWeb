@@ -67,7 +67,7 @@ import {
 // ─────────────────────────────────────────────────────────────────────────────
 
 async function main() {
-  console.log('%cImWeb v0.3.0', 'color:#e8c840;font-weight:bold;font-size:14px');
+  console.log('%cImWeb v0.4.0', 'color:#e8c840;font-weight:bold;font-size:14px');
 
   // ── 1. Canvas & renderer ──────────────────────────────────────────────────
 
@@ -847,6 +847,13 @@ async function main() {
   // Toggle spy panel visibility
   const _toggleSpy = () => document.getElementById('video-spy')?.classList.toggle('hidden');
   document.getElementById('btn-spy')?.addEventListener('click', _toggleSpy);
+
+  // Keyboard lock toggle
+  const _keylockBtn = document.getElementById('btn-keylock');
+  ps.get('global.keylock').onChange(v => {
+    _keylockBtn?.classList.toggle('active', !!v);
+  });
+  _keylockBtn?.addEventListener('click', () => ps.set('global.keylock', ps.get('global.keylock').value ? 0 : 1));
 
   // Keyboard shortcut: Shift+Esc = reset all params
   window.addEventListener('keydown', e => {
@@ -2544,6 +2551,7 @@ void main() {
 
   window.addEventListener('keydown', e => {
     if (e.metaKey || e.ctrlKey) return;
+    if (ps.get('global.keylock').value && e.target.closest('input, textarea')) return;
 
     // / = open parameter search
     if (e.key === '/' && !e.target.closest('input, textarea')) {

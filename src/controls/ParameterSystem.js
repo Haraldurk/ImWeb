@@ -687,6 +687,8 @@ export function registerCoreParameters(ps) {
     type: PARAM_TYPE.TOGGLE, value: 0 });
   ps.register({ id: 'global.showwarpgrid', label: 'WarpGrid', group: 'global',
     type: PARAM_TYPE.TOGGLE, value: 0 });
+  ps.register({ id: 'global.keylock', label: 'KeyLock', group: 'global',
+    type: PARAM_TYPE.TOGGLE, value: 0 });
   // ── Per-layer color correction ────────────────────────────────────────────
   ps.register({ id: 'fg.hue',     label: 'FG Hue',     group: 'fg',
     min: -180, max: 180, value: 0, unit: '°' });
