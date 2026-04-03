@@ -773,6 +773,17 @@ export function buildGeometryButtons(ps, sceneManager, contextMenu) {
     });
   }
 
+  // ── Cloner section ───────────────────────────────────────────────────────
+  const clonerEl = document.getElementById('cloner-params');
+  if (clonerEl) {
+    ['scene3d.clone.mode', 'scene3d.clone.count',
+     'scene3d.clone.spread', 'scene3d.clone.wave',
+    ].forEach(id => {
+      const p = ps.get(id);
+      if (p) clonerEl.appendChild(buildParamRow(p, contextMenu));
+    });
+  }
+
   // Model import buttons
   const importEl = document.getElementById('model-import');
   if (!importEl) return;
