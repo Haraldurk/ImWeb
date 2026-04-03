@@ -1,6 +1,6 @@
 # ImWeb — Full Operation Manual
 
-> **Version:** 0.3.0
+> **Version:** 0.4.2
 > **Platform:** Browser (Chrome 113+ recommended)
 > **Original concept:** Image/ine — Tom Demeyer, STEIM Amsterdam 1997/2008
 > **ImWeb:** H. Karlsson

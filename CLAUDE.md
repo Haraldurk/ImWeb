@@ -176,19 +176,23 @@ AFTER: git add [files] && git commit -m "[message]" && git push
 
 ---
 
-## Current version: 0.4.0
+## Current version: 0.4.2
 
 See CHANGELOG.md for full history.
 
-### Completed through Phase 4
-- Full signal chain: 18+ sources, 20+ effect passes
+### Completed through Phase 4 + 0.4.x updates
+- Full signal chain: 21+ sources, 20+ effect passes
 - All ImOs9 features restored (WarpMap with interactive brush editor,
   Tables 16k, ExternalMapping, Sequencers ×3, FrameSelect, TransferMode 22 modes, rand1/2/3)
 - 3D scene integration (Three.js → pipeline; 13 geometries; GLB/GLTF/OBJ/STL; depth pass; live video texture on mesh)
+- 3D Cloner (InstancedMesh MoGraph) with effectors: Twist, Scatter, WaveShape, WaveAmp, WaveFreq, CloneScale, ScaleStep
+- Blob/Morph vertex displacement shader (onBeforeCompile; USE_INSTANCING independent per clone)
+- SDF Generator (GPU raymarched metaballs → pipeline source; shape/repeat/warp — Phase 1 + 2)
+- Movie clip reverse playback, MovieEnd, MovieLoop SELECT modes
 - AI provider system (Anthropic/Gemini/OpenAI/Ollama switchable, key management UI)
 - .imweb project file format
 - PWA manifest + service worker
-- ~180+ parameters, all MIDI/LFO-assignable
+- ~200+ parameters, all MIDI/LFO-assignable
 - Controller badge popover (right-click RND/LFO/etc for Rate, Slew, Table, Shape)
 - Min/Max range fields: drag or double-click to edit
 

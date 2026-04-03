@@ -1,6 +1,6 @@
 # ImWeb — Quick Reference
 
-> Browser-based real-time video synthesis instrument · v0.3.0
+> Browser-based real-time video synthesis instrument · v0.4.2
 
 ---
 
@@ -30,6 +30,7 @@ FX Chain is **reorderable** by dragging nodes in the Signal Path display.
 | **Draw** | Freehand canvas, 1024×1024; map position to mouse |
 | **Text** | Live text, 512×512; Char/Word/Line advance mode |
 | **Particles** | GPU particle field; physics (gravity, wind, life) |
+| **SDF Generator** | GPU-raymarched metaballs; shape (Sphere/Box/Torus), domain repetition, surface displacement |
 | **Sequencers ×3** | Record/loop any source; 4–480 frames; independent |
 | **Vectorscope** | Audio visualiser (Lissajous / Waveform / FFT) |
 
@@ -204,4 +205,4 @@ Drag any supported file onto the output canvas to load it.
 
 ---
 
-*ImWeb v0.3.0 · H. Karlsson · [[ImWeb_Full_Manual|Full manual →]]*
+*ImWeb v0.4.2 · H. Karlsson · [[ImWeb_Full_Manual|Full manual →]]*

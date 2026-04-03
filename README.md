@@ -6,7 +6,7 @@
 
 Real-time video compositing, 3D scene integration, and a complete parameter/controller mapping system — all in a Progressive Web App.
 
-Current version: **v0.4.0**
+Current version: **v0.4.2**
 
 ---
 
@@ -94,6 +94,7 @@ src/
     StillsBuffer.js       Frame capture store (up to 16 frames)
     SlitScanBuffer.js     Rolling slit scan effect
     TextLayer.js          Canvas 2D text → Texture
+    SDFGenerator.js       GPU raymarched SDF metaballs → WebGLRenderTarget
 
   scene3d/
     SceneManager.js       Three.js 3D scene → RenderTarget; auto-spin, model import
@@ -109,7 +110,7 @@ src/
 
 ---
 
-## Features (v0.3.0)
+## Features (v0.4.2)
 
 ### Input sources
 - [x] Camera (WebRTC, auto-start on load)
@@ -117,12 +118,13 @@ src/
 - [x] Stills buffer — capture up to 16 frames, FrameSelect 1/2/3
 - [x] Color source (HSV solid)
 - [x] Noise source (pixel)
-- [x] 3D scene — all geometry, transforms, material, camera; GLTF/GLB/OBJ/STL import; auto-spin
+- [x] 3D scene — all geometry, transforms, material, camera; GLTF/GLB/OBJ/STL import; auto-spin; Cloner (MoGraph InstancedMesh) with Twist/Scatter/Wave/ScaleStep effectors; Blob/Morph vertex displacement
 - [x] Slit scan buffer
 - [x] Draw layer (freehand canvas)
 - [x] Text layer
 - [x] GPU particle system
 - [x] Sequencer buffers ×3 — record and loop any source; variable frame count (4–480 frames)
+- [x] SDF raymarching generator — GPU-raymarched metaballs routable as pipeline source; shape selection, domain repetition, surface displacement
 - [x] Drag-and-drop to load video/image files
 
 ### Effects chain
