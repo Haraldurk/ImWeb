@@ -612,6 +612,9 @@ export function registerCoreParameters(ps) {
     min: 0.1, max: 10, value: 2.0, step: 0.05 });
   ps.register({ id: 'scene3d.clone.wave',   label: 'Wave',      group: 'scene3d',
     min: -5, max: 5, value: 0, step: 0.01, unit: 'Hz' });
+  ps.register({ id: 'scene3d.clone.waveshape', label: 'WaveShape', group: 'scene3d',
+    type: PARAM_TYPE.SELECT, value: 0,
+    options: ['Sine', 'Square', 'Triangle', 'Sawtooth'] });
   ps.register({ id: 'scene3d.clone.waveamp',  label: 'WaveAmp',    group: 'scene3d',
     min: 0, max: 10, value: 0, step: 0.05, unit: 'u' });
   ps.register({ id: 'scene3d.clone.wavefreq', label: 'WaveFreq',   group: 'scene3d',

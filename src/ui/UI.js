@@ -777,8 +777,8 @@ export function buildGeometryButtons(ps, sceneManager, contextMenu) {
   const clonerEl = document.getElementById('cloner-params');
   if (clonerEl) {
     ['scene3d.clone.mode',    'scene3d.clone.count',
-     'scene3d.clone.spread',  'scene3d.clone.wave',
-     'scene3d.clone.waveamp', 'scene3d.clone.wavefreq',
+     'scene3d.clone.spread',    'scene3d.clone.wave',
+     'scene3d.clone.waveshape', 'scene3d.clone.waveamp', 'scene3d.clone.wavefreq',
      'scene3d.clone.twist',   'scene3d.clone.scatter',
      'scene3d.clone.scale',   'scene3d.clone.scalestep',
     ].forEach(id => {

@@ -169,7 +169,7 @@ export class SceneManager {
     this.scene.add(this.mesh);
   }
 
-  _updateClonerMatrices(count, mode, spread, wave, waveamp, wavefreq, twist, scatter, clonescale, scalestep, dt) {
+  _updateClonerMatrices(count, mode, spread, wave, waveshape, waveamp, wavefreq, twist, scatter, clonescale, scalestep, dt) {
     this._cloneTime += dt;
     const t     = this._cloneTime;
     const TAU   = Math.PI * 2;
@@ -180,9 +180,22 @@ export class SceneManager {
     // Deterministic per-clone hash — stable every frame, no GC
     const frand = (seed) => ((Math.sin(seed * 127.1 + 311.7) * 43758.5453) % 1 + 1) % 1;
 
+    // Waveform helper — all shapes output [-1, 1]
+    const waveform = (p) => {
+      const norm = ((p % TAU) + TAU) % TAU; // normalize to [0, 2π) — handles negative phase
+      switch (waveshape) {
+        case 1: return Math.sin(p) >= 0 ? 1 : -1;           // Square
+        case 2: return norm < Math.PI                         // Triangle
+          ? -1 + (2 / Math.PI) * norm
+          :  3 - (2 / Math.PI) * norm;
+        case 3: return 1 - norm / Math.PI;                   // Sawtooth
+        default: return Math.sin(p);                          // Sine
+      }
+    };
+
     for (let i = 0; i < count; i++) {
       const phase = wave * TAU * t + (i / count) * wavefreq * TAU;
-      const waveY = Math.sin(phase) * waveamp;
+      const waveY = waveform(phase) * waveamp;
 
       if (mode === 1) {
         // Grid — square arrangement centered at origin
@@ -451,13 +464,14 @@ export class SceneManager {
     if (cloneMode > 0 && this.mesh?.isInstancedMesh) {
       const spread      = p.get('scene3d.clone.spread')?.value    ?? 2;
       const wave        = p.get('scene3d.clone.wave')?.value      ?? 0;
+      const waveshape   = p.get('scene3d.clone.waveshape')?.value ?? 0;
       const waveamp     = p.get('scene3d.clone.waveamp')?.value   ?? 0;
       const wavefreq    = p.get('scene3d.clone.wavefreq')?.value  ?? 1;
       const twist       = p.get('scene3d.clone.twist')?.value     ?? 0;
       const scatter     = p.get('scene3d.clone.scatter')?.value   ?? 0;
       const clonescale  = p.get('scene3d.clone.scale')?.value     ?? 1;
       const scalestep   = p.get('scene3d.clone.scalestep')?.value ?? 0;
-      this._updateClonerMatrices(cloneCount, cloneMode, spread, wave, waveamp, wavefreq, twist, scatter, clonescale, scalestep, dt);
+      this._updateClonerMatrices(cloneCount, cloneMode, spread, wave, waveshape, waveamp, wavefreq, twist, scatter, clonescale, scalestep, dt);
     }
 
     // Animation playback
