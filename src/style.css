@@ -1549,6 +1549,25 @@ body.sp-floating #signal-path-docked-space {
 
 /* ── CONTEXT MENU (clip cards, etc.) ─────────────────────────────────────── */
 
+.clip-error-toast {
+  position: fixed;
+  bottom: 48px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #7a1a1a;
+  border: 1px solid #c03030;
+  color: #ffcccc;
+  font-size: 11px;
+  padding: 7px 14px;
+  border-radius: 4px;
+  z-index: 9999;
+  pointer-events: none;
+  max-width: 380px;
+  text-align: center;
+  animation: toast-in 0.15s ease;
+}
+@keyframes toast-in { from { opacity: 0; transform: translateX(-50%) translateY(6px); } to { opacity: 1; transform: translateX(-50%) translateY(0); } }
+
 .ctx-menu {
   background: var(--bg-2);
   border: 1px solid var(--border);

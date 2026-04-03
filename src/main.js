@@ -1412,6 +1412,14 @@ async function main() {
   const clipsList = document.getElementById('clips-list');
   const btnAddClip = document.getElementById('btn-add-clip');
 
+  function _showClipError(msg) {
+    const el = document.createElement('div');
+    el.className = 'clip-error-toast';
+    el.textContent = msg;
+    document.body.appendChild(el);
+    setTimeout(() => el.remove(), 4000);
+  }
+
   function refreshClipsList() {
     if (!clipsList) return;
     clipsList.innerHTML = '';
@@ -1544,6 +1552,7 @@ async function main() {
           await movieInput.addClip(file);
         } catch (err) {
           console.error('[Movie] Failed to load:', err);
+          _showClipError(err.message);
         }
       }
       refreshClipsList();
@@ -1597,7 +1606,7 @@ async function main() {
           await movieInput.addClip(file);
           refreshClipsList();
           if (!ps.get('movie.active').value) ps.set('movie.active', 1);
-        } catch (err) { console.error('[DnD] video load failed:', err); }
+        } catch (err) { console.error('[DnD] video load failed:', err); _showClipError(err.message); }
       } else if (/\.(glb|gltf|obj|stl|dae)$/i.test(file.name)) {
         try {
           await scene3d.loadModel(file, ps, files);

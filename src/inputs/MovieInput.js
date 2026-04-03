@@ -19,8 +19,9 @@ export class MovieInput {
     this.clips    = [];      // [{ name, url, video, texture, duration }]
     this.active   = false;
     this._current = -1;      // index of active clip
-    this._pingDir = 1;       // ping-pong direction: 1 = forward, -1 = backward
-    this._lastPos = -1;      // last seen movie.pos value (for change detection)
+    this._pingDir  = 1;       // ping-pong direction: 1 = forward, -1 = backward
+    this._lastPos  = -1;     // last seen movie.pos value (for change detection)
+    this._revAccum = 0;      // accumulator for reverse frame stepping (seconds)
   }
 
   /**
@@ -36,18 +37,27 @@ export class MovieInput {
     const url = file instanceof File ? URL.createObjectURL(file) : file;
     const name = file instanceof File ? file.name : url.split('/').pop();
 
+    // Check browser codec support before attempting load
+    const ext = name.split('.').pop().toLowerCase();
+    const mimeMap = { mp4: 'video/mp4', webm: 'video/webm', mov: 'video/mp4; codecs="avc1"', avi: 'video/x-msvideo', mkv: 'video/x-matroska' };
+    const mimeHint = mimeMap[ext] ?? 'video/mp4';
+    const probe = document.createElement('video');
+    if (probe.canPlayType(mimeHint) === '') {
+      throw new Error(`Unsupported format: .${ext} — try H.264 MP4 or WebM`);
+    }
+
     const video = document.createElement('video');
-    video.src = url;
-    video.crossOrigin = 'anonymous';
+    video.crossOrigin = 'anonymous'; // must be set before src
     video.playsInline = true;
     video.muted = true;
     video.loop = true;
     video.preload = 'auto';
+    video.src = url;
 
     // Wait for metadata so we know duration
     await new Promise((resolve, reject) => {
       video.onloadedmetadata = resolve;
-      video.onerror = () => reject(new Error(`Failed to load: ${name}`));
+      video.onerror = e => reject(new Error(`Failed to load "${name}" — unsupported codec or corrupt file`));
     });
 
     const texture = new THREE.VideoTexture(video);
@@ -96,6 +106,8 @@ export class MovieInput {
       this.clips[this._current].video.pause();
     }
     this._current = idx;
+    this._lastPos  = -1; // reset so pos scrub applies immediately on new clip
+    this._revAccum = 0;
   }
 
   removeClip(idx) {
@@ -159,10 +171,17 @@ export class MovieInput {
     }
 
     if (speed < 0) {
-      // Reverse: pause native playback, step backward
+      // Reverse: pause native playback, accumulate time and seek at ~15fps
+      // (seeking every frame at 60fps causes browser decode stutter)
       if (!v.paused) v.pause();
-      v.currentTime = Math.max(startT, v.currentTime + speed * dt);
+      this._revAccum += Math.abs(speed) * dt;
+      const frameStep = 1 / 15;
+      if (this._revAccum >= frameStep) {
+        v.currentTime = Math.max(startT, v.currentTime - this._revAccum);
+        this._revAccum = 0;
+      }
     } else {
+      this._revAccum = 0;
       v.playbackRate = Math.max(0.01, speed);
       if (v.paused && speed > 0) v.play().catch(() => {});
     }
@@ -182,16 +201,16 @@ export class MovieInput {
       v.loop = false;
     }
 
-    // Position scrub: movie.pos (0–100%) — seek when value changes
+    // Position scrub: movie.pos (0–100%)
+    // When speed==0: hold position every tick (scrubber mode)
+    // When speed!=0: seek only when value changes (nudge mode)
     const posParam = params.get('movie.pos');
     const posVal   = posParam.value;
-    if (posVal !== this._lastPos) {
+    if (speed === 0 || posVal !== this._lastPos) {
       this._lastPos = posVal;
       const posPct  = posVal / 100;
       const targetT = startT + posPct * range;
-      if (Math.abs(v.currentTime - targetT) > 0.05) {
-        v.currentTime = targetT;
-      }
+      v.currentTime = targetT;
     }
 
     // Update texture
