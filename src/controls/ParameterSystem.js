@@ -603,6 +603,15 @@ export function registerCoreParameters(ps) {
     type: PARAM_TYPE.SELECT, options: ['None'], value: 0 });
   ps.register({ id: 'scene3d.anim.speed',  label: 'Anim Speed', group: 'scene3d',
     min: -2, max: 2, value: 1.0, step: 0.1 });
+  ps.register({ id: 'scene3d.clone.mode',   label: 'Cloner',    group: 'scene3d',
+    type: PARAM_TYPE.SELECT, value: 0,
+    options: ['Off', 'Grid', 'Ring', 'Line'] });
+  ps.register({ id: 'scene3d.clone.count',  label: 'CloneN',    group: 'scene3d',
+    min: 2, max: 200, value: 9, step: 1 });
+  ps.register({ id: 'scene3d.clone.spread', label: 'Spread',    group: 'scene3d',
+    min: 0.1, max: 10, value: 2.0, step: 0.05 });
+  ps.register({ id: 'scene3d.clone.wave',   label: 'Wave',      group: 'scene3d',
+    min: -5, max: 5, value: 0, step: 0.01, unit: 'Hz' });
 
   // ── Draw ──────────────────────────────────────────────────────────────────
   ps.register({ id: 'draw.pensize',   label: 'DrawPenSize',  group: 'draw',

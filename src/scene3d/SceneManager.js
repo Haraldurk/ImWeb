@@ -58,6 +58,13 @@ export class SceneManager {
     this.material = null;
     this._geoKey  = null;
 
+    // Cloner state
+    this._baseGeo    = null;   // geometry cached for cloner rebuilds
+    this._cloneMode  = -1;     // sentinel — forces rebuild on first applyParams
+    this._cloneCount = 0;
+    this._cloneTime  = 0;      // accumulated time for wave animation
+    this._dummy      = new THREE.Object3D(); // reusable dummy for matrix composition
+
     // Loaders
     this.dracoLoader = new DRACOLoader();
     this.dracoLoader.setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5.6/');
@@ -131,8 +138,78 @@ export class SceneManager {
       this._setupMaterial(this.material);
     }
 
+    this._baseGeo   = geo;   // keep reference so cloner can reuse it
+    this._cloneMode = -1;    // force cloner rebuild on next applyParams (new geo)
     this.mesh = new THREE.Mesh(geo, this.material);
     this.scene.add(this.mesh);
+  }
+
+  _rebuildCloner(mode, count) {
+    this._cloneMode  = mode;
+    this._cloneCount = count;
+
+    if (this.mesh) this.scene.remove(this.mesh);
+
+    const geo = this._baseGeo;
+    if (!geo || this._importedModelName) return; // guard: no geo or imported model active
+
+    if (mode === 0) {
+      // Off — restore single mesh
+      this.mesh = new THREE.Mesh(geo, this.material);
+    } else {
+      this.mesh = new THREE.InstancedMesh(geo, this.material, count);
+      this.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+      this.mesh.frustumCulled = false;
+      // Prime all instance matrices to identity so no garbage frame appears
+      const m = new THREE.Matrix4();
+      for (let i = 0; i < count; i++) this.mesh.setMatrixAt(i, m);
+      this.mesh.instanceMatrix.needsUpdate = true;
+    }
+
+    this.scene.add(this.mesh);
+  }
+
+  _updateClonerMatrices(count, mode, spread, wave, dt) {
+    this._cloneTime += dt;
+    const t     = this._cloneTime;
+    const TAU   = Math.PI * 2;
+    const mesh  = this.mesh;
+    const dummy = this._dummy;
+
+    for (let i = 0; i < count; i++) {
+      const phase = wave * TAU * t + (i / count) * TAU;
+      const waveY = Math.sin(phase) * spread * 0.25;
+
+      if (mode === 1) {
+        // Grid — square arrangement centered at origin
+        const side = Math.ceil(Math.sqrt(count));
+        const col  = i % side;
+        const row  = Math.floor(i / side);
+        dummy.position.set(
+          (col - (side - 1) / 2) * spread,
+          waveY,
+          (row - (side - 1) / 2) * spread
+        );
+      } else if (mode === 2) {
+        // Ring — evenly spaced on a circle of radius spread
+        const angle = (i / count) * TAU;
+        dummy.position.set(
+          Math.cos(angle) * spread,
+          waveY,
+          Math.sin(angle) * spread
+        );
+      } else {
+        // Line — evenly spaced along X, centered
+        dummy.position.set((i - (count - 1) / 2) * spread, waveY, 0);
+      }
+
+      dummy.rotation.set(0, 0, 0);
+      dummy.scale.setScalar(1 + Math.sin(phase + Math.PI * 0.5) * 0.08);
+      dummy.updateMatrix();
+      mesh.setMatrixAt(i, dummy.matrix);
+    }
+
+    mesh.instanceMatrix.needsUpdate = true;
   }
 
   _setupMaterial(mat) {
@@ -346,6 +423,21 @@ export class SceneManager {
     }
 
     if (!this.mesh) return;
+
+    // ── Cloner ────────────────────────────────────────────────────────────────
+    const cloneMode  = p.get('scene3d.clone.mode')?.value  ?? 0;
+    const cloneCount = Math.round(p.get('scene3d.clone.count')?.value ?? 9);
+
+    if (!this._importedModelName &&
+        (cloneMode !== this._cloneMode || cloneCount !== this._cloneCount)) {
+      this._rebuildCloner(cloneMode, cloneCount);
+    }
+
+    if (cloneMode > 0 && this.mesh?.isInstancedMesh) {
+      const spread = p.get('scene3d.clone.spread')?.value ?? 2;
+      const wave   = p.get('scene3d.clone.wave')?.value   ?? 0;
+      this._updateClonerMatrices(cloneCount, cloneMode, spread, wave, dt);
+    }
 
     // Animation playback
     if (this.mixer) {
