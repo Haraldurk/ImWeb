@@ -36,6 +36,7 @@ const SIM_FRAG = /* glsl */ `
   uniform float uWind;
   uniform float uLifeScale;    // 1/maxLife
   uniform float uMaskAmt;      // 0..1
+  uniform float uSpread;       // spawn radius 0..1 (1 = full canvas)
   varying vec2 vUv;
 
   float hash(vec2 p){ return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5); }
@@ -52,7 +53,7 @@ const SIM_FRAG = /* glsl */ `
       vec4 r = texture2D(uRand, vUv);
       float angle = r.x * 6.283;
       float spd   = (0.2 + r.y * 0.8) * uSpeed;
-      pos.xy = vec2(0.5 + (r.z - 0.5) * 0.1, 0.5 + (r.w - 0.5) * 0.1);
+      pos.xy = vec2(0.5 + (r.z - 0.5) * uSpread, 0.5 + (r.w - 0.5) * uSpread);
       vel.xy = vec2(cos(angle) * spd, sin(angle) * spd);
       float baseLife = 0.5 + r.x * 0.5;
       // Luma mask: scale initial life by brightness at spawn point
@@ -266,6 +267,7 @@ export class ParticleSystem {
         uDt: { value: 0.016 }, uSpeed: { value: 0.3 }, uGravity: { value: 0.1 },
         uWind: { value: 0 }, uLifeScale: { value: 1 },
         uMaskTex: { value: this._fallbackTex }, uMaskAmt: { value: 0 },
+        uSpread: { value: 0.1 },
       },
       vertexShader: SIM_VERT, fragmentShader: SIM_FRAG, depthTest: false, depthWrite: false,
     });
@@ -388,6 +390,9 @@ export class ParticleSystem {
     const wind   = (ps.get('particle.wind').value - 50) / 50 * 0.1;
     const ptSize = ps.get('particle.size').value;
     const col    = ps.get('particle.color').value;
+
+    // Spread: spawn radius (0=tight centre cluster, 1=full canvas fill)
+    this._posMat.uniforms.uSpread.value = ps.get('particle.spread').value / 100;
 
     // Luma mask uniforms — use fallback when no source selected (maskAmt=0 = bypass)
     const maskAmt = ps.get('particle.maskamt').value / 100;

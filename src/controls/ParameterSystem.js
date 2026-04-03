@@ -799,6 +799,8 @@ export function registerCoreParameters(ps) {
     min: 0, max: 100, value: 20, unit: '%' });
   ps.register({ id: 'particle.wind',    label: 'PWind',    group: 'particle',
     min: 0, max: 100, value: 50, unit: '%' });
+  ps.register({ id: 'particle.spread',  label: 'PSpread',  group: 'particle',
+    min: 0, max: 100, value: 10, unit: '%' });
   ps.register({ id: 'particle.size',    label: 'PSize',    group: 'particle',
     min: 1, max: 32, value: 4, unit: 'px' });
   ps.register({ id: 'particle.color',   label: 'PColor',   group: 'particle',
