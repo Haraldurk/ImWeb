@@ -877,6 +877,10 @@ async function main() {
     if(!document.fullscreenElement)document.body.requestFullscreen?.();
     else document.exitFullscreen?.();
   });
+
+  document.addEventListener('mouseenter',()=>{ if(lastCorners) ho.style.opacity='1'; });
+  document.addEventListener('mouseleave',()=>{ ho.style.opacity='0'; });
+  ho.style.transition='opacity 0.2s';
 <\/script>
 </body>
 </html>`);
