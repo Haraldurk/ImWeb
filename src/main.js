@@ -245,19 +245,21 @@ async function main() {
     if (e.button !== 0) return;
     ps.trigger('global.tap');
   });
+  const _enableMidiClock = () => {
+    ctrl.enableMIDIClock(bpm => { ps.set('global.bpm', bpm); });
+    if (bpmEl) { bpmEl.title = 'MIDI clock sync ON — right-click to disable'; bpmEl.style.outline = '1px solid var(--accent)'; }
+  };
+  const _disableMidiClock = () => {
+    ctrl.disableMIDIClock();
+    if (bpmEl) { bpmEl.title = 'Click: tap tempo | Right-click: enable MIDI clock'; bpmEl.style.outline = ''; }
+  };
+
+  // global.midisync param drives clock enable/disable
+  ps.get('global.midisync').onChange(v => { v ? _enableMidiClock() : _disableMidiClock(); });
+
   bpmEl?.addEventListener('contextmenu', e => {
     e.preventDefault();
-    if (ctrl._midiClockEnabled) {
-      ctrl.disableMIDIClock();
-      bpmEl.title = 'Click: tap tempo | Right-click: enable MIDI clock';
-      bpmEl.style.outline = '';
-    } else {
-      ctrl.enableMIDIClock(bpm => {
-        ps.set('global.bpm', bpm);
-      });
-      bpmEl.title = 'MIDI clock sync ON — right-click to disable';
-      bpmEl.style.outline = '1px solid var(--accent)';
-    }
+    ps.set('global.midisync', ctrl._midiClockEnabled ? 0 : 1);
   });
 
   const _tapTimes = [];
