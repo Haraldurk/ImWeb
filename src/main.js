@@ -765,20 +765,30 @@ async function main() {
 <head>
 <title>ImWeb Output</title>
 <style>
-  * { margin:0;padding:0;box-sizing:border-box; }
-  html,body { width:100%;height:100%;background:#000;overflow:hidden; }
-  canvas { display:block;position:absolute;top:0;left:0;transform-origin:0 0; }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{width:100%;height:100%;background:#000;overflow:hidden}
+  canvas{display:block;position:absolute;top:0;left:0;transform-origin:0 0}
+  #ho{position:fixed;inset:0;pointer-events:none;display:none}
+  .h{position:absolute;width:24px;height:24px;margin:-12px 0 0 -12px;border:2px solid #c8a020;border-radius:50%;background:rgba(0,0,0,0.6);cursor:crosshair;pointer-events:all;touch-action:none;box-shadow:0 0 8px rgba(0,0,0,0.8);transition:border-color .1s,transform .1s}
+  .h:hover{border-color:#fff;transform:scale(1.3)}
+  .h:active{border-color:#fff;transform:scale(1.2)}
 </style>
 </head>
 <body>
 <canvas id="out"></canvas>
+<div id="ho">
+  <div class="h" id="h-tl"></div>
+  <div class="h" id="h-tr"></div>
+  <div class="h" id="h-br"></div>
+  <div class="h" id="h-bl"></div>
+</div>
 <script>
-  const c = document.getElementById('out');
-  const ctx = c.getContext('2d');
-  let lastBitmap = null;
-  let lastCorners = null;
+  const c=document.getElementById('out'),ctx=c.getContext('2d');
+  const ho=document.getElementById('ho');
+  const hs={tl:document.getElementById('h-tl'),tr:document.getElementById('h-tr'),br:document.getElementById('h-br'),bl:document.getElementById('h-bl')};
+  let lastBitmap=null,lastCorners=null;
 
-  function computeProjectiveMatrix(x0,y0,x1,y1,x2,y2,x3,y3) {
+  function computeProjectiveMatrix(x0,y0,x1,y1,x2,y2,x3,y3){
     const dx1=x1-x2,dy1=y1-y2,dx2=x3-x2,dy2=y3-y2;
     const dx3=x0-x1+x2-x3,dy3=y0-y1+y2-y3;
     const det=dx1*dy2-dx2*dy1;
@@ -789,45 +799,76 @@ async function main() {
     return [h00,h10,0,h20,h01,h11,0,h21,0,0,1,0,h02,h12,0,1].join(',');
   }
 
-  function applyTransform() {
-    if (!lastCorners) { c.style.transform = 'none'; return; }
-    const W = window.innerWidth, H = window.innerHeight;
-    const m = computeProjectiveMatrix(
-      lastCorners.tl.x*W, lastCorners.tl.y*H,
-      lastCorners.tr.x*W, lastCorners.tr.y*H,
-      lastCorners.br.x*W, lastCorners.br.y*H,
-      lastCorners.bl.x*W, lastCorners.bl.y*H
+  function positionHandles(){
+    if(!lastCorners)return;
+    const W=window.innerWidth,H=window.innerHeight;
+    for(const[k,h]of Object.entries(hs)){
+      h.style.left=(lastCorners[k].x*W)+'px';
+      h.style.top=(lastCorners[k].y*H)+'px';
+    }
+  }
+
+  function applyTransform(){
+    if(!lastCorners){c.style.transform='none';return;}
+    const W=window.innerWidth,H=window.innerHeight;
+    const m=computeProjectiveMatrix(
+      lastCorners.tl.x*W,lastCorners.tl.y*H,
+      lastCorners.tr.x*W,lastCorners.tr.y*H,
+      lastCorners.br.x*W,lastCorners.br.y*H,
+      lastCorners.bl.x*W,lastCorners.bl.y*H
     );
-    c.style.transform = m ? 'matrix3d('+m+')' : 'none';
+    c.style.transform=m?'matrix3d('+m+')':'none';
   }
 
-  function resize() {
-    c.width  = window.innerWidth;
-    c.height = window.innerHeight;
-    applyTransform();
-    draw();
+  function resize(){
+    c.width=window.innerWidth;c.height=window.innerHeight;
+    applyTransform();positionHandles();draw();
   }
 
-  function draw() {
-    if (!lastBitmap) return;
-    ctx.clearRect(0, 0, c.width, c.height);
-    ctx.drawImage(lastBitmap, 0, 0, c.width, c.height);
+  function draw(){
+    if(!lastBitmap)return;
+    ctx.clearRect(0,0,c.width,c.height);
+    if(lastCorners){
+      ctx.drawImage(lastBitmap,0,0,c.width,c.height);
+    } else {
+      const sw=c.width,sh=c.height,iw=lastBitmap.width,ih=lastBitmap.height;
+      const sc=Math.min(sw/iw,sh/ih),dw=iw*sc,dh=ih*sc;
+      ctx.drawImage(lastBitmap,0,0,iw,ih,(sw-dw)/2,(sh-dh)/2,dw,dh);
+    }
   }
 
-  window.addEventListener('resize', resize);
+  // Drag handles — send corner updates back to main window
+  for(const[corner,h]of Object.entries(hs)){
+    h.addEventListener('pointerdown',e=>{
+      e.preventDefault();h.setPointerCapture(e.pointerId);
+      const mv=e=>{
+        const x=Math.max(0,Math.min(1,e.clientX/window.innerWidth));
+        const y=Math.max(0,Math.min(1,e.clientY/window.innerHeight));
+        if(lastCorners)lastCorners[corner]={x,y};
+        h.style.left=(x*window.innerWidth)+'px';
+        h.style.top=(y*window.innerHeight)+'px';
+        applyTransform();
+        window.opener?.postMessage({type:'projmap',corner,x,y},'*');
+      };
+      h.addEventListener('pointermove',mv);
+      h.addEventListener('pointerup',()=>h.removeEventListener('pointermove',mv),{once:true});
+    });
+  }
+
+  window.addEventListener('resize',resize);
   resize();
 
-  window.addEventListener('message', e => {
-    if (!e.data?.bitmap) return;
-    if (lastBitmap) lastBitmap.close();
-    lastBitmap = e.data.bitmap;
-    lastCorners = e.data.corners || null;
-    applyTransform();
-    draw();
+  window.addEventListener('message',e=>{
+    if(!e.data?.bitmap)return;
+    if(lastBitmap)lastBitmap.close();
+    lastBitmap=e.data.bitmap;
+    lastCorners=e.data.corners||null;
+    ho.style.display=lastCorners?'block':'none';
+    applyTransform();positionHandles();draw();
   });
 
-  window.addEventListener('dblclick', () => {
-    if (!document.fullscreenElement) document.body.requestFullscreen?.();
+  window.addEventListener('dblclick',()=>{
+    if(!document.fullscreenElement)document.body.requestFullscreen?.();
     else document.exitFullscreen?.();
   });
 <\/script>
@@ -876,34 +917,21 @@ async function main() {
       document.body.classList.contains('ghost-mode'));
   });
 
-  // ── Projection Mapping corner-pin ────────────────────────────────────────
-  document.querySelectorAll('.corner-handle').forEach(handle => {
-    const corner = handle.dataset.corner;
-    const px = `projmap.${corner}_x`, py = `projmap.${corner}_y`;
-    const sync = () => {
-      const r = canvas.getBoundingClientRect();
-      handle.style.left = (ps.get(px).value * r.width)  + 'px';
-      handle.style.top  = (ps.get(py).value * r.height) + 'px';
-    };
-    ps.get(px).onChange(sync); ps.get(py).onChange(sync); sync();
-    handle.addEventListener('pointerdown', e => {
-      e.preventDefault();
-      handle.setPointerCapture(e.pointerId);
-      const onMove = e => {
-        const r = canvas.getBoundingClientRect();
-        ps.set(px, Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)));
-        ps.set(py, Math.max(0, Math.min(1, (e.clientY - r.top)  / r.height)));
-      };
-      handle.addEventListener('pointermove', onMove);
-      handle.addEventListener('pointerup', () => handle.removeEventListener('pointermove', onMove), { once: true });
-    });
+  // ── Projection Mapping ────────────────────────────────────────────────────
+  // Corner handles live on the second screen. It sends updates back here.
+  window.addEventListener('message', e => {
+    if (e.data?.type === 'projmap' && e.data.corner) {
+      ps.set(`projmap.${e.data.corner}_x`, e.data.x);
+      ps.set(`projmap.${e.data.corner}_y`, e.data.y);
+    }
   });
   ps.get('projmap.active').onChange(v => {
-    document.getElementById('projmap-overlay')?.classList.toggle('hidden', !v);
     document.getElementById('btn-projmap')?.classList.toggle('active', !!v);
+    if (v && _outWin && !_outWin.closed) _outWin.focus();
   });
-  document.getElementById('btn-projmap')?.addEventListener('click', () =>
-    ps.set('projmap.active', ps.get('projmap.active').value ? 0 : 1));
+  document.getElementById('btn-projmap')?.addEventListener('click', () => {
+    ps.set('projmap.active', ps.get('projmap.active').value ? 0 : 1);
+  });
   document.getElementById('btn-projmap-reset')?.addEventListener('click', () => {
     ps.set('projmap.tl_x', 0); ps.set('projmap.tl_y', 0);
     ps.set('projmap.tr_x', 1); ps.set('projmap.tr_y', 0);
