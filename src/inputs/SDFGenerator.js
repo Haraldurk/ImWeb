@@ -1,9 +1,15 @@
 /**
- * ImWeb SDF Generator
+ * ImWeb SDF Generator — Phase 2
  * Raymarches two orbiting SDF metaballs into a WebGLRenderTarget.
  * Exposes .texture for use as a pipeline source (Foreground / Background / Displacement).
  *
- * Parameters: sdf.active (toggle), sdf.blend (melt factor k), sdf.distance (orbit radius)
+ * Parameters:
+ *   sdf.active   — toggle rendering
+ *   sdf.blend    — smin melt factor k
+ *   sdf.distance — orbit radius (world units, or cell fraction when repeat > 0)
+ *   sdf.shape    — primitive: 0=Sphere, 1=Box, 2=Torus
+ *   sdf.repeat   — domain repetition cell spacing; 0 = off
+ *   sdf.warp     — surface displacement amplitude
  */
 
 import * as THREE from 'three';
@@ -18,29 +24,67 @@ precision highp float;
 uniform float uTime;
 uniform float uBlend;
 uniform float uDistance;
+uniform float uShape;    // 0=Sphere, 1=Box, 2=Torus (float for WebGL compat)
+uniform float uRepeat;   // domain repetition spacing; 0 = off
+uniform float uWarp;     // surface displacement amplitude
 varying vec2 vUv;
 
-// Polynomial smooth-min — the "melting" function (Inigo Quilez)
-// max(uBlend, 0.001) guards against divide-by-zero when blend=0
+// ── SDF primitives ───────────────────────────────────────────────────────────
+float sdSphere(vec3 p, float r) {
+  return length(p) - r;
+}
+
+float sdBox(vec3 p, vec3 b) {
+  vec3 q = abs(p) - b;
+  return length(max(q, 0.0)) + min(max(q.x, max(q.y, q.z)), 0.0);
+}
+
+float sdTorus(vec3 p, vec2 t) {
+  // t.x = major radius, t.y = minor radius
+  return length(vec2(length(p.xz) - t.x, p.y)) - t.y;
+}
+
+float sdShape(vec3 p) {
+  if (uShape > 1.5) return sdTorus(p, vec2(0.45, 0.18));
+  if (uShape > 0.5) return sdBox(p, vec3(0.42));
+  return sdSphere(p, 0.6);
+}
+
+// ── Smooth-min (Inigo Quilez polynomial) ────────────────────────────────────
 float smin(float a, float b, float k) {
   float h = max(k - abs(a - b), 0.0) / k;
   return min(a, b) - h * h * h * k / 6.0;
 }
 
-float sdSphere(vec3 p, float r) { return length(p) - r; }
-
+// ── Scene SDF ────────────────────────────────────────────────────────────────
 float scene(vec3 p) {
+  // Domain repetition: fold space into repeating cells.
+  // Guard uRepeat > 0.1 to avoid mod(p, 0) undefined behaviour.
+  vec3 q = (uRepeat > 0.1)
+    ? mod(p + 0.5 * uRepeat, uRepeat) - 0.5 * uRepeat
+    : p;
+
+  // Orbit radius — when repeating, derive from cell spacing so shapes stay in-cell.
+  float rad = (uRepeat > 0.1) ? uRepeat * 0.3 : uDistance * 0.35;
   float ang = uTime * 0.8;
-  float rad = uDistance * 0.35;
-  // Lissajous-like orbit: frequencies 0.8, 0.56, 0.32 — never perfectly periodic
-  vec3 cA = vec3( cos(ang) * rad,  sin(ang * 0.7) * 0.3,  sin(ang * 0.4) * 0.2);
-  vec3 cB = vec3(-cos(ang) * rad, -sin(ang * 0.7) * 0.3,  cos(ang * 0.4) * 0.2);
-  return smin(sdSphere(p - cA, 0.6), sdSphere(p - cB, 0.6), max(uBlend, 0.001));
+  vec3 cA   = vec3( cos(ang) * rad,  sin(ang * 0.7) * 0.3,  sin(ang * 0.4) * 0.2);
+  vec3 cB   = vec3(-cos(ang) * rad, -sin(ang * 0.7) * 0.3,  cos(ang * 0.4) * 0.2);
+
+  float d1 = smin(sdShape(q - cA), sdShape(q - cB), max(uBlend, 0.001));
+
+  // Surface displacement: sin-product warp on the distance field.
+  // Uses q (cell-local) so displacement tiles cleanly with repetition.
+  float displacement = sin(uTime + q.x * 5.0)
+                     * sin(uTime + q.y * 5.0)
+                     * sin(uTime + q.z * 5.0)
+                     * uWarp;
+  return d1 + displacement;
 }
 
-// 6-sample central-difference normal
+// ── Normal (6-sample central differences) ────────────────────────────────────
+// epsilon 0.002 (vs 0.001) smooths normals across high-frequency displaced surfaces
 vec3 calcNormal(vec3 p) {
-  float e = 0.001;
+  float e = 0.002;
   return normalize(vec3(
     scene(p + vec3(e,0,0)) - scene(p - vec3(e,0,0)),
     scene(p + vec3(0,e,0)) - scene(p - vec3(0,e,0)),
@@ -53,12 +97,17 @@ void main() {
   vec3 ro  = vec3(0.0, 0.0, 3.0);
   vec3 rd  = normalize(vec3(uv * 1.5, -2.0)); // perspective ~75° FOV
 
+  // Conservative step scaling: displacement inflates the Lipschitz constant
+  // by up to 5 * uWarp. Dividing by (1 + uWarp * 2.5) keeps the marcher
+  // stable at all warp values. At uWarp=0, stepScale=1.0 — zero cost.
+  float stepScale = 1.0 / (1.0 + uWarp * 2.5);
+
   float t = 0.0;
   float d = 0.0;
   for (int i = 0; i < 80; i++) {
     d = scene(ro + rd * t);
     if (d < 0.001 || t > 8.0) break;
-    t += d;
+    t += max(d, 0.001) * stepScale;
   }
 
   if (d < 0.001) {
@@ -95,6 +144,9 @@ export class SDFGenerator {
         uTime:     { value: 0 },
         uBlend:    { value: 0.5 },
         uDistance: { value: 1.5 },
+        uShape:    { value: 0 },
+        uRepeat:   { value: 0 },
+        uWarp:     { value: 0 },
       },
       vertexShader:   VERT,
       fragmentShader: FRAG,
@@ -116,6 +168,9 @@ export class SDFGenerator {
     u.uTime.value     = this._time;
     u.uBlend.value    = ps.get('sdf.blend').value;
     u.uDistance.value = ps.get('sdf.distance').value;
+    u.uShape.value    = ps.get('sdf.shape').value;
+    u.uRepeat.value   = ps.get('sdf.repeat').value;
+    u.uWarp.value     = ps.get('sdf.warp').value;
 
     this.renderer.setRenderTarget(this._rt);
     this.renderer.render(this._scene, this._camera);
