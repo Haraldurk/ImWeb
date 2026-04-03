@@ -3114,8 +3114,16 @@ void main() {
     // Tick slit scan (reads from pipeline.prev render target)
     slitScan.tick(renderer, pipeline.prev, ps, dt);
 
-    // Tick particle system
-    particles.tick(ps, dt);
+    // Tick particle system — resolve luma mask source (only pre-ticked textures are safe)
+    const _pmSrcMap = [
+      null,                                                          // 0 None
+      camera3d.active ? camera3d.currentTexture : null,             // 1 Camera
+      movieInput.active ? movieInput.currentTexture : null,         // 2 Movie
+      stillsBuffer.texture,                                         // 3 Buffer
+      pipeline.prev.texture,                                        // 4 Output (prev frame)
+      drawLayer.texture,                                            // 5 Draw
+    ];
+    particles.tick(ps, dt, _pmSrcMap[ps.get('particle.masksrc').value] ?? null);
 
     // Animate Color2 gradient when speed is non-zero
     const _c2speed = ps.get('color2.speed')?.value ?? 0;

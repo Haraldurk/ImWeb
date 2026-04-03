@@ -26,17 +26,20 @@ const SIM_VERT = /* glsl */ `
 
 // Simulation pass: update position and velocity
 const SIM_FRAG = /* glsl */ `
-  uniform sampler2D uPos;   // xy=pos, zw=life
-  uniform sampler2D uVel;   // xy=vel, zw=unused
-  uniform sampler2D uRand;  // random seeds
+  uniform sampler2D uPos;      // xy=pos, zw=life
+  uniform sampler2D uVel;      // xy=vel, zw=unused
+  uniform sampler2D uRand;     // random seeds
+  uniform sampler2D uMaskTex;  // luma mask source
   uniform float uDt;
   uniform float uSpeed;
   uniform float uGravity;
   uniform float uWind;
-  uniform float uLifeScale;  // 1/maxLife
+  uniform float uLifeScale;    // 1/maxLife
+  uniform float uMaskAmt;      // 0..1
   varying vec2 vUv;
 
   float hash(vec2 p){ return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5); }
+  float luma(vec2 uv){ return dot(texture2D(uMaskTex, uv).rgb, vec3(0.2126,0.7152,0.0722)); }
 
   void main() {
     vec4 pos = texture2D(uPos, vUv);
@@ -51,14 +54,21 @@ const SIM_FRAG = /* glsl */ `
       float spd   = (0.2 + r.y * 0.8) * uSpeed;
       pos.xy = vec2(0.5 + (r.z - 0.5) * 0.1, 0.5 + (r.w - 0.5) * 0.1);
       vel.xy = vec2(cos(angle) * spd, sin(angle) * spd);
-      pos.z  = 0.5 + r.x * 0.5; // random life 0.5–1
+      float baseLife = 0.5 + r.x * 0.5;
+      // Luma mask: scale initial life by brightness at spawn point
+      // Bright areas → full life; dark areas → particle dies almost instantly
+      float spawnLuma = luma(pos.xy);
+      pos.z = mix(baseLife, baseLife * spawnLuma, uMaskAmt);
     } else {
       // Update
       vel.x += uWind    * uDt;
       vel.y -= uGravity * uDt;
       pos.x += vel.x    * uDt;
       pos.y += vel.y    * uDt;
-      pos.z -= uLifeScale * uDt;
+      // Luma mask: decay slower in bright areas (bright zones accumulate particles)
+      float liveLuma    = luma(pos.xy);
+      float decayScale  = mix(1.0, max(liveLuma, 0.05), uMaskAmt);
+      pos.z -= (uLifeScale * uDt) / decayScale;
 
       // Bounce off walls
       if(pos.x < 0.0) { pos.x = 0.0; vel.x = abs(vel.x); }
@@ -75,11 +85,15 @@ const VEL_FRAG = /* glsl */ `
   uniform sampler2D uPos;
   uniform sampler2D uVel;
   uniform sampler2D uRand;
+  uniform sampler2D uMaskTex;  // luma mask source
   uniform float uDt;
   uniform float uSpeed;
   uniform float uGravity;
   uniform float uWind;
+  uniform float uMaskAmt;      // 0..1
   varying vec2 vUv;
+
+  float luma(vec2 uv){ return dot(texture2D(uMaskTex, uv).rgb, vec3(0.2126,0.7152,0.0722)); }
 
   void main() {
     vec4 pos = texture2D(uPos, vUv);
@@ -95,6 +109,14 @@ const VEL_FRAG = /* glsl */ `
       vel.y -= uGravity * uDt;
       if(pos.x < 0.0 || pos.x > 1.0) vel.x = -vel.x;
       if(pos.y < 0.0 || pos.y > 1.0) vel.y = -vel.y;
+      // Luma gradient: attract particles toward bright areas
+      float eps = 0.01;
+      float lR = luma(pos.xy + vec2(eps, 0.0));
+      float lL = luma(pos.xy - vec2(eps, 0.0));
+      float lU = luma(pos.xy + vec2(0.0, eps));
+      float lD = luma(pos.xy - vec2(0.0, eps));
+      vec2 lumaGrad = vec2(lR - lL, lU - lD) * 0.5;
+      vel.xy += lumaGrad * uMaskAmt * 0.3 * uSpeed;
     }
     gl_FragColor = vel;
   }
@@ -186,6 +208,12 @@ export class ParticleSystem {
 
     this.texture = null; // THREE.Texture of latest rendered frame
 
+    // 1×1 white fallback — bound when no mask source is selected so the
+    // shader always has a valid texture and uMaskAmt=0 gives full bypass.
+    const fb = new THREE.DataTexture(new Uint8Array([255,255,255,255]), 1, 1, THREE.RGBAFormat);
+    fb.needsUpdate = true;
+    this._fallbackTex = fb;
+
     this._init(0); // default: 1k particles
   }
 
@@ -237,6 +265,7 @@ export class ParticleSystem {
         uPos: { value: null }, uVel: { value: null }, uRand: { value: this._randTex },
         uDt: { value: 0.016 }, uSpeed: { value: 0.3 }, uGravity: { value: 0.1 },
         uWind: { value: 0 }, uLifeScale: { value: 1 },
+        uMaskTex: { value: this._fallbackTex }, uMaskAmt: { value: 0 },
       },
       vertexShader: SIM_VERT, fragmentShader: SIM_FRAG, depthTest: false, depthWrite: false,
     });
@@ -244,6 +273,7 @@ export class ParticleSystem {
       uniforms: {
         uPos: { value: null }, uVel: { value: null }, uRand: { value: this._randTex },
         uDt: { value: 0.016 }, uSpeed: { value: 0.3 }, uGravity: { value: 0.1 }, uWind: { value: 0 },
+        uMaskTex: { value: this._fallbackTex }, uMaskAmt: { value: 0 },
       },
       vertexShader: SIM_VERT, fragmentShader: VEL_FRAG, depthTest: false, depthWrite: false,
     });
@@ -348,7 +378,7 @@ export class ParticleSystem {
 
   // ── Tick ──────────────────────────────────────────────────────────────────
 
-  tick(ps, dt) {
+  tick(ps, dt, maskTex = null) {
     const countIdx  = ps.get('particle.count').value;
     if (COUNTS[countIdx] !== this._count) this._init(countIdx);
 
@@ -358,6 +388,14 @@ export class ParticleSystem {
     const wind   = (ps.get('particle.wind').value - 50) / 50 * 0.1;
     const ptSize = ps.get('particle.size').value;
     const col    = ps.get('particle.color').value;
+
+    // Luma mask uniforms — use fallback when no source selected (maskAmt=0 = bypass)
+    const maskAmt = ps.get('particle.maskamt').value / 100;
+    const maskSrc = maskTex ?? this._fallbackTex;
+    this._velMat.uniforms.uMaskTex.value = maskSrc;
+    this._velMat.uniforms.uMaskAmt.value = maskAmt;
+    this._posMat.uniforms.uMaskTex.value = maskSrc;
+    this._posMat.uniforms.uMaskAmt.value = maskAmt;
 
     const curPos = this._curPos;
     const nxtPos = curPos ^ 1;
@@ -413,6 +451,7 @@ export class ParticleSystem {
     this._velBuffers.forEach(rt => rt.dispose());
     this._outputRT?.dispose();
     this._randTex?.dispose();
+    this._fallbackTex?.dispose();
     this._posMat?.dispose();
     this._velMat?.dispose();
     this._pointsMat?.dispose();

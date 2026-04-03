@@ -803,6 +803,11 @@ export function registerCoreParameters(ps) {
     min: 1, max: 32, value: 4, unit: 'px' });
   ps.register({ id: 'particle.color',   label: 'PColor',   group: 'particle',
     type: PARAM_TYPE.SELECT, options: ['White','Rainbow','Mono','Fire'], value: 0 });
+  ps.register({ id: 'particle.masksrc', label: 'PMaskSrc', group: 'particle',
+    type: PARAM_TYPE.SELECT, value: 0,
+    options: ['None', 'Camera', 'Movie', 'Buffer', 'Output', 'Draw'] });
+  ps.register({ id: 'particle.maskamt', label: 'PMaskAmt', group: 'particle',
+    min: 0, max: 100, value: 0, unit: '%' });
 
   // ── Slit Scan ─────────────────────────────────────────────────────────────
   ps.register({ id: 'slitscan.active', label: 'SlitScan',   group: 'slitscan',
