@@ -2506,7 +2506,7 @@ async function main() {
     'Tunnel': `void main() {
   vec2 uv = vUv - 0.5;
   float a = atan(uv.y, uv.x);
-  float r = length(uv);
+  float r = max(length(uv), 0.0001);
   vec2 tuv = vec2(a / 6.283 + 0.5, 0.5 / r + uTime * 0.2);
   gl_FragColor = texture2D(uTexture, fract(tuv));
 }`,
