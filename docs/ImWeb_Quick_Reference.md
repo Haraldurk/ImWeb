@@ -1,6 +1,6 @@
 # ImWeb — Quick Reference
 
-> Browser-based real-time video synthesis instrument · v0.5.0
+> Browser-based real-time video synthesis instrument · v0.5.1
 
 ---
 
@@ -209,4 +209,4 @@ Drag any supported file onto the output canvas to load it.
 
 ---
 
-*ImWeb v0.5.0 · H. Karlsson · [[ImWeb_Full_Manual|Full manual →]]*
+*ImWeb v0.5.1 · H. Karlsson · [[ImWeb_Full_Manual|Full manual →]]*
