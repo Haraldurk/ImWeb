@@ -774,6 +774,8 @@ async function main() {
   .h{position:absolute;width:40px;height:40px;margin:-20px 0 0 -20px;border:2px solid #c8a020;border-radius:50%;background:rgba(0,0,0,0.5);cursor:crosshair;pointer-events:all;touch-action:none;box-shadow:0 0 10px rgba(0,0,0,0.9);transition:border-color .1s,transform .1s}
   .h:hover{border-color:#fff;transform:scale(1.2)}
   .h:active{border-color:#fff;background:rgba(255,255,255,0.15)}
+  .h.sel{border-color:#fff;box-shadow:0 0 0 2px #c8a020,0 0 14px rgba(0,0,0,0.9)}
+  #hint{position:fixed;bottom:8px;left:50%;transform:translateX(-50%);font:11px/1 monospace;color:rgba(255,255,255,0.35);pointer-events:none;letter-spacing:1px;white-space:nowrap}
 </style>
 </head>
 <body>
@@ -784,11 +786,47 @@ async function main() {
   <div class="h" id="h-br"></div>
   <div class="h" id="h-bl"></div>
 </div>
+<div id="hint">G grid · click handle + arrows to nudge · Shift = 10×</div>
 <script>
   const c=document.getElementById('out'),ctx=c.getContext('2d');
   const ho=document.getElementById('ho');
   const hs={tl:document.getElementById('h-tl'),tr:document.getElementById('h-tr'),br:document.getElementById('h-br'),bl:document.getElementById('h-bl')};
   let lastBitmap=null,lastCorners=null;
+  let gridActive=false,selectedCorner=null;
+
+  function drawGrid(){
+    if(!gridActive||!lastCorners)return;
+    const W=c.width,H=c.height,DIV=10;
+    ctx.save();
+    ctx.strokeStyle='rgba(255,255,255,0.55)';
+    ctx.lineWidth=1;
+    for(let i=0;i<=DIV;i++){
+      const x=W*i/DIV,y=H*i/DIV;
+      ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,H);ctx.stroke();
+      ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke();
+    }
+    // centre crosshair
+    ctx.strokeStyle='rgba(255,200,0,0.8)';ctx.lineWidth=1.5;
+    ctx.beginPath();ctx.moveTo(W*.5-20,H*.5);ctx.lineTo(W*.5+20,H*.5);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(W*.5,H*.5-20);ctx.lineTo(W*.5,H*.5+20);ctx.stroke();
+    ctx.restore();
+  }
+
+  function setSelected(corner){
+    selectedCorner=corner;
+    for(const[k,h]of Object.entries(hs))h.classList.toggle('sel',k===corner);
+  }
+
+  function nudgeCorner(corner,dx,dy){
+    if(!lastCorners||!lastCorners[corner])return;
+    const x=Math.max(0,Math.min(1,lastCorners[corner].x+dx/window.innerWidth));
+    const y=Math.max(0,Math.min(1,lastCorners[corner].y+dy/window.innerHeight));
+    lastCorners[corner]={x,y};
+    hs[corner].style.left=(x*window.innerWidth)+'px';
+    hs[corner].style.top=(y*window.innerHeight)+'px';
+    applyTransform();
+    window.opener?.postMessage({type:'projmap',corner,x,y},'*');
+  }
 
   function computeProjectiveMatrix(x0,y0,x1,y1,x2,y2,x3,y3){
     const dx1=x1-x2,dy1=y1-y2,dx2=x3-x2,dy2=y3-y2;
@@ -843,13 +881,17 @@ async function main() {
       const sc=Math.min(sw/iw,sh/ih),dw=iw*sc,dh=ih*sc;
       ctx.drawImage(lastBitmap,0,0,iw,ih,(sw-dw)/2,(sh-dh)/2,dw,dh);
     }
+    drawGrid();
   }
 
-  // Drag handles — send corner updates back to main window
+  // Drag handles — send corner updates back to main window; click to select for nudge
   for(const[corner,h]of Object.entries(hs)){
     h.addEventListener('pointerdown',e=>{
       e.preventDefault();h.setPointerCapture(e.pointerId);
+      setSelected(corner);
+      let moved=false;
       const mv=e=>{
+        moved=true;
         const x=Math.max(0,Math.min(1,e.clientX/window.innerWidth));
         const y=Math.max(0,Math.min(1,e.clientY/window.innerHeight));
         if(lastCorners)lastCorners[corner]={x,y};
@@ -862,6 +904,20 @@ async function main() {
       h.addEventListener('pointerup',()=>h.removeEventListener('pointermove',mv),{once:true});
     });
   }
+
+  // Arrow-key nudge for selected corner; G = toggle calibration grid
+  document.addEventListener('keydown',e=>{
+    if(e.key==='g'||e.key==='G'){
+      gridActive=!gridActive;draw();return;
+    }
+    if(!selectedCorner||!lastCorners)return;
+    const step=e.shiftKey?10:1;
+    const map={ArrowLeft:[-step,0],ArrowRight:[step,0],ArrowUp:[0,-step],ArrowDown:[0,step]};
+    const d=map[e.key];
+    if(!d)return;
+    e.preventDefault();
+    nudgeCorner(selectedCorner,d[0],d[1]);
+  });
 
   window.addEventListener('resize',resize);
   resize();
