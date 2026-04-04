@@ -665,6 +665,8 @@ export function registerCoreParameters(ps) {
     min: 0, max: 5.0, value: 0.2, step: 0.01 });
   ps.register({ id: 'sdf.lumaThresh', label: 'LumaThresh',  group: 'sdf',
     min: 0, max: 1.0, value: 0.2, step: 0.01 });
+  ps.register({ id: 'sdf.texBlend', label: 'TexBlend', group: 'sdf',
+    min: 0, max: 1.0, value: 0.8, step: 0.01 });
 
   // ── Draw ──────────────────────────────────────────────────────────────────
   ps.register({ id: 'draw.pensize',   label: 'DrawPenSize',  group: 'draw',

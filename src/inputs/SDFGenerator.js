@@ -35,7 +35,8 @@ uniform float uKifsAngle;   // KIFS rotation angle (radians)
 uniform float uLumaWarp;    // video luma displacement amplitude
 uniform float uSdfSpeed;    // animation time scale (0 = freeze)
 uniform float uLumaThresh;  // smoothstep low edge — cuts noise below this luma
-uniform sampler2D uFgTex;   // foreground video texture (world-space XY projection)
+uniform float uTexBlend;    // 0=base material, 1=triplanar video texture
+uniform sampler2D uFgTex;   // foreground video texture (luma warp + triplanar)
 varying vec2 vUv;
 
 // ── SDF primitives ───────────────────────────────────────────────────────────
@@ -199,7 +200,19 @@ void main() {
     vec3  col   = vec3(0.15 + diff * 0.7 + spec * 0.4,
                        0.05 + diff * 0.35,
                        0.25 + diff * 0.6 + spec * 0.2);
-    gl_FragColor = vec4(col, 1.0);
+    // Triplanar video projection: sample uFgTex from each world-space axis,
+    // weighted by abs(normal) so the dominant face contributes most.
+    vec3  triW     = abs(n);
+    triW = triW / (triW.x + triW.y + triW.z);
+    float tsc      = 0.5; // world-space scale — repeats every 2 units
+    vec3  tpX      = texture2D(uFgTex, p.yz * tsc).rgb;
+    vec3  tpY      = texture2D(uFgTex, p.xz * tsc).rgb;
+    vec3  tpZ      = texture2D(uFgTex, p.xy * tsc).rgb;
+    vec3  texColor = tpX * triW.x + tpY * triW.y + tpZ * triW.z;
+    // Modulate tex sample by lighting so shading is preserved at uTexBlend=1
+    vec3  litTex   = texColor * (0.15 + diff * 0.85 + spec * 0.3);
+    vec3  finalCol = mix(col, litTex, uTexBlend);
+    gl_FragColor = vec4(finalCol, 1.0);
   } else {
     gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0);
   }
@@ -233,6 +246,7 @@ export class SDFGenerator {
         uLumaWarp:    { value: 0 },
         uSdfSpeed:    { value: 0.2 },
         uLumaThresh:  { value: 0.2 },
+        uTexBlend:    { value: 0.8 },
         uFgTex:       { value: new THREE.DataTexture(new Uint8Array([0,0,0,255]), 1, 1) },
       },
       vertexShader:   VERT,
@@ -269,6 +283,7 @@ export class SDFGenerator {
     u.uLumaWarp.value   = ps.get('sdf.lumaWarp').value;
     u.uSdfSpeed.value   = ps.get('sdf.speed').value;
     u.uLumaThresh.value = ps.get('sdf.lumaThresh').value;
+    u.uTexBlend.value   = ps.get('sdf.texBlend').value;
     if (fgTex) u.uFgTex.value = fgTex;
 
     this.renderer.setRenderTarget(this._rt);
