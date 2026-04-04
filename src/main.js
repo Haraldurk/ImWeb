@@ -2412,12 +2412,18 @@ async function main() {
   function applyGLSL() {
     const src = glslEditor?.value;
     if (!src) return;
-    // Inject missing declarations (for user convenience)
-    const needsVarying    = !src.includes('varying vec2 vUv');
-    const needsTexUniform = !src.includes('uniform sampler2D uTexture');
-    let fullSrc = src;
-    if (needsTexUniform) fullSrc = `uniform sampler2D uTexture;\n${fullSrc}`;
-    if (needsVarying)    fullSrc = `varying vec2 vUv;\n${fullSrc}`;
+    // Prepend all standard pipeline uniform declarations if absent,
+    // so preset shaders don't need to redeclare them.
+    const header = [
+      src.includes('varying vec2 vUv')            ? '' : 'varying vec2 vUv;',
+      src.includes('uniform sampler2D uTexture')  ? '' : 'uniform sampler2D uTexture;',
+      src.includes('uniform float uTime')         ? '' : 'uniform float uTime;',
+      src.includes('uniform float uParam1')       ? '' : 'uniform float uParam1;',
+      src.includes('uniform float uParam2')       ? '' : 'uniform float uParam2;',
+      src.includes('uniform float uParam3')       ? '' : 'uniform float uParam3;',
+      src.includes('uniform float uParam4')       ? '' : 'uniform float uParam4;',
+    ].filter(Boolean).join('\n');
+    const fullSrc = header ? `${header}\n${src}` : src;
     const err = pipeline.setCustomShader(fullSrc);
     if (glslError) {
       glslError.style.display = err ? 'block' : 'none';
