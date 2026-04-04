@@ -5,7 +5,8 @@
  *
  * Parameters:
  *   sdf.active   — toggle rendering
- *   sdf.blend    — smin melt factor k
+ *   sdf.opMode   — 0=Soft Union, 1=Soft Cut, 2=Morph
+ *   sdf.opAmount — blend radius / cut depth / morph factor
  *   sdf.distance — orbit radius (world units, or cell fraction when repeat > 0)
  *   sdf.shape    — primitive: 0=Sphere, 1=Box, 2=Torus
  *   sdf.repeat   — domain repetition cell spacing; 0 = off
@@ -22,7 +23,8 @@ void main() { vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }
 const FRAG = `
 precision highp float;
 uniform float uTime;
-uniform float uBlend;
+uniform float uSdfOpMode;   // 0=Soft Union, 1=Soft Cut, 2=Morph (float for WebGL compat)
+uniform float uSdfOpAmount; // blend / cut / morph amount 0–1
 uniform float uDistance;
 uniform float uShape;    // 0=Sphere, 1=Box, 2=Torus (float for WebGL compat)
 uniform float uRepeat;   // domain repetition spacing; 0 = off
@@ -59,6 +61,12 @@ float smin(float a, float b, float k) {
   return min(a, b) - h * h * h * k / 6.0;
 }
 
+// ── Smooth subtraction (d2 carves into d1) ──────────────────────────────────
+float opSmoothSub(float d1, float d2, float k) {
+  float h = max(k - abs(-d2 - d1), 0.0) / k;
+  return max(-d2, d1) + h * h * h * k / 6.0;
+}
+
 // ── 2D rotation helper ───────────────────────────────────────────────────────
 mat2 rot2D(float a) {
   float s = sin(a), c = cos(a);
@@ -92,7 +100,22 @@ float scene(vec3 p) {
   vec3 cA   = vec3( cos(ang) * rad,  sin(ang * 0.7) * 0.3,  sin(ang * 0.4) * 0.2);
   vec3 cB   = vec3(-cos(ang) * rad, -sin(ang * 0.7) * 0.3,  cos(ang * 0.4) * 0.2);
 
-  float d1 = smin(sdShape(kp - cA), sdShape(kp - cB), max(uBlend, 0.001));
+  float dA = sdShape(kp - cA);
+  float dB = sdShape(kp - cB);
+  // k scales opAmount from [0,1] into a useful blend radius.
+  // For Soft Cut, uSdfOpAmount=0 means no cut; =1 means deep bite.
+  float k  = max(uSdfOpAmount, 0.001);
+  float d1;
+  if (uSdfOpMode > 1.5) {
+    // Morph: linearly interpolate between the two raw distance fields
+    d1 = mix(dA, dB, uSdfOpAmount);
+  } else if (uSdfOpMode > 0.5) {
+    // Soft Cut: dB carves into dA
+    d1 = opSmoothSub(dA, dB, k);
+  } else {
+    // Soft Union: smooth blend both shapes together
+    d1 = smin(dA, dB, k);
+  }
 
   // Surface displacement: sin-product warp on the distance field.
   // Uses q (cell-local) so displacement tiles cleanly with repetition.
@@ -182,7 +205,8 @@ export class SDFGenerator {
     this._mat = new THREE.ShaderMaterial({
       uniforms: {
         uTime:       { value: 0 },
-        uBlend:      { value: 0.5 },
+        uSdfOpMode:   { value: 0 },
+        uSdfOpAmount: { value: 0.5 },
         uDistance:   { value: 1.5 },
         uShape:      { value: 0 },
         uRepeat:     { value: 0 },
@@ -209,7 +233,8 @@ export class SDFGenerator {
     this._time += dt;
     const u       = this._mat.uniforms;
     u.uTime.value     = this._time;
-    u.uBlend.value    = ps.get('sdf.blend').value;
+    u.uSdfOpMode.value   = ps.get('sdf.opMode').value;
+    u.uSdfOpAmount.value = ps.get('sdf.opAmount').value;
     u.uDistance.value = ps.get('sdf.distance').value;
     u.uShape.value    = ps.get('sdf.shape').value;
     u.uRepeat.value   = ps.get('sdf.repeat').value;

@@ -637,8 +637,10 @@ export function registerCoreParameters(ps) {
   // ── SDF Generator ────────────────────────────────────────────────────────
   ps.register({ id: 'sdf.active',   label: 'SDFActive', group: 'sdf',
     type: PARAM_TYPE.TOGGLE, value: 0 });
-  ps.register({ id: 'sdf.blend',    label: 'SDFBlend',  group: 'sdf',
-    min: 0, max: 2.0, value: 0.5, step: 0.01 });
+  ps.register({ id: 'sdf.opMode',   label: 'SDFOpMode', group: 'sdf',
+    type: PARAM_TYPE.SELECT, value: 0, options: ['Soft Union', 'Soft Cut', 'Morph'] });
+  ps.register({ id: 'sdf.opAmount', label: 'SDFOpAmt',  group: 'sdf',
+    min: 0, max: 1.0, value: 0.5, step: 0.01 });
   ps.register({ id: 'sdf.distance', label: 'SDFDist',   group: 'sdf',
     min: 0, max: 5.0, value: 1.5, step: 0.05, unit: 'u' });
   ps.register({ id: 'sdf.shape',  label: 'SDFShape',  group: 'sdf',
