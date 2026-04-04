@@ -2710,7 +2710,9 @@ void main() {
 
   window.addEventListener('keydown', e => {
     if (e.metaKey || e.ctrlKey) return;
-    if (ps.get('global.keylock').value && e.target.closest('input, textarea')) return;
+    if ((e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') && e.key !== 'Escape') return;
+    const isLocked = ps.get('global.keylock').value > 0.5;
+    if (isLocked && (/^[vmcbskdxhtf]$/i.test(e.key) || /^Digit[0-9]$/.test(e.code))) return;
 
     // / = open parameter search
     if (e.key === '/' && !e.target.closest('input, textarea')) {
@@ -2752,7 +2754,7 @@ void main() {
     // c = Capture buffer
     if (e.key === 'c' && !e.metaKey) { e.preventDefault(); ps.trigger('buffer.cap_screen'); }
     // v = Camera on/off
-    if (e.key === 'v' && !e.metaKey) { e.preventDefault(); ps.toggle('camera.active'); }
+    if (e.key === 'v' && !e.metaKey) { e.preventDefault(); ps.set('camera.active', ps.get('camera.active').value > 0.5 ? 0 : 1); }
     // m = Movie on/off
     if (e.key === 'm' && !e.metaKey) { e.preventDefault(); ps.toggle('movie.active'); }
     // t = Tap tempo
