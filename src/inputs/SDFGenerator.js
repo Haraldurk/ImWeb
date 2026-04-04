@@ -33,6 +33,8 @@ uniform vec3  uSDFCamPos; // camera position; always looks at origin
 uniform float uKifsIter;    // KIFS fold iterations 0–5 (float for WebGL compat)
 uniform float uKifsAngle;   // KIFS rotation angle (radians)
 uniform float uLumaWarp;    // video luma displacement amplitude
+uniform float uSdfSpeed;    // animation time scale (0 = freeze)
+uniform float uLumaThresh;  // smoothstep low edge — cuts noise below this luma
 uniform sampler2D uFgTex;   // foreground video texture (world-space XY projection)
 varying vec2 vUv;
 
@@ -98,7 +100,7 @@ float scene(vec3 p) {
 
   // Orbit radius — when repeating, derive from cell spacing so shapes stay in-cell.
   float rad = (uRepeat > 0.1) ? uRepeat * 0.3 : uDistance * 0.35;
-  float ang = uTime * 0.8;
+  float ang = uTime * 0.8 * uSdfSpeed;
   vec3 cA   = vec3( cos(ang) * rad,  sin(ang * 0.7) * 0.3,  sin(ang * 0.4) * 0.2);
   vec3 cB   = vec3(-cos(ang) * rad, -sin(ang * 0.7) * 0.3,  cos(ang * 0.4) * 0.2);
 
@@ -121,9 +123,10 @@ float scene(vec3 p) {
 
   // Surface displacement: sin-product warp on the distance field.
   // Uses q (cell-local) so displacement tiles cleanly with repetition.
-  float displacement = sin(uTime + q.x * 5.0)
-                     * sin(uTime + q.y * 5.0)
-                     * sin(uTime + q.z * 5.0)
+  float sdfT = uTime * uSdfSpeed;
+  float displacement = sin(sdfT + q.x * 5.0)
+                     * sin(sdfT + q.y * 5.0)
+                     * sin(sdfT + q.z * 5.0)
                      * uWarp;
 
   // Video luma displacement: project world-space XY onto [0,1] UVs, sample the
@@ -132,6 +135,7 @@ float scene(vec3 p) {
   vec2 lumaUv  = clamp(p.xy * 0.5 + 0.5, 0.0, 1.0);
   vec3 lumaRgb = texture2D(uFgTex, lumaUv).rgb;
   float luma   = dot(lumaRgb, vec3(0.2126, 0.7152, 0.0722));
+  luma = smoothstep(uLumaThresh, 1.0, luma);
   float lumaDsp = luma * uLumaWarp;
 
   return d1 + displacement + lumaDsp;
@@ -226,8 +230,10 @@ export class SDFGenerator {
         uSDFCamPos:  { value: new THREE.Vector3(0, 0, 5) },
         uKifsIter:   { value: 0 },
         uKifsAngle:  { value: 0 },
-        uLumaWarp:   { value: 0 },
-        uFgTex:      { value: new THREE.DataTexture(new Uint8Array([0,0,0,255]), 1, 1) },
+        uLumaWarp:    { value: 0 },
+        uSdfSpeed:    { value: 0.2 },
+        uLumaThresh:  { value: 0.2 },
+        uFgTex:       { value: new THREE.DataTexture(new Uint8Array([0,0,0,255]), 1, 1) },
       },
       vertexShader:   VERT,
       fragmentShader: FRAG,
@@ -260,7 +266,9 @@ export class SDFGenerator {
     );
     u.uKifsIter.value  = ps.get('sdf.kifsIter').value;
     u.uKifsAngle.value = ps.get('sdf.kifsAngle').value * (Math.PI / 180);
-    u.uLumaWarp.value  = ps.get('sdf.lumaWarp').value;
+    u.uLumaWarp.value   = ps.get('sdf.lumaWarp').value;
+    u.uSdfSpeed.value   = ps.get('sdf.speed').value;
+    u.uLumaThresh.value = ps.get('sdf.lumaThresh').value;
     if (fgTex) u.uFgTex.value = fgTex;
 
     this.renderer.setRenderTarget(this._rt);
