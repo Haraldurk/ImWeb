@@ -3518,6 +3518,15 @@ void main() {
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('/sw.js').catch(() => {});
   }
+
+  // Preload default clip
+  try {
+    await movieInput.addClip('/_imweb_ready/DJI_20210212_124450_206_video_ALL-I.mp4');
+    refreshClipsList();
+    if (!ps.get('movie.active').value) ps.set('movie.active', 1);
+  } catch (e) {
+    console.warn('[ImWeb] Default clip not available:', e.message);
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
