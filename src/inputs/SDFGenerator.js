@@ -30,8 +30,10 @@ uniform float uShape;    // 0=Sphere, 1=Box, 2=Torus (float for WebGL compat)
 uniform float uRepeat;   // domain repetition spacing; 0 = off
 uniform float uWarp;      // surface displacement amplitude
 uniform vec3  uSDFCamPos; // camera position; always looks at origin
-uniform float uKifsIter;  // KIFS fold iterations 0–5 (float for WebGL compat)
-uniform float uKifsAngle; // KIFS rotation angle (radians)
+uniform float uKifsIter;    // KIFS fold iterations 0–5 (float for WebGL compat)
+uniform float uKifsAngle;   // KIFS rotation angle (radians)
+uniform float uLumaWarp;    // video luma displacement amplitude
+uniform sampler2D uFgTex;   // foreground video texture (world-space XY projection)
 varying vec2 vUv;
 
 // ── SDF primitives ───────────────────────────────────────────────────────────
@@ -123,7 +125,16 @@ float scene(vec3 p) {
                      * sin(uTime + q.y * 5.0)
                      * sin(uTime + q.z * 5.0)
                      * uWarp;
-  return d1 + displacement;
+
+  // Video luma displacement: project world-space XY onto [0,1] UVs, sample the
+  // foreground texture, compute Rec.709 luminance, displace outward.
+  // clamp keeps UVs in-bounds; at uLumaWarp=0 this term is zero — no cost.
+  vec2 lumaUv  = clamp(p.xy * 0.5 + 0.5, 0.0, 1.0);
+  vec3 lumaRgb = texture2D(uFgTex, lumaUv).rgb;
+  float luma   = dot(lumaRgb, vec3(0.2126, 0.7152, 0.0722));
+  float lumaDsp = luma * uLumaWarp;
+
+  return d1 + displacement + lumaDsp;
 }
 
 // ── Normal (6-sample central differences) ────────────────────────────────────
@@ -158,10 +169,11 @@ void main() {
   mat3 cam = lookAt(ro, vec3(0.0), vec3(0.0, 1.0, 0.0));
   vec3 rd  = cam * normalize(vec3(uv * 0.75, -1.0)); // ~75° FOV (focal = 1/tan(37.5°) ≈ 1.33, uv scaled 0.75)
 
-  // Conservative step scaling: displacement inflates the Lipschitz constant
-  // by up to 5 * uWarp. Dividing by (1 + uWarp * 2.5) keeps the marcher
-  // stable at all warp values. At uWarp=0, stepScale=1.0 — zero cost.
-  float stepScale = 1.0 / (1.0 + uWarp * 2.5);
+  // Conservative step scaling: each displacement term inflates the Lipschitz
+  // constant. Combine both factors multiplicatively so neither overshoots.
+  // At uWarp=0 and uLumaWarp=0 both divisors collapse to 1 — zero cost.
+  float stepScale = (1.0 / (1.0 + uWarp * 2.5))
+                  * (1.0 / (1.0 + uLumaWarp * 2.0));
 
   // tMax: march at least to origin + generous margin so far cameras still hit.
   float tMax = length(ro) + 8.0;
@@ -214,6 +226,8 @@ export class SDFGenerator {
         uSDFCamPos:  { value: new THREE.Vector3(0, 0, 5) },
         uKifsIter:   { value: 0 },
         uKifsAngle:  { value: 0 },
+        uLumaWarp:   { value: 0 },
+        uFgTex:      { value: new THREE.DataTexture(new Uint8Array([0,0,0,255]), 1, 1) },
       },
       vertexShader:   VERT,
       fragmentShader: FRAG,
@@ -226,7 +240,7 @@ export class SDFGenerator {
     this._scene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), this._mat));
   }
 
-  tick(ps, dt) {
+  tick(ps, dt, fgTex) {
     this.active = !!ps.get('sdf.active').value;
     if (!this.active) return;
 
@@ -246,6 +260,8 @@ export class SDFGenerator {
     );
     u.uKifsIter.value  = ps.get('sdf.kifsIter').value;
     u.uKifsAngle.value = ps.get('sdf.kifsAngle').value * (Math.PI / 180);
+    u.uLumaWarp.value  = ps.get('sdf.lumaWarp').value;
+    if (fgTex) u.uFgTex.value = fgTex;
 
     this.renderer.setRenderTarget(this._rt);
     this.renderer.render(this._scene, this._camera);

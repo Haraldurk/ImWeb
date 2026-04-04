@@ -659,6 +659,8 @@ export function registerCoreParameters(ps) {
     type: PARAM_TYPE.SELECT, value: 0, options: ['0','1','2','3','4','5'] });
   ps.register({ id: 'sdf.kifsAngle', label: 'KIFSAngle', group: 'sdf',
     min: 0, max: 360, value: 0, step: 0.5, unit: '°' });
+  ps.register({ id: 'sdf.lumaWarp', label: 'LumaWarp', group: 'sdf',
+    min: 0, max: 2.0, value: 0, step: 0.01 });
 
   // ── Draw ──────────────────────────────────────────────────────────────────
   ps.register({ id: 'draw.pensize',   label: 'DrawPenSize',  group: 'draw',

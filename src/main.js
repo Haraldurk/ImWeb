@@ -3126,7 +3126,7 @@ void main() {
       drawLayer.texture,                                            // 5 Draw
     ];
     particles.tick(ps, dt, _pmSrcMap[ps.get('particle.masksrc').value] ?? null);
-    sdfGen.tick(ps, dt);
+    sdfGen.tick(ps, dt, _resolveLayerTex(ps.get('layer.fg').value));
 
     // Animate Color2 gradient when speed is non-zero
     const _c2speed = ps.get('color2.speed')?.value ?? 0;
