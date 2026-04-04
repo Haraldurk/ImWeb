@@ -6,7 +6,7 @@
 
 Real-time video compositing, 3D scene integration, and a complete parameter/controller mapping system — all in a Progressive Web App.
 
-Current version: **v0.4.2**
+Current version: **v0.5.0**
 
 ---
 
@@ -110,7 +110,7 @@ src/
 
 ---
 
-## Features (v0.4.2)
+## Features (v0.5.0)
 
 ### Input sources
 - [x] Camera (WebRTC, auto-start on load)
@@ -124,7 +124,7 @@ src/
 - [x] Text layer
 - [x] GPU particle system
 - [x] Sequencer buffers ×3 — record and loop any source; variable frame count (4–480 frames)
-- [x] SDF raymarching generator — GPU-raymarched metaballs routable as pipeline source; shape selection, domain repetition, surface displacement
+- [x] SDF raymarching generator — GPU-raymarched metaballs routable as pipeline source; Sphere/Box/Torus shapes; KIFS fractal folding; camera navigation; domain repetition; surface displacement; luma warp; triplanar video texturing; AO + glow; HSV colour; glass refraction + Fresnel; dedicated texSrc/refractSrc routing
 - [x] Drag-and-drop to load video/image files
 
 ### Effects chain
@@ -179,30 +179,31 @@ src/
 - [x] Ghost mode — dims main canvas when second screen is active
 - [x] Output resolution — Fit / 540p / 720p / 1080p / Half
 - [x] WebM recording
+- [x] Non-realtime frame capture — 📷 pauses render loop; Step Frame / Auto-Run exports numbered PNG sequence
 - [x] Cmd+S quick-save preset
 - [x] Presets + 128 Display States per preset (IndexedDB)
+- [x] Factory demo presets — 5 camera-free presets load on first launch
 
 ### UI
 - [x] Signal path display — float or dock
-- [x] Live GLSL editor tab with 10 built-in examples
+- [x] Live GLSL editor — 10 built-in presets; auto-injects standard uniforms (uTexture, uTime, uParam1–4, vUv)
+- [x] First-visit onboarding overlay (localStorage dismissed)
 - [x] LFO visualiser in context menu
 - [x] Vectorscope (Lissajous / waveform / FFT) as source
 - [x] Parameter search overlay (`/`)
 - [x] Keyboard help overlay (`?`)
 - [x] Audio VU meter in status bar
+- [x] Projection mapping — CSS homography corner-pin on second screen; calibration grid (G key); corner nudge (arrow keys)
 
 ---
 
 ## Planned
 
-### Phase 5 (in progress)
-- [ ] Factory demo presets (4–6, no camera required)
-- [ ] First-visit onboarding overlay
-- [ ] Keyboard shortcut lock toggle
-- [ ] MidiSync / AutoSync (frame rate locked to MIDI clock)
-- [ ] Performance profiling / GPU display
 ### Phase 6
-- [ ] Projection mapping (single quad corner-pin homography → multi-quad)
+- [ ] Performance profiling / GPU display
+- [ ] Multi-quad projection mapping (independent sources per quad)
+- [ ] Multi-cam workflow (per-layer camera selector)
+- [ ] Touch-optimised projection handles (iPad performance use)
 
 ---
 

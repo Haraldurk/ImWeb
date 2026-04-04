@@ -1,6 +1,6 @@
 # ImWeb — Quick Reference
 
-> Browser-based real-time video synthesis instrument · v0.4.2
+> Browser-based real-time video synthesis instrument · v0.5.0
 
 ---
 
@@ -30,7 +30,7 @@ FX Chain is **reorderable** by dragging nodes in the Signal Path display.
 | **Draw** | Freehand canvas, 1024×1024; map position to mouse |
 | **Text** | Live text, 512×512; Char/Word/Line advance mode |
 | **Particles** | GPU particle field; physics (gravity, wind, life) |
-| **SDF Generator** | GPU-raymarched metaballs; shape (Sphere/Box/Torus), domain repetition, surface displacement |
+| **SDF Generator** | GPU-raymarched metaballs; Sphere/Box/Torus; KIFS fractal folding; camera nav; luma warp; triplanar texturing; AO/glow; HSV colour; glass refraction; dedicated texture routing |
 | **Sequencers ×3** | Record/loop any source; 4–480 frames; independent |
 | **Vectorscope** | Audio visualiser (Lissajous / Waveform / FFT) |
 
@@ -156,13 +156,15 @@ Right-click any parameter row to assign.
 ## Status Bar (top)
 
 ```
-ImWeb  |  fps · CPU · VRAM  |  Preset N  |  BPM ♩  |  MIDI  OSC  VU  |  [FIT][FAST][MED][MAX][LOW]  [⊡][◫][◧][⛶][⏺][𝔸][⬡][⚙]
+ImWeb  |  fps · CPU · VRAM  |  Preset N  |  BPM ♩  |  MIDI  OSC  VU  |  [FIT][FAST][MED][MAX][LOW]  [⊡][◫][⌨][◧][⛶][⏺][📷][𝔸][⬡][⚙]
 ```
 
 - **BPM**: click = tap tempo · right-click = MIDI clock sync
 - **⊡** = second monitor popup (auto-letterbox)
 - **◫** = ghost mode (dim main canvas to 18% opacity)
+- **⌨** = keyboard lock (suppress shortcuts while typing)
 - **⏺** = record WebM
+- **📷** = frame capture mode — pause render, export PNG sequence
 
 ---
 
@@ -176,6 +178,8 @@ ImWeb  |  fps · CPU · VRAM  |  Preset N  |  BPM ♩  |  MIDI  OSC  VU  |  [FIT
 | Ghost mode | ◫ — dims main; second screen stays bright |
 | Output spy | ◧ / `Shift+V` — small 160×90 preview |
 | WebM recording | ⏺ button |
+| Frame capture | 📷 button — pauses render; Step Frame exports PNG; Auto-Run exports N frames |
+| Projection mapping | ⬡ button — corner-pin second screen; G=calibration grid; click handle + arrows to nudge |
 
 **Resolution buttons:** FIT · FAST (540p) · MED (720p) · MAX (1080p) · LOW (½)
 
@@ -205,4 +209,4 @@ Drag any supported file onto the output canvas to load it.
 
 ---
 
-*ImWeb v0.4.2 · H. Karlsson · [[ImWeb_Full_Manual|Full manual →]]*
+*ImWeb v0.5.0 · H. Karlsson · [[ImWeb_Full_Manual|Full manual →]]*
