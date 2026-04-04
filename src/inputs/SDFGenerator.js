@@ -36,6 +36,8 @@ uniform float uLumaWarp;    // video luma displacement amplitude
 uniform float uSdfSpeed;    // animation time scale (0 = freeze)
 uniform float uLumaThresh;  // smoothstep low edge — cuts noise below this luma
 uniform float uTexBlend;    // 0=base material, 1=triplanar video texture
+uniform float uAO;          // ambient occlusion strength (0=off, 1=full)
+uniform float uGlow;        // step-count glow intensity
 uniform sampler2D uFgTex;   // foreground video texture (luma warp + triplanar)
 varying vec2 vUv;
 
@@ -153,6 +155,21 @@ vec3 calcNormal(vec3 p) {
   ));
 }
 
+// ── Ambient Occlusion (IQ method) ────────────────────────────────────────────
+// Marches 5 steps outward along the normal, compares actual vs expected dist.
+// Returns 1.0 = fully lit, 0.0 = fully occluded.
+float calcAO(vec3 p, vec3 n) {
+  float occ = 0.0;
+  float sca = 1.0;
+  for (int i = 0; i < 5; i++) {
+    float h = 0.01 + 0.15 * float(i) / 4.0;
+    float d = scene(p + h * n);
+    occ += (h - d) * sca;
+    sca *= 0.85;
+  }
+  return clamp(1.0 - 2.5 * occ, 0.0, 1.0);
+}
+
 // ── LookAt camera ────────────────────────────────────────────────────────────
 // Builds a 3×3 rotation matrix so the camera at 'eye' points at 'target'.
 // rd = mat * normalize(vec3(uv, -focalLength))
@@ -184,11 +201,15 @@ void main() {
   float tMax = length(ro) + 8.0;
   float t = 0.0;
   float d = 0.0;
+  int stepCount = 0; // declared outside loop — GLSL ES loop vars are loop-scoped
   for (int i = 0; i < 96; i++) {
+    stepCount = i;
     d = scene(ro + rd * t);
     if (d < 0.001 || t > tMax) break;
     t += max(d, 0.001) * stepScale;
   }
+  float glowFactor = float(stepCount) / 96.0;
+  vec3  glowCol    = glowFactor * vec3(0.5, 0.1, 0.8) * uGlow;
 
   if (d < 0.001) {
     vec3  p     = ro + rd * t;
@@ -212,9 +233,13 @@ void main() {
     // Modulate tex sample by lighting so shading is preserved at uTexBlend=1
     vec3  litTex   = texColor * (0.15 + diff * 0.85 + spec * 0.3);
     vec3  finalCol = mix(col, litTex, uTexBlend);
+    finalCol *= mix(1.0, calcAO(p, n), uAO);
+    finalCol += glowCol;
     gl_FragColor = vec4(finalCol, 1.0);
   } else {
-    gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0);
+    // Background glow: rays that almost hit complex geometry take many steps —
+    // adding glowCol here produces the neon aura at SDF edges.
+    gl_FragColor = vec4(glowCol, 1.0);
   }
 }
 `;
@@ -247,6 +272,8 @@ export class SDFGenerator {
         uSdfSpeed:    { value: 0.2 },
         uLumaThresh:  { value: 0.2 },
         uTexBlend:    { value: 0.8 },
+        uAO:          { value: 0.5 },
+        uGlow:        { value: 0.2 },
         uFgTex:       { value: new THREE.DataTexture(new Uint8Array([0,0,0,255]), 1, 1) },
       },
       vertexShader:   VERT,
@@ -284,6 +311,8 @@ export class SDFGenerator {
     u.uSdfSpeed.value   = ps.get('sdf.speed').value;
     u.uLumaThresh.value = ps.get('sdf.lumaThresh').value;
     u.uTexBlend.value   = ps.get('sdf.texBlend').value;
+    u.uAO.value         = ps.get('sdf.ao').value;
+    u.uGlow.value       = ps.get('sdf.glow').value;
     if (fgTex) u.uFgTex.value = fgTex;
 
     this.renderer.setRenderTarget(this._rt);
