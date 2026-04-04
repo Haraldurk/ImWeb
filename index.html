@@ -48,6 +48,7 @@
       <button id="btn-spy"          title="Output spy preview (Shift+V)">◧</button>
       <button id="btn-fullscreen" title="Fullscreen output (Cmd+F)">⛶</button>
       <button id="btn-record"     title="Record output">⏺</button>
+      <button id="btn-capture"    title="Frame capture — pause render and export PNG frames">📷</button>
       <span class="status-sep"></span>
       <button id="btn-ai-narrator" title="AI Narrator — live signal path description (N)">𝔸</button>
       <button id="btn-ai-coach"    title="AI Coach — 30-second performance suggestions (P)">⬡</button>
@@ -473,6 +474,20 @@ void main() {
       </div>
       <button id="onboarding-dismiss">Start</button>
     </div>
+  </div>
+
+  <!-- FRAME CAPTURE PANEL -->
+  <div id="capture-panel" class="hidden">
+    <div class="cap-row">
+      <span id="cap-frame-label">Frame 0000</span>
+      <label style="display:flex;align-items:center;gap:4px;">FPS <input id="cap-fps" type="number" value="30" min="1" max="120" step="1"></label>
+    </div>
+    <div class="cap-row">
+      <button id="cap-step">Step Frame</button>
+      <label style="display:flex;align-items:center;gap:4px;">×<input id="cap-count" type="number" value="1" min="1" max="9999" step="1"></label>
+      <button id="cap-run">Auto-Run</button>
+    </div>
+    <button id="cap-close">Exit Capture</button>
   </div>
 
   <script type="module" src="/src/main.js"></script>

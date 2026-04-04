@@ -2618,6 +2618,84 @@ void main() {
     }
   });
 
+  // ── Frame Capture (non-realtime export) ──────────────────────────────────
+  let _captureMode    = false;
+  let _captureFrame   = 0;
+  let _captureRunning = false;
+
+  const _capPanel      = document.getElementById('capture-panel');
+  const _capFrameLabel = document.getElementById('cap-frame-label');
+
+  function _enterCaptureMode() {
+    _captureMode  = true;
+    _captureFrame = 0;
+    _capPanel?.classList.remove('hidden');
+    document.getElementById('btn-capture')?.classList.add('active');
+  }
+
+  function _exitCaptureMode() {
+    _captureMode    = false;
+    _captureRunning = false;
+    _capPanel?.classList.add('hidden');
+    document.getElementById('btn-capture')?.classList.remove('active');
+  }
+
+  function _stepCaptureFrame() {
+    const fps      = parseFloat(document.getElementById('cap-fps')?.value) || 30;
+    const fixedDt  = 1 / fps;
+    // Temporarily un-gate, render one deterministic frame, then re-gate
+    _captureMode = false;
+    pipeline.render(inputs, ps, fixedDt);
+    _captureMode = true;
+
+    // Read back pipeline.prev (last composited frame) and download as PNG
+    const rt = pipeline.prev;
+    const w = rt.width, h = rt.height;
+    const pixels = new Uint8Array(w * h * 4);
+    renderer.readRenderTargetPixels(rt, 0, 0, w, h, pixels);
+    const tmp = document.createElement('canvas');
+    tmp.width = w; tmp.height = h;
+    const ctx = tmp.getContext('2d');
+    const img = ctx.createImageData(w, h);
+    for (let row = 0; row < h; row++) {
+      const src = (h - 1 - row) * w * 4;
+      img.data.set(pixels.subarray(src, src + w * 4), row * w * 4);
+    }
+    ctx.putImageData(img, 0, 0);
+    const frameNum = String(_captureFrame).padStart(4, '0');
+    tmp.toBlob(blob => {
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `imweb-capture-${frameNum}.png`;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+    }, 'image/png');
+
+    _captureFrame++;
+    if (_capFrameLabel) _capFrameLabel.textContent = `Frame ${String(_captureFrame).padStart(4, '0')}`;
+  }
+
+  async function _autoCapture() {
+    if (_captureRunning) { _captureRunning = false; return; }
+    _captureRunning = true;
+    const count = parseInt(document.getElementById('cap-count')?.value) || 1;
+    const btn   = document.getElementById('cap-run');
+    for (let i = 0; i < count && _captureRunning; i++) {
+      _stepCaptureFrame();
+      if (btn) btn.textContent = `Stop (${i + 1}/${count})`;
+      await new Promise(r => setTimeout(r, 80)); // let browser flush download
+    }
+    _captureRunning = false;
+    if (btn) btn.textContent = 'Auto-Run';
+  }
+
+  document.getElementById('btn-capture')?.addEventListener('click', () => {
+    _captureMode ? _exitCaptureMode() : _enterCaptureMode();
+  });
+  document.getElementById('cap-step')?.addEventListener('click', _stepCaptureFrame);
+  document.getElementById('cap-run')?.addEventListener('click',  _autoCapture);
+  document.getElementById('cap-close')?.addEventListener('click', _exitCaptureMode);
+
   // ── Parameter search overlay (/ key) ─────────────────────────────────────
 
   const searchEl  = document.getElementById('param-search');
@@ -2973,7 +3051,8 @@ void main() {
       if (frameCount % autoSyncDiv !== 0) shouldRender = false;
     }
 
-    if (!shouldRender) return;
+    if (_captureMode)   return; // capture mode: render only on explicit step
+    if (!shouldRender)  return;
 
     // From here on, we are rendering a frame
     _pendingMidiFrame = false;

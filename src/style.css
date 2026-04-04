@@ -1858,3 +1858,48 @@ body.fullscreen-output #app {
   color: var(--accent);
   text-decoration: underline;
 }
+
+/* ── Frame Capture Panel ────────────────────────────────────────────────── */
+#capture-panel {
+  position: fixed;
+  top: var(--status-h);
+  right: 4px;
+  z-index: 1200;
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 230px;
+  font-size: 11px;
+  color: var(--text-1);
+}
+#capture-panel.hidden { display: none; }
+.cap-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+#capture-panel input[type=number] {
+  width: 52px;
+  background: var(--bg-4);
+  border: 1px solid var(--border);
+  color: var(--text-1);
+  padding: 2px 4px;
+  border-radius: 3px;
+  font-size: 11px;
+}
+#capture-panel button {
+  background: var(--bg-4);
+  border: 1px solid var(--border);
+  color: var(--text-1);
+  padding: 3px 8px;
+  border-radius: 3px;
+  cursor: pointer;
+  font-size: 11px;
+}
+#capture-panel button:hover { background: var(--bg-3); color: var(--accent); }
+#cap-frame-label { font-variant-numeric: tabular-nums; flex: 1; color: var(--accent); }
+#cap-close { align-self: flex-end; font-size: 10px; color: var(--text-2); }
