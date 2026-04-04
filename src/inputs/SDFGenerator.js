@@ -27,6 +27,7 @@ uniform float uDistance;
 uniform float uShape;    // 0=Sphere, 1=Box, 2=Torus (float for WebGL compat)
 uniform float uRepeat;   // domain repetition spacing; 0 = off
 uniform float uWarp;     // surface displacement amplitude
+uniform vec3  uSDFCamPos; // camera position; always looks at origin
 varying vec2 vUv;
 
 // ── SDF primitives ───────────────────────────────────────────────────────────
@@ -92,21 +93,39 @@ vec3 calcNormal(vec3 p) {
   ));
 }
 
+// ── LookAt camera ────────────────────────────────────────────────────────────
+// Builds a 3×3 rotation matrix so the camera at 'eye' points at 'target'.
+// rd = mat * normalize(vec3(uv, -focalLength))
+mat3 lookAt(vec3 eye, vec3 target, vec3 up) {
+  vec3 f = normalize(target - eye);
+  vec3 r = normalize(cross(f, up));
+  vec3 u = cross(r, f);
+  return mat3(r, u, -f);
+}
+
 void main() {
   vec2 uv = vUv * 2.0 - 1.0;
-  vec3 ro  = vec3(0.0, 0.0, 3.0);
-  vec3 rd  = normalize(vec3(uv * 1.5, -2.0)); // perspective ~75° FOV
+
+  // Guard: if the camera sits exactly on the origin the lookAt up-vector
+  // degenerates when eye==target. Nudge Z by a tiny epsilon to stay safe.
+  vec3 ro  = uSDFCamPos;
+  if (length(ro) < 0.001) ro = vec3(0.0, 0.0, 0.001);
+
+  mat3 cam = lookAt(ro, vec3(0.0), vec3(0.0, 1.0, 0.0));
+  vec3 rd  = cam * normalize(vec3(uv * 0.75, -1.0)); // ~75° FOV (focal = 1/tan(37.5°) ≈ 1.33, uv scaled 0.75)
 
   // Conservative step scaling: displacement inflates the Lipschitz constant
   // by up to 5 * uWarp. Dividing by (1 + uWarp * 2.5) keeps the marcher
   // stable at all warp values. At uWarp=0, stepScale=1.0 — zero cost.
   float stepScale = 1.0 / (1.0 + uWarp * 2.5);
 
+  // tMax: march at least to origin + generous margin so far cameras still hit.
+  float tMax = length(ro) + 8.0;
   float t = 0.0;
   float d = 0.0;
-  for (int i = 0; i < 80; i++) {
+  for (int i = 0; i < 96; i++) {
     d = scene(ro + rd * t);
-    if (d < 0.001 || t > 8.0) break;
+    if (d < 0.001 || t > tMax) break;
     t += max(d, 0.001) * stepScale;
   }
 
@@ -141,12 +160,13 @@ export class SDFGenerator {
 
     this._mat = new THREE.ShaderMaterial({
       uniforms: {
-        uTime:     { value: 0 },
-        uBlend:    { value: 0.5 },
-        uDistance: { value: 1.5 },
-        uShape:    { value: 0 },
-        uRepeat:   { value: 0 },
-        uWarp:     { value: 0 },
+        uTime:       { value: 0 },
+        uBlend:      { value: 0.5 },
+        uDistance:   { value: 1.5 },
+        uShape:      { value: 0 },
+        uRepeat:     { value: 0 },
+        uWarp:       { value: 0 },
+        uSDFCamPos:  { value: new THREE.Vector3(0, 0, 5) },
       },
       vertexShader:   VERT,
       fragmentShader: FRAG,
@@ -171,6 +191,11 @@ export class SDFGenerator {
     u.uShape.value    = ps.get('sdf.shape').value;
     u.uRepeat.value   = ps.get('sdf.repeat').value;
     u.uWarp.value     = ps.get('sdf.warp').value;
+    u.uSDFCamPos.value.set(
+      ps.get('sdf.camX').value,
+      ps.get('sdf.camY').value,
+      ps.get('sdf.camZ').value,
+    );
 
     this.renderer.setRenderTarget(this._rt);
     this.renderer.render(this._scene, this._camera);

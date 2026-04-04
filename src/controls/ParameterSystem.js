@@ -647,6 +647,12 @@ export function registerCoreParameters(ps) {
     min: 0, max: 10.0, value: 0, step: 0.05, unit: 'u' });
   ps.register({ id: 'sdf.warp',   label: 'SDFWarp',   group: 'sdf',
     min: 0, max: 2.0,  value: 0, step: 0.01 });
+  ps.register({ id: 'sdf.camX', label: 'SDFCamX', group: 'sdf',
+    min: -10, max: 10, value: 0, step: 0.05 });
+  ps.register({ id: 'sdf.camY', label: 'SDFCamY', group: 'sdf',
+    min: -10, max: 10, value: 0, step: 0.05 });
+  ps.register({ id: 'sdf.camZ', label: 'SDFCamZ', group: 'sdf',
+    min: -20, max: 20, value: 5, step: 0.05 });
 
   // ── Draw ──────────────────────────────────────────────────────────────────
   ps.register({ id: 'draw.pensize',   label: 'DrawPenSize',  group: 'draw',
