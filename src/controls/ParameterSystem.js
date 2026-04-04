@@ -671,6 +671,16 @@ export function registerCoreParameters(ps) {
     min: 0, max: 1.0, value: 0.5, step: 0.01 });
   ps.register({ id: 'sdf.glow', label: 'SDFGlow',  group: 'sdf',
     min: 0, max: 1.0, value: 0.2, step: 0.01 });
+  ps.register({ id: 'sdf.hue', label: 'SDFHue', group: 'sdf',
+    min: 0, max: 360, value: 0, step: 1, unit: '°' });
+  ps.register({ id: 'sdf.sat', label: 'SDFSat', group: 'sdf',
+    min: 0, max: 1.0, value: 0, step: 0.01 });
+  ps.register({ id: 'sdf.val', label: 'SDFVal', group: 'sdf',
+    min: 0, max: 1.0, value: 1.0, step: 0.01 });
+  ps.register({ id: 'sdf.refract', label: 'Refract', group: 'sdf',
+    min: 0, max: 1.0, value: 0, step: 0.01 });
+  ps.register({ id: 'sdf.fresnel', label: 'Fresnel', group: 'sdf',
+    min: 0, max: 1.0, value: 0.5, step: 0.01 });
 
   // ── Draw ──────────────────────────────────────────────────────────────────
   ps.register({ id: 'draw.pensize',   label: 'DrawPenSize',  group: 'draw',

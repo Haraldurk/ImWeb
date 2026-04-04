@@ -38,7 +38,12 @@ uniform float uLumaThresh;  // smoothstep low edge — cuts noise below this lum
 uniform float uTexBlend;    // 0=base material, 1=triplanar video texture
 uniform float uAO;          // ambient occlusion strength (0=off, 1=full)
 uniform float uGlow;        // step-count glow intensity
+uniform vec3  uBaseHSV;     // base material color (hue 0–1, sat 0–1, val 0–1)
+uniform float uRefract;     // glass refraction strength
+uniform float uFresnel;     // Fresnel edge rim strength
+uniform vec2  uResolution;  // render target size in pixels
 uniform sampler2D uFgTex;   // foreground video texture (luma warp + triplanar)
+uniform sampler2D uBgTex;   // background layer texture for refraction
 varying vec2 vUv;
 
 // ── SDF primitives ───────────────────────────────────────────────────────────
@@ -155,6 +160,13 @@ vec3 calcNormal(vec3 p) {
   ));
 }
 
+// ── HSV → RGB (compact IQ version) ──────────────────────────────────────────
+vec3 hsv2rgb(vec3 c) {
+  vec4 K = vec4(1.0, 2.0 / 3.0, 1.0 / 3.0, 3.0);
+  vec3 p = abs(fract(c.xxx + K.xyz) * 6.0 - K.www);
+  return c.z * mix(K.xxx, clamp(p - K.xxx, 0.0, 1.0), c.y);
+}
+
 // ── Ambient Occlusion (IQ method) ────────────────────────────────────────────
 // Marches 5 steps outward along the normal, compares actual vs expected dist.
 // Returns 1.0 = fully lit, 0.0 = fully occluded.
@@ -217,10 +229,8 @@ void main() {
     vec3  light = normalize(vec3(1.0, 1.5, 2.0));
     float diff  = clamp(dot(n, light), 0.0, 1.0);
     float spec  = pow(clamp(dot(reflect(-light, n), -rd), 0.0, 1.0), 32.0);
-    // Blue-magenta tint for distinct visual identity
-    vec3  col   = vec3(0.15 + diff * 0.7 + spec * 0.4,
-                       0.05 + diff * 0.35,
-                       0.25 + diff * 0.6 + spec * 0.2);
+    vec3  baseColor = hsv2rgb(uBaseHSV);
+    vec3  col       = baseColor * (0.2 + diff * 0.8) + vec3(spec * 0.5);
     // Triplanar video projection: sample uFgTex from each world-space axis,
     // weighted by abs(normal) so the dominant face contributes most.
     vec3  triW     = abs(n);
@@ -234,6 +244,11 @@ void main() {
     vec3  litTex   = texColor * (0.15 + diff * 0.85 + spec * 0.3);
     vec3  finalCol = mix(col, litTex, uTexBlend);
     finalCol *= mix(1.0, calcAO(p, n), uAO);
+    vec2  screenUV    = gl_FragCoord.xy / uResolution;
+    vec2  refractUV   = clamp(screenUV + n.xy * uRefract * 0.5, 0.0, 1.0);
+    vec3  glassColor  = texture2D(uBgTex, refractUV).rgb;
+    float fresnelTerm = pow(1.0 - max(dot(n, -rd), 0.0), 3.0) * uFresnel;
+    finalCol = mix(finalCol, glassColor, uRefract) + vec3(fresnelTerm);
     finalCol += glowCol;
     gl_FragColor = vec4(finalCol, 1.0);
   } else {
@@ -274,7 +289,12 @@ export class SDFGenerator {
         uTexBlend:    { value: 0.8 },
         uAO:          { value: 0.5 },
         uGlow:        { value: 0.2 },
+        uBaseHSV:     { value: new THREE.Vector3(0, 0, 1) },
+        uRefract:     { value: 0 },
+        uFresnel:     { value: 0.5 },
+        uResolution:  { value: new THREE.Vector2(width, height) },
         uFgTex:       { value: new THREE.DataTexture(new Uint8Array([0,0,0,255]), 1, 1) },
+        uBgTex:       { value: new THREE.DataTexture(new Uint8Array([0,0,0,255]), 1, 1) },
       },
       vertexShader:   VERT,
       fragmentShader: FRAG,
@@ -287,7 +307,7 @@ export class SDFGenerator {
     this._scene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), this._mat));
   }
 
-  tick(ps, dt, fgTex) {
+  tick(ps, dt, fgTex, bgTex) {
     this.active = !!ps.get('sdf.active').value;
     if (!this.active) return;
 
@@ -313,7 +333,15 @@ export class SDFGenerator {
     u.uTexBlend.value   = ps.get('sdf.texBlend').value;
     u.uAO.value         = ps.get('sdf.ao').value;
     u.uGlow.value       = ps.get('sdf.glow').value;
+    u.uBaseHSV.value.set(
+      ps.get('sdf.hue').value / 360,
+      ps.get('sdf.sat').value,
+      ps.get('sdf.val').value,
+    );
+    u.uRefract.value    = ps.get('sdf.refract').value;
+    u.uFresnel.value    = ps.get('sdf.fresnel').value;
     if (fgTex) u.uFgTex.value = fgTex;
+    if (bgTex) u.uBgTex.value = bgTex;
 
     this.renderer.setRenderTarget(this._rt);
     this.renderer.render(this._scene, this._camera);
@@ -322,7 +350,10 @@ export class SDFGenerator {
 
   get texture() { return this._rt.texture; }
 
-  resize(w, h) { this._rt.setSize(w, h); }
+  resize(w, h) {
+    this._rt.setSize(w, h);
+    this._mat.uniforms.uResolution.value.set(w, h);
+  }
 
   dispose() {
     this._rt.dispose();
