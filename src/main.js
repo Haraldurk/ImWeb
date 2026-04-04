@@ -766,16 +766,18 @@ async function main() {
 <html>
 <head>
 <title>ImWeb Output</title>
+<meta name="viewport" content="width=device-width,initial-scale=1.0,user-scalable=no">
 <style>
   *{margin:0;padding:0;box-sizing:border-box}
-  html,body{width:100%;height:100%;background:#000;overflow:hidden}
+  html,body{width:100%;height:100%;background:#000;overflow:hidden;touch-action:manipulation}
   canvas{display:block;position:absolute;top:0;left:0;transform-origin:0 0}
   #ho{position:fixed;inset:0;pointer-events:none;display:none}
-  .h{position:absolute;width:40px;height:40px;margin:-20px 0 0 -20px;border:2px solid #c8a020;border-radius:50%;background:rgba(0,0,0,0.5);cursor:crosshair;pointer-events:all;touch-action:none;box-shadow:0 0 10px rgba(0,0,0,0.9);transition:border-color .1s,transform .1s}
-  .h:hover{border-color:#fff;transform:scale(1.2)}
+  .h{position:absolute;width:64px;height:64px;margin:-32px 0 0 -32px;border:3px solid #c8a020;border-radius:50%;background:rgba(0,0,0,0.45);cursor:crosshair;pointer-events:all;touch-action:none;box-shadow:0 0 12px rgba(0,0,0,0.9);transition:border-color .1s,background .1s}
   .h:active{border-color:#fff;background:rgba(255,255,255,0.15)}
-  .h.sel{border-color:#fff;box-shadow:0 0 0 2px #c8a020,0 0 14px rgba(0,0,0,0.9)}
-  #hint{position:fixed;bottom:8px;left:50%;transform:translateX(-50%);font:11px/1 monospace;color:rgba(255,255,255,0.35);pointer-events:none;letter-spacing:1px;white-space:nowrap}
+  .h.sel{border-color:#fff;box-shadow:0 0 0 3px #c8a020,0 0 16px rgba(0,0,0,0.9)}
+  #toolbar{position:fixed;bottom:12px;left:50%;transform:translateX(-50%);display:none;gap:10px;align-items:center;pointer-events:all}
+  .tb-btn{background:rgba(0,0,0,0.6);border:1px solid rgba(255,255,255,0.25);color:rgba(255,255,255,0.7);font:13px/1 monospace;padding:8px 16px;border-radius:20px;cursor:pointer;touch-action:manipulation;white-space:nowrap;-webkit-tap-highlight-color:transparent}
+  .tb-btn:active,.tb-btn.on{border-color:#c8a020;color:#c8a020}
 </style>
 </head>
 <body>
@@ -786,10 +788,16 @@ async function main() {
   <div class="h" id="h-br"></div>
   <div class="h" id="h-bl"></div>
 </div>
-<div id="hint">G grid · click handle + arrows to nudge · Shift = 10×</div>
+<div id="toolbar">
+  <button class="tb-btn" id="tb-grid">⊞ Grid</button>
+  <button class="tb-btn" id="tb-fs">⛶ Full</button>
+</div>
 <script>
   const c=document.getElementById('out'),ctx=c.getContext('2d');
   const ho=document.getElementById('ho');
+  const toolbar=document.getElementById('toolbar');
+  const tbGrid=document.getElementById('tb-grid');
+  const tbFs=document.getElementById('tb-fs');
   const hs={tl:document.getElementById('h-tl'),tr:document.getElementById('h-tr'),br:document.getElementById('h-br'),bl:document.getElementById('h-bl')};
   let lastBitmap=null,lastCorners=null;
   let gridActive=false,selectedCorner=null;
@@ -905,10 +913,22 @@ async function main() {
     });
   }
 
-  // Arrow-key nudge for selected corner; G = toggle calibration grid
+  // Toolbar buttons (touch-friendly grid + fullscreen)
+  function toggleGrid(){
+    gridActive=!gridActive;
+    tbGrid.classList.toggle('on',gridActive);
+    draw();
+  }
+  tbGrid.addEventListener('click',toggleGrid);
+  tbFs.addEventListener('click',()=>{
+    if(!document.fullscreenElement)document.body.requestFullscreen?.();
+    else document.exitFullscreen?.();
+  });
+
+  // Arrow-key nudge for selected corner; G = toggle calibration grid (desktop)
   document.addEventListener('keydown',e=>{
     if(e.key==='g'||e.key==='G'){
-      gridActive=!gridActive;draw();return;
+      toggleGrid();return;
     }
     if(!selectedCorner||!lastCorners)return;
     const step=e.shiftKey?10:1;
@@ -927,18 +947,17 @@ async function main() {
     if(lastBitmap)lastBitmap.close();
     lastBitmap=e.data.bitmap;
     lastCorners=e.data.corners||null;
-    ho.style.display=lastCorners?'block':'none';
+    const active=!!lastCorners;
+    ho.style.display=active?'block':'none';
+    toolbar.style.display=active?'flex':'none';
     applyTransform();positionHandles();draw();
   });
 
+  // Fullscreen on double-click/tap (desktop fallback — toolbar button used on touch)
   window.addEventListener('dblclick',()=>{
     if(!document.fullscreenElement)document.body.requestFullscreen?.();
     else document.exitFullscreen?.();
   });
-
-  document.addEventListener('mouseenter',()=>{ if(lastCorners) ho.style.opacity='1'; });
-  document.addEventListener('mouseleave',()=>{ ho.style.opacity='0'; });
-  ho.style.transition='opacity 0.2s';
 <\/script>
 </body>
 </html>`);
