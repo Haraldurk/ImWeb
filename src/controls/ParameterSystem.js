@@ -681,6 +681,12 @@ export function registerCoreParameters(ps) {
     min: 0, max: 1.0, value: 0, step: 0.01 });
   ps.register({ id: 'sdf.fresnel', label: 'Fresnel', group: 'sdf',
     min: 0, max: 1.0, value: 0.5, step: 0.01 });
+  ps.register({ id: 'sdf.texSrc', label: 'TexSrc', group: 'sdf',
+    type: PARAM_TYPE.SELECT, value: 0,
+    options: ['FG Layer','Camera','Movie','Draw','Noise','Color','Buffer','3D','None'] });
+  ps.register({ id: 'sdf.refractSrc', label: 'RefractSrc', group: 'sdf',
+    type: PARAM_TYPE.SELECT, value: 0,
+    options: ['BG Layer','Camera','Movie','Draw','Noise','Color','Buffer','3D','None'] });
 
   // ── Draw ──────────────────────────────────────────────────────────────────
   ps.register({ id: 'draw.pensize',   label: 'DrawPenSize',  group: 'draw',

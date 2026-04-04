@@ -3126,9 +3126,20 @@ void main() {
       drawLayer.texture,                                            // 5 Draw
     ];
     particles.tick(ps, dt, _pmSrcMap[ps.get('particle.masksrc').value] ?? null);
-    sdfGen.tick(ps, dt,
-      _resolveLayerTex(ps.get('layer.fg').value),
-      _resolveLayerTex(ps.get('layer.bg').value));
+    // SDF dedicated texture source routing (decouples from layer.fg / layer.bg).
+    // SELECT index 0 = follow the pipeline FG/BG layer (default, preserves old behaviour).
+    // Indices 1–7 map to _resolveLayerTex's internal keys: Camera=0,Movie=1,Buffer=2,Color=3,Noise=4,3D=5,Draw=6
+    // Index 8 = None → null (no texture update this frame).
+    const _sdfSrcToLayerIdx = [null, 0, 1, 6, 4, 3, 2, 5, null];
+    const _sdfTexIdx = ps.get('sdf.texSrc').value;
+    const _sdfRefIdx = ps.get('sdf.refractSrc').value;
+    const _sdfTex = _sdfTexIdx === 0
+      ? _resolveLayerTex(ps.get('layer.fg').value)
+      : (_sdfSrcToLayerIdx[_sdfTexIdx] != null ? _resolveLayerTex(_sdfSrcToLayerIdx[_sdfTexIdx]) : null);
+    const _sdfRef = _sdfRefIdx === 0
+      ? _resolveLayerTex(ps.get('layer.bg').value)
+      : (_sdfSrcToLayerIdx[_sdfRefIdx] != null ? _resolveLayerTex(_sdfSrcToLayerIdx[_sdfRefIdx]) : null);
+    sdfGen.tick(ps, dt, _sdfTex, _sdfRef);
 
     // Animate Color2 gradient when speed is non-zero
     const _c2speed = ps.get('color2.speed')?.value ?? 0;
