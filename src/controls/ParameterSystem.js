@@ -653,6 +653,10 @@ export function registerCoreParameters(ps) {
     min: -10, max: 10, value: 0, step: 0.05 });
   ps.register({ id: 'sdf.camZ', label: 'SDFCamZ', group: 'sdf',
     min: -20, max: 20, value: 5, step: 0.05 });
+  ps.register({ id: 'sdf.kifsIter', label: 'KIFSIter', group: 'sdf',
+    type: PARAM_TYPE.SELECT, value: 0, options: ['0','1','2','3','4','5'] });
+  ps.register({ id: 'sdf.kifsAngle', label: 'KIFSAngle', group: 'sdf',
+    min: 0, max: 360, value: 0, step: 0.5, unit: '°' });
 
   // ── Draw ──────────────────────────────────────────────────────────────────
   ps.register({ id: 'draw.pensize',   label: 'DrawPenSize',  group: 'draw',

@@ -26,8 +26,10 @@ uniform float uBlend;
 uniform float uDistance;
 uniform float uShape;    // 0=Sphere, 1=Box, 2=Torus (float for WebGL compat)
 uniform float uRepeat;   // domain repetition spacing; 0 = off
-uniform float uWarp;     // surface displacement amplitude
+uniform float uWarp;      // surface displacement amplitude
 uniform vec3  uSDFCamPos; // camera position; always looks at origin
+uniform float uKifsIter;  // KIFS fold iterations 0–5 (float for WebGL compat)
+uniform float uKifsAngle; // KIFS rotation angle (radians)
 varying vec2 vUv;
 
 // ── SDF primitives ───────────────────────────────────────────────────────────
@@ -57,6 +59,12 @@ float smin(float a, float b, float k) {
   return min(a, b) - h * h * h * k / 6.0;
 }
 
+// ── 2D rotation helper ───────────────────────────────────────────────────────
+mat2 rot2D(float a) {
+  float s = sin(a), c = cos(a);
+  return mat2(c, -s, s, c);
+}
+
 // ── Scene SDF ────────────────────────────────────────────────────────────────
 float scene(vec3 p) {
   // Domain repetition: fold space into repeating cells.
@@ -65,13 +73,26 @@ float scene(vec3 p) {
     ? mod(p + 0.5 * uRepeat, uRepeat) - 0.5 * uRepeat
     : p;
 
+  // KIFS folding — Kaleidoscopic Iterated Function System.
+  // Each iteration: mirror all axis planes (abs), then rotate xy and xz to
+  // misalign successive folds and generate fractal complexity.
+  // Uses a fixed loop bound (5) with a float break for WebGL 1 compatibility.
+  // At uKifsIter == 0 the loop body never runs — zero behaviour change.
+  vec3 kp = q;
+  for (int ki = 0; ki < 5; ki++) {
+    if (float(ki) >= uKifsIter) break;
+    kp = abs(kp) - vec3(1.0);
+    kp.xy = rot2D(uKifsAngle) * kp.xy;
+    kp.xz = rot2D(uKifsAngle) * kp.xz;
+  }
+
   // Orbit radius — when repeating, derive from cell spacing so shapes stay in-cell.
   float rad = (uRepeat > 0.1) ? uRepeat * 0.3 : uDistance * 0.35;
   float ang = uTime * 0.8;
   vec3 cA   = vec3( cos(ang) * rad,  sin(ang * 0.7) * 0.3,  sin(ang * 0.4) * 0.2);
   vec3 cB   = vec3(-cos(ang) * rad, -sin(ang * 0.7) * 0.3,  cos(ang * 0.4) * 0.2);
 
-  float d1 = smin(sdShape(q - cA), sdShape(q - cB), max(uBlend, 0.001));
+  float d1 = smin(sdShape(kp - cA), sdShape(kp - cB), max(uBlend, 0.001));
 
   // Surface displacement: sin-product warp on the distance field.
   // Uses q (cell-local) so displacement tiles cleanly with repetition.
@@ -167,6 +188,8 @@ export class SDFGenerator {
         uRepeat:     { value: 0 },
         uWarp:       { value: 0 },
         uSDFCamPos:  { value: new THREE.Vector3(0, 0, 5) },
+        uKifsIter:   { value: 0 },
+        uKifsAngle:  { value: 0 },
       },
       vertexShader:   VERT,
       fragmentShader: FRAG,
@@ -196,6 +219,8 @@ export class SDFGenerator {
       ps.get('sdf.camY').value,
       ps.get('sdf.camZ').value,
     );
+    u.uKifsIter.value  = ps.get('sdf.kifsIter').value;
+    u.uKifsAngle.value = ps.get('sdf.kifsAngle').value * (Math.PI / 180);
 
     this.renderer.setRenderTarget(this._rt);
     this.renderer.render(this._scene, this._camera);
