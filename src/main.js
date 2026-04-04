@@ -771,11 +771,11 @@ async function main() {
   *{margin:0;padding:0;box-sizing:border-box}
   html,body{width:100%;height:100%;background:#000;overflow:hidden;touch-action:manipulation}
   canvas{display:block;position:absolute;top:0;left:0;transform-origin:0 0}
-  #ho{position:fixed;inset:0;pointer-events:none;display:none}
+  #ho{position:fixed;inset:0;pointer-events:none;display:none;transition:opacity 0.4s}
   .h{position:absolute;width:64px;height:64px;margin:-32px 0 0 -32px;border:3px solid #c8a020;border-radius:50%;background:rgba(0,0,0,0.45);cursor:crosshair;pointer-events:all;touch-action:none;box-shadow:0 0 12px rgba(0,0,0,0.9);transition:border-color .1s,background .1s}
   .h:active{border-color:#fff;background:rgba(255,255,255,0.15)}
   .h.sel{border-color:#fff;box-shadow:0 0 0 3px #c8a020,0 0 16px rgba(0,0,0,0.9)}
-  #toolbar{position:fixed;bottom:12px;left:50%;transform:translateX(-50%);display:none;gap:10px;align-items:center;pointer-events:all}
+  #toolbar{position:fixed;bottom:12px;left:50%;transform:translateX(-50%);display:none;gap:10px;align-items:center;pointer-events:all;transition:opacity 0.4s}
   .tb-btn{background:rgba(0,0,0,0.6);border:1px solid rgba(255,255,255,0.25);color:rgba(255,255,255,0.7);font:13px/1 monospace;padding:8px 16px;border-radius:20px;cursor:pointer;touch-action:manipulation;white-space:nowrap;-webkit-tap-highlight-color:transparent}
   .tb-btn:active,.tb-btn.on{border-color:#c8a020;color:#c8a020}
 </style>
@@ -925,6 +925,22 @@ async function main() {
     else document.exitFullscreen?.();
   });
 
+  // Auto-hide handles + toolbar after 3s idle; any pointer activity resets timer
+  let _idleTimer=null;
+  function _showUI(){
+    ho.style.opacity='1';
+    toolbar.style.opacity='1';
+    clearTimeout(_idleTimer);
+    _idleTimer=setTimeout(_hideUI,3000);
+  }
+  function _hideUI(){
+    ho.style.opacity='0';
+    toolbar.style.opacity='0';
+  }
+  window.addEventListener('pointermove',_showUI,{passive:true});
+  window.addEventListener('pointerdown',_showUI,{passive:true});
+  _hideUI(); // start hidden; message handler calls _showUI on first active frame
+
   // Arrow-key nudge for selected corner; G = toggle calibration grid (desktop)
   document.addEventListener('keydown',e=>{
     if(e.key==='g'||e.key==='G'){
@@ -951,9 +967,10 @@ async function main() {
     ho.style.display=active?'block':'none';
     toolbar.style.display=active?'flex':'none';
     applyTransform();positionHandles();draw();
+    if(active)_showUI();
   });
 
-  // Fullscreen on double-click/tap (desktop fallback — toolbar button used on touch)
+  // Fullscreen on double-click (desktop fallback — toolbar ⛶ button used on touch)
   window.addEventListener('dblclick',()=>{
     if(!document.fullscreenElement)document.body.requestFullscreen?.();
     else document.exitFullscreen?.();
