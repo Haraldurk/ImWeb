@@ -2412,11 +2412,12 @@ async function main() {
   function applyGLSL() {
     const src = glslEditor?.value;
     if (!src) return;
-    // Inject the varying declaration if missing (for user convenience)
-    const needsVarying = !src.includes('varying vec2 vUv');
-    const fullSrc = needsVarying
-      ? `varying vec2 vUv;\n${src}`
-      : src;
+    // Inject missing declarations (for user convenience)
+    const needsVarying    = !src.includes('varying vec2 vUv');
+    const needsTexUniform = !src.includes('uniform sampler2D uTexture');
+    let fullSrc = src;
+    if (needsTexUniform) fullSrc = `uniform sampler2D uTexture;\n${fullSrc}`;
+    if (needsVarying)    fullSrc = `varying vec2 vUv;\n${fullSrc}`;
     const err = pipeline.setCustomShader(fullSrc);
     if (glslError) {
       glslError.style.display = err ? 'block' : 'none';
