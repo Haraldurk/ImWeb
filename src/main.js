@@ -2542,6 +2542,22 @@ async function main() {
   });
 
   // Built-in GLSL shader presets
+  // Per-preset parameter label metadata — 4 labels matching uParam1..4 slots.
+  // Presets not listed here show generic uParam1–4 labels.
+  const GLSL_PRESET_META = {
+    'Reef': ['Speed ×2', 'WaveAmp ×0.8', 'Density ×2', 'ColorShift ×2π'],
+  };
+
+  const GLSL_PARAM_DEFAULT_LABELS = ['uParam1', 'uParam2', 'uParam3', 'uParam4'];
+
+  function _updateGlslParamLabels(presetName) {
+    const labels = GLSL_PRESET_META[presetName] ?? GLSL_PARAM_DEFAULT_LABELS;
+    labels.forEach((lbl, i) => {
+      const el = uniformsEl?.querySelector(`[data-param-id="glsl.param${i + 1}"] .param-label`);
+      if (el) el.textContent = lbl;
+    });
+  }
+
   const GLSL_PRESETS = {
     'Passthrough': `void main() {
   vec4 col = texture2D(uTexture, vUv);
@@ -2681,7 +2697,11 @@ void main() {
       glslEditor.value = code;
       if (glslAuto?.checked) applyGLSL();
     }
+    _updateGlslParamLabels(glslPresetSel.value);
   });
+
+  // Apply labels for the initially-selected preset
+  _updateGlslParamLabels(glslPresetSel.value);
 
   // Insert preset selector above the apply buttons
   const glslTab = document.getElementById('tab-glsl');
