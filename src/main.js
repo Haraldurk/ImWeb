@@ -2545,7 +2545,8 @@ async function main() {
   // Per-preset parameter label metadata — 4 labels matching uParam1..4 slots.
   // Presets not listed here show generic uParam1–4 labels.
   const GLSL_PRESET_META = {
-    'Reef': ['Speed ×2', 'WaveAmp ×0.8', 'Density ×2', 'ColorShift ×2π'],
+    'Reef':   ['Speed ×2', 'WaveAmp ×0.8', 'Density ×2', 'ColorShift ×2π'],
+    'Tunnel': ['Speed (-1..+1)', 'Dir X', 'Dir Y', 'Width'],
   };
 
   const GLSL_PARAM_DEFAULT_LABELS = ['uParam1', 'uParam2', 'uParam3', 'uParam4'];
@@ -2600,12 +2601,31 @@ async function main() {
   uv.x += cos(d * 40.0 - uTime * 5.0) * 0.015;
   gl_FragColor = texture2D(uTexture, uv);
 }`,
-    'Tunnel': `void main() {
-  vec2 uv = vUv - 0.5;
+    'Tunnel': `// uParam1=Speed(-1..+1, 0.5=stop)  uParam2=DirX  uParam3=DirY  uParam4=Width
+void main() {
+  float spd   = uParam1 * 2.0 - 1.0;               // -1..+1 travel speed
+  float width = 0.05 + uParam4 * 0.55;             // tube tightness / depth scale
+  vec2  dir   = (vec2(uParam2, uParam3) - 0.5) * 0.3; // look-direction offset
+
+  vec2 uv = vUv - 0.5 - dir;
   float a = atan(uv.y, uv.x);
   float r = max(length(uv), 0.0001);
-  vec2 tuv = vec2(a / 6.283 + 0.5, 0.5 / r + uTime * 0.2);
-  gl_FragColor = texture2D(uTexture, fract(tuv));
+  float depth = width / r;                          // depth into tunnel
+
+  // Tube UV: angle around circumference + depth travel + gentle spiral
+  vec2 tuv = vec2(
+    a / 6.2832 + depth * 0.12 + sin(uTime * 0.25) * 0.04,
+    depth - uTime * spd * 0.4
+  );
+  vec4 col = texture2D(uTexture, fract(tuv));
+
+  // Vignette: circular tube mouth — dark wall, open centre
+  float vign = smoothstep(0.5, 0.12, r);
+  // Depth atmosphere: near is bright, far fades to black
+  float atmo = 1.0 / (1.0 + depth * 0.12);
+  col.rgb *= vign * (0.3 + 0.7 * atmo);
+
+  gl_FragColor = col;
 }`,
     'Luma Displace': `void main() {
   vec4 c = texture2D(uTexture, vUv);
