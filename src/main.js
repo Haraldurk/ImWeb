@@ -1651,15 +1651,9 @@ async function main() {
         }
       }
       refreshClipsList();
-      // Ensure movie is active and FG is routed to it after clip load
-      if (movieInput.clips.length > 0) {
-        if (!ps.get('movie.active').value) {
-          ps.set('movie.active', 1); // triggers onChange → play() + layer.fg=Movie
-        } else {
-          // Already active — mirror what onChange does: play + route FG
-          if (movieInput.currentClip) movieInput.currentClip.video.play().catch(() => {});
-          ps.set('layer.fg', 1);
-        }
+      if (movieInput.currentClip) {
+        movieInput.currentClip.video.play().catch(() => {});
+        ps.set('layer.fg', 1);
       }
     };
     input.click();
@@ -1706,11 +1700,8 @@ async function main() {
         try {
           await movieInput.addClip(file);
           refreshClipsList();
-          if (!ps.get('movie.active').value) {
-            ps.set('movie.active', 1); // triggers onChange → play() + layer.fg=Movie
-          } else {
-            // Already active — mirror what onChange does: play + route FG
-            if (movieInput.currentClip) movieInput.currentClip.video.play().catch(() => {});
+          if (movieInput.currentClip) {
+            movieInput.currentClip.video.play().catch(() => {});
             ps.set('layer.fg', 1);
           }
         } catch (err) { console.error('[DnD] video load failed:', err); _showClipError(err.message); }
@@ -3796,11 +3787,11 @@ void main() {
     navigator.serviceWorker.register('/sw.js').catch(() => {});
   }
 
-  // Preload default clip
+  // Preload default clip — movie.active is already 1 at startup, so play explicitly
   try {
     await movieInput.addClip('/_imweb_ready/DJI_20210212_124450_206_video_ALL-I.mp4');
     refreshClipsList();
-    if (!ps.get('movie.active').value) ps.set('movie.active', 1);
+    if (movieInput.currentClip) movieInput.currentClip.video.play().catch(() => {});
   } catch (e) {
     console.warn('[ImWeb] Default clip not available:', e.message);
   }
