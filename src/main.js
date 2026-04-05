@@ -1651,9 +1651,13 @@ async function main() {
         }
       }
       refreshClipsList();
-      // Auto-activate movie if a clip was loaded
-      if (movieInput.clips.length > 0 && !ps.get('movie.active').value) {
-        ps.set('movie.active', 1);
+      // Ensure movie is playing after clip load
+      if (movieInput.clips.length > 0) {
+        if (!ps.get('movie.active').value) {
+          ps.set('movie.active', 1); // triggers onChange → play()
+        } else if (movieInput.currentClip) {
+          movieInput.currentClip.video.play().catch(() => {}); // already active — kick playback
+        }
       }
     };
     input.click();
@@ -1700,7 +1704,11 @@ async function main() {
         try {
           await movieInput.addClip(file);
           refreshClipsList();
-          if (!ps.get('movie.active').value) ps.set('movie.active', 1);
+          if (!ps.get('movie.active').value) {
+            ps.set('movie.active', 1); // triggers onChange → play()
+          } else if (movieInput.currentClip) {
+            movieInput.currentClip.video.play().catch(() => {}); // already active — kick playback
+          }
         } catch (err) { console.error('[DnD] video load failed:', err); _showClipError(err.message); }
       } else if (/\.(glb|gltf|obj|stl|dae)$/i.test(file.name)) {
         try {
@@ -2958,8 +2966,8 @@ void main() {
     if (e.code === 'NumpadAdd')      { e.preventDefault(); presetMgr.nextPreset(); }
     if (e.code === 'NumpadSubtract') { e.preventDefault(); presetMgr.prevPreset(); }
 
-    // Number keys 0–9 recall Display States
-    if (!e.altKey && /^Digit[0-9]$/.test(e.code)) {
+    // Number keys 0–9 recall Display States (not when Shift is held — that selects movie clips)
+    if (!e.altKey && !e.shiftKey && /^Digit[0-9]$/.test(e.code)) {
       const idx = parseInt(e.code.replace('Digit', ''));
       presetMgr.recallState(idx);
     }
