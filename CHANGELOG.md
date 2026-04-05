@@ -6,6 +6,33 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
 
 ---
 
+## [0.6.0] — 2026-04-05
+
+### Added
+- **Auto-load clips from `_imweb_ready/`** — on startup ImWeb reads `_imweb_ready/manifest.json` and loads all listed clips automatically; `imweb-prep.js` writes/updates the manifest after each conversion run
+- **Movie On/Off button** in status bar replaces FIT/FAST/MED/MAX/LOW resolution buttons; shows "Movie On" / "Movie Off"; always starts off regardless of saved preset state
+- **MuteMovie parameter** — toggle audio output per movie session; defaults on (muted); turn off to hear clip audio; state applied to all loaded clips
+- **Audio in prepped clips** — `imweb-prep.js` now keeps audio track (AAC 192k), re-encoded for browser compatibility; `0:a?` map so audio-less clips still process cleanly
+- **q / a / z keyboard shortcuts** — cycle Foreground / Background / DisplaceSrc through all 22 source inputs
+- **Settings panel** (was "AI Settings") — renamed ⚙ button; panel now has three sections: AI Provider, Documentation (Quick Reference + Full Manual links), Video Prep (imweb-prep.js command + spec)
+- **Video prep guide** in Clips tab — inline hint with format and prep command
+- **Improved clip load error message** — explains codec failure and points to `imweb-prep.js`
+- **Reef GLSL preset** — ray-marched crystalline structure; float equality bug fixed (range checks replace `w == 1.0` / `w == 9.0`)
+- **Tunnel GLSL preset upgraded** — wormhole with Speed, Dir X, Zoom (1–8×), Width parameters; texture visible inside tube
+
+### Fixed
+- GLSL shaders with non-ASCII characters in comments (`×`, `–`, `π`) caused WebGL error 1282 on Apple Silicon — replaced with ASCII equivalents
+- Movie `video.play()` on startup blocked by browser autoplay policy — movie now starts off; user activates via Movie Off/On button
+- Preset restore setting `movie.active = 1` caused button to show "Movie On" on load — explicitly reset to 0 after `presetMgr.init()`
+
+### Planned (Phase 6)
+- GLSL editor: resolve remaining WebGL 1281/1282 errors on preset apply
+- Mobile-friendly UI — touch targets, responsive layout, mobile gesture support
+- Multi-quad projection mapping
+- Multi-cam workflow
+
+---
+
 ## [0.5.1] — 2026-04-05
 
 ### Added

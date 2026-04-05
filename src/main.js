@@ -69,7 +69,7 @@ import {
 // ─────────────────────────────────────────────────────────────────────────────
 
 async function main() {
-  console.log('%cImWeb v0.5.1', 'color:#e8c840;font-weight:bold;font-size:14px');
+  console.log('%cImWeb v0.6.0', 'color:#e8c840;font-weight:bold;font-size:14px');
 
   // ── 1. Canvas & renderer ──────────────────────────────────────────────────
 
@@ -3790,12 +3790,23 @@ void main() {
     navigator.serviceWorker.register('/sw.js').catch(() => {});
   }
 
-  // Preload default clip — movie stays paused until user clicks MovieOn button
+  // Auto-load all clips from _imweb_ready/manifest.json on startup
   try {
-    await movieInput.addClip('/_imweb_ready/DJI_20210212_124450_206_video_ALL-I.mp4');
-    refreshClipsList();
+    const res = await fetch('/_imweb_ready/manifest.json');
+    if (res.ok) {
+      const { clips } = await res.json();
+      for (const name of clips) {
+        try {
+          await movieInput.addClip(`/_imweb_ready/${encodeURIComponent(name)}`);
+        } catch (e) {
+          console.warn(`[ImWeb] Could not load clip "${name}":`, e.message);
+        }
+      }
+      refreshClipsList();
+      console.info(`[ImWeb] Loaded ${movieInput.clips.length} clip(s) from _imweb_ready/`);
+    }
   } catch (e) {
-    console.warn('[ImWeb] Default clip not available:', e.message);
+    console.warn('[ImWeb] No _imweb_ready manifest found — add clips manually.');
   }
 }
 

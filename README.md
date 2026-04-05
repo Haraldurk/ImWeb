@@ -6,7 +6,7 @@
 
 Real-time video compositing, 3D scene integration, and a complete parameter/controller mapping system — all in a Progressive Web App.
 
-Current version: **v0.5.1**
+Current version: **v0.6.0**
 
 ---
 
@@ -110,11 +110,11 @@ src/
 
 ---
 
-## Features (v0.5.0)
+## Features (v0.6.0)
 
 ### Input sources
 - [x] Camera (WebRTC, auto-start on load)
-- [x] Movie clips — up to 8; speed, loop range, position scrub, BPM sync, mirror; thumbnails in UI
+- [x] Movie clips — up to 8; auto-loaded from `_imweb_ready/` on startup; speed, loop range, position scrub, BPM sync, mirror, mute; thumbnails in UI
 - [x] Stills buffer — capture up to 16 frames, FrameSelect 1/2/3
 - [x] Color source (HSV solid)
 - [x] Noise source (pixel)
@@ -200,10 +200,17 @@ src/
 ## Planned
 
 ### Phase 6
+- [ ] **Mobile-friendly UI** — touch targets, responsive layout, swipe gestures
+- [ ] **GLSL editor fixes** — resolve WebGL 1281/1282 on preset apply
 - [ ] Performance profiling / GPU display
 - [ ] Multi-quad projection mapping (independent sources per quad)
 - [ ] Multi-cam workflow (per-layer camera selector)
-- [ ] Touch-optimised projection handles (iPad performance use)
+
+### Video prep
+```bash
+# Convert raw clips to ImWeb-optimised format (H.264 All-Intra, AAC audio)
+node imweb-prep.js    # drop source files in _raw_videos/, output to _imweb_ready/
+```
 
 ---
 

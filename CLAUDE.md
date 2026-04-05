@@ -176,7 +176,7 @@ AFTER: git add [files] && git commit -m "[message]" && git push
 
 ---
 
-## Current version: 0.5.1
+## Current version: 0.6.0
 
 See CHANGELOG.md for full history.
 

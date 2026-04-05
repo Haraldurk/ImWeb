@@ -1,6 +1,6 @@
 # ImWeb — Full Operation Manual
 
-> **Version:** 0.5.1
+> **Version:** 0.6.0
 > **Platform:** Browser (Chrome 113+ recommended)
 > **Original concept:** Image/ine — Tom Demeyer, STEIM Amsterdam 1997/2008
 > **ImWeb:** H. Karlsson
@@ -1237,5 +1237,5 @@ VRAM shown in red when above 800MB.
 
 ---
 
-*ImWeb v0.5.1 — H. Karlsson*
+*ImWeb v0.6.0 — H. Karlsson*
 *Original Image/ine: Tom Demeyer, STEIM Foundation, Amsterdam*

@@ -97,6 +97,14 @@ async function processVideos() {
     }
   }
 
+  // Write/update manifest.json so ImWeb auto-loads all clips on startup
+  const allReady = fs.readdirSync(OUTPUT_DIR)
+    .filter(f => f.endsWith('.mp4') || f.endsWith('.webm'))
+    .sort();
+  const manifest = { clips: allReady };
+  fs.writeFileSync(path.join(OUTPUT_DIR, 'manifest.json'), JSON.stringify(manifest, null, 2));
+  console.log(`📋 manifest.json updated — ${allReady.length} clip(s) listed.`);
+
   console.log(
     `\n🎉 All done! Your videos are in ${OUTPUT_DIR} and ready for ImWeb.\n`,
   );

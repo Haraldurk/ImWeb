@@ -1,6 +1,6 @@
 # ImWeb — Quick Reference
 
-> Browser-based real-time video synthesis instrument · v0.5.1
+> Browser-based real-time video synthesis instrument · v0.6.0
 
 ---
 
@@ -233,4 +233,4 @@ Requires: **Node.js** + **FFmpeg** (`brew install ffmpeg` / `apt install ffmpeg`
 
 ---
 
-*ImWeb v0.5.1 · H. Karlsson · [[ImWeb_Full_Manual|Full manual →]]*
+*ImWeb v0.6.0 · H. Karlsson · [[ImWeb_Full_Manual|Full manual →]]*

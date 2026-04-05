@@ -150,3 +150,10 @@ vite.config.ts.timestamp-*
 
 # Backups
 index_v4_working_do_not_touch.html
+
+# Video files — too large for git; use imweb-prep.js to generate _imweb_ready/
+_imweb_ready/*.mp4
+_imweb_ready/*.webm
+_imweb_ready/*.mov
+_raw_videos/
+seamless_videos/
