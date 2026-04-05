@@ -509,6 +509,8 @@ export function registerCoreParameters(ps) {
   ps.register({ id: 'movie.loop',    label: 'MovieLoop',  group: 'movie',
     type: PARAM_TYPE.SELECT, value: 1,
     options: ['Off', 'Loop', 'Ping-pong'] });
+  ps.register({ id: 'movie.mute',    label: 'MuteMovie',  group: 'movie',
+    type: PARAM_TYPE.TOGGLE, value: 1 }); // default muted — user opts in to audio
   ps.register({ id: 'movie.mirror',  label: 'MirrorMovie',group: 'movie',
     type: PARAM_TYPE.TOGGLE, value: 0 });
   ps.register({ id: 'movie.bpmsync', label: 'BPM Sync',   group: 'movie',

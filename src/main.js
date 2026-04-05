@@ -223,6 +223,7 @@ async function main() {
 
   const presetMgr = new PresetManager(ps, ctrl, pipeline);
   await presetMgr.init();
+  ps.set('movie.active', 0); // always start with movie off regardless of saved preset state
   const stepSequencer = new StepSequencer(presetMgr);
 
   // MIDI Program Change → preset recall (PC 0–127 maps to preset index)
@@ -1647,6 +1648,9 @@ async function main() {
         }
       }
       refreshClipsList();
+      // Apply current mute state to all clips
+      const muted = !!ps.get('movie.mute').value;
+      movieInput.clips.forEach(c => { c.video.muted = muted; });
       if (movieInput.currentClip) {
         movieInput.currentClip.video.play().catch(() => {});
         ps.set('layer.fg', 1);
@@ -1740,6 +1744,9 @@ async function main() {
     } else if (!v && movieInput.currentClip) {
       movieInput.currentClip.video.pause();
     }
+  });
+  ps.get('movie.mute').onChange(v => {
+    movieInput.clips.forEach(c => { c.video.muted = !!v; });
   });
 
   // Auto-activate / deactivate 3D scene based on layer source selection
