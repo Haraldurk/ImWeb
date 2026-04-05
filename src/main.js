@@ -214,11 +214,11 @@ async function main() {
 
   const pipeline = new Pipeline(renderer, W, H);
 
-  // Default startup state: FG=Color, BG=Color, DS=Noise
-  // Camera (index 0) is only routed when actually started
-  ps.set('layer.fg', 3); // Color
+  // Default startup state: FG=Movie, BG=Color, DS=Noise; movie active so clips auto-play
+  ps.set('layer.fg', 1); // Movie
   ps.set('layer.bg', 3); // Color
   ps.set('layer.ds', 4); // Noise
+  ps.set('movie.active', 1);
 
   // ── 6. Preset manager + Table manager ────────────────────────────────────
 
@@ -2960,7 +2960,7 @@ void main() {
     if (e.metaKey || e.ctrlKey) return;
     if ((e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') && e.key !== 'Escape') return;
     const isLocked = ps.get('global.keylock').value > 0.5;
-    if (isLocked && (/^[vmcbskdxhtf]$/i.test(e.key) || /^Digit[0-9]$/.test(e.code))) return;
+    if (isLocked && (/^[vmcbskdxhtfqaz]$/i.test(e.key) || /^Digit[0-9]$/.test(e.code))) return;
 
     // Shift+1–8 = Select movie clip (check first so Nordic /=Shift+7 doesn't bleed into search)
     if (e.shiftKey && !e.metaKey && /^Digit[1-8]$/.test(e.code)) {
@@ -3017,6 +3017,22 @@ void main() {
     if (e.key === 'v' && !e.metaKey) { e.preventDefault(); ps.set('camera.active', ps.get('camera.active').value > 0.5 ? 0 : 1); }
     // m = Movie on/off
     if (e.key === 'm' && !e.metaKey) { e.preventDefault(); ps.toggle('movie.active'); }
+    // q/a/z = cycle FG / BG / DS source
+    if (e.key === 'q' && !e.metaKey) {
+      e.preventDefault();
+      const p = ps.get('layer.fg'); const n = p.options.length;
+      ps.set('layer.fg', (p.value + 1) % n);
+    }
+    if (e.key === 'a' && !e.metaKey) {
+      e.preventDefault();
+      const p = ps.get('layer.bg'); const n = p.options.length;
+      ps.set('layer.bg', (p.value + 1) % n);
+    }
+    if (e.key === 'z' && !e.metaKey) {
+      e.preventDefault();
+      const p = ps.get('layer.ds'); const n = p.options.length;
+      ps.set('layer.ds', (p.value + 1) % n);
+    }
     // t = Tap tempo
     if (e.key === 't' && !e.metaKey) { e.preventDefault(); ps.trigger('global.tap'); }
     // h = Hold / Fade to black (toggle output.fade between 0 and 100)
