@@ -938,6 +938,12 @@ export function registerCoreParameters(ps) {
   ps.register({ id: 'vectorscope.color', label: 'VScope Color', group: 'vectorscope',
     type: PARAM_TYPE.SELECT, options: ['Green','Cyan','Red','Gold'], value: 0 });
 
+  // ── GLSL custom shader param slots ────────────────────────────────────────
+  ps.register({ id: 'glsl.param1', label: 'uParam1', group: 'glsl', min: 0, max: 1, value: 0.5, step: 0.01 });
+  ps.register({ id: 'glsl.param2', label: 'uParam2', group: 'glsl', min: 0, max: 1, value: 0.5, step: 0.01 });
+  ps.register({ id: 'glsl.param3', label: 'uParam3', group: 'glsl', min: 0, max: 1, value: 0.5, step: 0.01 });
+  ps.register({ id: 'glsl.param4', label: 'uParam4', group: 'glsl', min: 0, max: 1, value: 0.5, step: 0.01 });
+
   // ── Projection Mapping (corner-pin for second screen output) ──────────────
   ps.register({ id: 'projmap.active', label: 'ProjMap On',  group: 'projmap', type: PARAM_TYPE.TOGGLE, value: 0 });
   ps.register({ id: 'projmap.tl_x',  label: 'TL X', group: 'projmap', min: 0, max: 1, value: 0 });
