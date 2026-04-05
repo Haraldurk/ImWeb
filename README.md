@@ -54,7 +54,10 @@ INPUT SOURCES
 | `C` | Capture frame to stills buffer |
 | `M` | Toggle movie playback |
 | `H` | Fade to black |
-| `T` / `F` | Transparency / Fade shortcuts |
+| `Q` | Cycle Foreground source |
+| `A` | Cycle Background source |
+| `Z` | Cycle DisplaceSrc source |
+| `T` | Tap tempo |
 | `?` | Keyboard help overlay |
 | `/` | Parameter search overlay |
 | `0–9` | Recall Display States 0–9 |

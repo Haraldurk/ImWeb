@@ -1098,6 +1098,9 @@ Click the ⊞ button in any section header to detach it as a floating panel. Dra
 |-----|--------|
 | `V` | Toggle camera |
 | `M` | Toggle movie playback |
+| `Q` | Cycle Foreground source through all inputs |
+| `A` | Cycle Background source through all inputs |
+| `Z` | Cycle DisplaceSrc through all inputs |
 | `Shift+1–8` | Select movie clip 1–8 |
 | `C` | Capture frame to stills buffer |
 

@@ -119,6 +119,9 @@ Right-click any parameter row to assign.
 |-----|--------|
 | `V` | Camera on/off |
 | `M` | Movie play/pause |
+| `Q` | Cycle Foreground source |
+| `A` | Cycle Background source |
+| `Z` | Cycle DisplaceSrc source |
 | `C` | Capture frame |
 | `K` | Keyer on/off |
 | `B` | Blend on/off |
