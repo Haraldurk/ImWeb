@@ -713,7 +713,10 @@ async function main() {
   (() => {
     const btn = document.getElementById('btn-movie-on');
     if (!btn) return;
-    const update = v => btn.classList.toggle('active', !!v);
+    const update = v => {
+      btn.classList.toggle('active', !!v);
+      btn.textContent = v ? 'Movie On' : 'Movie Off';
+    };
     btn.addEventListener('click', () => ps.toggle('movie.active'));
     ps.get('movie.active').onChange(update);
     update(ps.get('movie.active').value);
@@ -1750,9 +1753,14 @@ async function main() {
                     fg === DEPTH3D_IDX || bg === DEPTH3D_IDX || ds === DEPTH3D_IDX;
     ps.set('scene3d.active', needs3D ? 1 : 0);
   }
-  ps.get('layer.fg').onChange(sync3DActive);
-  ps.get('layer.bg').onChange(sync3DActive);
-  ps.get('layer.ds').onChange(sync3DActive);
+  // Auto-activate movie when Movie source (index 1) is routed to any layer
+  const MOVIE_SRC = 1;
+  function syncMovieActive(v) {
+    if (v === MOVIE_SRC && !ps.get('movie.active').value) ps.set('movie.active', 1);
+  }
+  ps.get('layer.fg').onChange(v => { sync3DActive(); syncMovieActive(v); });
+  ps.get('layer.bg').onChange(v => { sync3DActive(); syncMovieActive(v); });
+  ps.get('layer.ds').onChange(v => { sync3DActive(); syncMovieActive(v); });
 
   // ── Buffer capture helpers ────────────────────────────────────────────────
 
