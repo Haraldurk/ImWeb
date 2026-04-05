@@ -2604,11 +2604,11 @@ async function main() {
   uv.x += cos(d * 40.0 - uTime * 5.0) * 0.015;
   gl_FragColor = texture2D(uTexture, uv);
 }`,
-    'Tunnel': `// uParam1=Speed(-1..+1, 0.5=stop)  uParam2=DirX  uParam3=Zoom(1–8×)  uParam4=Width
+    'Tunnel': `// uParam1=Speed(-1..+1, 0.5=stop)  uParam2=DirX  uParam3=Zoom(1-8x)  uParam4=Width
 void main() {
   float spd   = uParam1 * 2.0 - 1.0;               // -1..+1 travel speed
   float width = 0.05 + uParam4 * 0.55;             // tube tightness / depth scale
-  float zoom  = 1.0 + uParam3 * 7.0;               // texture tiling: 1–8× around tube
+  float zoom  = 1.0 + uParam3 * 7.0;               // texture tiling: 1-8x around tube
   float dscale = 0.05 + uParam3 * 0.45;            // depth tiling follows zoom
   vec2  dir   = vec2(uParam2 - 0.5, 0.0) * 0.3;   // horizontal look offset
 
@@ -2676,7 +2676,7 @@ void main() {
   if(uv.x<0.0||uv.x>1.0||uv.y<0.0||uv.y>1.0) col=vec4(0);
   gl_FragColor = col;
 }`,
-    'Reef': `// uParam1=Speed(×2)  uParam2=WaveAmp(×0.8)  uParam3=Density(×2)  uParam4=ColorShift(×2π)
+    'Reef': `// uParam1=Speed(x2)  uParam2=WaveAmp(x0.8)  uParam3=Density(x2)  uParam4=ColorShift(x2pi)
 uniform vec2 uResolution;
 void main() {
   float t       = uTime   * uParam1 * 2.0;
@@ -3787,11 +3787,19 @@ void main() {
     navigator.serviceWorker.register('/sw.js').catch(() => {});
   }
 
-  // Preload default clip — movie.active is already 1 at startup, so play explicitly
+  // Preload default clip — movie.active is 1 at startup; play() may be blocked by
+  // browser autoplay policy until first user gesture, so retry on first interaction.
+  function _resumeMovieIfActive() {
+    if (ps.get('movie.active').value && movieInput.currentClip?.video.paused) {
+      movieInput.currentClip.video.play().catch(() => {});
+    }
+  }
   try {
     await movieInput.addClip('/_imweb_ready/DJI_20210212_124450_206_video_ALL-I.mp4');
     refreshClipsList();
-    if (movieInput.currentClip) movieInput.currentClip.video.play().catch(() => {});
+    movieInput.currentClip?.video.play().catch(() => {
+      window.addEventListener('pointerdown', _resumeMovieIfActive, { once: true });
+    });
   } catch (e) {
     console.warn('[ImWeb] Default clip not available:', e.message);
   }
