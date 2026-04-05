@@ -214,11 +214,10 @@ async function main() {
 
   const pipeline = new Pipeline(renderer, W, H);
 
-  // Default startup state: FG=Movie, BG=Color, DS=Noise; movie active so clips auto-play
-  ps.set('layer.fg', 1); // Movie
+  // Default startup state: FG=Color, BG=Color, DS=Noise; movie off until user clicks MovieOn
+  ps.set('layer.fg', 3); // Color
   ps.set('layer.bg', 3); // Color
   ps.set('layer.ds', 4); // Noise
-  ps.set('movie.active', 1);
 
   // ── 6. Preset manager + Table manager ────────────────────────────────────
 
@@ -710,20 +709,14 @@ async function main() {
     btn.addEventListener('click', () => { panel ? _close() : _open(); });
   })();
 
-  // ── Resolution buttons (status bar) ──────────────────────────────────────
+  // ── MovieOn button (status bar) ───────────────────────────────────────────
   (() => {
-    const resBtns = document.querySelectorAll('.res-btn');
-    const updateActive = (idx) => {
-      resBtns.forEach(btn => btn.classList.toggle('active', parseInt(btn.dataset.res) === idx));
-    };
-    resBtns.forEach(btn => {
-      btn.addEventListener('click', () => {
-        const idx = parseInt(btn.dataset.res);
-        ps.set('output.resolution', idx);
-      });
-    });
-    ps.get('output.resolution').onChange(updateActive);
-    updateActive(ps.get('output.resolution').value);
+    const btn = document.getElementById('btn-movie-on');
+    if (!btn) return;
+    const update = v => btn.classList.toggle('active', !!v);
+    btn.addEventListener('click', () => ps.toggle('movie.active'));
+    ps.get('movie.active').onChange(update);
+    update(ps.get('movie.active').value);
   })();
 
   // ── Second screen output ──────────────────────────────────────────────────
@@ -3787,19 +3780,10 @@ void main() {
     navigator.serviceWorker.register('/sw.js').catch(() => {});
   }
 
-  // Preload default clip — movie.active is 1 at startup; play() may be blocked by
-  // browser autoplay policy until first user gesture, so retry on first interaction.
-  function _resumeMovieIfActive() {
-    if (ps.get('movie.active').value && movieInput.currentClip?.video.paused) {
-      movieInput.currentClip.video.play().catch(() => {});
-    }
-  }
+  // Preload default clip — movie stays paused until user clicks MovieOn button
   try {
     await movieInput.addClip('/_imweb_ready/DJI_20210212_124450_206_video_ALL-I.mp4');
     refreshClipsList();
-    movieInput.currentClip?.video.play().catch(() => {
-      window.addEventListener('pointerdown', _resumeMovieIfActive, { once: true });
-    });
   } catch (e) {
     console.warn('[ImWeb] Default clip not available:', e.message);
   }
