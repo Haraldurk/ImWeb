@@ -1146,13 +1146,61 @@ Click the ⊞ button in any section header to detach it as a floating panel. Dra
 | `.imweb` | Import/Export | Full ImWeb session |
 | `.imx` | Import | Legacy Image/ine preset |
 
+### Video Format Guide
+
+Most video files from phones and cameras play without any conversion. For **frame-accurate `MoviePos` scrubbing**, clips should be All-Intra encoded.
+
+| Format | Browser playback | Scrubbing |
+|--------|-----------------|-----------|
+| H.264 MP4 (phone/camera) | Yes | Approximate |
+| H.264 MP4 All-Intra | Yes | Frame-accurate |
+| WebM VP8 / VP9 | Yes | Approximate |
+| H.265 / HEVC | Safari only | — |
+| ProRes, DNxHD, RAW | No | — |
+
+### imweb-prep.js — Video Converter
+
+The companion script `imweb-prep.js` converts any supported video to the optimal ImWeb format automatically.
+
+**Requirements:** Node.js + FFmpeg
+
+```bash
+# Install FFmpeg (macOS)
+brew install ffmpeg
+
+# Install FFmpeg (Linux)
+apt install ffmpeg
+
+# Run the converter
+node imweb-prep.js
+```
+
+**Workflow:**
+
+1. Drop raw video files into `_raw_videos/`
+2. Run `node imweb-prep.js`
+3. Converted files appear in `_imweb_ready/` with suffix `_ALL-I.mp4`
+4. Drag the converted files into the ImWeb Clips tab
+
+**Output specification:**
+
+| Parameter | Value |
+|-----------|-------|
+| Codec | H.264 (libx264) |
+| Profile | Main |
+| GOP | 1 (All-Intra — every frame is a keyframe) |
+| Quality | CRF 18 (high quality, visually lossless) |
+| Pixel format | yuv420p (required for WebGL) |
+| Dimensions | Forced even (prevents WebGL texture errors) |
+| Audio | Stripped (saves CPU decoding overhead) |
+| Preset | fast + tune fastdecode |
+
 ---
 
 ## 12. Performance & Troubleshooting
 
 ### Performance Tips
 
-- Use **FAST** or **MED** resolution on lower-end machines
 - Reduce sequencer frame counts (they each consume full-resolution VRAM)
 - Turn off the 3D scene depth pass when not using it (`scene3d.depth.active = OFF`)
 - Reduce noise octaves for lower GPU load
@@ -1181,11 +1229,13 @@ VRAM shown in red when above 800MB.
 |---------|-------|-----|
 | Canvas blank on load | No camera permission | Allow camera access in browser |
 | No MIDI input | Browser MIDI not granted | Allow MIDI in browser permissions |
-| Very low FPS | High resolution + many effects | Lower resolution or reduce active effects |
+| Very low FPS | Many effects active | Reduce active effects |
 | Second screen black | Popup blocked | Allow popups from localhost |
 | Audio reactive not working | Mic permission not granted | Allow microphone in browser |
+| Movie clip won't load | Unsupported codec | Convert with `node imweb-prep.js` |
+| MoviePos scrubbing jumpy | Non-All-Intra encoding | Convert with `node imweb-prep.js` |
 
 ---
 
-*ImWeb v0.3.0 — H. Karlsson*
+*ImWeb v0.5.1 — H. Karlsson*
 *Original Image/ine: Tom Demeyer, STEIM Foundation, Amsterdam*

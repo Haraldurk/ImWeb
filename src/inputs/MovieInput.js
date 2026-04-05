@@ -43,7 +43,7 @@ export class MovieInput {
     const mimeHint = mimeMap[ext] ?? 'video/mp4';
     const probe = document.createElement('video');
     if (probe.canPlayType(mimeHint) === '') {
-      throw new Error(`Unsupported format: .${ext} — try H.264 MP4 or WebM`);
+      throw new Error(`Cannot play .${ext} — codec not supported by this browser. Convert it first: drop file in _raw_videos/ and run "node imweb-prep.js". Best formats: H.264 MP4, WebM VP8/VP9.`);
     }
 
     const video = document.createElement('video');

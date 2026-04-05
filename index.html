@@ -48,7 +48,7 @@
       <span class="status-sep"></span>
       <button id="btn-ai-narrator" title="AI Narrator — live signal path description (N)">𝔸</button>
       <button id="btn-ai-coach"    title="AI Coach — 30-second performance suggestions (P)">⬡</button>
-      <button id="btn-ai-settings" title="AI settings (API key)">⚙</button>
+      <button id="btn-ai-settings" title="Settings">⚙</button>
     </div>
   </div>
 
@@ -273,6 +273,11 @@
           </div>
           <div id="clips-list"></div>
           <div id="clip-params" style="border-top:1px solid var(--border);padding-top:2px;"></div>
+          <div style="padding:4px 8px 6px;font-size:10px;color:var(--text-2);line-height:1.5;">
+            Best formats: H.264 MP4, WebM. For frame-accurate scrubbing run
+            <code style="color:var(--accent);font-family:var(--mono);">node imweb-prep.js</code>
+            — drop raw files in <code style="color:var(--accent);font-family:var(--mono);">_raw_videos/</code>.
+          </div>
         </div>
       </div>
 

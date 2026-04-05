@@ -200,11 +200,35 @@ Drag any supported file onto the output canvas to load it.
 
 ---
 
+## Video Format & Prep
+
+Most H.264 MP4 and WebM files play without conversion. For **frame-accurate scrubbing** (`MoviePos`) use the companion prep script:
+
+```bash
+# 1. Drop raw clips into _raw_videos/
+# 2. Run:
+node imweb-prep.js
+# 3. Load the converted files from _imweb_ready/ into ImWeb
+```
+
+**Output spec:** H.264 All-Intra · yuv420p · no audio · even dimensions · CRF 18
+
+| Format | Works without prep? | Notes |
+|--------|---------------------|-------|
+| H.264 MP4 (phone/camera) | Yes | May have imprecise scrubbing |
+| WebM VP8/VP9 | Yes | Good for screen recordings |
+| H.264 MP4 (All-Intra) | Yes + scrubbing | Use imweb-prep.js output |
+| H.265 / HEVC | No (Chrome) | Must convert |
+| ProRes / DNxHD | No | Must convert |
+
+Requires: **Node.js** + **FFmpeg** (`brew install ffmpeg` / `apt install ffmpeg`)
+
+---
+
 ## Performance Notes
 
 - Sequencer frames = full-resolution VRAM × frame count — keep counts low when not needed
 - Disable `scene3d.depth.active` when not using depth as DisplaceSrc
-- FAST/MED resolution drops GPU load significantly
 - VRAM shown in **red** in the profiler when above 800 MB
 
 ---

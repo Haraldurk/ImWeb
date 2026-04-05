@@ -2309,7 +2309,7 @@ export function buildAISettingsPanel(ai, panelEl) {
   // Header
   const hdr = document.createElement('div');
   hdr.className = 'ai-settings-hdr';
-  hdr.textContent = '✦ AI PROVIDER';
+  hdr.textContent = 'SETTINGS';
   panelEl.appendChild(hdr);
 
   // Status line
@@ -2356,11 +2356,55 @@ export function buildAISettingsPanel(ai, panelEl) {
   });
   panelEl.appendChild(testBtn);
 
+  // AI sub-header
+  const aiHdr = document.createElement('div');
+  aiHdr.className = 'ai-settings-hdr';
+  aiHdr.style.marginTop = '10px';
+  aiHdr.textContent = 'AI PROVIDER';
+  panelEl.insertBefore(aiHdr, testBtn);
+
   // Storage note
   const note = document.createElement('div');
   note.className = 'ai-settings-note';
   note.textContent = 'Keys stored in browser localStorage only.';
   panelEl.appendChild(note);
+
+  // ── Resources section ─────────────────────────────────────────────────────
+  const resHdr = document.createElement('div');
+  resHdr.className = 'ai-settings-hdr';
+  resHdr.style.marginTop = '10px';
+  resHdr.textContent = 'DOCUMENTATION';
+  panelEl.appendChild(resHdr);
+
+  const links = [
+    { label: 'Quick Reference', href: 'docs/ImWeb_Quick_Reference.md' },
+    { label: 'Full Manual',     href: 'docs/ImWeb_Full_Manual.md' },
+  ];
+  links.forEach(({ label, href }) => {
+    const a = document.createElement('a');
+    a.className = 'ai-prov-link';
+    a.textContent = label + ' →';
+    a.href = href;
+    a.target = '_blank';
+    a.rel = 'noopener noreferrer';
+    panelEl.appendChild(a);
+  });
+
+  const prepHdr = document.createElement('div');
+  prepHdr.className = 'ai-settings-hdr';
+  prepHdr.style.marginTop = '10px';
+  prepHdr.textContent = 'VIDEO PREP';
+  panelEl.appendChild(prepHdr);
+
+  const prepNote = document.createElement('div');
+  prepNote.className = 'ai-settings-note';
+  prepNote.style.lineHeight = '1.6';
+  prepNote.innerHTML =
+    'For frame-accurate scrubbing, convert clips with:<br>' +
+    '<code style="color:var(--accent)">node imweb-prep.js</code><br>' +
+    'Drop raw files in <code style="color:var(--accent)">_raw_videos/</code><br>' +
+    'Output: H.264 All-Intra, yuv420p, no audio, even dimensions.';
+  panelEl.appendChild(prepNote);
 
   // ── Per-provider fields renderer ───────────────────────────────────────────
 
