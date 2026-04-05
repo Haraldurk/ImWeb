@@ -2558,7 +2558,7 @@ async function main() {
   // Presets not listed here show generic uParam1–4 labels.
   const GLSL_PRESET_META = {
     'Reef':   ['Speed ×2', 'WaveAmp ×0.8', 'Density ×2', 'ColorShift ×2π'],
-    'Tunnel': ['Speed (-1..+1)', 'Dir X', 'Dir Y', 'Width'],
+    'Tunnel': ['Speed (-1..+1)', 'Dir X', 'Zoom (1–8×)', 'Width'],
   };
 
   const GLSL_PARAM_DEFAULT_LABELS = ['uParam1', 'uParam2', 'uParam3', 'uParam4'];
@@ -2613,21 +2613,23 @@ async function main() {
   uv.x += cos(d * 40.0 - uTime * 5.0) * 0.015;
   gl_FragColor = texture2D(uTexture, uv);
 }`,
-    'Tunnel': `// uParam1=Speed(-1..+1, 0.5=stop)  uParam2=DirX  uParam3=DirY  uParam4=Width
+    'Tunnel': `// uParam1=Speed(-1..+1, 0.5=stop)  uParam2=DirX  uParam3=Zoom(1–8×)  uParam4=Width
 void main() {
   float spd   = uParam1 * 2.0 - 1.0;               // -1..+1 travel speed
   float width = 0.05 + uParam4 * 0.55;             // tube tightness / depth scale
-  vec2  dir   = (vec2(uParam2, uParam3) - 0.5) * 0.3; // look-direction offset
+  float zoom  = 1.0 + uParam3 * 7.0;               // texture tiling: 1–8× around tube
+  float dscale = 0.05 + uParam3 * 0.45;            // depth tiling follows zoom
+  vec2  dir   = vec2(uParam2 - 0.5, 0.0) * 0.3;   // horizontal look offset
 
   vec2 uv = vUv - 0.5 - dir;
   float a = atan(uv.y, uv.x);
   float r = max(length(uv), 0.0001);
   float depth = width / r;                          // depth into tunnel
 
-  // Tube UV: 4× tiling around circumference, scaled depth, gentle spiral
+  // Tube UV: zoom-controlled tiling around circumference + scaled depth
   vec2 tuv = vec2(
-    a / 6.2832 * 4.0 + depth * 0.08 + sin(uTime * 0.25) * 0.04,
-    depth * 0.25 - uTime * spd * 0.1
+    a / 6.2832 * zoom + depth * 0.08 + sin(uTime * 0.25) * 0.04,
+    depth * dscale - uTime * spd * 0.1
   );
   vec4 col = texture2D(uTexture, fract(tuv));
 
@@ -2684,7 +2686,6 @@ void main() {
   gl_FragColor = col;
 }`,
     'Reef': `// uParam1=Speed(×2)  uParam2=WaveAmp(×0.8)  uParam3=Density(×2)  uParam4=ColorShift(×2π)
-// At 0.5: speed=1.0  waveAmp=0.4  density=1.0  colorShift=π
 uniform vec2 uResolution;
 void main() {
   float t       = uTime   * uParam1 * 2.0;
@@ -2700,13 +2701,13 @@ void main() {
   float z = 0.0, dist = 0.0;
   vec3 p = vec3(0.0);
 
-  // Flattened 20×9 loop — avoids nested-loop driver bugs
+  // Flattened 20×9 — range checks instead of float equality (mod() precision fix)
   for (float step = 0.0; step < 180.0; step += 1.0) {
     float i = floor(step / 9.0);
     float w = mod(step, 9.0) + 1.0;
-    if (w == 1.0) p = z * ray;
+    if (w < 1.5) p = z * ray;                                 // outer reset (w≈1)
     p += waveAmp * sin(vec3(p.y, p.z, p.x) * w + vec3(-z + t + i)) / w + vec3(0.5);
-    if (w == 9.0) {
+    if (w > 8.5) {                                             // outer accumulate (w≈9)
       vec3 sp  = sin(p - vec3(z)) / 7.0;
       dist = length(vec4(abs(p.y + p.z * 0.5), sp.x, sp.y, sp.z)) / (4.0 + z * z / 100.0);
       z += dist;
@@ -2716,7 +2717,6 @@ void main() {
     }
   }
 
-  // Reinhard — never NaN; denominator 50 makes dim areas visible
   vec3 c = max(o, 0.0);
   gl_FragColor = vec4(c / (c + 50.0), 1.0);
 }`,
