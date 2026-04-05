@@ -1753,14 +1753,9 @@ async function main() {
                     fg === DEPTH3D_IDX || bg === DEPTH3D_IDX || ds === DEPTH3D_IDX;
     ps.set('scene3d.active', needs3D ? 1 : 0);
   }
-  // Auto-activate movie when Movie source (index 1) is routed to any layer
-  const MOVIE_SRC = 1;
-  function syncMovieActive(v) {
-    if (v === MOVIE_SRC && !ps.get('movie.active').value) ps.set('movie.active', 1);
-  }
-  ps.get('layer.fg').onChange(v => { sync3DActive(); syncMovieActive(v); });
-  ps.get('layer.bg').onChange(v => { sync3DActive(); syncMovieActive(v); });
-  ps.get('layer.ds').onChange(v => { sync3DActive(); syncMovieActive(v); });
+  ps.get('layer.fg').onChange(sync3DActive);
+  ps.get('layer.bg').onChange(sync3DActive);
+  ps.get('layer.ds').onChange(sync3DActive);
 
   // ── Buffer capture helpers ────────────────────────────────────────────────
 
