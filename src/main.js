@@ -2620,18 +2620,18 @@ void main() {
   float r = max(length(uv), 0.0001);
   float depth = width / r;                          // depth into tunnel
 
-  // Tube UV: angle around circumference + depth travel + gentle spiral
+  // Tube UV: 4× tiling around circumference, scaled depth, gentle spiral
   vec2 tuv = vec2(
-    a / 6.2832 + depth * 0.12 + sin(uTime * 0.25) * 0.04,
-    depth - uTime * spd * 0.4
+    a / 6.2832 * 4.0 + depth * 0.08 + sin(uTime * 0.25) * 0.04,
+    depth * 0.25 - uTime * spd * 0.1
   );
   vec4 col = texture2D(uTexture, fract(tuv));
 
-  // Vignette: circular tube mouth — dark wall, open centre
-  float vign = smoothstep(0.5, 0.12, r);
-  // Depth atmosphere: near is bright, far fades to black
-  float atmo = 1.0 / (1.0 + depth * 0.12);
-  col.rgb *= vign * (0.3 + 0.7 * atmo);
+  // Vignette: circular tube wall — sharp cutoff at r=0.48
+  float vign = smoothstep(0.48, 0.20, r);
+  // Depth atmosphere: gentler fade, full texture brightness preserved
+  float atmo = 1.0 / (1.0 + depth * 0.06);
+  col.rgb *= vign * atmo;
 
   gl_FragColor = col;
 }`,
@@ -2688,30 +2688,33 @@ void main() {
   float density = uParam3 * 2.0;
   float colorSh = uParam4 * 6.2832;
 
-  // vUv-based ray — same FOV as original fov=2, avoids gl_FragCoord
   float aspect = uResolution.x / uResolution.y;
   vec2 uv = (vUv * 2.0 - 1.0) * vec2(aspect, 1.0);
   vec3 ray = normalize(vec3(uv, -aspect));
 
   vec3 o = vec3(0.0);
   float z = 0.0, dist = 0.0;
+  vec3 p = vec3(0.0);
 
-  for (float i = 0.0; i < 20.0; i += 1.0) {
-    vec3 p = z * ray;
-    for (float w = 1.0; w <= 9.0; w += 1.0) {
-      p += waveAmp * sin(vec3(p.y, p.z, p.x) * w + vec3(-z + t + i)) / w + vec3(0.5);
+  // Flattened 20×9 loop — avoids nested-loop driver bugs
+  for (float step = 0.0; step < 180.0; step += 1.0) {
+    float i = floor(step / 9.0);
+    float w = mod(step, 9.0) + 1.0;
+    if (w == 1.0) p = z * ray;
+    p += waveAmp * sin(vec3(p.y, p.z, p.x) * w + vec3(-z + t + i)) / w + vec3(0.5);
+    if (w == 9.0) {
+      vec3 sp  = sin(p - vec3(z)) / 7.0;
+      dist = length(vec4(abs(p.y + p.z * 0.5), sp.x, sp.y, sp.z)) / (4.0 + z * z / 100.0);
+      z += dist;
+      float denom = max(dist * dist * z, 0.001);
+      vec3 base = vec3(0.9) + sin(vec3(i * 0.1 + colorSh) - vec3(6.0, 1.0, 2.0));
+      o += base / denom * density + vec3(dist * z) / vec3(4.0, 2.0, 1.0);
     }
-    vec3 sp  = sin(p - vec3(z)) / 7.0;
-    dist = length(vec4(abs(p.y + p.z * 0.5), sp.x, sp.y, sp.z)) / (4.0 + z * z / 100.0);
-    z += dist;
-    float denom = max(dist * dist * z, 0.001);
-    vec3 base = vec3(0.9) + sin(vec3(i * 0.1 + colorSh) - vec3(6.0, 1.0, 2.0));
-    o += base / denom * density + vec3(dist * z) / vec3(4.0, 2.0, 1.0);
   }
 
-  // Reinhard tone mapping — never overflows to NaN, always 0..1
+  // Reinhard — never NaN; denominator 50 makes dim areas visible
   vec3 c = max(o, 0.0);
-  gl_FragColor = vec4(c / (c + 200.0), 1.0);
+  gl_FragColor = vec4(c / (c + 50.0), 1.0);
 }`,
   };
 
