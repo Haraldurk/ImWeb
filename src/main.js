@@ -2646,6 +2646,37 @@ void main() {
   if(uv.x<0.0||uv.x>1.0||uv.y<0.0||uv.y>1.0) col=vec4(0);
   gl_FragColor = col;
 }`,
+    'Reef': `// uParam1=speed  uParam2=density  uParam3=waveAmp  uParam4=colorShift
+uniform vec2 uResolution;
+void main() {
+  float t       = uTime * uParam1;
+  float density = uParam2;
+  float waveAmp = uParam3;
+  float colorSh = uParam4;
+
+  vec2 uv = (vUv - 0.5) * 2.0;
+  uv.x *= uResolution.x / uResolution.y;
+  vec3 ray = normalize(vec3(uv, 1.5));
+
+  vec3 o = vec3(0.0);
+  float z = 0.0, dist = 0.0;
+
+  for (float i = 0.0; i < 20.0; i += 1.0) {
+    vec3 p = z * ray;
+    for (float w = 1.0; w <= 9.0; w += 1.0) {
+      p += waveAmp * sin(vec3(p.y, p.z, p.x) * w + vec3(-z + t + i)) / w + vec3(0.5);
+    }
+    vec3 sp = sin(p - vec3(z)) / 7.0;
+    dist = length(vec4(abs(p.y + p.z * 0.5), sp.x, sp.y, sp.z)) / (4.0 + z * z / 100.0);
+    z += dist;
+    float denom = max(dist * dist * z, 0.001);
+    vec3 base = vec3(0.9) + sin(vec3(i * 0.1 + colorSh));
+    o += base / denom * density + vec3(dist * z) / vec3(4.0, 2.0, 1.0);
+  }
+
+  vec3 c = tanh(o / 5.0) * 0.8;
+  gl_FragColor = vec4(c, 1.0);
+}`,
   };
 
   const glslPresetSel = document.createElement('select');
