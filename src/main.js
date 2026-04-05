@@ -69,7 +69,7 @@ import {
 // ─────────────────────────────────────────────────────────────────────────────
 
 async function main() {
-  console.log('%cImWeb v0.4.0', 'color:#e8c840;font-weight:bold;font-size:14px');
+  console.log('%cImWeb v0.5.1', 'color:#e8c840;font-weight:bold;font-size:14px');
 
   // ── 1. Canvas & renderer ──────────────────────────────────────────────────
 
@@ -2651,8 +2651,8 @@ void main() {
   if(uv.x<0.0||uv.x>1.0||uv.y<0.0||uv.y>1.0) col=vec4(0);
   gl_FragColor = col;
 }`,
-    'Reef': `// uParam1=speed(×2)  uParam2=waveAmp(×0.8)  uParam3=density(×2)  uParam4=colorShift(×6.28)
-// Defaults at 0.5: speed=1.0  waveAmp=0.4  density=1.0  colorShift=3.14
+    'Reef': `// uParam1=Speed(×2)  uParam2=WaveAmp(×0.8)  uParam3=Density(×2)  uParam4=ColorShift(×2π)
+// At 0.5: speed=1.0  waveAmp=0.4  density=1.0  colorShift=π
 uniform vec2 uResolution;
 void main() {
   float t       = uTime   * uParam1 * 2.0;
@@ -2660,9 +2660,10 @@ void main() {
   float density = uParam3 * 2.0;
   float colorSh = uParam4 * 6.2832;
 
-  // Ray construction matching original fov=2 (looks toward -Z)
-  vec2 fc  = vec2(gl_FragCoord.x, uResolution.y - gl_FragCoord.y);
-  vec3 ray = normalize(vec3(fc, 0.0) * 2.0 - vec3(uResolution.x, uResolution.y, uResolution.x));
+  // vUv-based ray — same FOV as original fov=2, avoids gl_FragCoord
+  float aspect = uResolution.x / uResolution.y;
+  vec2 uv = (vUv * 2.0 - 1.0) * vec2(aspect, 1.0);
+  vec3 ray = normalize(vec3(uv, -aspect));
 
   vec3 o = vec3(0.0);
   float z = 0.0, dist = 0.0;
@@ -2680,7 +2681,9 @@ void main() {
     o += base / denom * density + vec3(dist * z) / vec3(4.0, 2.0, 1.0);
   }
 
-  gl_FragColor = vec4(tanh(o / 2000.0), 1.0);
+  // Reinhard tone mapping — never overflows to NaN, always 0..1
+  vec3 c = max(o, 0.0);
+  gl_FragColor = vec4(c / (c + 200.0), 1.0);
 }`,
   };
 
