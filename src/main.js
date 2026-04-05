@@ -1651,12 +1651,14 @@ async function main() {
         }
       }
       refreshClipsList();
-      // Ensure movie is playing after clip load
+      // Ensure movie is active and FG is routed to it after clip load
       if (movieInput.clips.length > 0) {
         if (!ps.get('movie.active').value) {
-          ps.set('movie.active', 1); // triggers onChange → play()
-        } else if (movieInput.currentClip) {
-          movieInput.currentClip.video.play().catch(() => {}); // already active — kick playback
+          ps.set('movie.active', 1); // triggers onChange → play() + layer.fg=Movie
+        } else {
+          // Already active — mirror what onChange does: play + route FG
+          if (movieInput.currentClip) movieInput.currentClip.video.play().catch(() => {});
+          ps.set('layer.fg', 1);
         }
       }
     };
@@ -1705,9 +1707,11 @@ async function main() {
           await movieInput.addClip(file);
           refreshClipsList();
           if (!ps.get('movie.active').value) {
-            ps.set('movie.active', 1); // triggers onChange → play()
-          } else if (movieInput.currentClip) {
-            movieInput.currentClip.video.play().catch(() => {}); // already active — kick playback
+            ps.set('movie.active', 1); // triggers onChange → play() + layer.fg=Movie
+          } else {
+            // Already active — mirror what onChange does: play + route FG
+            if (movieInput.currentClip) movieInput.currentClip.video.play().catch(() => {});
+            ps.set('layer.fg', 1);
           }
         } catch (err) { console.error('[DnD] video load failed:', err); _showClipError(err.message); }
       } else if (/\.(glb|gltf|obj|stl|dae)$/i.test(file.name)) {
@@ -2958,6 +2962,18 @@ void main() {
     const isLocked = ps.get('global.keylock').value > 0.5;
     if (isLocked && (/^[vmcbskdxhtf]$/i.test(e.key) || /^Digit[0-9]$/.test(e.code))) return;
 
+    // Shift+1–8 = Select movie clip (check first so Nordic /=Shift+7 doesn't bleed into search)
+    if (e.shiftKey && !e.metaKey && /^Digit[1-8]$/.test(e.code)) {
+      const idx = parseInt(e.code.replace('Digit', '')) - 1;
+      if (idx < movieInput.clips.length) {
+        movieInput.selectClip(idx);
+        if (ps.get('movie.active').value) movieInput.clips[idx]?.video.play().catch(() => {});
+        refreshClipsList();
+      }
+      e.preventDefault();
+      return; // prevent other shortcuts (e.g. / on Nordic layout) from also firing
+    }
+
     // / = open parameter search
     if (e.key === '/' && !e.target.closest('input, textarea')) {
       e.preventDefault();
@@ -3008,16 +3024,6 @@ void main() {
       e.preventDefault();
       const fadeP = ps.get('output.fade');
       fadeP.value = fadeP.value > 0 ? 0 : 100;
-    }
-    // 1–8 = Select clip (when Shift is held, select clip N-1)
-    if (e.shiftKey && !e.metaKey && /^Digit[1-8]$/.test(e.code)) {
-      const idx = parseInt(e.code.replace('Digit', '')) - 1;
-      if (idx < movieInput.clips.length) {
-        movieInput.selectClip(idx);
-        if (ps.get('movie.active').value) movieInput.clips[idx]?.video.play().catch(() => {});
-        refreshClipsList();
-        e.preventDefault();
-      }
     }
     // f = Fullscreen
     if (e.key === 'f' && !e.metaKey) { e.preventDefault(); toggleFullscreen(); }
