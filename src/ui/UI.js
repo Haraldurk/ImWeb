@@ -265,15 +265,15 @@ export function buildParamRow(param, contextMenu) {
     _openCtrlPopover(param, ctrlEl, contextMenu?.ctrl, contextMenu?.tables);
   });
   ctrlEl.addEventListener('click', e => {
-    if ((e.ctrlKey || e.metaKey) && param.controller) {
-      e.preventDefault();
-      e.stopPropagation();
-      _openCtrlPopover(param, ctrlEl, contextMenu?.ctrl, contextMenu?.tables);
-    }
+    if (!param.controller) return;
+    e.preventDefault();
+    e.stopPropagation();
+    _openCtrlPopover(param, ctrlEl, contextMenu?.ctrl, contextMenu?.tables);
   });
   // Long-press (220ms) on touch devices → open controller popover
   let _longPressTimer = null;
   ctrlEl.addEventListener('pointerdown', e => {
+    e.stopPropagation(); // prevent row from capturing pointer + calling preventDefault
     if (e.pointerType !== 'touch' || !param.controller) return;
     _longPressTimer = setTimeout(() => {
       _openCtrlPopover(param, ctrlEl, contextMenu?.ctrl, contextMenu?.tables);
