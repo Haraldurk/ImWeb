@@ -74,21 +74,20 @@ function _openCtrlPopover(param, anchorEl, ctrl, tables) {
     };
     refresh();
 
-    let dragging = false, startY = 0, startVal = 0;
-    span.addEventListener('mousedown', e => {
+    let startY = 0, startVal = 0;
+    span.addEventListener('pointerdown', e => {
       if (e.button !== 0) return;
-      dragging = true; startY = e.clientY; startVal = get();
+      span.setPointerCapture(e.pointerId);
+      startY = e.clientY; startVal = get();
       e.preventDefault(); e.stopPropagation();
     });
-    const onMove = e => {
-      if (!dragging) return;
+    span.addEventListener('pointermove', e => {
+      if (!span.hasPointerCapture(e.pointerId)) return;
       const step = e.shiftKey ? coarseStep : fineStep;
       set(startVal + (startY - e.clientY) * step);
       refresh();
-    };
-    const onUp = () => { dragging = false; };
-    window.addEventListener('mousemove', onMove);
-    window.addEventListener('mouseup',   onUp);
+    });
+    span.addEventListener('pointerup', () => {});
 
     span.addEventListener('dblclick', e => {
       e.stopPropagation();
@@ -299,26 +298,26 @@ export function buildParamRow(param, contextMenu) {
   // ── Type-specific controls ──────────────────────────────────────────────
 
   if (param.type === PARAM_TYPE.CONTINUOUS) {
-    // Click+drag or slider
-    let dragging = false, startX = 0, startVal = 0;
+    // Click+drag or slider — uses Pointer Events for mouse + touch + pen
+    let startX = 0, startVal = 0;
     const range = param.max - param.min;
 
-    row.addEventListener('mousedown', e => {
+    row.addEventListener('pointerdown', e => {
       if (e.button !== 0 || param.locked) return;
-      dragging = true;
+      row.setPointerCapture(e.pointerId);
       startX   = e.clientX;
       startVal = param.value;
       e.preventDefault();
     });
 
-    window.addEventListener('mousemove', e => {
-      if (!dragging) return;
+    row.addEventListener('pointermove', e => {
+      if (!row.hasPointerCapture(e.pointerId)) return;
       const delta = (e.clientX - startX) / 200 * range;
       param.value = startVal + delta;
       updateDisplay();
     });
 
-    window.addEventListener('mouseup', () => { dragging = false; });
+    row.addEventListener('pointerup', () => {});
 
     // Alt+wheel or horizontal scroll to adjust value; plain vertical scroll scrolls the panel
     row.addEventListener('wheel', e => {
@@ -438,6 +437,19 @@ export function buildParamRow(param, contextMenu) {
     contextMenu?.show(param, e.clientX, e.clientY);
   });
 
+  // Long-press (600ms) on touch → context menu + haptic
+  let _lpTimer;
+  row.addEventListener('pointerdown', e => {
+    if (e.pointerType !== 'touch') return;
+    _lpTimer = setTimeout(() => {
+      contextMenu?.show(param, e.clientX, e.clientY);
+      navigator.vibrate?.(40);
+    }, 600);
+  });
+  row.addEventListener('pointermove',   () => clearTimeout(_lpTimer));
+  row.addEventListener('pointerup',     () => clearTimeout(_lpTimer));
+  row.addEventListener('pointercancel', () => clearTimeout(_lpTimer));
+
   // Live update from external controller
   param.onChange(updateDisplay);
   updateDisplay();
@@ -460,17 +472,17 @@ export function buildParamRow(param, contextMenu) {
 
       // Drag up/down to adjust value; double-click to type
       el.style.cursor = 'ns-resize';
-      let _rdrag = false, _rstartY = 0, _rstartVal = 0;
-      el.addEventListener('mousedown', e => {
+      let _rstartY = 0, _rstartVal = 0;
+      el.addEventListener('pointerdown', e => {
         if (e.button !== 0) return;
-        _rdrag    = true;
-        _rstartY  = e.clientY;
+        el.setPointerCapture(e.pointerId);
+        _rstartY   = e.clientY;
         _rstartVal = which === 'min' ? (param.ctrlMin ?? param.min) : (param.ctrlMax ?? param.max);
         e.preventDefault();
         e.stopPropagation();
       });
-      window.addEventListener('mousemove', e => {
-        if (!_rdrag) return;
+      el.addEventListener('pointermove', e => {
+        if (!el.hasPointerCapture(e.pointerId)) return;
         const step  = e.shiftKey ? (param.step ?? 1) : 0.1;
         let v = _rstartVal + (_rstartY - e.clientY) * step;
         const other = which === 'min' ? (param.ctrlMax ?? param.max) : (param.ctrlMin ?? param.min);
@@ -478,7 +490,7 @@ export function buildParamRow(param, contextMenu) {
         else                 { v = Math.max(v, other); param.ctrlMax = v; }
         refresh();
       });
-      window.addEventListener('mouseup', () => { _rdrag = false; });
+      el.addEventListener('pointerup', () => {});
 
       el.addEventListener('dblclick', e => {
         e.stopPropagation();
@@ -512,6 +524,22 @@ export function buildParamRow(param, contextMenu) {
     };
     row.appendChild(makeRangeEl('min'));
     row.appendChild(makeRangeEl('max'));
+
+    // Thin slider under value for touch-friendly adjustment
+    row.classList.add('has-slider');
+    const slider = document.createElement('input');
+    slider.type = 'range';
+    slider.className = 'param-slider';
+    slider.min   = param.min;
+    slider.max   = param.max;
+    slider.step  = param.step ?? 'any';
+    slider.value = param.value;
+    slider.addEventListener('input', () => {
+      param.value = parseFloat(slider.value);
+      updateDisplay();
+    });
+    param.onChange(() => { slider.value = param.value; });
+    row.appendChild(slider);
   }
 
   row.appendChild(valueEl);
@@ -602,6 +630,7 @@ export function buildMappingPanels(ps, contextMenu) {
     'particle-params':     ps.getGroup('particle'),
     'sdf-params':          ps.getGroup('sdf'),
     'delay-params':        ps.getGroup('delay'),
+    'vasulka-params':      ps.getGroup('vasulka'),
     'vectorscope-params':  ps.getGroup('vectorscope'),
     'slitscan-params':     ps.getGroup('slitscan'),
     // 'seq-params' is built by buildSeqParams() — skip here
