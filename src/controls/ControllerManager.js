@@ -375,7 +375,7 @@ export class ControllerManager {
       const pressure = e.pressure ?? 0;
       if (pressure === 0 || e.pointerType === 'mouse') return;
       this.ps.getAll().forEach(p => {
-        if (p.controller?.type === 'wacom-pressure') p.setNormalized(pressure);
+        if (p.controller?.type === 'wacom-pressure' || p.controller?.type === 'pen-pressure') p.setNormalized(pressure);
       });
     });
   }

@@ -272,6 +272,18 @@ export function buildParamRow(param, contextMenu) {
       _openCtrlPopover(param, ctrlEl, contextMenu?.ctrl, contextMenu?.tables);
     }
   });
+  // Long-press (220ms) on touch devices → open controller popover
+  let _longPressTimer = null;
+  ctrlEl.addEventListener('pointerdown', e => {
+    if (e.pointerType !== 'touch' || !param.controller) return;
+    _longPressTimer = setTimeout(() => {
+      _openCtrlPopover(param, ctrlEl, contextMenu?.ctrl, contextMenu?.tables);
+    }, 220);
+  });
+  const _cancelLongPress = () => clearTimeout(_longPressTimer);
+  ctrlEl.addEventListener('pointerup',     _cancelLongPress);
+  ctrlEl.addEventListener('pointercancel', _cancelLongPress);
+  ctrlEl.addEventListener('pointermove',   _cancelLongPress);
 
   const valueEl = document.createElement('span');
   valueEl.className = 'param-value';

@@ -1903,3 +1903,83 @@ body.fullscreen-output #app {
 #capture-panel button:hover { background: var(--bg-3); color: var(--accent); }
 #cap-frame-label { font-variant-numeric: tabular-nums; flex: 1; color: var(--accent); }
 #cap-close { align-self: flex-end; font-size: 10px; color: var(--text-2); }
+
+/* ── Panel overlay (mobile slide-over) ──────────────────────────────────── */
+#panel-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,.45);
+  z-index: 199;
+}
+#panel-overlay:not(.hidden) { display: block; }
+
+/* ── RESPONSIVE BREAKPOINTS ─────────────────────────────────────────────── */
+
+/* 4K / HiDPI desktop (≥2560px) */
+@media (min-width: 2560px) {
+  :root { --ctrl-w: 380px; }
+  body  { font-size: 14px; }
+  .param-row { height: 32px; }
+}
+
+/* Tablet landscape (≤1200px) */
+@media (max-width: 1200px) {
+  :root { --ctrl-w: 280px; }
+}
+
+/* Tablet portrait / phone landscape (≤900px) — panel becomes slide-over */
+@media (max-width: 900px) {
+  :root { --ctrl-w: 300px; }
+
+  #app { flex-direction: column; }
+
+  #output-panel { width: 100%; flex: 1; }
+
+  #control-panel {
+    position: fixed;
+    top: var(--status-h, 36px);
+    right: 0;
+    bottom: 0;
+    z-index: 200;
+    transform: translateX(100%);
+    transition: transform 0.2s ease;
+    box-shadow: -4px 0 24px rgba(0,0,0,.6);
+  }
+  #control-panel.panel-open {
+    transform: translateX(0);
+  }
+
+  #btn-panel-toggle {
+    display: flex !important;
+    align-items: center;
+    justify-content: center;
+    padding: 0 10px;
+    font-size: 16px;
+    background: transparent;
+    border: none;
+    color: var(--text-1);
+    cursor: pointer;
+    height: 100%;
+  }
+  #btn-panel-toggle:hover { color: var(--accent); }
+}
+
+/* Phone portrait (≤600px) */
+@media (max-width: 600px) {
+  :root { --ctrl-w: 100vw; }
+  #control-panel { width: 100vw; }
+}
+
+/* Touch / coarse pointer — bigger tap targets */
+@media (pointer: coarse) {
+  .param-row { min-height: 44px; }
+  .tab       { padding: 10px 12px; }
+  .import-btn { padding: 8px 12px; }
+}
+
+/* Touch-friendly panel scrolling */
+.tab-content, .detached-panel-body {
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}

@@ -575,6 +575,23 @@ export function registerCoreParameters(ps) {
   ps.register({ id: 'scene3d.mat.texsrc', label: 'TexSrc', group: 'scene3d',
     type: PARAM_TYPE.SELECT,
     options: ['None','Camera','Movie','Screen','Draw','Buffer','Noise'], value: 0 });
+  ps.register({ id: 'scene3d.mat.type', label: 'MatType', group: 'scene3d',
+    type: PARAM_TYPE.SELECT,
+    options: ['Standard','Toon','Normal','Matcap','Lambert','Phong'], value: 0 });
+  ps.register({ id: 'scene3d.mat.uvSpeedX',    label: 'UVSpeedX',   group: 'scene3d',
+    min: -2, max: 2, value: 0, step: 0.01 });
+  ps.register({ id: 'scene3d.mat.uvSpeedY',    label: 'UVSpeedY',   group: 'scene3d',
+    min: -2, max: 2, value: 0, step: 0.01 });
+  ps.register({ id: 'scene3d.mat.rim',         label: 'RimLight',   group: 'scene3d',
+    min: 0, max: 1, value: 0, step: 0.01 });
+  ps.register({ id: 'scene3d.mat.rimHue',      label: 'RimHue',     group: 'scene3d',
+    min: 0, max: 360, value: 180, unit: '°' });
+  ps.register({ id: 'scene3d.mat.emissiveHue', label: 'EmiHue',     group: 'scene3d',
+    min: 0, max: 360, value: 0, unit: '°' });
+  ps.register({ id: 'scene3d.mat.emissiveSat', label: 'EmiSat',     group: 'scene3d',
+    min: 0, max: 100, value: 0, unit: '%' });
+  ps.register({ id: 'scene3d.mat.envIntensity', label: 'EnvInt',    group: 'scene3d',
+    min: 0, max: 2, value: 1, step: 0.01 });
   ps.register({ id: 'scene3d.light.intensity', label: 'Light Int.', group: 'scene3d',
     min: 0, max: 5, value: 1.0 });
   ps.register({ id: 'scene3d.light.ambient',   label: 'Ambient',    group: 'scene3d',
@@ -739,6 +756,34 @@ export function registerCoreParameters(ps) {
     type: PARAM_TYPE.TOGGLE, value: 0 });
   ps.register({ id: 'text.advance', label: 'TextAdvance', group: 'text',
     type: PARAM_TYPE.TRIGGER });
+  ps.register({ id: 'text.autoplay',    label: 'AutoPlay',    group: 'text',
+    type: PARAM_TYPE.TOGGLE, value: 0 });
+  ps.register({ id: 'text.rate',        label: 'AdvRate',     group: 'text',
+    min: 0, max: 20, value: 0, unit: 'Hz' });
+  ps.register({ id: 'text.letterspacing', label: 'LetterSpc', group: 'text',
+    min: -20, max: 50, value: 0 });
+  ps.register({ id: 'text.rotation',    label: 'TextRot',     group: 'text',
+    min: -180, max: 180, value: 0, unit: '°' });
+  ps.register({ id: 'text.shadowBlur',  label: 'ShadowBlur',  group: 'text',
+    min: 0, max: 40, value: 0, unit: 'px' });
+  ps.register({ id: 'text.shadowX',     label: 'ShadowX',     group: 'text',
+    min: -50, max: 50, value: 0 });
+  ps.register({ id: 'text.shadowY',     label: 'ShadowY',     group: 'text',
+    min: -50, max: 50, value: 0 });
+  ps.register({ id: 'text.bgOpacity',   label: 'BGOpacity',   group: 'text',
+    min: 0, max: 100, value: 100, unit: '%' });
+  ps.register({ id: 'text.outlineHue',  label: 'OutlineHue',  group: 'text',
+    min: 0, max: 360, value: 0, unit: '°' });
+  ps.register({ id: 'text.outlineSat',  label: 'OutlineSat',  group: 'text',
+    min: 0, max: 100, value: 0, unit: '%' });
+  ps.register({ id: 'text.animMode',    label: 'AnimMode',    group: 'text',
+    type: PARAM_TYPE.SELECT, options: ['None','Bounce','Wave','Fade','Typewriter'], value: 0 });
+  ps.register({ id: 'text.animSpeed',   label: 'AnimSpeed',   group: 'text',
+    min: 0, max: 10, value: 2 });
+  ps.register({ id: 'text.animAmt',     label: 'AnimAmt',     group: 'text',
+    min: 0, max: 100, value: 30 });
+  ps.register({ id: 'text.contentIdx',  label: 'ContentIdx',  group: 'text',
+    min: 0, max: 63, value: 0, step: 1 });
 
   // ── Screen capture ────────────────────────────────────────────────────────
   ps.register({ id: 'screen.bg1',   label: 'ScrBG1', group: 'screen',

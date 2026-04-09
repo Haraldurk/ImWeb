@@ -95,6 +95,16 @@ export class SceneManager {
     this._fallback = new THREE.DataTexture(d, 1, 1, THREE.RGBAFormat);
     this._fallback.needsUpdate = true;
 
+    // Material type tracking — sentinel forces rebuild on first applyParams
+    this._matType  = -1;
+    this._liveTex  = null;
+
+    // Toon gradient: 3-step cel-shading ramp (dark / mid / bright)
+    const toonData = new Uint8Array([40, 40, 40, 255,  130, 130, 130, 255,  240, 240, 240, 255]);
+    this._toonGradient = new THREE.DataTexture(toonData, 3, 1, THREE.RGBAFormat);
+    this._toonGradient.minFilter = this._toonGradient.magFilter = THREE.NearestFilter;
+    this._toonGradient.needsUpdate = true;
+
     // Lights
     this._setupLights();
 
@@ -255,6 +265,8 @@ export class SceneManager {
       shader.uniforms.uBlobAmount = { value: 0 };
       shader.uniforms.uBlobScale  = { value: 1 };
       shader.uniforms.uBlobSpeed  = { value: 1 };
+      shader.uniforms.uRimAmount  = { value: 0 };
+      shader.uniforms.uRimColor   = { value: new THREE.Color(0xffffff) };
       mat._shader = shader;
 
       shader.vertexShader = `
@@ -306,8 +318,86 @@ export class SceneManager {
           transformed += objectNormal * n * uBlobAmount;
         }`
       );
+
+      // Rim / Fresnel — fragment shader injection
+      shader.fragmentShader = `
+        uniform float uRimAmount;
+        uniform vec3  uRimColor;
+        ${shader.fragmentShader}
+      `.replace(
+        '#include <dithering_fragment>',
+        `#include <dithering_fragment>
+        if (uRimAmount > 0.0) {
+          float rim = 1.0 - max(0.0, dot(normalize(vViewPosition), normalize(vNormal)));
+          rim = pow(rim, 4.0);
+          gl_FragColor.rgb += uRimColor * rim * uRimAmount;
+        }`
+      );
     };
-    mat.customProgramCacheKey = () => 'warpblob'; // unique cache key for custom shader
+    mat.customProgramCacheKey = () => 'warpblobrim'; // unique cache key for custom shader
+  }
+
+  _rebuildMaterial(type) {
+    if (this._matType === type) return;
+    this._matType = type;
+
+    const oldMat = this.material;
+
+    // Carry over basic properties from old material
+    const color      = oldMat?.color?.clone() ?? new THREE.Color(0xffffff);
+    const roughness  = oldMat?.roughness  ?? 0.5;
+    const metalness  = oldMat?.metalness  ?? 0.0;
+    const opacity    = oldMat?.opacity    ?? 1.0;
+    const wireframe  = oldMat?.wireframe  ?? false;
+    const map        = oldMat?.map        ?? null;
+
+    let mat;
+    switch (type) {
+      case 1:
+        mat = new THREE.MeshToonMaterial({ color, wireframe, gradientMap: this._toonGradient });
+        break;
+      case 2:
+        mat = new THREE.MeshNormalMaterial({ wireframe });
+        break;
+      case 3:
+        mat = new THREE.MeshMatcapMaterial({ color, wireframe });
+        break;
+      case 4:
+        mat = new THREE.MeshLambertMaterial({ color, wireframe });
+        break;
+      case 5:
+        mat = new THREE.MeshPhongMaterial({ color, wireframe, shininess: (1 - roughness) * 100 });
+        break;
+      default:
+        mat = new THREE.MeshStandardMaterial({ color, roughness, metalness, wireframe });
+        break;
+    }
+
+    mat.opacity     = opacity;
+    mat.transparent = opacity < 1;
+    if (map) mat.map = map;
+
+    this._setupMaterial(mat);
+
+    if (oldMat) {
+      // Dispose old shaders but keep the material alive if imported model references it
+      oldMat.onBeforeCompile = () => {};
+      oldMat._shader = null;
+    }
+
+    this.material = mat;
+
+    // Apply to main mesh
+    if (this.mesh) {
+      if (this.mesh.isMesh) {
+        this.mesh.material = mat;
+      } else {
+        // Imported model group — update all child meshes
+        this.mesh.traverse(child => {
+          if (child.isMesh) child.material = mat;
+        });
+      }
+    }
   }
 
   // ── Model import ───────────────────────────────────────────────────────────
@@ -581,16 +671,38 @@ export class SceneManager {
     }
 
     // Material
+    // Rebuild material if type changed
+    const matType = Math.round(p.get('scene3d.mat.type')?.value ?? 0);
+    if (matType !== this._matType) this._rebuildMaterial(matType);
+
     if (this.material) {
       const hue = (p.get('scene3d.mat.hue')?.value ?? 240) / 360;
       const sat = (p.get('scene3d.mat.sat')?.value ?? 50) / 100;
-      this.material.color.setHSL(hue, sat, sat > 0 ? 0.5 : 1.0);
-      this.material.emissive.setHSL(hue, sat, 0.15 * (p.get('scene3d.mat.emissive')?.value ?? 0));
-      this.material.roughness = p.get('scene3d.mat.roughness').value;
-      this.material.metalness = p.get('scene3d.mat.metalness').value;
-      this.material.emissiveIntensity = p.get('scene3d.mat.emissive').value;
+      if (this.material.color) this.material.color.setHSL(hue, sat, sat > 0 ? 0.5 : 1.0);
+
+      // Independent emissive color (falls back to base hue when emissiveSat = 0)
+      if (this.material.emissive) {
+        const emissiveAmt = p.get('scene3d.mat.emissive')?.value ?? 0;
+        const emHue = (p.get('scene3d.mat.emissiveHue')?.value ?? 0) / 360;
+        const emSat = (p.get('scene3d.mat.emissiveSat')?.value ?? 0) / 100;
+        const useIndepEmissive = emSat > 0;
+        this.material.emissive.setHSL(
+          useIndepEmissive ? emHue : hue,
+          useIndepEmissive ? emSat : sat,
+          0.15 * emissiveAmt
+        );
+        if (this.material.emissiveIntensity !== undefined) this.material.emissiveIntensity = emissiveAmt;
+      }
+
+      if (this.material.roughness !== undefined) this.material.roughness = p.get('scene3d.mat.roughness').value;
+      if (this.material.metalness !== undefined) this.material.metalness = p.get('scene3d.mat.metalness').value;
       this.material.opacity  = p.get('scene3d.mat.opacity').value;
       this.material.transparent = this.material.opacity < 1;
+
+      // Environment map intensity
+      if (this.material.envMapIntensity !== undefined) {
+        this.material.envMapIntensity = p.get('scene3d.mat.envIntensity')?.value ?? 1;
+      }
       const wireframe = !!p.get('scene3d.wireframe').value;
       this.material.wireframe = wireframe;
       // Also apply wireframe to any imported model's sub-meshes
@@ -660,6 +772,34 @@ export class SceneManager {
           if (child.isMesh && child.material) {
             if (Array.isArray(child.material)) child.material.forEach(updateBlob);
             else updateBlob(child.material);
+          }
+        });
+      }
+
+      // UV animation — accumulate texture offset each frame
+      const uvSpeedX = p.get('scene3d.mat.uvSpeedX')?.value ?? 0;
+      const uvSpeedY = p.get('scene3d.mat.uvSpeedY')?.value ?? 0;
+      if (this.material.map && (uvSpeedX !== 0 || uvSpeedY !== 0)) {
+        this.material.map.offset.x += uvSpeedX * dt;
+        this.material.map.offset.y += uvSpeedY * dt;
+        this.material.map.needsUpdate = true;
+      }
+
+      // Rim / Fresnel uniform updates
+      const rimAmt = p.get('scene3d.mat.rim')?.value ?? 0;
+      const rimHue = (p.get('scene3d.mat.rimHue')?.value ?? 180) / 360;
+      const updateRim = (m) => {
+        if (m._shader) {
+          m._shader.uniforms.uRimAmount.value = rimAmt;
+          m._shader.uniforms.uRimColor.value.setHSL(rimHue, 1, 0.5);
+        }
+      };
+      updateRim(this.material);
+      if (this._importedModelName && this.mesh) {
+        this.mesh.traverse(child => {
+          if (child.isMesh && child.material) {
+            if (Array.isArray(child.material)) child.material.forEach(updateRim);
+            else updateRim(child.material);
           }
         });
       }

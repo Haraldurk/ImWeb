@@ -29,6 +29,7 @@
     <span id="status-midi" class="indicator" title="MIDI">MIDI</span>
     <span id="status-osc"  class="indicator" title="OSC">OSC</span>
     <canvas id="status-vu" width="40" height="14" title="Audio input level" style="display:none;vertical-align:middle;border-radius:2px;"></canvas>
+    <button id="btn-panel-toggle" title="Toggle control panel" style="display:none">☰</button>
     <div class="status-right">
       <button id="btn-reset-all"    title="Reset all parameters to defaults (Shift+Esc)">↺</button>
       <button id="btn-collapse-all" title="Collapse / expand all sections">⊟</button>
@@ -345,6 +346,9 @@ void main() {
 
   </div><!-- /app -->
 
+  <!-- Panel overlay for mobile (tap to close) -->
+  <div id="panel-overlay" class="hidden"></div>
+
   <!-- PARAM SEARCH OVERLAY (/ key) -->
   <div id="param-search" class="hidden">
     <input id="param-search-input" type="text" placeholder="Search parameters…" autocomplete="off" spellcheck="false">
@@ -401,6 +405,7 @@ void main() {
     <button class="menu-item" data-ctrl="gamepad-btn-2">Gamepad X/Square</button>
     <button class="menu-item" data-ctrl="gamepad-btn-3">Gamepad Y/Triangle</button>
     <button class="menu-item" data-ctrl="wacom-pressure">Wacom Pressure</button>
+    <button class="menu-item" data-ctrl="pen-pressure">Pen/Touch Pressure</button>
     <button class="menu-item" data-ctrl="key">Key...</button>
     <button class="menu-item" data-ctrl="expr">Expression…</button>
     <div class="menu-section">Options</div>

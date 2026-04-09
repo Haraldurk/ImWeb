@@ -1982,7 +1982,12 @@ async function main() {
 
   const textContentEl = document.getElementById('text-content');
   textContentEl?.addEventListener('input', () => {
-    textLayer.setContent(textContentEl.value);
+    const lines = textContentEl.value.split('\n');
+    textLayer.setContentList(lines);
+    // Also keep setContent for single-line compatibility
+    if (lines.filter(l => l.trim()).length <= 1) {
+      textLayer.setContent(textContentEl.value);
+    }
   });
 
   document.getElementById('btn-text-advance')?.addEventListener('click', () => {
@@ -1991,6 +1996,18 @@ async function main() {
   document.getElementById('btn-text-reset')?.addEventListener('click', () => {
     textLayer._idx = 0;
     textLayer._render();
+  });
+
+  // ── Mobile panel toggle ───────────────────────────────────────────────────
+  const _panelEl   = document.getElementById('control-panel');
+  const _overlayEl = document.getElementById('panel-overlay');
+  document.getElementById('btn-panel-toggle')?.addEventListener('click', () => {
+    const open = _panelEl?.classList.toggle('panel-open');
+    _overlayEl?.classList.toggle('hidden', !open);
+  });
+  _overlayEl?.addEventListener('click', () => {
+    _panelEl?.classList.remove('panel-open');
+    _overlayEl?.classList.add('hidden');
   });
 
   // ── Buffer tab UI ─────────────────────────────────────────────────────────
@@ -3191,6 +3208,38 @@ void main() {
     if (ds === 3 || ds === 4) ps.set('layer.ds', 0);
   });
 
+  // ── Pinch zoom on canvas (two-finger → scene3d.scale) ────────────────────
+  {
+    const _pinch = new Map();
+    let _pinchBaseDist  = 0;
+    let _pinchBaseScale = 0;
+
+    canvas.addEventListener('pointerdown', e => {
+      _pinch.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    });
+    canvas.addEventListener('pointermove', e => {
+      if (!_pinch.has(e.pointerId)) return;
+      _pinch.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (_pinch.size === 2) {
+        const [a, b] = [..._pinch.values()];
+        const dist = Math.hypot(a.x - b.x, a.y - b.y);
+        if (_pinchBaseDist === 0) {
+          _pinchBaseDist  = dist;
+          _pinchBaseScale = ps.get('scene3d.scale')?.value ?? 1;
+        } else {
+          const ratio = dist / _pinchBaseDist;
+          ps.set('scene3d.scale', Math.max(0.01, Math.min(50, _pinchBaseScale * ratio)));
+        }
+      }
+    });
+    const _pinchEnd = e => {
+      _pinch.delete(e.pointerId);
+      if (_pinch.size < 2) _pinchBaseDist = 0;
+    };
+    canvas.addEventListener('pointerup',     _pinchEnd);
+    canvas.addEventListener('pointercancel', _pinchEnd);
+  }
+
   // ── Render loop ───────────────────────────────────────────────────────────
 
   let lastTime = performance.now();
@@ -3355,7 +3404,7 @@ void main() {
     drawLayer.tick(ps);
 
     // Tick text layer (updates text rendering based on text.* params)
-    textLayer.tick(ps);
+    textLayer.tick(ps, dt);
 
     // Update sound level texture
     if (ctrl.sound) {
