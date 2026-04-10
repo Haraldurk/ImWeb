@@ -146,14 +146,11 @@ function _openCtrlPopover(param, anchorEl, ctrl, tables) {
       () => c.hz ?? 1,
       v  => { v = Math.max(0.01, v); c.hz = v; if (rndState) rndState.hz = v; }
     )));
-    addSlewRow();
-    addTableRow();
 
   } else if (t.startsWith('lfo-')) {
     const lfoCtrl = ctrl?.lfos?.get(param.id);
     const lfo     = lfoCtrl?.lfo;
 
-    // Shape
     const shapeSel = document.createElement('select');
     shapeSel.style.cssText = 'font-size:10px;font-family:var(--mono);background:var(--bg-4);border:1px solid var(--border);color:var(--text-1);padding:1px 2px;border-radius:2px;';
     const SHAPES       = ['sine','triangle','sawtooth','rampdown','square','sh'];
@@ -183,9 +180,6 @@ function _openCtrlPopover(param, anchorEl, ctrl, tables) {
       { decimals: 2, fineStep: 0.01, coarseStep: 0.1 }
     )));
 
-    addSlewRow();
-    addTableRow();
-
   } else if (t === 'fixed') {
     const decimals = param.step && param.step >= 1 ? 0 : 3;
     popover.appendChild(makeRow('Value', makeDragNum(
@@ -196,7 +190,83 @@ function _openCtrlPopover(param, anchorEl, ctrl, tables) {
       },
       { decimals, fineStep: (param.max - param.min) * 0.005, coarseStep: (param.max - param.min) * 0.05 }
     )));
+
+  } else if (t === 'midi-cc') {
+    popover.appendChild(makeRow('CC#', makeDragNum(
+      () => c.cc ?? 0,
+      v  => { c.cc = Math.round(Math.max(0, Math.min(127, v))); },
+      { decimals: 0, fineStep: 1, coarseStep: 10 }
+    )));
+    popover.appendChild(makeRow('Chan (0=any)', makeDragNum(
+      () => c.channel ?? 0,
+      v  => { c.channel = Math.round(Math.max(0, Math.min(16, v))); },
+      { decimals: 0, fineStep: 1, coarseStep: 1 }
+    )));
+
+  } else if (t === 'midi-note') {
+    popover.appendChild(makeRow('Note#', makeDragNum(
+      () => c.note ?? 60,
+      v  => { c.note = Math.round(Math.max(0, Math.min(127, v))); },
+      { decimals: 0, fineStep: 1, coarseStep: 12 }
+    )));
+    popover.appendChild(makeRow('Chan (0=any)', makeDragNum(
+      () => c.channel ?? 0,
+      v  => { c.channel = Math.round(Math.max(0, Math.min(16, v))); },
+      { decimals: 0, fineStep: 1, coarseStep: 1 }
+    )));
+
+  } else if (t === 'key') {
+    const keySpan = document.createElement('span');
+    keySpan.style.cssText = [
+      'cursor:pointer;padding:1px 6px;background:var(--bg-4);',
+      'border:1px solid var(--border);border-radius:2px;',
+      'min-width:52px;display:inline-block;text-align:center;',
+      'font-size:10px;color:var(--accent);',
+    ].join('');
+    keySpan.textContent = c.key ?? '?';
+    keySpan.title = 'Click then press a key to reassign';
+    keySpan.addEventListener('click', () => {
+      keySpan.textContent = '…';
+      keySpan.style.borderColor = 'var(--accent)';
+      const onKey = e => {
+        e.preventDefault(); e.stopPropagation();
+        c.key = e.key;
+        if (ctrl) ctrl.assign(param.id, { ...c });
+        keySpan.textContent = e.key;
+        keySpan.style.borderColor = 'var(--border)';
+        document.removeEventListener('keydown', onKey, true);
+      };
+      document.addEventListener('keydown', onKey, true);
+    });
+    popover.appendChild(makeRow('Key', keySpan));
+
+  } else if (t === 'expr') {
+    const exprInput = document.createElement('input');
+    exprInput.type = 'text';
+    exprInput.value = c.expr ?? '';
+    exprInput.style.cssText = [
+      'width:140px;font:10px var(--mono);background:var(--bg-4);',
+      'color:var(--text-1);border:1px solid var(--border);border-radius:2px;',
+      'padding:1px 4px;outline:none;',
+    ].join('');
+    exprInput.placeholder = 'sin(t) * 50 + 50';
+    const commitExpr = () => {
+      const src = exprInput.value.trim();
+      if (src && ctrl) ctrl.assign(param.id, { ...c, expr: src });
+    };
+    exprInput.addEventListener('blur',    commitExpr);
+    exprInput.addEventListener('keydown', e => {
+      if (e.key === 'Enter') { commitExpr(); e.stopPropagation(); }
+      e.stopPropagation(); // prevent global key shortcuts while typing
+    });
+    exprInput.addEventListener('pointerdown', e => e.stopPropagation());
+    popover.appendChild(makeRow('Expr', exprInput));
+    setTimeout(() => exprInput.focus(), 0);
   }
+
+  // ── Shared rows (all controller types) ───────────────────────────────────
+  addSlewRow();
+  addTableRow();
 
   // ── Position & close wiring ───────────────────────────────────────────────
 
@@ -264,8 +334,12 @@ export function buildParamRow(param, contextMenu) {
     e.stopPropagation();
     _openCtrlPopover(param, ctrlEl, contextMenu?.ctrl, contextMenu?.tables);
   });
+  // Track pointer type so click handler can distinguish touch tap vs mouse click
+  let _ctrlPointerType = 'mouse';
   ctrlEl.addEventListener('click', e => {
     if (!param.controller) return;
+    // Desktop: require ctrl/meta modifier; touch: plain tap is enough
+    if (_ctrlPointerType === 'mouse' && !e.ctrlKey && !e.metaKey) return;
     e.preventDefault();
     e.stopPropagation();
     _openCtrlPopover(param, ctrlEl, contextMenu?.ctrl, contextMenu?.tables);
@@ -273,6 +347,7 @@ export function buildParamRow(param, contextMenu) {
   // Long-press (220ms) on touch devices → open controller popover
   let _longPressTimer = null;
   ctrlEl.addEventListener('pointerdown', e => {
+    _ctrlPointerType = e.pointerType;
     e.stopPropagation(); // prevent row from capturing pointer + calling preventDefault
     if (e.pointerType !== 'touch' || !param.controller) return;
     _longPressTimer = setTimeout(() => {
@@ -437,16 +512,20 @@ export function buildParamRow(param, contextMenu) {
     contextMenu?.show(param, e.clientX, e.clientY);
   });
 
-  // Long-press (600ms) on touch → context menu + haptic
-  let _lpTimer;
+  // Long-press (500ms) on touch → context menu + haptic; cancel on movement > 8px
+  let _lpTimer, _lpX = 0, _lpY = 0;
   row.addEventListener('pointerdown', e => {
-    if (e.pointerType !== 'touch') return;
+    if (e.pointerType === 'mouse') return;
+    _lpX = e.clientX; _lpY = e.clientY;
     _lpTimer = setTimeout(() => {
-      contextMenu?.show(param, e.clientX, e.clientY);
-      navigator.vibrate?.(40);
-    }, 600);
+      contextMenu?.show(param, _lpX, _lpY);
+      navigator.vibrate?.(10);
+    }, 500);
   });
-  row.addEventListener('pointermove',   () => clearTimeout(_lpTimer));
+  row.addEventListener('pointermove', e => {
+    if (_lpTimer && (Math.abs(e.clientX - _lpX) > 8 || Math.abs(e.clientY - _lpY) > 8))
+      clearTimeout(_lpTimer);
+  });
   row.addEventListener('pointerup',     () => clearTimeout(_lpTimer));
   row.addEventListener('pointercancel', () => clearTimeout(_lpTimer));
 
@@ -633,6 +712,7 @@ export function buildMappingPanels(ps, contextMenu) {
     'vasulka-params':      ps.getGroup('vasulka'),
     'vectorscope-params':  ps.getGroup('vectorscope'),
     'slitscan-params':     ps.getGroup('slitscan'),
+    'vwarp-params':        ps.getGroup('vwarp'),
     // 'seq-params' is built by buildSeqParams() — skip here
     // 'layer-params' is owned by buildLayerButtons() — do not render here
     'lut-params':          ps.getGroup('lut'),
@@ -1471,6 +1551,7 @@ export class ContextMenu {
         } else {
           this.ctrl.assign(this._currentParam.id, { type });
         }
+        this._currentParam?.notify(); // refresh badge label immediately
         this.hide();
         this.presets?.saveCurrentPreset();
       });

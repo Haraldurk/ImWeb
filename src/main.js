@@ -27,6 +27,7 @@ import { SequenceBuffer } from './inputs/SequenceBuffer.js';
 import { VideoDelayLine }    from './inputs/VideoDelayLine.js';
 import { VectorscopeInput }  from './inputs/VectorscopeInput.js';
 import { SlitScanBuffer }    from './inputs/SlitScanBuffer.js';
+import { VasulkaWarp }       from './inputs/VasulkaWarp.js';
 import { ParticleSystem }    from './inputs/ParticleSystem.js';
 import { SDFGenerator }      from './inputs/SDFGenerator.js';
 import { DrawLayer }      from './inputs/DrawLayer.js';
@@ -119,6 +120,7 @@ async function main() {
   const videoDelay    = new VideoDelayLine(renderer, W, H, 30);
   const vectorscope   = new VectorscopeInput();
   const slitScan      = new SlitScanBuffer(W, H);
+  const vasulkaWarp   = new VasulkaWarp(renderer, W, H, 30, 'low');
   const particles     = new ParticleSystem(renderer, W, H);
   const sdfGen        = new SDFGenerator(renderer, W, H);
   const warpMaps     = buildWarpMaps(); // 8 procedural warp map textures (map1–map8)
@@ -1777,7 +1779,7 @@ async function main() {
   function _resolveLayerTex(idx) {
     const keys = ['camera','movie','buffer','color','noise','scene3d','draw','output',
                   'bg1','bg2','color2','text','sound','delay','scope','slitscan','particles',
-                  'seq1','seq2','seq3'];
+                  'seq1','seq2','seq3','depth3d','sdf','vwarp'];
     const key = keys[idx];
     if (key === 'camera')   return camera3d.active   ? camera3d.currentTexture   : null;
     if (key === 'movie')    return movieInput.active  ? movieInput.currentTexture : null;
@@ -1851,6 +1853,18 @@ async function main() {
 
   // Slit scan clear trigger
   ps.get('slitscan.clear').onTrigger(() => slitScan.clear());
+
+  // Vasulka Warp — reinit on depth or quality change
+  const _vwarpReinit = () => {
+    const depthOptions = [30, 60, 90];
+    const qualityOptions = ['low', 'high'];
+    const depth   = depthOptions[ps.get('vwarp.depth').value]   ?? 30;
+    const quality = qualityOptions[ps.get('vwarp.quality').value] ?? 'low';
+    vasulkaWarp.dispose();
+    Object.assign(vasulkaWarp, new VasulkaWarp(renderer, vasulkaWarp._fullW, vasulkaWarp._fullH, depth, quality));
+  };
+  ps.get('vwarp.depth').onChange(_vwarpReinit);
+  ps.get('vwarp.quality').onChange(_vwarpReinit);
 
   // Sequence buffer param listeners
   [1, 2, 3].forEach(n => {
@@ -3165,6 +3179,7 @@ void main() {
     stillsBuffer.resize(rW, rH);
     videoDelay.resize(rW, rH);
     slitScan.resize(rW, rH);
+    vasulkaWarp.resize(rW, rH);
     particles.resize(rW, rH);
     seq1.resize(rW, rH);
     seq2.resize(rW, rH);
@@ -3443,6 +3458,9 @@ void main() {
       stillsBuffer.texture,                                         // 3 Buffer
       pipeline.prev.texture,                                        // 4 Output (prev frame)
       drawLayer.texture,                                            // 5 Draw
+      _resolveLayerTex(ps.get('layer.fg').value),                   // 6 FG Src
+      _resolveLayerTex(ps.get('layer.bg').value),                   // 7 BG Src
+      _resolveLayerTex(ps.get('layer.ds')?.value ?? 0),             // 8 DS Src
     ];
     particles.tick(ps, dt, _pmSrcMap[ps.get('particle.masksrc').value] ?? null);
     // SDF dedicated texture source routing (decouples from layer.fg / layer.bg).
@@ -3527,6 +3545,7 @@ void main() {
       delay:   videoDelay.getTexture(ps.get('delay.frames').value),
       scope:    vectorscope.texture,
       slitscan:  slitScan.texture,
+      vwarp:     vasulkaWarp.outputRT.texture,
       particles: particles.texture,
       sdf:       sdfGen.texture,
       seq1:      seq1.texture,
@@ -3559,6 +3578,13 @@ void main() {
 
     // Capture output into video delay ring buffer
     videoDelay.capture(pipeline.prev.texture);
+
+    // Vasulka Warp — capture frame + render temporal slit-scan
+    if (ps.get('vwarp.active').value) {
+      vasulkaWarp.applyParams(ps);
+      vasulkaWarp.capture(pipeline.prev.texture);
+      vasulkaWarp.render(pipeline.prev.texture);
+    }
 
     // Profiler + debug overlay
     profiler.end();

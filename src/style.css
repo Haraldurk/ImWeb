@@ -395,6 +395,7 @@ button {
   border-bottom: 1px solid var(--bg-1);
   gap: 4px;
   cursor: default;
+  touch-action: manipulation;
   transition: background 0.05s;
 }
 .param-row:hover { background: var(--bg-4); }

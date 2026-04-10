@@ -157,6 +157,11 @@ export class Parameter {
     return () => this._triggerListeners.delete(fn);
   }
 
+  /** Fire onChange listeners immediately (e.g. after badge assignment). */
+  notify() {
+    this._listeners.forEach(fn => fn(this._value, this));
+  }
+
   // ── Display ──────────────────────────────────────────────────────────────
 
   get displayValue() {
@@ -328,7 +333,7 @@ export class ParameterSystem extends EventTarget {
 export function registerCoreParameters(ps) {
 
   // ── Layer source selection ────────────────────────────────────────────────
-  const SOURCES = ['Camera', 'Movie', 'Buffer', 'Color', 'Noise', '3D Scene', 'Draw', 'Output', 'BG1', 'BG2', 'Color2', 'Text', 'Sound', 'Delay', 'Scope', 'SlitScan', 'Particles', 'Seq1', 'Seq2', 'Seq3', '3D Depth', 'SDF'];
+  const SOURCES = ['Camera', 'Movie', 'Buffer', 'Color', 'Noise', '3D Scene', 'Draw', 'Output', 'BG1', 'BG2', 'Color2', 'Text', 'Sound', 'Delay', 'Scope', 'SlitScan', 'Particles', 'Seq1', 'Seq2', 'Seq3', '3D Depth', 'SDF', 'VWarp'];
 
   ps.register({ id: 'layer.fg', label: 'Foreground', group: 'layers',
     type: PARAM_TYPE.SELECT, options: SOURCES, value: 0, feedbackVisible: true }); // default: Camera
@@ -353,6 +358,8 @@ export function registerCoreParameters(ps) {
   ps.register({ id: 'keyer.alpha',      label: 'Alpha',         group: 'keyer',
     type: PARAM_TYPE.TOGGLE, value: 0 });
   ps.register({ id: 'keyer.alpha_inv',  label: 'Invert Alpha',  group: 'keyer',
+    type: PARAM_TYPE.TOGGLE, value: 0 });
+  ps.register({ id: 'keyer.rawkey',     label: 'KeyRawFG',      group: 'keyer',
     type: PARAM_TYPE.TOGGLE, value: 0 });
   ps.register({ id: 'keyer.chroma',     label: 'Chroma Key',    group: 'keyer',
     type: PARAM_TYPE.TOGGLE, value: 0, feedbackVisible: true });
@@ -938,15 +945,55 @@ export function registerCoreParameters(ps) {
     type: PARAM_TYPE.SELECT, options: ['White','Rainbow','Mono','Fire'], value: 0 });
   ps.register({ id: 'particle.masksrc', label: 'PMaskSrc', group: 'particle',
     type: PARAM_TYPE.SELECT, value: 0,
-    options: ['None', 'Camera', 'Movie', 'Buffer', 'Output', 'Draw'] });
+    options: ['None', 'Camera', 'Movie', 'Buffer', 'Output', 'Draw', 'FG Src', 'BG Src', 'DS Src'] });
   ps.register({ id: 'particle.maskamt', label: 'PMaskAmt', group: 'particle',
     min: 0, max: 100, value: 0, unit: '%' });
   ps.register({ id: 'particle.motion',  label: 'PMotion',  group: 'particle',
     type: PARAM_TYPE.TOGGLE, value: 0 });
   ps.register({ id: 'particle.mthresh', label: 'PMThresh', group: 'particle',
     min: 0, max: 100, value: 15, unit: '%' });
+  ps.register({ id: 'particle.emitter', label: 'PEmitter', group: 'particle',
+    type: PARAM_TYPE.SELECT, options: ['Box','Ring','LineH','LineV','Point'], value: 0 });
+  ps.register({ id: 'particle.emitx',   label: 'PEmitX',   group: 'particle',
+    min: 0, max: 100, value: 50, unit: '%' });
+  ps.register({ id: 'particle.emity',   label: 'PEmitY',   group: 'particle',
+    min: 0, max: 100, value: 50, unit: '%' });
+  ps.register({ id: 'particle.scaleby', label: 'PScaleBy', group: 'particle',
+    type: PARAM_TYPE.SELECT, options: ['Uniform','By Life','By Speed'], value: 0 });
+  ps.register({ id: 'particle.attr1x',   label: 'Attr1 X',   group: 'particle',
+    min: 0, max: 100, value: 50, unit: '%' });
+  ps.register({ id: 'particle.attr1y',   label: 'Attr1 Y',   group: 'particle',
+    min: 0, max: 100, value: 50, unit: '%' });
+  ps.register({ id: 'particle.attr1str', label: 'Attr1 Str', group: 'particle',
+    min: -100, max: 100, value: 0 });
+  ps.register({ id: 'particle.attr2x',   label: 'Attr2 X',   group: 'particle',
+    min: 0, max: 100, value: 50, unit: '%' });
+  ps.register({ id: 'particle.attr2y',   label: 'Attr2 Y',   group: 'particle',
+    min: 0, max: 100, value: 50, unit: '%' });
+  ps.register({ id: 'particle.attr2str', label: 'Attr2 Str', group: 'particle',
+    min: -100, max: 100, value: 0 });
 
   // ── Slit Scan ─────────────────────────────────────────────────────────────
+  // ── Vasulka Warp ──────────────────────────────────────────────────────────
+  ps.register({ id: 'vasulka.active', label: 'Vasulka',  group: 'vasulka',
+    type: PARAM_TYPE.TOGGLE, value: 0 });
+  ps.register({ id: 'vasulka.freqh',  label: 'FreqH',    group: 'vasulka',
+    min: 0, max: 20, value: 3 });
+  ps.register({ id: 'vasulka.freqv',  label: 'FreqV',    group: 'vasulka',
+    min: 0, max: 20, value: 0 });
+  ps.register({ id: 'vasulka.amph',   label: 'AmpH',     group: 'vasulka',
+    min: 0, max: 100, value: 20, unit: '%' });
+  ps.register({ id: 'vasulka.ampv',   label: 'AmpV',     group: 'vasulka',
+    min: 0, max: 100, value: 0, unit: '%' });
+  ps.register({ id: 'vasulka.phase',  label: 'Phase',    group: 'vasulka',
+    min: 0, max: 100, value: 0, unit: '%' });
+  ps.register({ id: 'vasulka.freq2',  label: 'Freq2',    group: 'vasulka',
+    min: 0, max: 20, value: 7 });
+  ps.register({ id: 'vasulka.amp2',   label: 'Amp2',     group: 'vasulka',
+    min: 0, max: 100, value: 0, unit: '%' });
+  ps.register({ id: 'vasulka.color',  label: 'VasColor', group: 'vasulka',
+    min: 0, max: 100, value: 0, unit: '%' });
+
   ps.register({ id: 'slitscan.active', label: 'SlitScan',   group: 'slitscan',
     type: PARAM_TYPE.TOGGLE, value: 0 });
   ps.register({ id: 'slitscan.pos',    label: 'SlitPos',    group: 'slitscan',
@@ -959,6 +1006,22 @@ export function registerCoreParameters(ps) {
     min: 1, max: 16, value: 2, unit: 'px', step: 1 });
   ps.register({ id: 'slitscan.clear',  label: 'SlitClear',  group: 'slitscan',
     type: PARAM_TYPE.TRIGGER });
+
+  // ── Vasulka Warp (Temporal Slit-Scan) ────────────────────────────────────
+  ps.register({ id: 'vwarp.active',   label: 'VWarp',      group: 'vwarp',
+    type: PARAM_TYPE.TOGGLE, value: 0 });
+  ps.register({ id: 'vwarp.strength', label: 'Strength',   group: 'vwarp',
+    min: 0, max: 1, value: 0.8, step: 0.01 });
+  ps.register({ id: 'vwarp.axis',     label: 'Axis',       group: 'vwarp',
+    type: PARAM_TYPE.SELECT, options: ['Horizontal','Vertical'], value: 0 });
+  ps.register({ id: 'vwarp.flip',     label: 'Flip',       group: 'vwarp',
+    type: PARAM_TYPE.TOGGLE, value: 0 });
+  ps.register({ id: 'vwarp.mix',      label: 'Mix',        group: 'vwarp',
+    min: 0, max: 1, value: 1.0, step: 0.01 });
+  ps.register({ id: 'vwarp.depth',    label: 'Depth',      group: 'vwarp',
+    type: PARAM_TYPE.SELECT, options: ['30 frames','60 frames','90 frames'], value: 0 });
+  ps.register({ id: 'vwarp.quality',  label: 'Quality',    group: 'vwarp',
+    type: PARAM_TYPE.SELECT, options: ['Low (480p)','High (960p)'], value: 0 });
 
   // ── Sequence Buffers ──────────────────────────────────────────────────────
   const SEQ_SOURCES = ['Output','Camera','Movie','FG','BG','Buffer','Draw'];
