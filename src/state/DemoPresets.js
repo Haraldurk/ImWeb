@@ -157,4 +157,45 @@ export const DEMO_PRESETS = [
     activeState: 0,
     thumbnail: null,
   },
+
+  {
+    index: 5,
+    name: 'Temporal Smear',
+    controllers: {},
+    states: [
+      {
+        // State 0: Noise feedback source building the ring buffer
+        label: 'Build',
+        values: {
+          'layer.fg': 4,           // Noise — builds VWarp history
+          'layer.bg': 4,           // Noise
+          'vwarp.active': 1,       // Start capturing
+          'vwarp.strength': 0.8,
+          'vwarp.axis': 0,         // Horizontal sweep
+          'blend.active': 1,
+          'blend.amount': 75,
+          'feedback.zoom': 2,
+          'feedback.rotate': 0.5,
+          'output.transfer': 5,    // Screen
+        },
+        fxOrder: null,
+      },
+      {
+        // State 1: Switch FG to VWarp output — temporal slit-scan visible
+        label: 'Slit-scan',
+        values: {
+          'layer.fg': 22,          // VWarp temporal output
+          'layer.bg': 4,           // Noise
+          'vwarp.active': 1,
+          'vwarp.strength': 0.8,
+          'vwarp.axis': 0,
+          'vwarp.mix': 1.0,
+          'output.transfer': 0,    // Copy
+        },
+        fxOrder: null,
+      },
+    ],
+    activeState: 0,
+    thumbnail: null,
+  },
 ];

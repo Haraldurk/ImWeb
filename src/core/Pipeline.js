@@ -22,11 +22,11 @@ import {
   BUFFER_TRANSFORM, INTERP,
   PIXELATE, EDGE, RGBSHIFT, POSTERIZE, SOLARIZE, COLOR_CORRECT, CHROMA_KEY,
   VIGNETTE, BLOOM_EXTRACT, BLOOM_BLUR, BLOOM_COMPOSITE, KALEIDOSCOPE, PIXEL_SORT,
-  FILM_GRAIN, FEEDBACK_ROTATE, QUAD_MIRROR, LEVELS, LUT3D, WHITE_BALANCE,
+  FILM_GRAIN, FEEDBACK_ROTATE, QUAD_MIRROR, LEVELS, LUT3D, WHITE_BALANCE, VASULKA_WARP,
 } from '../shaders/index.js';
 
 export const DEFAULT_FX_ORDER = [
-  'pixelate','edge','rgbshift','kaleidoscope','quadmirror',
+  'pixelate','edge','vasulka','rgbshift','kaleidoscope','quadmirror',
   'posterize','solarize','vignette','bloom','levels','lut','whitebal','pixelsort','grain',
 ];
 
@@ -46,6 +46,20 @@ const _FX = {
       uTexture: tex, uAmount: amt,
       uInvert: p.get('effect.edge_inv').value,
       uResolution: new THREE.Vector2(pipe.width, pipe.height),
+    });
+  },
+  vasulka: (pipe, tex, p) => {
+    if (!p.get('vasulka.active')?.value) return tex;
+    return pipe._pass(pipe.m.vasulka, {
+      uTexture: tex,
+      uFreqH:  p.get('vasulka.freqh').value,
+      uFreqV:  p.get('vasulka.freqv').value,
+      uAmpH:   p.get('vasulka.amph').value  / 100 * 0.15,
+      uAmpV:   p.get('vasulka.ampv').value  / 100 * 0.10,
+      uPhase:  p.get('vasulka.phase').value / 100 * Math.PI * 2,
+      uFreq2:  p.get('vasulka.freq2').value,
+      uAmp2:   p.get('vasulka.amp2').value  / 100 * 0.08,
+      uColor:  p.get('vasulka.color').value / 100,
     });
   },
   rgbshift: (pipe, tex, p) => {
@@ -346,6 +360,7 @@ export class Pipeline {
         uFG:          keyedFG,
         uBG:          bgTexFinal,
         uEK:          dsTex,
+        uFGRaw:       fgTex,
         uKeyWhite:    p.get('keyer.white').value / 100,
         uKeyBlack:    p.get('keyer.black').value / 100,
         uKeySoftness: p.get('keyer.softness').value / 100,
@@ -353,13 +368,14 @@ export class Pipeline {
         uAlpha:       p.get('keyer.alpha').value,
         uAlphaInvert: p.get('keyer.alpha_inv').value,
         uExtKey:      p.get('keyer.extkey').value,
+        uRawKey:      p.get('keyer.rawkey')?.value ?? 0,
       });
     } else {
       // No keyer — pass FG through
       keyed = this._pass(this.m.keyer, {
-        uFG: displaced, uBG: bgTexFinal, uEK: dsTex,
+        uFG: displaced, uBG: bgTexFinal, uEK: dsTex, uFGRaw: fgTex,
         uKeyWhite: 1, uKeyBlack: 0, uKeySoftness: 0,
-        uKeyActive: 0, uAlpha: 0, uAlphaInvert: 0, uExtKey: 0,
+        uKeyActive: 0, uAlpha: 0, uAlphaInvert: 0, uExtKey: 0, uRawKey: 0,
       });
     }
 
@@ -650,7 +666,7 @@ export class Pipeline {
   }
 
   _resolveSource(inputs, sourceIdx) {
-    const SOURCES = ['camera', 'movie', 'buffer', 'color', 'noise', 'scene3d', 'draw', 'output', 'bg1', 'bg2', 'color2', 'text', 'sound', 'delay', 'scope', 'slitscan', 'particles', 'seq1', 'seq2', 'seq3', 'depth3d', 'sdf'];
+    const SOURCES = ['camera', 'movie', 'buffer', 'color', 'noise', 'scene3d', 'draw', 'output', 'bg1', 'bg2', 'color2', 'text', 'sound', 'delay', 'scope', 'slitscan', 'particles', 'seq1', 'seq2', 'seq3', 'depth3d', 'sdf', 'vwarp'];
     const key = SOURCES[sourceIdx] ?? 'color';
 
     if (key === 'camera'  && inputs.camera)  return inputs.camera;
@@ -674,6 +690,7 @@ export class Pipeline {
     if (key === 'seq3'      && inputs.seq3)      return inputs.seq3;
     if (key === 'depth3d'   && inputs.depth3d)   return inputs.depth3d;
     if (key === 'sdf'       && inputs.sdf)       return inputs.sdf;
+    if (key === 'vwarp'     && inputs.vwarp)     return inputs.vwarp;
     return inputs.color ?? this._getFallbackTexture();
   }
 
@@ -719,6 +736,8 @@ export class Pipeline {
         uAlphaInvert: { value: 0 },
         uEK:          { value: null },
         uExtKey:      { value: 0 },
+        uFGRaw:       { value: null },
+        uRawKey:      { value: 0 },
       }),
       displace:    this._mat(DISPLACE, {
         uAmount:     { value: 0 },
@@ -849,6 +868,13 @@ export class Pipeline {
       whitebal:   this._mat(WHITE_BALANCE, {
         uTemperature: { value: 0 },
         uTint:        { value: 0 },
+      }),
+      vasulka:    this._mat(VASULKA_WARP, {
+        uFreqH: { value: 3 }, uFreqV: { value: 0 },
+        uAmpH:  { value: 0.03 }, uAmpV: { value: 0 },
+        uPhase: { value: 0 },
+        uFreq2: { value: 7 }, uAmp2:  { value: 0 },
+        uColor: { value: 0 },
       }),
     };
   }

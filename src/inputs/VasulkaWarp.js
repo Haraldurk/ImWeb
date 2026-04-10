@@ -36,24 +36,21 @@ const BLIT_FRAG = `
   }
 `;
 
-// ── Temporal slit-scan output shader ──────────────────────────────────────
+// ── Temporal slit-scan output shader (GLSL3 — required for sampler2DArray) ──
 const WARP_VERT = `
-  varying vec2 vUv;
+  out vec2 vUv;
   void main() {
     vUv = uv;
     gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
   }
 `;
 const WARP_FRAG = `
-  #ifdef GL_FRAGMENT_PRECISION_HIGH
   precision highp float;
   precision highp sampler2DArray;
-  #else
-  precision mediump float;
-  precision mediump sampler2DArray;
-  #endif
 
-  varying vec2 vUv;
+  in vec2 vUv;
+  out vec4 fragColor;
+
   uniform sampler2DArray uFrames;
   uniform int   uWriteIndex;
   uniform int   uDepth;
@@ -68,18 +65,18 @@ const WARP_FRAG = `
       ? (uFlip > 0.5 ? 1.0 - vUv.x : vUv.x)
       : (uFlip > 0.5 ? 1.0 - vUv.y : vUv.y);
 
-    float delay  = coord * float(uDepth - 1) * uStrength;
-    float readF  = mod(float(uWriteIndex) - delay + float(uDepth), float(uDepth));
-    int   fA     = int(floor(readF));
-    int   fB     = int(mod(float(fA + 1), float(uDepth)));
-    float blend  = fract(readF);
+    float delay = coord * float(uDepth - 1) * uStrength;
+    float readF = mod(float(uWriteIndex) - delay + float(uDepth), float(uDepth));
+    int   fA    = int(floor(readF));
+    int   fB    = int(mod(float(fA + 1), float(uDepth)));
+    float bl    = fract(readF);
 
-    vec4 a = texture(uFrames, vec3(vUv, float(fA)));
-    vec4 b = texture(uFrames, vec3(vUv, float(fB)));
-    vec4 warped = mix(a, b, blend);
+    vec4 a      = texture(uFrames, vec3(vUv, float(fA)));
+    vec4 b      = texture(uFrames, vec3(vUv, float(fB)));
+    vec4 warped = mix(a, b, bl);
 
-    vec4 live = texture2D(tLive, vUv);
-    gl_FragColor = mix(live, warped, uMix);
+    vec4 live   = texture(tLive, vUv);
+    fragColor   = mix(live, warped, uMix);
   }
 `;
 
@@ -92,6 +89,7 @@ export class VasulkaWarp {
     this._quality   = quality;
     this._writeIdx  = 0;
     this._active    = false;
+    this._texInited = false;
 
     const [sw, sh] = QUALITY[quality] ?? QUALITY.low;
     this._sw = sw;
@@ -137,8 +135,9 @@ export class VasulkaWarp {
       depthTest: false, depthWrite: false,
     });
 
-    // Warp output material
+    // Warp output material — GLSL3 required for sampler2DArray
     this._warpMat = new THREE.ShaderMaterial({
+      glslVersion:    THREE.GLSL3,
       vertexShader:   WARP_VERT,
       fragmentShader: WARP_FRAG,
       uniforms: {
@@ -168,27 +167,28 @@ export class VasulkaWarp {
     const renderer = this._renderer;
     const gl = renderer.getContext();
 
-    // 1. Downsample to small RT
+    // Force GPU upload of the array texture on first use
+    if (!this._texInited) {
+      renderer.initTexture(this._arrayTex);
+      this._texInited = true;
+    }
+
+    // 1. Downsample pipeline output → _downsampleRT
     this._blitMat.uniforms.tSrc.value = srcTexture;
     this._scene.overrideMaterial = this._blitMat;
     renderer.setRenderTarget(this._downsampleRT);
     renderer.render(this._scene, this._cam);
 
-    // 2. Copy downsample RT pixels into the correct DataArrayTexture slice
-    renderer.setRenderTarget(null);
+    // 2. Copy _downsampleRT framebuffer → DataArrayTexture at current write slice
+    //    _downsampleRT is still bound as the draw framebuffer; read from it.
     const glTex = renderer.properties.get(this._arrayTex).__webglTexture;
-    if (!glTex) { this._arrayTex.needsUpdate = true; return; }
+    if (!glTex) { renderer.setRenderTarget(null); return; }
 
-    const glDS = renderer.properties.get(this._downsampleRT.texture).__webglTexture;
-    if (!glDS) return;
-
-    // Bind the array texture and copy the current framebuffer slice
-    renderer.setRenderTarget(this._downsampleRT);
     gl.bindTexture(gl.TEXTURE_2D_ARRAY, glTex);
     gl.copyTexSubImage3D(
       gl.TEXTURE_2D_ARRAY, 0,
-      0, 0, this._writeIdx,  // x, y, z (slice)
-      0, 0,                  // source x, y
+      0, 0, this._writeIdx,  // dst x, y, slice
+      0, 0,                  // src x, y in framebuffer
       this._sw, this._sh
     );
     gl.bindTexture(gl.TEXTURE_2D_ARRAY, null);

@@ -1856,12 +1856,15 @@ async function main() {
 
   // Vasulka Warp — reinit on depth or quality change
   const _vwarpReinit = () => {
-    const depthOptions = [30, 60, 90];
+    const depthOptions   = [30, 60, 90];
     const qualityOptions = ['low', 'high'];
-    const depth   = depthOptions[ps.get('vwarp.depth').value]   ?? 30;
+    const depth   = depthOptions[ps.get('vwarp.depth').value]    ?? 30;
     const quality = qualityOptions[ps.get('vwarp.quality').value] ?? 'low';
+    const w = vasulkaWarp._fullW, h = vasulkaWarp._fullH;
     vasulkaWarp.dispose();
-    Object.assign(vasulkaWarp, new VasulkaWarp(renderer, vasulkaWarp._fullW, vasulkaWarp._fullH, depth, quality));
+    const fresh = new VasulkaWarp(renderer, w, h, depth, quality);
+    // Replace internals in-place so existing closure references stay valid
+    Object.keys(fresh).forEach(k => { vasulkaWarp[k] = fresh[k]; });
   };
   ps.get('vwarp.depth').onChange(_vwarpReinit);
   ps.get('vwarp.quality').onChange(_vwarpReinit);
