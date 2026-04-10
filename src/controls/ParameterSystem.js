@@ -584,7 +584,15 @@ export function registerCoreParameters(ps) {
     options: ['None','Camera','Movie','Screen','Draw','Buffer','Noise'], value: 0 });
   ps.register({ id: 'scene3d.mat.type', label: 'MatType', group: 'scene3d',
     type: PARAM_TYPE.SELECT,
-    options: ['Standard','Toon','Normal','Matcap','Lambert','Phong'], value: 0 });
+    options: ['Standard','Physical','Toon','Normal','Matcap','Lambert','Phong'], value: 0 });
+  ps.register({ id: 'scene3d.mat.clearcoat',  label: 'Clearcoat',  group: 'scene3d',
+    min: 0, max: 1, value: 0, step: 0.01 });
+  ps.register({ id: 'scene3d.mat.transmit',   label: 'Transmit',   group: 'scene3d',
+    min: 0, max: 1, value: 0, step: 0.01 });
+  ps.register({ id: 'scene3d.mat.ior',        label: 'IOR',        group: 'scene3d',
+    min: 1, max: 3, value: 1.5, step: 0.01 });
+  ps.register({ id: 'scene3d.mat.toonSteps',  label: 'ToonSteps',  group: 'scene3d',
+    min: 2, max: 10, value: 4, step: 1 });
   ps.register({ id: 'scene3d.mat.uvSpeedX',    label: 'UVSpeedX',   group: 'scene3d',
     min: -2, max: 2, value: 0, step: 0.01 });
   ps.register({ id: 'scene3d.mat.uvSpeedY',    label: 'UVSpeedY',   group: 'scene3d',
@@ -791,6 +799,18 @@ export function registerCoreParameters(ps) {
     min: 0, max: 100, value: 30 });
   ps.register({ id: 'text.contentIdx',  label: 'ContentIdx',  group: 'text',
     min: 0, max: 63, value: 0, step: 1 });
+  ps.register({ id: 'text.progress',   label: 'Progress',    group: 'text',
+    min: 0, max: 100, value: 0, step: 0.1 });
+  ps.register({ id: 'text.auto',       label: 'AutoHz',      group: 'text',
+    min: 0, max: 10, value: 0, step: 0.01, unit: 'Hz' });
+  ps.register({ id: 'text.anim.in',    label: 'AnimIn',      group: 'text',
+    type: PARAM_TYPE.SELECT, options: ['None','Fade','FadeUp','FadeDown','Scale','Blur','TypeOn'], value: 0 });
+  ps.register({ id: 'text.anim.out',   label: 'AnimOut',     group: 'text',
+    type: PARAM_TYPE.SELECT, options: ['None','Fade','FadeDown','FadeUp','Scale','Blur','Vanish'], value: 0 });
+  ps.register({ id: 'text.anim.dur',   label: 'AnimDur',     group: 'text',
+    min: 0.05, max: 2.0, value: 0.3, step: 0.01, unit: 's' });
+  ps.register({ id: 'text.anim.ease',  label: 'AnimEase',    group: 'text',
+    type: PARAM_TYPE.SELECT, options: ['Linear','EaseIn','EaseOut','EaseInOut','Bounce','Spring'], value: 2 });
 
   // ── Screen capture ────────────────────────────────────────────────────────
   ps.register({ id: 'screen.bg1',   label: 'ScrBG1', group: 'screen',

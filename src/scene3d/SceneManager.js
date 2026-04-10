@@ -96,8 +96,9 @@ export class SceneManager {
     this._fallback.needsUpdate = true;
 
     // Material type tracking — sentinel forces rebuild on first applyParams
-    this._matType  = -1;
-    this._liveTex  = null;
+    this._matType   = -1;
+    this._toonSteps = -1;
+    this._liveTex   = null;
 
     // Toon gradient: 3-step cel-shading ramp (dark / mid / bright)
     const toonData = new Uint8Array([40, 40, 40, 255,  130, 130, 130, 255,  240, 240, 240, 255]);
@@ -353,22 +354,25 @@ export class SceneManager {
 
     let mat;
     switch (type) {
-      case 1:
+      case 1: // Physical
+        mat = new THREE.MeshPhysicalMaterial({ color, roughness, metalness, wireframe });
+        break;
+      case 2: // Toon
         mat = new THREE.MeshToonMaterial({ color, wireframe, gradientMap: this._toonGradient });
         break;
-      case 2:
+      case 3: // Normal
         mat = new THREE.MeshNormalMaterial({ wireframe });
         break;
-      case 3:
+      case 4: // Matcap
         mat = new THREE.MeshMatcapMaterial({ color, wireframe });
         break;
-      case 4:
+      case 5: // Lambert
         mat = new THREE.MeshLambertMaterial({ color, wireframe });
         break;
-      case 5:
+      case 6: // Phong
         mat = new THREE.MeshPhongMaterial({ color, wireframe, shininess: (1 - roughness) * 100 });
         break;
-      default:
+      default: // Standard
         mat = new THREE.MeshStandardMaterial({ color, roughness, metalness, wireframe });
         break;
     }
@@ -397,6 +401,24 @@ export class SceneManager {
           if (child.isMesh) child.material = mat;
         });
       }
+    }
+  }
+
+  _setToonGradient(steps) {
+    this._toonSteps = steps;
+    const data = new Uint8Array(steps * 4);
+    for (let i = 0; i < steps; i++) {
+      const v = Math.round((i / (steps - 1)) * 255);
+      data[i * 4] = data[i * 4 + 1] = data[i * 4 + 2] = v;
+      data[i * 4 + 3] = 255;
+    }
+    if (this._toonGradient) this._toonGradient.dispose();
+    this._toonGradient = new THREE.DataTexture(data, steps, 1, THREE.RGBAFormat);
+    this._toonGradient.minFilter = this._toonGradient.magFilter = THREE.NearestFilter;
+    this._toonGradient.needsUpdate = true;
+    if (this.material?.isMeshToonMaterial) {
+      this.material.gradientMap = this._toonGradient;
+      this.material.needsUpdate = true;
     }
   }
 
@@ -698,6 +720,20 @@ export class SceneManager {
       if (this.material.metalness !== undefined) this.material.metalness = p.get('scene3d.mat.metalness').value;
       this.material.opacity  = p.get('scene3d.mat.opacity').value;
       this.material.transparent = this.material.opacity < 1;
+
+      // Physical material properties
+      if (matType === 1 && this.material.isMeshPhysicalMaterial) {
+        this.material.clearcoat    = p.get('scene3d.mat.clearcoat')?.value ?? 0;
+        this.material.transmission = p.get('scene3d.mat.transmit')?.value ?? 0;
+        this.material.ior          = p.get('scene3d.mat.ior')?.value ?? 1.5;
+        this.material.transparent  = this.material.transmission > 0 || this.material.opacity < 1;
+      }
+
+      // Toon gradient steps
+      if (matType === 2 && this.material.isMeshToonMaterial) {
+        const steps = Math.round(p.get('scene3d.mat.toonSteps')?.value ?? 4);
+        if (steps !== this._toonSteps) this._setToonGradient(steps);
+      }
 
       // Environment map intensity
       if (this.material.envMapIntensity !== undefined) {

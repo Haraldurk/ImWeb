@@ -99,7 +99,7 @@ function _openCtrlPopover(param, anchorEl, ctrl, tables) {
       span.appendChild(input);
       setTimeout(() => { input.focus(); input.select(); }, 0);
       const commit = () => { const v = parseFloat(input.value); if (!isNaN(v)) set(v); refresh(); };
-      input.addEventListener('mousedown', e2 => e2.stopPropagation());
+      input.addEventListener('pointerdown', e2 => e2.stopPropagation());
       input.addEventListener('blur', commit);
       input.addEventListener('keydown', e2 => {
         if (e2.key === 'Enter')  { commit(); e2.stopPropagation(); }
@@ -583,7 +583,7 @@ export function buildParamRow(param, contextMenu) {
         input.style.cssText = 'width:64px;font:inherit;font-size:inherit;background:#1f1f25;color:#e0e0f0;border:1px solid #c8a020;border-radius:3px;padding:1px 4px;outline:none;';
         el.innerHTML = '';
         el.appendChild(input);
-        input.addEventListener('mousedown', e2 => e2.stopPropagation());
+        input.addEventListener('pointerdown', e2 => e2.stopPropagation());
         setTimeout(() => { input.focus(); input.select(); }, 0);
         const commit = () => {
           const v = parseFloat(input.value);
@@ -1745,25 +1745,25 @@ export class FeedbackOverlay {
   }
 
   _makeDraggable(el, p) {
-    let ox = 0, oy = 0, dragging = false;
-    el.addEventListener('mousedown', e => {
+    let ox = 0, oy = 0;
+    el.addEventListener('pointerdown', e => {
       if (e.button !== 0) return;
-      dragging = true;
+      el.setPointerCapture(e.pointerId);
       const rect = el.getBoundingClientRect();
       const parentRect = this.el.getBoundingClientRect();
       ox = e.clientX - (rect.left - parentRect.left);
       oy = e.clientY - (rect.top  - parentRect.top);
       e.stopPropagation();
     });
-    window.addEventListener('mousemove', e => {
-      if (!dragging) return;
+    el.addEventListener('pointermove', e => {
+      if (!el.hasPointerCapture(e.pointerId)) return;
       const x = e.clientX - ox;
       const y = e.clientY - oy;
       el.style.left = `${x}px`;
       el.style.top  = `${y}px`;
       p.feedbackPos = { x, y };
     });
-    window.addEventListener('mouseup', () => { dragging = false; });
+    el.addEventListener('pointerup', () => {});
   }
 }
 

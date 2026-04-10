@@ -69,6 +69,13 @@ import {
 // Main
 // ─────────────────────────────────────────────────────────────────────────────
 
+function _applyLayout() {
+  const portrait = window.innerHeight > window.innerWidth;
+  document.body.classList.toggle('layout-portrait', portrait);
+}
+_applyLayout();
+window.addEventListener('resize', _applyLayout);
+
 async function main() {
   console.log('%cImWeb v0.6.0', 'color:#e8c840;font-weight:bold;font-size:14px');
 
