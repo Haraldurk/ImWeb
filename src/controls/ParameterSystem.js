@@ -181,7 +181,7 @@ export class Parameter {
       'midi-cc': c.channel ? `${c.channel}:CC${c.cc ?? '?'}` : `CC${c.cc ?? '?'}`,
       'midi-note': c.channel ? `${c.channel}:N${c.note ?? '?'}` : `N${c.note ?? '?'}`,
       'lfo-sine': 'LFO~', 'lfo-triangle': 'LFO△',
-      'lfo-sawtooth': 'LFO⊿', 'lfo-square': 'LFO▭',
+      'lfo-sawtooth': 'LFO⊿', 'lfo-rampdown': 'LFO↘', 'lfo-square': 'LFO▭', 'lfo-sh': 'S+H',
       'sound': 'SND', 'sound-bass': 'BAS', 'sound-mid': 'MID', 'sound-high': 'HIG',
       'random': 'RND', 'fixed': 'FXD',
       'key': `KEY:${c.key ?? '?'}`, 'nudge': 'NDG',

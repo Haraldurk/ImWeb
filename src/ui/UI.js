@@ -169,7 +169,8 @@ function _openCtrlPopover(param, anchorEl, ctrl, tables) {
     });
     popover.appendChild(makeRow('Shape', shapeSel));
 
-    popover.appendChild(makeRow('Freq (Hz)', makeDragNum(
+    const freqLabel = c.beatSync ? `Beat ÷${1 / (c.beatDiv ?? 1)}` : 'Freq (Hz)';
+    popover.appendChild(makeRow(freqLabel, makeDragNum(
       () => lfo?.hz ?? c.hz ?? 0.5,
       v  => { v = Math.max(0.001, v); if (lfo) lfo.hz = v; c.hz = v; }
     )));
