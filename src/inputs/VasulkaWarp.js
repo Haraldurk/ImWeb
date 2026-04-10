@@ -157,6 +157,7 @@ export class VasulkaWarp {
     this._warpMesh = new THREE.Mesh(this._geom, this._warpMat);
     this._scene    = new THREE.Scene();
     this._scene.add(this._blitMesh);
+    this._readBuf  = null;
   }
 
   /**
@@ -165,34 +166,39 @@ export class VasulkaWarp {
    */
   capture(srcTexture) {
     const renderer = this._renderer;
-    const gl = renderer.getContext();
 
-    // Force GPU upload of the array texture on first use
-    if (!this._texInited) {
-      renderer.initTexture(this._arrayTex);
-      this._texInited = true;
-    }
-
-    // 1. Downsample pipeline output → _downsampleRT
+    // Step 1: Downsample pipeline output to small RT
     this._blitMat.uniforms.tSrc.value = srcTexture;
     this._scene.overrideMaterial = this._blitMat;
     renderer.setRenderTarget(this._downsampleRT);
     renderer.render(this._scene, this._cam);
-
-    // 2. Copy _downsampleRT framebuffer → DataArrayTexture at current write slice
-    //    _downsampleRT is still bound as the draw framebuffer; read from it.
-    const glTex = renderer.properties.get(this._arrayTex).__webglTexture;
-    if (!glTex) { renderer.setRenderTarget(null); return; }
-
-    gl.bindTexture(gl.TEXTURE_2D_ARRAY, glTex);
-    gl.copyTexSubImage3D(
-      gl.TEXTURE_2D_ARRAY, 0,
-      0, 0, this._writeIdx,  // dst x, y, slice
-      0, 0,                  // src x, y in framebuffer
-      this._sw, this._sh
-    );
-    gl.bindTexture(gl.TEXTURE_2D_ARRAY, null);
     renderer.setRenderTarget(null);
+
+    // Step 2: CPU readback from _downsampleRT
+    if (!this._readBuf) this._readBuf = new Uint8Array(this._sw * this._sh * 4);
+    renderer.readRenderTargetPixels(
+      this._downsampleRT, 0, 0, this._sw, this._sh, this._readBuf
+    );
+
+    // Step 3: Upload one slice directly into the DataArrayTexture via raw WebGL
+    renderer.initTexture(this._arrayTex);
+    const gl      = renderer.getContext();
+    const glArray = renderer.properties.get(this._arrayTex).__webglTexture;
+    if (glArray) {
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D_ARRAY, glArray);
+      gl.texSubImage3D(
+        gl.TEXTURE_2D_ARRAY, 0,
+        0, 0, this._writeIdx,
+        this._sw, this._sh, 1,
+        gl.RGBA, gl.UNSIGNED_BYTE,
+        this._readBuf
+      );
+      gl.bindTexture(gl.TEXTURE_2D_ARRAY, null);
+      renderer.resetState();
+    } else {
+      console.warn('[VasulkaWarp] __webglTexture not ready — skipping capture');
+    }
 
     this._writeIdx = (this._writeIdx + 1) % this._depth;
   }
@@ -235,5 +241,6 @@ export class VasulkaWarp {
     this._blitMat.dispose();
     this._warpMat.dispose();
     this._geom.dispose();
+    this._readBuf = null;
   }
 }

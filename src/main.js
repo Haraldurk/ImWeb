@@ -1492,6 +1492,18 @@ async function main() {
         // Select the active device in the dropdown
         const activeId = camera3d._stream?.getVideoTracks()[0]?.getSettings()?.deviceId;
         if (activeId) camDeviceSel.value = activeId;
+      } else {
+        const errName = camera3d.lastError;
+        if (errName === 'InsecureContext') {
+          btnCameraOn.title = 'Camera requires HTTPS — serve over https:// or use localhost';
+          btnCameraOn.textContent = '✕ HTTPS';
+        } else if (errName === 'NotAllowedError') {
+          btnCameraOn.title = 'Camera permission denied';
+          btnCameraOn.textContent = '✕ Camera';
+        } else {
+          btnCameraOn.title = `Camera error: ${errName ?? 'unknown'}`;
+          btnCameraOn.textContent = '✕ Camera';
+        }
       }
     } else {
       camera3d.stop();
@@ -3899,6 +3911,88 @@ function hsvToHex(h, s, v) {
   const g = Math.round(f(3) * 255);
   const b = Math.round(f(1) * 255);
   return `rgb(${r},${g},${b})`;
+}
+
+// ── Virtual keyboard (iPad key-controller input) ───────────────────────────
+function buildVirtualKeyboard() {
+  const panel = document.createElement('div');
+  panel.id = 'vkbd-panel';
+  panel.classList.add('hidden');
+
+  const handle = document.createElement('div');
+  handle.className = 'vkbd-handle';
+  handle.textContent = '⌨ Virtual Keyboard — drag to move';
+  panel.appendChild(handle);
+
+  const rows = [
+    [['Esc','Escape'],['F1','F1'],['F2','F2'],['F3','F3'],['F4','F4'],['F5','F5'],['F6','F6'],['F7','F7'],['F8','F8']],
+    [['`','`'],['1','1'],['2','2'],['3','3'],['4','4'],['5','5'],['6','6'],['7','7'],['8','8'],['9','9'],['0','0'],['-','-'],['=','='],['⌫','Backspace']],
+    [['Tab','Tab'],['q','q'],['w','w'],['e','e'],['r','r'],['t','t'],['y','y'],['u','u'],['i','i'],['o','o'],['p','p'],['[','['],[ ']',']'],['↵','Enter']],
+    [['Caps','CapsLock'],['a','a'],['s','s'],['d','d'],['f','f'],['g','g'],['h','h'],['j','j'],['k','k'],['l','l'],[';',';'],["'","'"]],
+    [['⇧','Shift'],['z','z'],['x','x'],['c','c'],['v','v'],['b','b'],['n','n'],['m','m'],[',',','],['.','.'],['/','/']],
+    [['Ctrl','Control'],['Alt','Alt'],['⎵',' '],['←','ArrowLeft'],['↓','ArrowDown'],['↑','ArrowUp'],['→','ArrowRight']],
+  ];
+
+  rows.forEach(row => {
+    const rowEl = document.createElement('div');
+    rowEl.className = 'vkbd-row';
+    row.forEach(([label, key]) => {
+      const btn = document.createElement('button');
+      btn.className = 'vkbd-key';
+      btn.textContent = label;
+      if (label.length > 2) btn.classList.add('vkbd-key-wide');
+      if (key === ' ')      btn.classList.add('vkbd-key-xl');
+      btn.addEventListener('pointerdown', e => {
+        e.preventDefault();
+        btn.classList.add('pressed');
+        document.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
+      });
+      btn.addEventListener('pointerup', () => {
+        btn.classList.remove('pressed');
+        document.dispatchEvent(new KeyboardEvent('keyup', { key, bubbles: true, cancelable: true }));
+      });
+      btn.addEventListener('pointercancel', () => btn.classList.remove('pressed'));
+      rowEl.appendChild(btn);
+    });
+    panel.appendChild(rowEl);
+  });
+
+  // Drag to reposition
+  let _dragX = 0, _dragY = 0, _panelX = 0, _panelY = 0, _dragging = false;
+  handle.addEventListener('pointerdown', e => {
+    _dragging = true;
+    _dragX = e.clientX; _dragY = e.clientY;
+    const r = panel.getBoundingClientRect();
+    _panelX = r.left; _panelY = r.top;
+    handle.setPointerCapture(e.pointerId);
+    panel.style.transform = 'none';
+    panel.style.left = _panelX + 'px';
+    panel.style.top  = _panelY + 'px';
+    panel.style.bottom = 'auto';
+  });
+  handle.addEventListener('pointermove', e => {
+    if (!_dragging) return;
+    panel.style.left = (_panelX + e.clientX - _dragX) + 'px';
+    panel.style.top  = (_panelY + e.clientY - _dragY) + 'px';
+  });
+  handle.addEventListener('pointerup', () => { _dragging = false; });
+
+  document.body.appendChild(panel);
+  return panel;
+}
+
+// Show virtual keyboard button only on touch-capable devices
+if (window.matchMedia('(pointer: coarse)').matches) {
+  const btnVkbd = document.getElementById('btn-vkbd');
+  if (btnVkbd) {
+    btnVkbd.style.display = '';
+    let _vkbdPanel = null;
+    btnVkbd.addEventListener('click', () => {
+      if (!_vkbdPanel) _vkbdPanel = buildVirtualKeyboard();
+      _vkbdPanel.classList.toggle('hidden');
+      btnVkbd.classList.toggle('active', !_vkbdPanel.classList.contains('hidden'));
+    });
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

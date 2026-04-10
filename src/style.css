@@ -1991,3 +1991,59 @@ body.fullscreen-output #app {
   -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
 }
+
+/* ── Virtual Keyboard (iPad / touch) ─────────────────────────────────── */
+#vkbd-panel {
+  position: fixed;
+  bottom: 44px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 5000;
+  background: rgba(18, 18, 26, 0.93);
+  border: 1px solid var(--border-hi);
+  border-radius: 8px;
+  padding: 6px 8px;
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  user-select: none;
+  touch-action: none;
+  cursor: move;
+}
+#vkbd-panel.hidden { display: none; }
+.vkbd-handle {
+  font-size: 10px;
+  color: var(--text-1);
+  text-align: center;
+  padding: 0 0 4px;
+  cursor: move;
+}
+.vkbd-row {
+  display: flex;
+  gap: 2px;
+  margin-bottom: 2px;
+  justify-content: center;
+}
+.vkbd-key {
+  background: var(--bg-3);
+  border: 1px solid var(--border);
+  color: var(--text-0);
+  border-radius: 4px;
+  padding: 0 4px;
+  min-width: 26px;
+  height: 30px;
+  font-size: 10px;
+  font-family: var(--mono);
+  cursor: pointer;
+  touch-action: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.08s;
+}
+.vkbd-key:active, .vkbd-key.pressed {
+  background: var(--accent-dim);
+  color: var(--accent);
+  border-color: var(--accent-dim);
+}
+.vkbd-key-wide { min-width: 46px; }
+.vkbd-key-xl   { min-width: 80px; }

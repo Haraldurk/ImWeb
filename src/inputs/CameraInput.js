@@ -30,15 +30,47 @@ export class CameraInput {
   async start(deviceId = null) {
     if (this._stream) this.stop();
 
-    const constraints = {
-      video: deviceId
-        ? { deviceId: { exact: deviceId }, width: { ideal: 1280 }, height: { ideal: 720 } }
-        : { width: { ideal: 1280 }, height: { ideal: 720 } },
-      audio: false,
-    };
+    // iOS Safari requires HTTPS (except localhost for dev)
+    if (location.protocol !== 'https:' && location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') {
+      this.lastError = 'InsecureContext';
+      return false;
+    }
+
+    // Progressive constraint fallback — iOS fails hard on { exact } deviceId
+    const constraintSets = deviceId
+      ? [
+          { video: { deviceId: { ideal: deviceId }, width: { ideal: 1280 }, height: { ideal: 720 } } },
+          { video: { deviceId: { ideal: deviceId } } },
+          { video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } } },
+          { video: { facingMode: { ideal: 'environment' } } },
+          { video: true },
+        ]
+      : [
+          { video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } } },
+          { video: { facingMode: { ideal: 'environment' } } },
+          { video: { width: { ideal: 1280 }, height: { ideal: 720 } } },
+          { video: true },
+        ];
+
+    let lastErr = null;
+    for (const constraints of constraintSets) {
+      try {
+        this._stream = await navigator.mediaDevices.getUserMedia({ ...constraints, audio: false });
+        break;
+      } catch (err) {
+        lastErr = err;
+        if (err.name === 'NotAllowedError') break; // No point retrying permission errors
+      }
+    }
+
+    if (!this._stream) {
+      this.lastError = lastErr?.name ?? 'NotFoundError';
+      console.warn('[Camera] All constraint sets failed:', lastErr?.message);
+      this.active = false;
+      return false;
+    }
 
     try {
-      this._stream = await navigator.mediaDevices.getUserMedia(constraints);
       this.video = document.createElement('video');
       this.video.srcObject = this._stream;
       this.video.playsInline = true;
@@ -54,7 +86,8 @@ export class CameraInput {
       console.info('[Camera] Started:', this._stream.getVideoTracks()[0].label);
       return true;
     } catch (err) {
-      console.warn('[Camera] Failed to start:', err.message);
+      console.warn('[Camera] Video play failed:', err.message);
+      this.lastError = err.name;
       this.active = false;
       return false;
     }
