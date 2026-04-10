@@ -1874,6 +1874,7 @@ async function main() {
   ps.get('slitscan.clear').onTrigger(() => slitScan.clear());
 
   // Vasulka Warp — reinit on depth or quality change
+  let _vwarpWasActive = false;
   const _vwarpReinit = () => {
     const depthOptions   = [30, 60, 90];
     const qualityOptions = ['low', 'high'];
@@ -1884,6 +1885,8 @@ async function main() {
     const fresh = new VasulkaWarp(renderer, w, h, depth, quality);
     // Replace internals in-place so existing closure references stay valid
     Object.keys(fresh).forEach(k => { vasulkaWarp[k] = fresh[k]; });
+    // Force a pre-fill on the next active frame after rebuild
+    _vwarpWasActive = false;
   };
   ps.get('vwarp.depth').onChange(_vwarpReinit);
   ps.get('vwarp.quality').onChange(_vwarpReinit);
@@ -3602,7 +3605,13 @@ void main() {
     videoDelay.capture(pipeline.prev.texture);
 
     // Vasulka Warp — capture frame + render temporal slit-scan
-    if (ps.get('vwarp.active').value) {
+    const _vwarpActive = !!ps.get('vwarp.active').value;
+    if (_vwarpActive && !_vwarpWasActive) {
+      // Pre-fill ring buffer on activation so static backgrounds are undistorted immediately
+      vasulkaWarp.preFill(pipeline.prev.texture);
+    }
+    _vwarpWasActive = _vwarpActive;
+    if (_vwarpActive) {
       vasulkaWarp.applyParams(ps);
       vasulkaWarp.capture(pipeline.prev.texture);
       vasulkaWarp.render(pipeline.prev.texture);

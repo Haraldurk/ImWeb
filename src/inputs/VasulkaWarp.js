@@ -161,6 +161,50 @@ export class VasulkaWarp {
   }
 
   /**
+   * Pre-fill every slot in the ring buffer with the current frame so the
+   * buffer starts "warm". Call once on activation to prevent cold-start
+   * distortion of static backgrounds.
+   * @param {THREE.Texture} srcTexture — pipeline output texture
+   */
+  preFill(srcTexture) {
+    const renderer = this._renderer;
+
+    // Capture one real frame into _readBuf
+    this._blitMat.uniforms.tSrc.value = srcTexture;
+    this._scene.overrideMaterial = this._blitMat;
+    renderer.setRenderTarget(this._downsampleRT);
+    renderer.render(this._scene, this._cam);
+    renderer.setRenderTarget(null);
+
+    if (!this._readBuf) this._readBuf = new Uint8Array(this._sw * this._sh * 4);
+    renderer.readRenderTargetPixels(
+      this._downsampleRT, 0, 0, this._sw, this._sh, this._readBuf
+    );
+
+    // Write that frame to every slot so all temporal reads start with real data
+    renderer.initTexture(this._arrayTex);
+    const gl      = renderer.getContext();
+    const glArray = renderer.properties.get(this._arrayTex).__webglTexture;
+    if (glArray) {
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D_ARRAY, glArray);
+      for (let i = 0; i < this._depth; i++) {
+        gl.texSubImage3D(
+          gl.TEXTURE_2D_ARRAY, 0,
+          0, 0, i,
+          this._sw, this._sh, 1,
+          gl.RGBA, gl.UNSIGNED_BYTE,
+          this._readBuf
+        );
+      }
+      gl.bindTexture(gl.TEXTURE_2D_ARRAY, null);
+      renderer.resetState();
+    }
+
+    this._writeIdx = 0;
+  }
+
+  /**
    * Call once per render frame when vwarp is active.
    * @param {THREE.Texture} srcTexture — pipeline output texture
    */
