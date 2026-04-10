@@ -127,7 +127,7 @@ async function main() {
   const videoDelay    = new VideoDelayLine(renderer, W, H, 30);
   const vectorscope   = new VectorscopeInput();
   const slitScan      = new SlitScanBuffer(W, H);
-  const vasulkaWarp   = new VasulkaWarp(renderer, W, H, 30, 'low');
+  const vasulkaWarp   = new VasulkaWarp(renderer, W, H, 960);
   const particles     = new ParticleSystem(renderer, W, H);
   const sdfGen        = new SDFGenerator(renderer, W, H);
   const warpMaps     = buildWarpMaps(); // 8 procedural warp map textures (map1–map8)
@@ -303,7 +303,7 @@ async function main() {
   buildMappingPanels(ps, contextMenu);
   buildSeqParams(ps, contextMenu);
   buildGeometryButtons(ps, scene3d, contextMenu);
-  buildWarpEditor(warpEditor, ps);
+  buildWarpEditor(warpEditor, ps, contextMenu);
 
   // Update model status label after drag-and-drop or button import
   function _refreshModelLabel() {
@@ -1873,23 +1873,17 @@ async function main() {
   // Slit scan clear trigger
   ps.get('slitscan.clear').onTrigger(() => slitScan.clear());
 
-  // Vasulka Warp — reinit on depth or quality change
-  let _vwarpWasActive = false;
+  // Vasulka Warp — reinit on buf size change
   const _vwarpReinit = () => {
-    const depthOptions   = [30, 60, 90];
-    const qualityOptions = ['low', 'high'];
-    const depth   = depthOptions[ps.get('vwarp.depth').value]    ?? 30;
-    const quality = qualityOptions[ps.get('vwarp.quality').value] ?? 'low';
+    const bufsizeOptions = [480, 960, 1920];
+    const bufSize = bufsizeOptions[ps.get('vwarp.bufsize').value] ?? 960;
     const w = vasulkaWarp._fullW, h = vasulkaWarp._fullH;
     vasulkaWarp.dispose();
-    const fresh = new VasulkaWarp(renderer, w, h, depth, quality);
+    const fresh = new VasulkaWarp(renderer, w, h, bufSize);
     // Replace internals in-place so existing closure references stay valid
     Object.keys(fresh).forEach(k => { vasulkaWarp[k] = fresh[k]; });
-    // Force a pre-fill on the next active frame after rebuild
-    _vwarpWasActive = false;
   };
-  ps.get('vwarp.depth').onChange(_vwarpReinit);
-  ps.get('vwarp.quality').onChange(_vwarpReinit);
+  ps.get('vwarp.bufsize').onChange(_vwarpReinit);
 
   // Sequence buffer param listeners
   [1, 2, 3].forEach(n => {
@@ -3604,16 +3598,11 @@ void main() {
     // Capture output into video delay ring buffer
     videoDelay.capture(pipeline.prev.texture);
 
-    // Vasulka Warp — capture frame + render temporal slit-scan
-    const _vwarpActive = !!ps.get('vwarp.active').value;
-    if (_vwarpActive && !_vwarpWasActive) {
-      // Pre-fill ring buffer on activation so static backgrounds are undistorted immediately
-      vasulkaWarp.preFill(pipeline.prev.texture);
-    }
-    _vwarpWasActive = _vwarpActive;
-    if (_vwarpActive) {
+    // Vasulka Warp — strip-buffer capture + temporal output
+    if (ps.get('vwarp.active').value) {
+      const speed = Math.round(ps.get('vwarp.speed').value) || 1;
       vasulkaWarp.applyParams(ps);
-      vasulkaWarp.capture(pipeline.prev.texture);
+      vasulkaWarp.capture(pipeline.prev.texture, speed);
       vasulkaWarp.render(pipeline.prev.texture);
     }
 

@@ -1030,18 +1030,16 @@ export function registerCoreParameters(ps) {
   // ── Vasulka Warp (Temporal Slit-Scan) ────────────────────────────────────
   ps.register({ id: 'vwarp.active',   label: 'VWarp',      group: 'vwarp',
     type: PARAM_TYPE.TOGGLE, value: 0 });
-  ps.register({ id: 'vwarp.strength', label: 'Strength',   group: 'vwarp',
-    min: 0, max: 1, value: 0.8, step: 0.01 });
-  ps.register({ id: 'vwarp.axis',     label: 'Axis',       group: 'vwarp',
+  ps.register({ id: 'vwarp.axis',    label: 'Axis',     group: 'vwarp',
     type: PARAM_TYPE.SELECT, options: ['Horizontal','Vertical'], value: 0 });
-  ps.register({ id: 'vwarp.flip',     label: 'Flip',       group: 'vwarp',
+  ps.register({ id: 'vwarp.flip',    label: 'Flip',     group: 'vwarp',
     type: PARAM_TYPE.TOGGLE, value: 0 });
-  ps.register({ id: 'vwarp.mix',      label: 'Mix',        group: 'vwarp',
+  ps.register({ id: 'vwarp.mix',     label: 'Mix',      group: 'vwarp',
     min: 0, max: 1, value: 1.0, step: 0.01 });
-  ps.register({ id: 'vwarp.depth',    label: 'Depth',      group: 'vwarp',
-    type: PARAM_TYPE.SELECT, options: ['30 frames','60 frames','90 frames'], value: 0 });
-  ps.register({ id: 'vwarp.quality',  label: 'Quality',    group: 'vwarp',
-    type: PARAM_TYPE.SELECT, options: ['Low (480p)','High (960p)'], value: 0 });
+  ps.register({ id: 'vwarp.bufsize', label: 'Buf Size', group: 'vwarp',
+    type: PARAM_TYPE.SELECT, options: ['480 cols (8s)','960 cols (16s)','1920 cols (32s)'], value: 1 });
+  ps.register({ id: 'vwarp.speed',   label: 'Speed',    group: 'vwarp',
+    min: 1, max: 8, value: 1, step: 1 });
 
   // ── Sequence Buffers ──────────────────────────────────────────────────────
   const SEQ_SOURCES = ['Output','Camera','Movie','FG','BG','Buffer','Draw'];
