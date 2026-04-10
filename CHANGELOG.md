@@ -6,6 +6,31 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
 
 ---
 
+## [0.7.0] — 2026-04-10
+
+### Added
+- **Text animation system** — `text.rate` + `text.autoplay` auto-advance clock (LFO/MIDI/sound-assignable); `text.animMode` (Bounce/Wave/Fade/Typewriter), `text.animSpeed`, `text.animAmt`; `text.contentIdx` indexes multi-line textarea content, MIDI/LFO-driveable
+- **Text typography params** — `text.letterspacing`, `text.rotation`, `text.shadowBlur/X/Y`, `text.bgOpacity`, `text.outlineHue/Sat` (independent outline color)
+- **3D material types** — `scene3d.mat.type` SELECT: Standard / Toon (3-step gradient) / Normal / Matcap / Lambert / Phong; live switch without losing values
+- **3D rim / Fresnel** — `scene3d.mat.rim` (0–1), `scene3d.mat.rimHue` (0–360°); injected into `onBeforeCompile` fragment shader
+- **3D material extras** — UV animation (`uvSpeedX/Y`), independent emissive color (`emissiveHue/Sat`), `envIntensity`
+- **Vasulka Warp (temporal slit-scan)** — `VasulkaWarp.js`: `DataArrayTexture` ring buffer (30–90 frames, 480p or 960p); each column samples a different moment in time with bilinear blending; params: `vwarp.active`, `strength`, `axis` (H/V), `flip`, `mix`, `depth`, `quality`; routable as source 22 "VWarp"; GLSL3 shader (`sampler2DArray`, `glslVersion: THREE.GLSL3`)
+- **Vasulka UV warp** — dual-oscillator scan-line UV distortion effect in pipeline FX chain (`vasulka.*` params)
+- **Particle improvements** — FG/BG/DS mask sources (indices 6/7/8); emitter shapes (Box/Ring/LineH/LineV/Point); `scaleby` (Uniform/By-Life/By-Speed); 2 attractor/repulsor nodes with strength and position
+- **Responsive layout** — CSS media query breakpoints for 4K (≥2560px), tablet (≤1200px), slide-over panel (≤900px), full-width (≤600px); `@media (pointer: coarse)` 44px touch targets; `overscroll-behavior` + `touch-action` on panels and param rows
+- **iPad touch input** — all param row drags use Pointer Events + `setPointerCapture` (replaces mouse events); long-press (500ms, ≤8px movement) opens context menu with haptic; thin 3px range slider under every CONTINUOUS param row for finger adjustment; `touch-action: manipulation` eliminates 300ms tap delay
+- **Controller badge popover (all types)** — `_openCtrlPopover` expanded: `midi-cc` (CC#, Chan drag), `midi-note` (Note#, Chan), `key` (click-to-capture), `expr` (live text input); Slew + Table rows now shown for all controller types; tap (touch) or ctrl+click (desktop) opens popover; badge label refreshes immediately via `param.notify()` after assignment
+- **LFO popover improvements** — beat-sync LFOs show "Beat ÷N" label instead of "Freq (Hz)"; `lfo-rampdown` (LFO↘) and `lfo-sh` (S+H) added to badge label map
+- **Temporal Smear demo preset** (preset 5) — two-state preset: builds VWarp history then switches to temporal slit-scan output
+
+### Fixed
+- Keyer breaking on Layer Color changes — `keyer.rawkey` toggle makes keyer use pre-color-correction FG for luma computation
+- `_rebuildMaterial` missing `oldMat.dispose()` — GPU resources leaked on every 3D material type switch (fixed)
+- GLSL `setCustomShader` false 1281/1282 errors — drain stale error queue before compile; check program link status via `getProgramParameter/getProgramInfoLog`
+- VasulkaWarp GLSL3 syntax errors — fixed WARP_FRAG/VERT to use `in/out`, `fragColor`, `texture()`; added `glslVersion: THREE.GLSL3`; `_texInited` properly initialized; added VWarp to `Pipeline._resolveSource`
+
+---
+
 ## [0.6.0] — 2026-04-05
 
 ### Added
