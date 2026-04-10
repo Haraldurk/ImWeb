@@ -380,9 +380,9 @@ export class SceneManager {
     this._setupMaterial(mat);
 
     if (oldMat) {
-      // Dispose old shaders but keep the material alive if imported model references it
       oldMat.onBeforeCompile = () => {};
       oldMat._shader = null;
+      oldMat.dispose();
     }
 
     this.material = mat;

@@ -539,19 +539,35 @@ export class Pipeline {
       depthWrite: false,
     });
 
-    // Force compile by doing a dummy pass and reading gl error
+    // Force compile and detect errors via WebGL program link status
     try {
       const gl = this.renderer.getContext();
-      const prog = this.renderer.getContext().getProgramInfoLog; // probe
-      // Force Three.js to compile it
+      // Drain any pre-existing GL errors so stale errors don't cause false failure
+      while (gl.getError() !== gl.NO_ERROR) {}
+
       this._quad.material = mat;
       this.renderer.compile(this._scene, this._camera);
-      const info = this.renderer.info.programs?.find(p =>
-        p.fragmentShader === mat.fragmentShader
-      );
-      // Check WebGL error
+
+      // Check program link status directly for accurate error detection
+      const progInfo = this.renderer.info.programs;
+      let linkError = null;
+      if (progInfo) {
+        for (const p of progInfo) {
+          if (p.fragmentShader === mat.fragmentShader || p.vertexShader === mat.vertexShader) {
+            // Try to get info log from WebGL
+            const glProg = p.program;
+            if (glProg && !gl.getProgramParameter(glProg, gl.LINK_STATUS)) {
+              linkError = gl.getProgramInfoLog(glProg) ?? 'Shader link failed';
+            }
+            break;
+          }
+        }
+      }
+      if (linkError) throw new Error(linkError);
+
+      // Also catch any new GL errors after compile
       const err = gl.getError();
-      if (err !== 0) throw new Error(`WebGL error: ${err}`);
+      if (err !== 0) throw new Error(`WebGL error ${err} — check shader syntax`);
     } catch (e) {
       mat.dispose();
       this._customError  = e.message;
