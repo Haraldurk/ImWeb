@@ -1038,7 +1038,7 @@ export function registerCoreParameters(ps) {
     min: 0, max: 1, value: 1.0, step: 0.01 });
   ps.register({ id: 'vwarp.bufsize', label: 'Buf Size', group: 'vwarp',
     type: PARAM_TYPE.SELECT, options: ['480 cols (8s)','960 cols (16s)','1920 cols (32s)'], value: 1 });
-  ps.register({ id: 'vwarp.speed',   label: 'Speed',    group: 'vwarp',
+  ps.register({ id: 'vwarp.speed', label: 'Speed', group: 'vwarp',
     min: 1, max: 8, value: 1, step: 1 });
 
   // ── Sequence Buffers ──────────────────────────────────────────────────────

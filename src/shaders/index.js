@@ -31,6 +31,7 @@ export const KEYER = /* glsl */ `
   uniform sampler2D uFG;
   uniform sampler2D uBG;
   uniform sampler2D uEK;       // external key source (DS texture when extkey=1)
+  uniform sampler2D uFGRaw;    // pre-color-correction FG source for raw keying
   uniform float uKeyWhite;
   uniform float uKeyBlack;
   uniform float uKeySoftness;
@@ -38,6 +39,7 @@ export const KEYER = /* glsl */ `
   uniform int   uAlpha;
   uniform int   uAlphaInvert;
   uniform int   uExtKey;       // 1 = key on uEK luminance instead of uFG
+  uniform int   uRawKey;       // 1 = key on uFGRaw (pre-color-correction) luma
 
   varying vec2 vUv;
 
@@ -59,7 +61,9 @@ export const KEYER = /* glsl */ `
     if (uAlpha == 1) {
       alpha = uAlphaInvert == 1 ? (1.0 - fg.a) : fg.a;
     } else {
-      vec4 keySrc   = uExtKey == 1 ? texture2D(uEK, vUv) : fg;
+      vec4 keySrc   = uExtKey == 1 ? texture2D(uEK, vUv)
+                    : uRawKey == 1 ? texture2D(uFGRaw, vUv)
+                    : fg;
       float lumaVal = luma(keySrc.rgb);
       float soft    = max(uKeySoftness, 0.001);
       // Pass band between black and white thresholds; soft edges on both
@@ -1242,5 +1246,44 @@ export const WHITE_BALANCE = /* glsl */ `
     c.b += m * 0.07;
 
     gl_FragColor = vec4(clamp(c, 0.0, 1.0), col.a);
+  }
+`;
+
+// ── Vasulka Warp ──────────────────────────────────────────────────────────────
+// Dual-oscillator scan-line UV warp inspired by Steina Vasulka's Wobbulator.
+// Two independent H oscillators + one V oscillator distort the UV coordinates.
+// Optional color modulation tints based on displacement magnitude.
+
+export const VASULKA_WARP = /* glsl */ `
+  uniform sampler2D uTexture;
+  uniform float uFreqH;  // H oscillator 1 frequency (cycles)
+  uniform float uFreqV;  // V oscillator frequency (cycles)
+  uniform float uAmpH;   // H oscillator 1 amplitude (UV units)
+  uniform float uAmpV;   // V oscillator amplitude (UV units)
+  uniform float uPhase;  // primary phase offset (radians)
+  uniform float uFreq2;  // H oscillator 2 frequency
+  uniform float uAmp2;   // H oscillator 2 amplitude (UV units)
+  uniform float uColor;  // color modulation strength 0–1
+  varying vec2 vUv;
+
+  void main() {
+    float tau = 6.2831853;
+    // Horizontal warp: two scan-line oscillators summed (Lissajous-like)
+    float wH = sin(vUv.y * uFreqH * tau + uPhase) * uAmpH
+             + sin(vUv.y * uFreq2 * tau + uPhase * 1.6180) * uAmp2;
+    // Vertical warp: one oscillator across horizontal scanlines
+    float wV = sin(vUv.x * uFreqV * tau + uPhase * 0.7) * uAmpV;
+
+    vec2 uv = vec2(fract(vUv.x + wH), fract(vUv.y + wV));
+    vec4 col = texture2D(uTexture, uv);
+
+    if (uColor > 0.001) {
+      float maxAmp = uAmpH + uAmp2;
+      float t = (maxAmp > 0.0) ? (wH / maxAmp) * 0.5 + 0.5 : 0.5;
+      vec3 tint = vec3(t, 1.0 - t * 0.7, 0.5 + wV * 2.0);
+      col.rgb = mix(col.rgb, col.rgb * tint, uColor);
+    }
+
+    gl_FragColor = col;
   }
 `;

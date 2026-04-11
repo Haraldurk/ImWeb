@@ -691,7 +691,7 @@ export function buildMappingPanels(ps, contextMenu) {
   const sections = {
     'mirror-params':   ps.getGroup('mirror'),
     'keyer-params':    ps.getGroup('keyer'),
-    'displace-params': ps.getGroup('displace'),
+    'displace-params': ps.getGroup('displace').filter(p => !p.id.startsWith('displace.warp')),
     'blend-params':    ps.getGroup('blend'),
     'color-params':    ps.getGroup('color'),
     'noise-params':    ps.getGroup('noise'),
@@ -2065,9 +2065,15 @@ export class DebugOverlay {
  * @param {WarpMapEditor} editor
  * @param {ParameterSystem} ps
  */
-export function buildWarpEditor(editor, ps) {
+export function buildWarpEditor(editor, ps, contextMenu) {
   const container = document.getElementById('warp-editor-container');
   if (!container) return;
+
+  // WarpMode + WarpAmt param rows at the top of the section
+  const warpModeRow = buildParamRow(ps.get('displace.warp'),    contextMenu ?? null);
+  const warpAmtRow  = buildParamRow(ps.get('displace.warpamt'), contextMenu ?? null);
+  container.appendChild(warpModeRow);
+  container.appendChild(warpAmtRow);
 
   const CW = 288, CH = 200; // canvas display size in px
   const DISP_SCALE = 2.5;   // amplify displacements for visual clarity
@@ -2140,8 +2146,13 @@ export function buildWarpEditor(editor, ps) {
     btn.className = 'warp-preset-btn';
     btn.textContent = name;
     btn.addEventListener('click', () => {
-      if (name === 'Reset') editor.reset();
-      else editor.applyPreset(name);
+      if (name === 'Reset') {
+        editor.reset();
+      } else {
+        editor.applyPreset(name);
+        ps.set('displace.warp', 9);                           // activate Custom mode
+        if (ps.get('displace.warpamt').value === 0) ps.set('displace.warpamt', 50);
+      }
       drawMesh();
     });
     presetRow.appendChild(btn);
