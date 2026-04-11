@@ -579,8 +579,27 @@ export const NOISE_BFG = /* glsl */ `
     } else if (uType == 6) {
       curlV = curlField(p, oct, uLacunarity, uGain);
       n = length(curlV) * 0.5;                          // Curl
-    } else {
+    } else if (uType == 7) {
       n = domainWarp(p, oct, uLacunarity, uGain);       // Domain Warp
+    } else if (uType == 8) {
+      n = h1(vec3(vUv * uScale, uSeed));                // White Noise
+    } else if (uType == 9) {
+      float fr = floor(uTime * uSpeed * 24.0);
+      float vig = 1.0 - smoothstep(0.3, 0.8, length(vUv - 0.5) * 2.0);
+      n = h1(vec3(vUv * uScale, uSeed + fr)) * (0.75 + vig * 0.5); // Film Grain
+    } else if (uType == 10) {
+      float u1 = h1(vec3(vUv * uScale, uSeed));
+      float u2 = h1(vec3(vUv * uScale + 17.0, uSeed));
+      float gz = sqrt(-2.0 * log(max(u1, 0.0001))) * cos(6.2832 * u2);
+      n = clamp(gz * 0.15 + 0.5, 0.0, 1.0);           // Gaussian
+    } else if (uType == 11) {
+      float fr = floor(uTime * 30.0 + uSeed);
+      n = h1(vec3(vUv * uScale, fr));                  // TV Static
+    } else if (uType == 12) {
+      n = mod(vUv.y * uScale * 20.0, 1.0) < 0.5 + sin(t) * 0.1 ? 1.0 : 0.0; // Scan Lines
+    } else if (uType == 13) {
+      float hv = h1(vec3(vUv * uScale, uSeed));
+      n = hv < 0.05 ? 0.0 : hv > 0.95 ? 1.0 : 0.5;   // Salt-and-Pepper
     }
 
     // ── Post-process ────────────────────────────────────────────────────────
