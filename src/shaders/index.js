@@ -550,6 +550,29 @@ export const NOISE_BFG = /* glsl */ `
     return fbm(p + 1.5 * vec3(rx, ry, 0.0), oct, lac, gn, 1);
   }
 
+  // ── Voronoi — multi-metric, 3×3×3 neighborhood ───────────────────────────
+  // metric: 0=Euclidean  1=Manhattan  2=Chebyshev
+  // Returns vec2(F1, F2) — nearest and second-nearest seed distances.
+
+  vec2 voronoi(vec3 p, int metric) {
+    vec3 i = floor(p), f = fract(p);
+    float f1 = 9.0, f2 = 9.0;
+    for (int z = -1; z <= 1; z++) {
+      for (int y = -1; y <= 1; y++) {
+        for (int x = -1; x <= 1; x++) {
+          vec3 nb = vec3(float(x), float(y), float(z));
+          vec3 dv = nb + h3(i + nb) - f;
+          float d = length(dv);
+          if (metric == 1) d = abs(dv.x) + abs(dv.y) + abs(dv.z);
+          if (metric == 2) d = max(max(abs(dv.x), abs(dv.y)), abs(dv.z));
+          if (d < f1) { f2 = f1; f1 = d; }
+          else if (d < f2) { f2 = d; }
+        }
+      }
+    }
+    return vec2(f1, f2);
+  }
+
   // ── Main ──────────────────────────────────────────────────────────────────
 
   void main() {
@@ -600,6 +623,28 @@ export const NOISE_BFG = /* glsl */ `
     } else if (uType == 13) {
       float hv = h1(vec3(vUv * uScale, uSeed));
       n = hv < 0.05 ? 0.0 : hv > 0.95 ? 1.0 : 0.5;   // Salt-and-Pepper
+    } else if (uType == 14) {
+      vec2 c = voronoi(p, 0);
+      n = clamp(c.x * 1.5, 0.0, 1.0);                 // Voronoi F1
+    } else if (uType == 15) {
+      vec2 c = voronoi(p, 1);
+      n = clamp(c.x * 0.8, 0.0, 1.0);                 // Manhattan Voronoi
+    } else if (uType == 16) {
+      vec2 c = voronoi(p, 2);
+      n = clamp(c.x * 1.2, 0.0, 1.0);                 // Chebyshev Voronoi
+    } else if (uType == 17) {
+      vec2 ca = wNoise(p);
+      vec2 cb = wNoise(p * 1.7 + vec3(3.1, 1.7, 0.0));
+      vec2 cc = wNoise(p * 0.6 + vec3(0.0, 0.0, 1.3));
+      n = 1.0 - clamp(ca.x * 0.6 + cb.x * 0.3 + cc.x * 0.1, 0.0, 1.0); // Caustics
+    } else if (uType == 18) {
+      float ang = t * 0.5;
+      float cs = cos(ang), sn = sin(ang);
+      vec3 rp = vec3(p.x * cs - p.y * sn, p.x * sn + p.y * cs, p.z);
+      n = fbm(rp, oct, uLacunarity, uGain, 1);         // Flow Noise
+    } else if (uType == 19) {
+      vec2 c = wNoise(p);
+      n = 1.0 - smoothstep(0.0, 0.3, c.y - c.x);      // Worley Veins
     }
 
     // ── Post-process ────────────────────────────────────────────────────────

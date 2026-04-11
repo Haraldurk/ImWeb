@@ -452,7 +452,8 @@ export function registerCoreParameters(ps) {
   ps.register({ id: 'noise.type', label: 'BasisType', group: 'noise',
     type: PARAM_TYPE.SELECT,
     options: ['Value','Perlin','Simplex','Cellular-F1','Cellular-F2','Ridged','Curl','DomainWarp',
-    'White','FilmGrain','Gaussian','TVStatic','ScanLines','SaltPepper'],
+    'White','FilmGrain','Gaussian','TVStatic','ScanLines','SaltPepper',
+    'Voronoi','Manhattan','Chebyshev','Caustics','FlowNoise','Veins'],
     value: 1 }); // default: Perlin
   ps.register({ id: 'noise.scale',      label: 'Scale',      group: 'noise', min: 0.1,  max: 20,   value: 3,    step: 0.1  });
   ps.register({ id: 'noise.octaves',    label: 'Octaves',    group: 'noise', min: 1,    max: 8,    value: 4,    step: 1    });
