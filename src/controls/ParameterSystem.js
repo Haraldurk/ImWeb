@@ -342,6 +342,16 @@ export function registerCoreParameters(ps) {
   ps.register({ id: 'layer.ds', label: 'DisplaceSrc', group: 'layers',
     type: PARAM_TYPE.SELECT, options: SOURCES, value: 4, feedbackVisible: true });
 
+  const BLEND_MODES = ['Copy','XOR','OR','AND','Multiply','Screen','Add','Difference','Exclude',
+    'Overlay','Hardlight','Softlight','Dodge','Burn','Subtract','Divide',
+    'PinLight','VividLight','Hue','Saturation','Color','Luminosity'];
+  ps.register({ id: 'layer.fg.blend', label: 'FG Blend', group: 'layers',
+    type: PARAM_TYPE.SELECT, options: BLEND_MODES, value: 0 });
+  ps.register({ id: 'layer.bg.blend', label: 'BG Blend', group: 'layers',
+    type: PARAM_TYPE.SELECT, options: BLEND_MODES, value: 0 });
+  ps.register({ id: 'layer.ds.blend', label: 'DS Blend', group: 'layers',
+    type: PARAM_TYPE.SELECT, options: BLEND_MODES, value: 0 });
+
   // ── Keyer ─────────────────────────────────────────────────────────────────
   ps.register({ id: 'keyer.active',     label: 'Keyer ON',      group: 'keyer',
     type: PARAM_TYPE.TOGGLE, value: 0, feedbackVisible: true });

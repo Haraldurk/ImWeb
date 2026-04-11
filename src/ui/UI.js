@@ -646,10 +646,10 @@ export function buildLayerButtons(ps, contextMenu) {
   el.innerHTML = '';
 
   [
-    { param: ps.get('layer.fg'), label: 'Foreground' },
-    { param: ps.get('layer.bg'), label: 'Background' },
-    { param: ps.get('layer.ds'), label: 'DisplaceSrc' },
-  ].forEach(({ param, label }) => {
+    { param: ps.get('layer.fg'), label: 'Foreground', blendParam: ps.get('layer.fg.blend') },
+    { param: ps.get('layer.bg'), label: 'Background', blendParam: ps.get('layer.bg.blend') },
+    { param: ps.get('layer.ds'), label: 'DisplaceSrc', blendParam: ps.get('layer.ds.blend') },
+  ].forEach(({ param, label, blendParam }) => {
     const row = document.createElement('div');
     row.className = 'param-row';
 
@@ -681,6 +681,27 @@ export function buildLayerButtons(ps, contextMenu) {
     param.onChange(v => { sel.value = Math.round(v); });
 
     row.appendChild(sel);
+
+    // Blend mode select for this layer
+    if (blendParam) {
+      const bsel = document.createElement('select');
+      bsel.className = 'blend-select';
+      (blendParam.options ?? []).forEach((opt, i) => {
+        const option = document.createElement('option');
+        option.value = i;
+        option.textContent = opt;
+        if (i === Math.round(blendParam.value)) option.selected = true;
+        bsel.appendChild(option);
+      });
+      bsel.addEventListener('change', () => ps.set(blendParam.id, +bsel.value));
+      bsel.addEventListener('contextmenu', e => {
+        e.preventDefault();
+        contextMenu?.show(blendParam, e.clientX, e.clientY);
+      });
+      blendParam.onChange(v => { bsel.value = Math.round(v); });
+      row.appendChild(bsel);
+    }
+
     el.appendChild(row);
   });
 }

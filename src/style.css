@@ -384,6 +384,20 @@ button {
 }
 .source-select:focus { outline: none; border-color: var(--accent-dim); }
 
+.blend-select {
+  background: var(--bg-3);
+  color: var(--text-2);
+  border: 1px solid var(--bg-4);
+  border-radius: 3px;
+  font-size: 11px;
+  padding: 2px 4px;
+  cursor: pointer;
+}
+.blend-select:focus {
+  outline: 1px solid var(--accent-dim);
+  color: var(--text-1);
+}
+
 /* ── PARAMETER ROW ───────────────────────────────────────────────────────── */
 
 .param-row {

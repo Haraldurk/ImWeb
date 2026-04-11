@@ -278,7 +278,7 @@ export class Pipeline {
     const fgIdx  = p.get('layer.fg').value;
     const fgTex  = this._resolveSource(processedInputs, fgIdx);
     const bgTex  = this._resolveSource(processedInputs, p.get('layer.bg').value);
-    const dsTex  = this._resolveSource(processedInputs, p.get('layer.ds').value);
+    let dsTex  = this._resolveSource(processedInputs, p.get('layer.ds').value);
 
     // Apply per-layer color correction (HSB) to FG and BG
     const fgHue    = p.get('fg.hue').value    / 360;
@@ -307,7 +307,7 @@ export class Pipeline {
 
     // Apply mirror to camera, movie, or buffer source if needed
     let workingFG = correctedFG;
-    const bgTexFinal = correctedBG;
+    let bgTexFinal = correctedBG;
     if (p.get('mirror.camera').value && fgIdx === 0 && inputs.camera) {
       workingFG = this._pass(this.m.mirror, {
         uTexture: fgTex, uFlipH: 1, uFlipV: 0,
@@ -321,6 +321,14 @@ export class Pipeline {
         uTexture: fgTex, uFlipH: 1, uFlipV: 0,
       });
     }
+
+    // Per-layer blend (self-blend pre-pass — applied before global TransferMode)
+    const fgBlend = Math.round(p.get('layer.fg.blend')?.value ?? 0);
+    const bgBlend = Math.round(p.get('layer.bg.blend')?.value ?? 0);
+    const dsBlend = Math.round(p.get('layer.ds.blend')?.value ?? 0);
+    if (fgBlend > 0) workingFG   = this._pass(this.m.transfermode, { uFG: workingFG,   uBG: workingFG,   uMode: fgBlend });
+    if (bgBlend > 0) bgTexFinal  = this._pass(this.m.transfermode, { uFG: bgTexFinal,  uBG: bgTexFinal,  uMode: bgBlend });
+    if (dsBlend > 0) dsTex       = this._pass(this.m.transfermode, { uFG: dsTex,       uBG: dsTex,       uMode: dsBlend });
 
     // Solo mode — bypass all effects
     if (p.get('output.solo').value) {
