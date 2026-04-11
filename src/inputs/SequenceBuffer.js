@@ -1,6 +1,22 @@
 import * as THREE from 'three';
 import { VERT, PASSTHROUGH, TIMEWARP } from '../shaders/index.js';
 
+// ── IndexedDB helper for strip persistence ────────────────────────────────────
+const STRIP_DB_NAME    = 'imweb-timewarp-strips';
+const STRIP_DB_VERSION = 1;
+const STRIP_STORE      = 'strips';
+
+function _openStripDB() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(STRIP_DB_NAME, STRIP_DB_VERSION);
+    req.onupgradeneeded = e => {
+      e.target.result.createObjectStore(STRIP_STORE);
+    };
+    req.onsuccess = e => resolve(e.target.result);
+    req.onerror   = e => reject(e.target.error);
+  });
+}
+
 export class SequenceBuffer {
   constructor(renderer, width, height, frameCount = 60, instanceId = 'seq') {
     this.renderer    = renderer;
@@ -223,6 +239,73 @@ export class SequenceBuffer {
       this._stripWriteIdx = 0;
       this._twFrameAcc    = 0;
     }
+  }
+
+  // ── Strip persistence (IndexedDB) ────────────────────────────────────────────
+
+  /**
+   * Read _stripRT pixels → save raw RGBA bytes + write cursor to IndexedDB.
+   * Key: `timewarp-strip-${instanceId}`. No-op if not in timewarp mode.
+   */
+  async saveStrip() {
+    if (!this._stripRT) return;
+    const gl = this.renderer.getContext();
+    const w  = this._stripRT.width;
+    const h  = this._stripRT.height;
+
+    const pixels = new Uint8Array(w * h * 4);
+    this.renderer.setRenderTarget(this._stripRT);
+    gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+    this.renderer.setRenderTarget(null);
+
+    const db = await _openStripDB();
+    return new Promise((resolve, reject) => {
+      const tx  = db.transaction(STRIP_STORE, 'readwrite');
+      tx.objectStore(STRIP_STORE).put(
+        { pixels, width: w, height: h, writeIdx: this._stripWriteIdx },
+        `timewarp-strip-${this._instanceId}`
+      );
+      tx.oncomplete = () => { db.close(); resolve(); };
+      tx.onerror    = () => { db.close(); reject(tx.error); };
+    });
+  }
+
+  /**
+   * Load saved strip bytes from IndexedDB → upload as DataTexture → blit into _stripRT.
+   * Initialises timewarp mode if not already active.
+   * No-op if nothing is stored for this instanceId.
+   */
+  async restoreStrip() {
+    const db = await _openStripDB();
+    const record = await new Promise((resolve, reject) => {
+      const tx  = db.transaction(STRIP_STORE, 'readonly');
+      const req = tx.objectStore(STRIP_STORE).get(`timewarp-strip-${this._instanceId}`);
+      req.onsuccess = () => { db.close(); resolve(req.result); };
+      req.onerror   = () => { db.close(); reject(req.error); };
+    });
+    if (!record) return;
+
+    if (!this._stripRT) this._initTimewarp();
+
+    const { pixels, width: w, height: h, writeIdx } = record;
+    // DataTexture defaults to flipY=false — matches readPixels bottom-to-top convention
+    const tex = new THREE.DataTexture(
+      new Uint8Array(pixels.buffer ?? pixels),
+      w, h,
+      THREE.RGBAFormat,
+      THREE.UnsignedByteType
+    );
+    tex.needsUpdate = true;
+
+    this._mat.uniforms.uTexture.value = tex;
+    this._scene.overrideMaterial      = this._mat;
+    this.renderer.setRenderTarget(this._stripRT);
+    this.renderer.render(this._scene, this._camera);
+    this.renderer.setRenderTarget(null);
+    this._scene.overrideMaterial = null;
+    tex.dispose();
+
+    this._stripWriteIdx = writeIdx ?? 0;
   }
 
   dispose() {

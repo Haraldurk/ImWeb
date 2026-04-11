@@ -1121,7 +1121,8 @@ async function main() {
     warpEditor,
     drawLayer,
     stillsBuffer,
-    scene3d: scene3d
+    scene3d:     scene3d,
+    seqBuffers:  [seq1, seq2, seq3],
   });
 
   // Click OSC indicator → prompt for WebSocket URL and connect

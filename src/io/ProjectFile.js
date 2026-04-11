@@ -31,7 +31,7 @@ export class ProjectFile {
     this.ps      = ps;
     this.presets = presetMgr;
     this.tables  = tableManager;
-    this.extras  = extras; // { warpEditor, drawLayer, stillsBuffer, scene3d }
+    this.extras  = extras; // { warpEditor, drawLayer, stillsBuffer, scene3d, seqBuffers }
   }
 
   // ── Export ────────────────────────────────────────────────────────────────
@@ -96,6 +96,15 @@ export class ProjectFile {
       };
     }
 
+    // Timewarp strip persistence — save each seq in timewarp mode to IndexedDB
+    if (this.extras.seqBuffers) {
+      await Promise.all(
+        this.extras.seqBuffers
+          .filter(seq => seq.mode === 'timewarp')
+          .map(seq => seq.saveStrip().catch(err => console.warn('[ProjectFile] strip save failed:', err)))
+      );
+    }
+
     return {
       _type:        'imweb-project',
       _version:     FORMAT_VERSION,
@@ -152,6 +161,15 @@ export class ProjectFile {
     // Restore live params (overlay on top of preset)
     if (data.params) {
       this.ps.restoreState(data.params);
+    }
+
+    // Timewarp strip restore — runs after params so setMode() has already been called
+    if (this.extras.seqBuffers) {
+      await Promise.all(
+        this.extras.seqBuffers
+          .filter(seq => seq.mode === 'timewarp')
+          .map(seq => seq.restoreStrip().catch(err => console.warn('[ProjectFile] strip restore failed:', err)))
+      );
     }
 
     // Restore warp map
