@@ -573,6 +573,11 @@ export const NOISE_BFG = /* glsl */ `
     return vec2(f1, f2);
   }
 
+  // ── vec2 hash — for Gabor / Poisson kernels ──────────────────────────────
+  vec2 h2(vec2 v) {
+    return vec2(h1(vec3(v, 0.0)), h1(vec3(v + vec2(3.7, 1.9), 0.0)));
+  }
+
   // ── Main ──────────────────────────────────────────────────────────────────
 
   void main() {
@@ -645,6 +650,42 @@ export const NOISE_BFG = /* glsl */ `
     } else if (uType == 19) {
       vec2 c = wNoise(p);
       n = 1.0 - smoothstep(0.0, 0.3, c.y - c.x);      // Worley Veins
+    } else if (uType == 20) {
+      vec2 cell = floor(p.xy * uScale * 0.3);
+      vec2 local = fract(p.xy * uScale * 0.3) - 0.5;
+      float flip = step(0.5, h1(vec3(cell + uSeed + 37.3, 0.0)));
+      vec2 corner = vec2(flip > 0.5 ? 0.5 : -0.5, 0.5);
+      n = 1.0 - smoothstep(0.0, 0.08, abs(length(local - corner) - 0.5)); // Truchet
+    } else if (uType == 21) {
+      vec2 hUv = p.xy * uScale * 0.3;
+      float q = hUv.x * 2.0 / 3.0;
+      float r = (-hUv.x + sqrt(3.0) * hUv.y) / 3.0;
+      vec2 hex = vec2(q, r);
+      vec2 hid = floor(hex + 0.5);
+      float cellN = h1(vec3(hid + uSeed + 73.1, 0.0));
+      float dist = length(hex - hid);
+      n = cellN * (1.0 - smoothstep(0.3, 0.5, dist));  // Hex Grid
+    } else if (uType == 22) {
+      float sum = 0.0;
+      vec2 uv22 = p.xy * uScale * 0.2;
+      for (int i = 0; i < 8; i++) {
+        float a = h1(vec3(float(i), uSeed + 11.0, 0.0)) * 6.283;
+        vec2 off = h2(vec2(float(i), uSeed + 23.0));
+        vec2 gd = fract(uv22) - off;
+        float env = exp(-dot(gd, gd) * 4.0);
+        float wave = cos(uScale * dot(gd, vec2(cos(a), sin(a))) + t);
+        sum += env * wave;
+      }
+      n = clamp(sum / 8.0 * 0.5 + 0.5, 0.0, 1.0);     // Gabor
+    } else if (uType == 23) {
+      vec2 uv23 = p.xy * uScale * 0.1 + uSeed;
+      n = fract(52.9829189 * fract(dot(uv23, vec2(0.06711056, 0.00583715)))); // Blue Noise
+    } else if (uType == 24) {
+      vec2 cell = floor(p.xy * uScale * 0.2);
+      vec2 local = fract(p.xy * uScale * 0.2);
+      vec2 jitter = h2(cell + uSeed + 19.4) * 0.7 + 0.15;
+      float d2 = length(local - jitter);
+      n = 1.0 - smoothstep(0.1, 0.4, d2);              // Poisson Disc
     }
 
     // ── Post-process ────────────────────────────────────────────────────────
