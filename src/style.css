@@ -391,6 +391,7 @@ button {
   border-radius: 3px;
   font-size: 11px;
   padding: 2px 4px;
+  min-width: 90px;
   cursor: pointer;
 }
 .blend-select:focus {
