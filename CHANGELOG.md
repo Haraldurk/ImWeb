@@ -6,6 +6,27 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
 
 ---
 
+## [Unreleased] — Noise System Overhaul (D1)
+
+### Added
+- 38 noise types (up from 8) across 6 categories in NOISE_BFG shader
+- Classic: White Noise, Film Grain, Gaussian, TV Static, Scan Lines, Salt-and-Pepper
+- Structured: Voronoi F1, Manhattan, Chebyshev, Caustics, Flow Noise, Worley Veins
+- Geometric: Truchet, Hex Grid, Gabor, Blue Noise, Poisson Disc
+- Signal & Video: Speckle, RGB Shift, Interlace, VCR Noise, Speckle Colour, Pixel Sort
+- Fractal & Fluid: fBm, Turbulence, Billowed, Domain Warp 2, Velocity Field, Advection, Marble
+- New GLSL helpers: voronoi() with metric selector, h2() vec2 hash, turbulence(), billowed()
+- noise.color promoted from TOGGLE to SELECT (Off / Tri-channel / Color Mix)
+- Color1/Color2 pickers wired to uColor==2 mix(color1, color2, noiseVal) in shader
+- Noise panel separated from Color panel into own "Noise" section
+
+### Fixed
+- smoothstep(0.4, 0.15, x) edge-order undefined behaviour — replaced with safe equivalent
+- h1(vec2) type errors — all calls wrapped to vec3 for GLSL ES compliance
+- floor(hex + 0.5) used instead of round() for WebGL 1 / GLSL ES 2.00 compatibility
+
+---
+
 ## [0.7.0] — 2026-04-10
 
 ### Added

@@ -78,6 +78,10 @@ controller badge popovers
 
 main.js is the integration hub (~2000 lines). Most feature wiring lives here. Do not split it without a clear architectural reason.
 
+### Architecture Notes
+- Pipeline.js (src/core/Pipeline.js) owns the noise material uniform init block and the generateNoise() setter — NOT main.js. main.js only contains the call site and event listeners.
+- Noise shader lives at src/shaders/index.js (not src/core/shaders/)
+
 ---
 
 ## Key conventions
