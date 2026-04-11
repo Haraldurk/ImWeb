@@ -468,7 +468,7 @@ export function registerCoreParameters(ps) {
   ps.register({ id: 'noise.contrast',   label: 'Contrast',   group: 'noise', min: 0.1,  max: 5.0,  value: 1.0,  step: 0.05 });
   ps.register({ id: 'noise.invert',     label: 'Invert',     group: 'noise', type: PARAM_TYPE.TOGGLE, value: 0 });
   ps.register({ id: 'noise.seed',       label: 'Seed',       group: 'noise', min: 0,    max: 100,  value: 0,    step: 0.5  });
-  ps.register({ id: 'noise.color',      label: 'ColorField', group: 'noise', type: PARAM_TYPE.TOGGLE, value: 0 });
+  ps.register({ id: 'noise.color',      label: 'ColorMode',  group: 'noise', type: PARAM_TYPE.SELECT, options: ['Off', 'Tri-channel', 'Color Mix'], value: 0 });
 
   // ── Mirror ────────────────────────────────────────────────────────────────
   ps.register({ id: 'mirror.camera', label: 'Mirror Cam',    group: 'mirror',

@@ -621,6 +621,8 @@ export class Pipeline {
     m.uniforms.uInvert.value     = p.invert;
     m.uniforms.uSeed.value       = p.seed;
     m.uniforms.uColor.value      = p.color;
+    if (m.uniforms.uColor1) m.uniforms.uColor1.value = p.color1 ?? new THREE.Vector3(1,1,1);
+    if (m.uniforms.uColor2) m.uniforms.uColor2.value = p.color2 ?? new THREE.Vector3(0,0,0);
     this._quad.material = m;
     this.renderer.setRenderTarget(this._noiseTarget);
     this.renderer.render(this._scene, this._camera);
@@ -814,6 +816,8 @@ export class Pipeline {
         uInvert:     { value: 0 },
         uSeed:       { value: 0.0 },
         uColor:      { value: 0 },
+        uColor1:     { value: new THREE.Vector3(1, 1, 1) },
+        uColor2:     { value: new THREE.Vector3(0, 0, 0) },
       }),
       bufferTransform: this._mat(BUFFER_TRANSFORM, {
         uPanX:  { value: 0 },

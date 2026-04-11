@@ -3188,6 +3188,23 @@ void main() {
     ps.set('color2.val', v);
   });
 
+  let _noiseColor1 = new THREE.Vector3(1, 1, 1);
+  let _noiseColor2 = new THREE.Vector3(0, 0, 0);
+
+  function _hexToVec3(hex) {
+    const r = parseInt(hex.slice(1,3),16)/255;
+    const g = parseInt(hex.slice(3,5),16)/255;
+    const b = parseInt(hex.slice(5,7),16)/255;
+    return new THREE.Vector3(r, g, b);
+  }
+
+  document.getElementById('color1-picker')?.addEventListener('input', e => {
+    _noiseColor1 = _hexToVec3(e.target.value);
+  });
+  document.getElementById('color2-picker')?.addEventListener('input', e => {
+    _noiseColor2 = _hexToVec3(e.target.value);
+  });
+
   // Chroma key colour picker → sets keyer.chromahue
   document.getElementById('chroma-picker')?.addEventListener('input', e => {
     const { h } = hexToHsv(e.target.value);
@@ -3567,6 +3584,8 @@ void main() {
       invert:     ps.get('noise.invert').value,
       seed:       ps.get('noise.seed').value,
       color:      ps.get('noise.color').value,
+      color1:     _noiseColor1,
+      color2:     _noiseColor2,
     });
 
     // Render 3D scene if active OR used as a layer source

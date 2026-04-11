@@ -368,6 +368,8 @@ export const NOISE_BFG = /* glsl */ `
   uniform int   uInvert;
   uniform float uSeed;
   uniform int   uColor;
+  uniform vec3  uColor1;
+  uniform vec3  uColor2;
   varying vec2  vUv;
 
   // ── Hash functions (iq-style, high quality) ────────────────────────────────
@@ -782,6 +784,8 @@ export const NOISE_BFG = /* glsl */ `
       // Encode flow vector in RG (0=left/down, 1=right/up), magnitude in B
       col = vec3(0.5 + 0.4 * curlV.x, 0.5 + 0.4 * curlV.y, n);
       if (uInvert == 1) col.xy = 1.0 - col.xy;
+    } else if (uColor == 2) {
+      col = mix(uColor1, uColor2, n);
     } else if (uColor == 1) {
       // Tri-channel colorization via spatially shifted fbm passes
       int colorOct = oct > 1 ? oct - 1 : 1;
