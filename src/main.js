@@ -121,9 +121,9 @@ async function main() {
   const movieInput = new MovieInput();
 
   const stillsBuffer  = new StillsBuffer(renderer, W, H);
-  const seq1 = new SequenceBuffer(renderer, W, H, 60);
-  const seq2 = new SequenceBuffer(renderer, W, H, 60);
-  const seq3 = new SequenceBuffer(renderer, W, H, 60);
+  const seq1 = new SequenceBuffer(renderer, W, H, 60, 'seq1');
+  const seq2 = new SequenceBuffer(renderer, W, H, 60, 'seq2');
+  const seq3 = new SequenceBuffer(renderer, W, H, 60, 'seq3');
   const videoDelay    = new VideoDelayLine(renderer, W, H, 30);
   const vectorscope   = new VectorscopeInput();
   const slitScan      = new SlitScanBuffer(W, H);
@@ -1890,6 +1890,8 @@ async function main() {
     const seq = [seq1, seq2, seq3][n - 1];
     ps.get(`seq${n}.speed`).onChange(v => { seq.speed = v / 100; });
     ps.get(`seq${n}.size`).onChange(v => { seq.setFrameCount(Math.round(v)); });
+    ps.get(`seq${n}.mode`).onChange(v => { seq.setMode(v === 1 ? 'timewarp' : 'loop'); });
+    ps.get(`seq${n}.tw.speed`).onChange(v => { seq._twSpeed = Math.max(1, Math.round(v)); });
   });
 
   // ── Draw tab UI ───────────────────────────────────────────────────────────
@@ -3598,13 +3600,23 @@ void main() {
     // Capture output into video delay ring buffer
     videoDelay.capture(pipeline.prev.texture);
 
-    // Vasulka Warp — strip-buffer capture + temporal output
+    // Vasulka Warp — DEPRECATED: superseded by SequenceBuffer timewarp mode.
+    // Kept for backward compatibility. Do not remove until timewarp mode is stable.
     if (ps.get('vwarp.active').value) {
       const speed = Math.round(ps.get('vwarp.speed').value) || 1;
       vasulkaWarp.applyParams(ps);
       vasulkaWarp.capture(camera3d.active ? camera3d.currentTexture : pipeline.prev.texture, speed);
       vasulkaWarp.render(pipeline.prev.texture);
     }
+
+    // Sequence timewarp render — updates outputRT for each seq in timewarp mode.
+    // Runs after pipeline so pipeline.prev.texture contains this frame's output.
+    // Follows VasulkaWarp.render() pattern: direct render, not Pipeline FX chain.
+    [seq1, seq2, seq3].forEach((seq, i) => {
+      if (seq.mode === 'timewarp') {
+        seq.renderTimewarp(pipeline.prev.texture, ps, i + 1);
+      }
+    });
 
     // Profiler + debug overlay
     profiler.end();

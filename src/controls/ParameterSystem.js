@@ -1056,6 +1056,23 @@ export function registerCoreParameters(ps) {
   ps.register({ id: 'seq3.speed',   label: 'Seq3 Speed',  type: PARAM_TYPE.CONTINUOUS, group: 'seq', min: -300, max: 300, value: 100, unit: '%' });
   ps.register({ id: 'seq3.size',    label: 'Seq3 Frames', type: PARAM_TYPE.CONTINUOUS, group: 'seq', min: 4, max: 480, value: 60, step: 1 });
 
+  // ── Sequence TimeWarp mode params ─────────────────────────────────────────
+  [1, 2, 3].forEach(n => {
+    ps.register({ id: `seq${n}.mode`,      label: `Seq${n} Mode`,    type: PARAM_TYPE.SELECT,     group: 'seq',
+      options: ['Loop', 'TimeWarp'], value: 0 });
+    ps.register({ id: `seq${n}.tw.axis`,   label: `Seq${n} Axis`,    type: PARAM_TYPE.SELECT,     group: 'seq',
+      options: ['Horizontal', 'Vertical'], value: 0 });
+    ps.register({ id: `seq${n}.tw.flip`,   label: `Seq${n} Flip`,    type: PARAM_TYPE.TOGGLE,     group: 'seq', value: 0 });
+    ps.register({ id: `seq${n}.tw.speed`,  label: `Seq${n} TW Spd`,  type: PARAM_TYPE.CONTINUOUS, group: 'seq',
+      min: 1, max: 120, value: 1, step: 1 });
+    ps.register({ id: `seq${n}.tw.mix`,    label: `Seq${n} TW Mix`,  type: PARAM_TYPE.CONTINUOUS, group: 'seq',
+      min: 0, max: 100, value: 100, step: 1 });
+    ps.register({ id: `seq${n}.tw.offset`, label: `Seq${n} Offset`,  type: PARAM_TYPE.CONTINUOUS, group: 'seq',
+      min: 0, max: 100, value: 0, step: 1 });
+    ps.register({ id: `seq${n}.tw.warp`,   label: `Seq${n} Warp`,    type: PARAM_TYPE.CONTINUOUS, group: 'seq',
+      min: 0, max: 100, value: 0, step: 1 });
+  });
+
   // ── Vectorscope ───────────────────────────────────────────────────────────
   ps.register({ id: 'vectorscope.mode',  label: 'VScope Mode',  group: 'vectorscope',
     type: PARAM_TYPE.SELECT, options: ['Lissajous','Waveform','FFT'], value: 0 });

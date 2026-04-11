@@ -1249,6 +1249,42 @@ export const WHITE_BALANCE = /* glsl */ `
   }
 `;
 
+// ── TimeWarp ──────────────────────────────────────────────────────────────────
+// Strip-based temporal slit-scan readout. Used by SequenceBuffer timewarp mode.
+// Reads the strip RT (one column per captured frame) and assembles a full output
+// frame with axis, flip, scroll-offset, and cubic time-warp controls.
+
+export const TIMEWARP = /* glsl */ `
+  uniform sampler2D tStrip;   // strip RT — one column per captured frame
+  uniform sampler2D tLive;    // live input for mix-in
+  uniform float uMix;         // 0 = all live, 1 = all strip
+  uniform int   uAxis;        // 0 = Horizontal (time along X), 1 = Vertical (time along Y)
+  uniform float uFlip;        // 1.0 = reverse time direction
+  uniform float uOffset;      // temporal scroll offset [0, 1)
+  uniform float uWarp;        // cubic time-warp 0..1
+  varying vec2 vUv;
+
+  void main() {
+    float coord = (uAxis == 0) ? vUv.x : vUv.y;
+    if (uFlip > 0.5) coord = 1.0 - coord;
+    coord = fract(coord + uOffset);
+
+    if (uWarp > 0.001) {
+      float t    = coord * 2.0 - 1.0;
+      float bent = t * (1.0 - uWarp * 0.5 * t * t);
+      coord = clamp(bent * 0.5 + 0.5, 0.0, 1.0);
+    }
+
+    vec2 stripUv = (uAxis == 0)
+      ? vec2(coord, vUv.y)
+      : vec2(vUv.x, coord);
+
+    vec4 warped = texture2D(tStrip, stripUv);
+    vec4 live   = texture2D(tLive,  vUv);
+    gl_FragColor = mix(live, warped, uMix);
+  }
+`;
+
 // ── Vasulka Warp ──────────────────────────────────────────────────────────────
 // Dual-oscillator scan-line UV warp inspired by Steina Vasulka's Wobbulator.
 // Two independent H oscillators + one V oscillator distort the UV coordinates.

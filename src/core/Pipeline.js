@@ -49,6 +49,9 @@ const _FX = {
       uResolution: new THREE.Vector2(pipe.width, pipe.height),
     });
   },
+  // DEPRECATED — vasulka (VASULKA_WARP shader effect) is hidden from DEFAULT_FX_ORDER.
+  // SequenceBuffer timewarp mode supersedes this for temporal slit-scan.
+  // Keep the handler so saved presets that somehow reference it don't crash.
   vasulka: (pipe, tex, p) => {
     if (!p.get('vasulka.active')?.value) return tex;
     return pipe._pass(pipe.m.vasulka, {

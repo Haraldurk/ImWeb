@@ -830,6 +830,24 @@ export function buildSeqParams(ps, contextMenu) {
     sizeParam.onChange(updateMemHint);
     card.appendChild(memHint);
 
+    // ── Mode selector + TimeWarp controls ──
+    const modeParam = ps.get(`seq${n}.mode`);
+    card.appendChild(buildParamRow(modeParam, contextMenu));
+
+    const twSection = document.createElement('div');
+    twSection.className = 'seq-tw-section';
+    const refreshTW = () => {
+      twSection.style.display = modeParam.value === 1 ? '' : 'none';
+    };
+    refreshTW();
+    modeParam.onChange(refreshTW);
+
+    [`seq${n}.tw.axis`, `seq${n}.tw.flip`, `seq${n}.tw.speed`,
+     `seq${n}.tw.mix`, `seq${n}.tw.offset`, `seq${n}.tw.warp`].forEach(id => {
+      twSection.appendChild(buildParamRow(ps.get(id), contextMenu));
+    });
+    card.appendChild(twSection);
+
     el.appendChild(card);
   });
 }
