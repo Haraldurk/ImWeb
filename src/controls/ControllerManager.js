@@ -573,6 +573,20 @@ export class ControllerManager {
         this.onMIDIPC(data1);
       }
 
+      // Clip Library MIDI recall: note-on (0x90) note 0–127 → slot 0–127
+      if (type === 0x90 && data2 > 0 && this._clipLibrary && this._movieInput) {
+        this._clipLibrary.recall(data1).then(result => {
+          if (!result) return;
+          this._movieInput.addClip(result.blobUrl).then(idx => {
+            if (idx < 0) return;
+            this._movieInput.selectClip(idx);
+            this.ps.set('movie.active', 1);
+            this.ps.set('clip.bank', Math.floor(data1 / 16));
+            this.ps.set('clip.slot', data1 % 16);
+          });
+        }).catch(() => {}); // silent fail on empty slot
+      }
+
       // Show MIDI activity
       const el = document.getElementById('status-midi');
       if (el) {

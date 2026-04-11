@@ -64,6 +64,7 @@ import {
   Profiler,
   DebugOverlay,
   TablesEditor,
+  buildClipLibrary,
 } from './ui/UI.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -112,6 +113,7 @@ async function main() {
   // ── 3. Controllers ────────────────────────────────────────────────────────
 
   const ctrl = new ControllerManager(ps);
+  ctrl._clipLibrary = clipLibrary; // set now; _movieInput set after movieInput is created
   const automation    = new Automation(ps);
 
   // ── 4. Input sources ──────────────────────────────────────────────────────
@@ -120,6 +122,7 @@ async function main() {
   await camera3d.init();
 
   const movieInput = new MovieInput();
+  ctrl._movieInput = movieInput;
 
   const stillsBuffer  = new StillsBuffer(renderer, W, H);
   const seq1 = new SequenceBuffer(renderer, W, H, 60, 'seq1');
@@ -305,6 +308,7 @@ async function main() {
   buildSeqParams(ps, contextMenu);
   buildGeometryButtons(ps, scene3d, contextMenu);
   buildWarpEditor(warpEditor, ps, contextMenu);
+  const { refreshClipGrid, setRecording } = buildClipLibrary(ps, clipLibrary, movieInput, contextMenu);
 
   // Update model status label after drag-and-drop or button import
   function _refreshModelLabel() {
@@ -1782,13 +1786,16 @@ async function main() {
     const maxSec    = ps.get('clip.duration').value;
     const stream    = canvas.captureStream(60);
     console.info(`[Clip] Recording slot ${slotIndex} for ${maxSec}s…`);
+    setRecording(true);
     try {
       await clipLibrary.record(stream, slotIndex, maxSec, canvas);
       console.info(`[Clip] Slot ${slotIndex} saved (${maxSec}s)`);
+      refreshClipGrid();
     } catch (err) {
       console.error('[Clip] Record failed:', err);
     } finally {
       _clipRecording = false;
+      setRecording(false);
     }
   });
 
@@ -1802,6 +1809,7 @@ async function main() {
         movieInput.selectClip(idx);
         ps.set('movie.active', 1);
         console.info(`[Clip] Slot ${slotIndex} recalled (${clip.duration.toFixed(1)}s)`);
+        refreshClipGrid();
       }
     } catch (err) {
       console.error('[Clip] Recall failed:', err);

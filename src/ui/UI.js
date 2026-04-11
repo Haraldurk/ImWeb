@@ -2661,3 +2661,189 @@ export function buildAISettingsPanel(ai, panelEl) {
   // Initial render
   refreshProviderUI(cfg.activeProvider);
 }
+
+// ── Clip Library UI ────────────────────────────────────────────────────────────
+
+/**
+ * Build the Clip Library bank grid UI.
+ * Returns { refreshClipGrid } so callers can trigger a refresh after record/recall/delete.
+ *
+ * @param {object} ps            ParameterSystem
+ * @param {object} clipLibrary   ClipLibrary singleton
+ * @param {object} movieInput    MovieInput instance
+ * @param {object} contextMenu   ContextMenu (for buildParamRow)
+ */
+export function buildClipLibrary(ps, clipLibrary, movieInput, contextMenu) {
+  const container = document.getElementById('clip-library');
+  if (!container) return { refreshClipGrid: () => {} };
+  container.innerHTML = '';
+
+  // ── Header row: title + REC button + SRC dropdown ──
+  const header = document.createElement('div');
+  header.className = 'clip-lib-header';
+
+  const title = document.createElement('span');
+  title.className = 'clip-lib-title';
+  title.textContent = 'Clip Library';
+
+  const recBtn = document.createElement('button');
+  recBtn.className = 'clip-rec-btn';
+  recBtn.textContent = '● REC';
+  recBtn.title = 'Record output for clip.duration seconds into selected bank/slot';
+
+  const srcParam = ps.get('clip.recordSrc');
+  const srcSel = document.createElement('select');
+  srcSel.style.cssText = 'font-family:var(--mono);font-size:10px;background:var(--bg-4);color:var(--text-1);border:1px solid var(--border);border-radius:3px;padding:1px 4px;cursor:pointer;';
+  srcParam.options.forEach((opt, i) => {
+    const o = document.createElement('option');
+    o.value = i; o.textContent = opt;
+    srcSel.appendChild(o);
+  });
+  srcSel.value = srcParam.value;
+  srcSel.addEventListener('change', () => ps.set('clip.recordSrc', +srcSel.value));
+  srcParam.onChange(v => { srcSel.value = v; });
+
+  header.appendChild(title);
+  header.appendChild(recBtn);
+  header.appendChild(srcSel);
+  container.appendChild(header);
+
+  // Duration param row (reuse buildParamRow for drag/dblclick)
+  const durParam = ps.get('clip.duration');
+  container.appendChild(buildParamRow(durParam, contextMenu));
+
+  // ── Bank row ──
+  const bankRow = document.createElement('div');
+  bankRow.className = 'clip-lib-bank-row';
+  const bankParam = ps.get('clip.bank');
+  const bankBtns  = [];
+  for (let b = 0; b < 8; b++) {
+    const btn = document.createElement('button');
+    btn.className = 'clip-bank-btn';
+    btn.textContent = String(b);
+    btn.title = `Bank ${b}`;
+    const refresh = () => btn.classList.toggle('active', bankParam.value === b);
+    refresh();
+    bankParam.onChange(refresh);
+    btn.addEventListener('click', () => {
+      ps.set('clip.bank', b);
+      renderSlotGrid();
+    });
+    bankBtns.push(btn);
+    bankRow.appendChild(btn);
+  }
+  container.appendChild(bankRow);
+
+  // ── Slot grid ──
+  const slotGrid = document.createElement('div');
+  slotGrid.className = 'clip-slot-grid';
+  container.appendChild(slotGrid);
+
+  // Status label
+  const statusEl = document.createElement('div');
+  statusEl.className = 'clip-lib-status';
+  container.appendChild(statusEl);
+
+  // manifest cache: Map<slotIndex, { duration, thumbnail }>
+  let _manifest = new Map();
+
+  async function refreshClipGrid() {
+    try {
+      const entries = await clipLibrary.getManifest();
+      _manifest = new Map(entries.map(e => [e.slotIndex, e]));
+      _updateSlotClasses();
+    } catch (e) { console.warn('[ClipLib] manifest fetch failed:', e); }
+  }
+
+  function _updateSlotClasses() {
+    const bank     = bankParam.value;
+    const slotParam = ps.get('clip.slot');
+    slotGrid.querySelectorAll('.clip-slot').forEach((btn, i) => {
+      const globalIdx = bank * 16 + i;
+      const info      = _manifest.get(globalIdx);
+      btn.classList.toggle('filled', !!info);
+      btn.classList.toggle('active', slotParam.value === i && bankParam.value === bank);
+      if (info?.thumbnail) {
+        btn.style.backgroundImage = `url('${info.thumbnail}')`;
+        btn.style.color = 'transparent'; // hide number when thumbnail shows
+        btn.title = `Slot ${String(i).padStart(2,'0')} — ${info.duration.toFixed(1)}s`;
+      } else {
+        btn.style.backgroundImage = '';
+        btn.style.color = '';
+        btn.title = `Slot ${String(i).padStart(2,'0')} — empty`;
+      }
+    });
+  }
+
+  function renderSlotGrid() {
+    slotGrid.innerHTML = '';
+    const bank = bankParam.value;
+    for (let i = 0; i < 16; i++) {
+      const btn = document.createElement('button');
+      btn.className = 'clip-slot';
+      btn.textContent = String(i).padStart(2, '0');
+
+      // Left-click → select + recall
+      btn.addEventListener('click', async () => {
+        ps.set('clip.bank', bank);
+        ps.set('clip.slot', i);
+        const globalIdx = bank * 16 + i;
+        const info = _manifest.get(globalIdx);
+        if (!info) { statusEl.textContent = `Slot ${String(i).padStart(2,'0')} — empty`; return; }
+        try {
+          const result = await clipLibrary.recall(globalIdx);
+          if (result) {
+            const idx = await movieInput.addClip(result.blobUrl);
+            if (idx >= 0) { movieInput.selectClip(idx); ps.set('movie.active', 1); }
+            statusEl.textContent = `▶ Bank ${bank} · Slot ${String(i).padStart(2,'0')} · ${result.duration.toFixed(1)}s`;
+          }
+        } catch (err) { console.error('[ClipLib] recall failed:', err); }
+        _updateSlotClasses();
+      });
+
+      // Right-click → delete
+      btn.addEventListener('contextmenu', async e => {
+        e.preventDefault();
+        const globalIdx = bank * 16 + i;
+        if (!_manifest.has(globalIdx)) return;
+        if (!confirm(`Delete clip at Bank ${bank} Slot ${i}?`)) return;
+        await clipLibrary.delete(globalIdx);
+        await refreshClipGrid();
+        renderSlotGrid();
+        statusEl.textContent = `Deleted Bank ${bank} · Slot ${i}`;
+      });
+
+      slotGrid.appendChild(btn);
+    }
+    _updateSlotClasses();
+  }
+
+  // Wire REC button
+  let _recActive = false;
+  recBtn.addEventListener('click', () => {
+    if (_recActive) return;
+    ps.set('clip.record', 1);
+  });
+
+  // Keep REC button pulsing while recording (driven by clip.record onChange cycle)
+  // We expose a setRecording(bool) for main.js to call
+  function setRecording(active) {
+    _recActive = active;
+    recBtn.classList.toggle('recording', active);
+    const bank      = bankParam.value;
+    const slotParam = ps.get('clip.slot');
+    slotGrid.querySelectorAll('.clip-slot').forEach((btn, i) => {
+      btn.classList.toggle('recording', active && slotParam.value === i);
+    });
+  }
+
+  // Slot param onChange → refresh active highlight
+  ps.get('clip.slot').onChange(() => _updateSlotClasses());
+  bankParam.onChange(() => { renderSlotGrid(); });
+
+  // Initial render
+  renderSlotGrid();
+  refreshClipGrid(); // async, non-blocking
+
+  return { refreshClipGrid, setRecording };
+}
