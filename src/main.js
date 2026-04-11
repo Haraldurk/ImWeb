@@ -305,6 +305,7 @@ async function main() {
   const contextMenu = new ContextMenu(ps, ctrl, presetMgr, tableManager);
   buildLayerButtons(ps, contextMenu);
   buildMappingPanels(ps, contextMenu);
+  _patchNoiseTypeOptgroups();
   buildSeqParams(ps, contextMenu);
   buildGeometryButtons(ps, scene3d, contextMenu);
   buildWarpEditor(warpEditor, ps, contextMenu);
@@ -3215,6 +3216,33 @@ void main() {
   }
   ps.get('noise.type').onChange(_syncNoiseParamVisibility);
   _syncNoiseParamVisibility(ps.get('noise.type').value);
+
+  function _patchNoiseTypeOptgroups() {
+    const sel = document.querySelector('.param-row[data-param-id="noise.type"] select');
+    if (!sel) return;
+    const optMap = new Map();
+    sel.querySelectorAll('option').forEach(o => optMap.set(Number(o.value), o.textContent));
+    const current = sel.value;
+    sel.innerHTML = '';
+    [
+      { label: 'Classic',      indices: [0,1,2] },
+      { label: 'Cellular',     indices: [3,4,14,15,16] },
+      { label: 'Fractal',      indices: [5,6,7,31,32,33,34,35,36,37] },
+      { label: 'Geometric',    indices: [17,18,19,20,21,22] },
+      { label: 'Analog',       indices: [9,11,12,26,27,28,30,29,25] },
+      { label: 'Hash/Digital', indices: [8,10,13,23,24] },
+    ].forEach(({ label, indices }) => {
+      const grp = document.createElement('optgroup');
+      grp.label = label;
+      indices.forEach(i => {
+        const o = document.createElement('option');
+        o.value = i; o.textContent = optMap.get(i) ?? String(i);
+        grp.appendChild(o);
+      });
+      sel.appendChild(grp);
+    });
+    sel.value = current;
+  }
 
   // Chroma key colour picker → sets keyer.chromahue
   document.getElementById('chroma-picker')?.addEventListener('input', e => {
