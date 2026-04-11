@@ -3205,6 +3205,17 @@ void main() {
     _noiseColor2 = _hexToVec3(e.target.value);
   });
 
+  const HASH_ONLY_NOISE = new Set([8,9,10,11,12,13,23,24]);
+  function _syncNoiseParamVisibility(typeIndex) {
+    const hide = HASH_ONLY_NOISE.has(typeIndex);
+    ['noise.octaves','noise.lacunarity','noise.gain'].forEach(id => {
+      const row = document.querySelector(`.param-row[data-param-id="${id}"]`);
+      if (row) row.style.display = hide ? 'none' : '';
+    });
+  }
+  ps.get('noise.type').onChange(_syncNoiseParamVisibility);
+  _syncNoiseParamVisibility(ps.get('noise.type').value);
+
   // Chroma key colour picker → sets keyer.chromahue
   document.getElementById('chroma-picker')?.addEventListener('input', e => {
     const { h } = hexToHsv(e.target.value);
