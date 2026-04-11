@@ -3602,7 +3602,7 @@ void main() {
     if (ps.get('vwarp.active').value) {
       const speed = Math.round(ps.get('vwarp.speed').value) || 1;
       vasulkaWarp.applyParams(ps);
-      vasulkaWarp.capture(pipeline.prev.texture, speed);
+      vasulkaWarp.capture(camera3d.active ? camera3d.currentTexture : pipeline.prev.texture, speed);
       vasulkaWarp.render(pipeline.prev.texture);
     }
 

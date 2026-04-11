@@ -46,7 +46,6 @@ const OUT_VERT = `
 const OUT_FRAG = `
   uniform sampler2D tStrip;
   uniform sampler2D tLive;
-  uniform float uWriteNorm;   // writeIdx / bufSize  [0,1)
   uniform float uMix;
   uniform int   uAxis;        // 0=H (columns), 1=V (rows)
   uniform float uFlip;        // 1.0 = reverse time direction
@@ -57,9 +56,7 @@ const OUT_FRAG = `
     float coord = (uAxis == 0) ? vUv.x : vUv.y;
     if (uFlip > 0.5) coord = 1.0 - coord;
 
-    // Oldest slot is at writeIdx; map coord=0 → oldest, coord=1 → newest
-    float readOffset = uWriteNorm + coord;
-    readOffset = readOffset - floor(readOffset);  // fract(), avoiding mod precision issues
+    float readOffset = coord;
 
     vec2 stripUv = (uAxis == 0)
       ? vec2(readOffset, vUv.y)
@@ -82,15 +79,16 @@ export class VasulkaWarp {
     this._renderer = renderer;
     this._fullW    = fullW;
     this._fullH    = fullH;
-    this._bufSize  = bufSize;
+    this._bufSize     = fullW;       // strip RT is always screen-width; readIdx wraps here
+    this._activeWidth = bufSize;     // write head cycles through only this many columns
     this._writeIdx = 0;
 
     this._build(fullW, fullH, bufSize);
   }
 
   _build(fullW, fullH, bufSize) {
-    // Strip render target: bufSize wide, full height — one column = one time step
-    this._stripRT = new THREE.WebGLRenderTarget(bufSize, fullH, {
+    // Strip render target: always fullW wide — 1:1 screen-to-buffer column mapping
+    this._stripRT = new THREE.WebGLRenderTarget(fullW, fullH, {
       minFilter: THREE.LinearFilter,
       magFilter: THREE.LinearFilter,
       format:    THREE.RGBAFormat,
@@ -120,7 +118,6 @@ export class VasulkaWarp {
       uniforms: {
         tStrip:     { value: this._stripRT.texture },
         tLive:      { value: null },
-        uWriteNorm: { value: 0.0 },
         uMix:       { value: 1.0 },
         uAxis:      { value: 0 },
         uFlip:      { value: 0.0 },
@@ -141,7 +138,7 @@ export class VasulkaWarp {
    * Uses WebGL scissor — pure GPU, no CPU readback.
    *
    * @param {THREE.Texture} srcTexture
-   * @param {number} speed  — columns to advance per frame (default 1)
+   * @param {number} speed — columns to advance per frame (default 1)
    */
   capture(srcTexture, speed = 1) {
     const renderer = this._renderer;
@@ -157,7 +154,7 @@ export class VasulkaWarp {
       const x = this._writeIdx;
       gl.scissor(x, 0, 1, this._stripRT.height);
       renderer.render(this._blitScene, this._cam);
-      this._writeIdx = (this._writeIdx + 1) % this._bufSize;
+      this._writeIdx = (this._writeIdx + 1) % this._activeWidth;
     }
     gl.disable(gl.SCISSOR_TEST);
 
@@ -172,9 +169,8 @@ export class VasulkaWarp {
    */
   render(liveTex) {
     const u = this._outMat.uniforms;
-    u.tStrip.value     = this._stripRT.texture;
-    u.tLive.value      = liveTex;
-    u.uWriteNorm.value = this._writeIdx / this._bufSize;
+    u.tStrip.value = this._stripRT.texture;
+    u.tLive.value  = liveTex;
 
     this._outScene.overrideMaterial = this._outMat;
     this._renderer.setRenderTarget(this.outputRT);
@@ -196,7 +192,8 @@ export class VasulkaWarp {
     this._fullW = w;
     this._fullH = h;
     this.outputRT.setSize(w, h);
-    this._stripRT.setSize(this._bufSize, h);
+    this._bufSize = w;
+    this._stripRT.setSize(w, h);
   }
 
   dispose() {
