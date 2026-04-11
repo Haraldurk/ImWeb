@@ -87,12 +87,31 @@ style:    CSS only, no logic change
 src/ai/           AI provider system (Anthropic/Gemini/OpenAI/Ollama)
 src/controls/     ParameterSystem, ControllerManager, LFO, Automation
 src/core/         Pipeline.js — WebGL compositing chain
-src/inputs/       Camera, Movie, Draw, Text, Particles, SlitScan
+src/inputs/       Camera, Movie, Draw, Text, Particles, SlitScan,
+                  VasulkaWarp (experimental — strip-buffer slit-scan, hidden from UI)
 src/io/           ProjectFile (.imweb), OSCBridge, LUTLoader
 src/scene3d/      Three.js 3D scene and geometry
 src/shaders/      All GLSL as named exports
 src/state/        Preset + Tables (IndexedDB)
 src/ui/           UI.js — all interface builders
+
+---
+
+## Current version: 0.7.0
+
+### Recent additions (2026-04-11)
+- ParticleSystem: emitter shapes (Box/Ring/LineH/LineV/Point), emitter XY position,
+  two attractor nodes, scale-by-speed point size mode
+- Displacement Map Editor: WarpMode/WarpAmt param rows, preset buttons auto-activate Custom mode
+- VASULKA_WARP shader (dual-oscillator scanline warp) — in pipeline, hidden from UI
+- Raw keyer uniform (uFGRaw/uRawKey) for pre-color-correction luminance keying
+- VasulkaWarp strip-buffer: full-width RT, GPU scissor capture, feeds camera3d texture
+
+### Experimental / architecture deferred
+VasulkaWarp (vwarp.* params, VasulkaWarp.js): code runs but is hidden from all UI panels,
+the signal path, and the source selector. Candidate future direction: replace the GPU ring
+buffer with a Sequence slot backed by disk/IndexedDB. Do not re-expose to UI without
+explicit instruction.
 
 ---
 

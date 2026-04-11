@@ -60,7 +60,8 @@ StillsBuffer.js         Frame capture store
 SlitScanBuffer.js       Rolling slit scan effect
 TextLayer.js            Canvas 2D text → Texture
 DrawLayer.js            Freehand canvas → Texture (Wacom pressure)
-ParticleSystem.js       GPU particle field as pipeline source
+ParticleSystem.js       GPU particle field (emitter shapes, attractors, scale modes)
+VasulkaWarp.js          Temporal strip-buffer slit-scan — EXPERIMENTAL, hidden from UI
 io/
 ProjectFile.js          .imweb JSON save/load — full session
 OSCBridge.js            WebSocket ↔ UDP OSC relay
@@ -176,12 +177,12 @@ AFTER: git add [files] && git commit -m "[message]" && git push
 
 ---
 
-## Current version: 0.6.0
+## Current version: 0.7.0
 
 See CHANGELOG.md for full history.
 
-### Completed through Phase 4 + 0.4.x updates
-- Full signal chain: 21+ sources, 20+ effect passes
+### Completed through Phase 5 (current)
+- Full signal chain: 23+ sources, 20+ effect passes
 - All ImOs9 features restored (WarpMap with interactive brush editor,
   Tables 16k, ExternalMapping, Sequencers ×3, FrameSelect, TransferMode 22 modes, rand1/2/3)
 - 3D scene integration (Three.js → pipeline; 13 geometries; GLB/GLTF/OBJ/STL; depth pass; live video texture on mesh)
@@ -192,11 +193,28 @@ See CHANGELOG.md for full history.
 - AI provider system (Anthropic/Gemini/OpenAI/Ollama switchable, key management UI)
 - .imweb project file format
 - PWA manifest + service worker
-- ~200+ parameters, all MIDI/LFO-assignable
+- ~210+ parameters, all MIDI/LFO-assignable
 - Controller badge popover (right-click RND/LFO/etc for Rate, Slew, Table, Shape)
 - Min/Max range fields: drag or double-click to edit
+- Text animations, 3D materials, pointer events (Phase 5)
+- ParticleSystem: emitter shapes (Box/Ring/LineH/LineV/Point), XY emitter position,
+  two attractor nodes, scale-by-speed point size mode
+- Displacement Map Editor: WarpMode/WarpAmt param rows in editor panel;
+  preset buttons auto-activate Custom mode; section renamed from WarpMap Editor
+- VASULKA_WARP shader: dual-oscillator scan-line UV warp (Wobbulator-inspired) — hidden from UI
+- Raw keyer: uFGRaw/uRawKey uniform for pre-color-correction luminance keying
+- VasulkaWarp (strip-buffer temporal slit-scan): full-width RT, GPU-only scissor capture;
+  feeds camera3d texture when 3D camera is active — EXPERIMENTAL, hidden from UI
 
-### Remaining (Phase 5)
+### Experimental / architecture deferred
+- **VasulkaWarp (temporal slit-scan)**: VasulkaWarp.js + `vwarp.*` params exist and run, but
+  the feature is hidden from UI pending a clearer architecture decision. The strip-buffer
+  approach works but conflicts with the pipeline source model. Candidate future direction:
+  treat it as a Sequence slot backed by disk/IndexedDB rather than a live GPU ring buffer.
+- **VASULKA_WARP shader**: exists in Pipeline, hidden from signal path and UI until wired
+  to a proper effect slot with a UI section.
+
+### Remaining (Phase 5 / Phase 6)
 - [ ] Factory demo presets (4–6, no camera required; startup loads preset 0)
 - [ ] First-visit onboarding overlay (what this is, 3 gestures, link to manual; localStorage dismiss flag)
 - [ ] Keyboard shortcut lock toggle (status bar button; blocks 0–9/letter keys when typing in fields)
