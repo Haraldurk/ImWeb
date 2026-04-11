@@ -385,18 +385,21 @@ button {
 .source-select:focus { outline: none; border-color: var(--accent-dim); }
 
 .blend-select {
-  background: var(--bg-3);
-  color: var(--text-2);
-  border: 1px solid var(--bg-4);
-  border-radius: 3px;
+  -webkit-appearance: none;
+  appearance: none;
+  font-family: var(--mono);
   font-size: 11px;
+  background: var(--bg-3);
+  color: var(--text-1);
+  border: 1px solid var(--border);
+  border-radius: 2px;
   padding: 2px 4px;
-  min-width: 90px;
+  min-width: 100px;
   cursor: pointer;
 }
 .blend-select:focus {
-  outline: 1px solid var(--accent-dim);
-  color: var(--text-1);
+  outline: none;
+  border-color: var(--accent-dim);
 }
 
 /* ── PARAMETER ROW ───────────────────────────────────────────────────────── */
