@@ -26,7 +26,7 @@ const SIM_VERT = /* glsl */ `
 
 // Simulation pass: update position and velocity
 const SIM_FRAG = /* glsl */ `
-  uniform sampler2D uPos;      // xy=pos, zw=life
+  uniform sampler2D uPos;      // xy=pos, z=life, w=speed
   uniform sampler2D uVel;      // xy=vel, zw=unused
   uniform sampler2D uRand;     // random seeds
   uniform sampler2D uMaskTex;      // current frame mask
@@ -40,6 +40,13 @@ const SIM_FRAG = /* glsl */ `
   uniform float uSpread;           // spawn radius 0..1 (1 = full canvas)
   uniform float uMotionMode;       // 0=luma, 1=motion
   uniform float uMThresh;          // motion threshold 0..1
+  uniform float uEmitter;          // 0=Box, 1=Ring, 2=LineH, 3=LineV, 4=Point
+  uniform float uEmitX;            // emitter centre X (0..1)
+  uniform float uEmitY;            // emitter centre Y (0..1)
+  uniform vec2  uAttr1;            // attractor 1 position (0..1)
+  uniform float uAttr1Str;         // attractor 1 strength
+  uniform vec2  uAttr2;            // attractor 2 position (0..1)
+  uniform float uAttr2Str;         // attractor 2 strength
   varying vec2 vUv;
 
   float hash(vec2 p){ return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5); }
@@ -57,23 +64,54 @@ const SIM_FRAG = /* glsl */ `
     float life = pos.z; // 0=dead, 1=fresh
 
     if(life <= 0.0) {
-      // Respawn: random position near centre, random velocity
+      // Respawn: emitter-shape-based position, random velocity
       vec4 r = texture2D(uRand, vUv);
       float angle = r.x * 6.283;
       float spd   = (0.2 + r.y * 0.8) * uSpeed;
-      pos.xy = vec2(0.5 + (r.z - 0.5) * uSpread, 0.5 + (r.w - 0.5) * uSpread);
+      float cx = uEmitX, cy = uEmitY;
+
+      if (uEmitter < 0.5) {
+        // Box
+        pos.xy = vec2(cx + (r.z - 0.5) * uSpread, cy + (r.w - 0.5) * uSpread);
+      } else if (uEmitter < 1.5) {
+        // Ring
+        pos.xy = vec2(cx + cos(angle) * uSpread * 0.4, cy + sin(angle) * uSpread * 0.4);
+      } else if (uEmitter < 2.5) {
+        // Line H
+        pos.xy = vec2(cx + (r.z - 0.5) * uSpread, cy);
+      } else if (uEmitter < 3.5) {
+        // Line V
+        pos.xy = vec2(cx, cy + (r.w - 0.5) * uSpread);
+      } else {
+        // Point
+        pos.xy = vec2(cx + (r.z - 0.5) * 0.005, cy + (r.w - 0.5) * 0.005);
+      }
+
       vel.xy = vec2(cos(angle) * spd, sin(angle) * spd);
       float baseLife = 0.5 + r.x * 0.5;
-      // Luma mask: scale initial life by brightness at spawn point
-      // Bright areas → full life; dark areas → particle dies almost instantly
       float spawnLuma = maskValue(pos.xy);
       pos.z = mix(baseLife, baseLife * spawnLuma, uMaskAmt);
+      pos.w = spd; // store initial speed in w
     } else {
       // Update
       vel.x += uWind    * uDt;
       vel.y -= uGravity * uDt;
+
+      // Attractor forces
+      if (abs(uAttr1Str) > 0.001) {
+        vec2 d = uAttr1 - pos.xy;
+        float dist = max(length(d), 0.01);
+        vel.xy += normalize(d) * uAttr1Str * 0.002 * uSpeed / dist;
+      }
+      if (abs(uAttr2Str) > 0.001) {
+        vec2 d = uAttr2 - pos.xy;
+        float dist = max(length(d), 0.01);
+        vel.xy += normalize(d) * uAttr2Str * 0.002 * uSpeed / dist;
+      }
+
       pos.x += vel.x    * uDt;
       pos.y += vel.y    * uDt;
+      pos.w  = length(vel.xy); // store current speed for scale-by-speed
       // Luma mask: decay slower in bright areas (bright zones accumulate particles)
       float liveLuma    = maskValue(pos.xy);
       float decayScale  = mix(1.0, max(liveLuma, 0.05), uMaskAmt);
@@ -103,6 +141,10 @@ const VEL_FRAG = /* glsl */ `
   uniform float uMaskAmt;          // 0..1
   uniform float uMotionMode;       // 0=luma, 1=motion
   uniform float uMThresh;          // motion threshold 0..1
+  uniform vec2  uAttr1;
+  uniform float uAttr1Str;
+  uniform vec2  uAttr2;
+  uniform float uAttr2Str;
   varying vec2 vUv;
 
   float maskValue(vec2 uv) {
@@ -134,6 +176,17 @@ const VEL_FRAG = /* glsl */ `
       float lD = maskValue(pos.xy - vec2(0.0, eps));
       vec2 lumaGrad = vec2(lR - lL, lU - lD) * 0.5;
       vel.xy += lumaGrad * uMaskAmt * 0.3 * uSpeed;
+      // Attractor forces
+      if (abs(uAttr1Str) > 0.001) {
+        vec2 d = uAttr1 - pos.xy;
+        float dist = max(length(d), 0.01);
+        vel.xy += normalize(d) * uAttr1Str * 0.002 * uSpeed / dist;
+      }
+      if (abs(uAttr2Str) > 0.001) {
+        vec2 d = uAttr2 - pos.xy;
+        float dist = max(length(d), 0.01);
+        vel.xy += normalize(d) * uAttr2Str * 0.002 * uSpeed / dist;
+      }
     }
     gl_FragColor = vel;
   }
@@ -145,6 +198,7 @@ const RENDER_VERT = /* glsl */ `
   uniform float uSize;
   uniform float uResW;
   uniform float uResH;
+  uniform float uScaleBy;  // 0=uniform, 1=by-life (default), 2=by-speed
   attribute float aIndex;  // 0..N-1 / texSize
   varying float vLife;
   varying float vIdx;
@@ -159,7 +213,12 @@ const RENDER_VERT = /* glsl */ `
     vIdx  = aIndex;
     vec2 pos = p.xy * 2.0 - 1.0;
     gl_Position = vec4(pos, 0.0, 1.0);
-    gl_PointSize = uSize * p.z;
+    float sz = uSize;
+    if (uScaleBy > 1.5) {
+      // By speed: p.w stores current speed magnitude
+      sz = uSize * clamp(p.w * 30.0, 0.1, 3.0);
+    }
+    gl_PointSize = sz * p.z;
   }
 `;
 
@@ -301,6 +360,9 @@ export class ParticleSystem {
         uMaskTex: { value: this._fallbackTex }, uMaskAmt: { value: 0 },
         uSpread: { value: 0.1 },
         uPrevMaskTex: { value: this._fallbackTex }, uMotionMode: { value: 0 }, uMThresh: { value: 0.15 },
+        uEmitter: { value: 0 }, uEmitX: { value: 0.5 }, uEmitY: { value: 0.5 },
+        uAttr1: { value: new THREE.Vector2(0.5, 0.5) }, uAttr1Str: { value: 0 },
+        uAttr2: { value: new THREE.Vector2(0.5, 0.5) }, uAttr2Str: { value: 0 },
       },
       vertexShader: SIM_VERT, fragmentShader: SIM_FRAG, depthTest: false, depthWrite: false,
     });
@@ -310,6 +372,8 @@ export class ParticleSystem {
         uDt: { value: 0.016 }, uSpeed: { value: 0.3 }, uGravity: { value: 0.1 }, uWind: { value: 0 },
         uMaskTex: { value: this._fallbackTex }, uMaskAmt: { value: 0 },
         uPrevMaskTex: { value: this._fallbackTex }, uMotionMode: { value: 0 }, uMThresh: { value: 0.15 },
+        uAttr1: { value: new THREE.Vector2(0.5, 0.5) }, uAttr1Str: { value: 0 },
+        uAttr2: { value: new THREE.Vector2(0.5, 0.5) }, uAttr2Str: { value: 0 },
       },
       vertexShader: SIM_VERT, fragmentShader: VEL_FRAG, depthTest: false, depthWrite: false,
     });
@@ -347,6 +411,7 @@ export class ParticleSystem {
         uSize:      { value: 4 },
         uResW:      { value: this._count },
         uColorMode: { value: 0 },
+        uScaleBy:   { value: 0 },
       },
       vertexShader:   RENDER_VERT,
       fragmentShader: RENDER_FRAG,
@@ -427,6 +492,33 @@ export class ParticleSystem {
 
     // Spread: spawn radius (0=tight centre cluster, 1=full canvas fill)
     this._posMat.uniforms.uSpread.value = ps.get('particle.spread').value / 100;
+
+    // Emitter shape + position
+    const emitter = ps.get('particle.emitter')?.value ?? 0;
+    const emitX   = (ps.get('particle.emitx')?.value ?? 50) / 100;
+    const emitY   = (ps.get('particle.emity')?.value ?? 50) / 100;
+    this._posMat.uniforms.uEmitter.value = emitter;
+    this._posMat.uniforms.uEmitX.value   = emitX;
+    this._posMat.uniforms.uEmitY.value   = emitY;
+
+    // Attractor nodes
+    const a1x  = (ps.get('particle.attr1x')?.value   ?? 50) / 100;
+    const a1y  = (ps.get('particle.attr1y')?.value   ?? 50) / 100;
+    const a1s  = (ps.get('particle.attr1str')?.value ?? 0)  / 100;
+    const a2x  = (ps.get('particle.attr2x')?.value   ?? 50) / 100;
+    const a2y  = (ps.get('particle.attr2y')?.value   ?? 50) / 100;
+    const a2s  = (ps.get('particle.attr2str')?.value ?? 0)  / 100;
+    this._posMat.uniforms.uAttr1.value.set(a1x, a1y);
+    this._posMat.uniforms.uAttr1Str.value = a1s;
+    this._posMat.uniforms.uAttr2.value.set(a2x, a2y);
+    this._posMat.uniforms.uAttr2Str.value = a2s;
+    this._velMat.uniforms.uAttr1.value.set(a1x, a1y);
+    this._velMat.uniforms.uAttr1Str.value = a1s;
+    this._velMat.uniforms.uAttr2.value.set(a2x, a2y);
+    this._velMat.uniforms.uAttr2Str.value = a2s;
+
+    // Scale mode
+    this._pointsMat.uniforms.uScaleBy.value = ps.get('particle.scaleby')?.value ?? 0;
 
     // Mask uniforms — luma and motion mode
     const maskAmt    = ps.get('particle.maskamt').value / 100;
