@@ -589,6 +589,7 @@ export const NOISE_BFG = /* glsl */ `
     float n     = 0.0;
     vec2  curlV = vec2(0.0);
     bool  isCurl = (uType == 6);
+    float r_rgb = 0.0, g_rgb = 0.0, b_rgb = 0.0;
 
     if (uType == 0) {
       n = fbm(p, oct, uLacunarity, uGain, 0);           // Value
@@ -686,6 +687,34 @@ export const NOISE_BFG = /* glsl */ `
       vec2 jitter = h2(cell + uSeed + 19.4) * 0.7 + 0.15;
       float d2 = length(local - jitter);
       n = 1.0 - smoothstep(0.1, 0.4, d2);              // Poisson Disc
+    } else if (uType == 25) {
+      float sp = h1(vec3(p.xy * uScale * 0.5 + uSeed, 0.0));
+      n = clamp(0.5 * (1.0 + (sp - 0.5) * 2.0 * uGain), 0.0, 1.0); // Speckle
+    } else if (uType == 26) {
+      r_rgb = h1(vec3(p.xy * uScale * 0.2 + uSeed + vec2(0.1, 0.0), 0.0));
+      g_rgb = h1(vec3(p.xy * uScale * 0.2 + uSeed + vec2(0.0, 0.1), 0.0));
+      b_rgb = h1(vec3(p.xy * uScale * 0.2 + uSeed + vec2(0.1, 0.1), 0.0));
+      n = (r_rgb + g_rgb + b_rgb) / 3.0;               // RGB Shift
+    } else if (uType == 27) {
+      float line = floor(p.y * uScale * 10.0);
+      float shift = (h1(vec3(line, floor(uTime * uSpeed * 5.0) + uSeed, 0.0)) - 0.5) * 0.3;
+      n = h1(vec3(p.x * uScale * 0.2 + shift + uSeed, line * 0.1 + uSeed, 0.0)); // Interlace
+    } else if (uType == 28) {
+      float bandY = fract(p.y * 2.0 + uTime * uSpeed * 0.08);
+      float track = smoothstep(0.0, 0.15, bandY) * (1.0 - smoothstep(0.15, 0.4, bandY));
+      float shift2 = (h1(vec3(floor(p.y * uScale * 8.0), floor(uTime * 4.0) + uSeed, 0.0)) - 0.5) * track * 0.4;
+      float dropout = step(0.96, h1(vec3(p.y * uScale, floor(uTime * 8.0) + uSeed, 0.0)));
+      float signal = h1(vec3(p.x * uScale * 0.3 + shift2 + uSeed, p.y * uScale * 0.3 + uSeed, floor(uTime * 30.0)));
+      n = mix(signal, 1.0, dropout * 0.9);             // VCR Noise
+    } else if (uType == 29) {
+      r_rgb = 0.5 * (1.0 + (h1(vec3(p.xy * uScale * 0.5 + uSeed + vec2(0.3, 0.0), 0.0)) - 0.5) * 2.0 * uGain);
+      g_rgb = 0.5 * (1.0 + (h1(vec3(p.xy * uScale * 0.5 + uSeed + vec2(0.0, 0.3), 0.0)) - 0.5) * 2.0 * uGain);
+      b_rgb = 0.5 * (1.0 + (h1(vec3(p.xy * uScale * 0.5 + uSeed + vec2(0.3, 0.3), 0.0)) - 0.5) * 2.0 * uGain);
+      n = (r_rgb + g_rgb + b_rgb) / 3.0;               // Speckle Colour
+    } else if (uType == 30) {
+      float bands = floor(h1(vec3(floor(p.y * uScale * 5.0) + uSeed, 0.0, 0.0)) * 8.0) / 8.0;
+      float detail = h1(vec3(p.xy * uScale * 0.1 + uSeed, 0.0)) * 0.15;
+      n = clamp(bands + detail, 0.0, 1.0);             // Pixel Sort
     }
 
     // ── Post-process ────────────────────────────────────────────────────────
@@ -712,6 +741,8 @@ export const NOISE_BFG = /* glsl */ `
     } else {
       col = vec3(n);
     }
+
+    if (uType == 26 || uType == 29) col = vec3(r_rgb, g_rgb, b_rgb);
 
     gl_FragColor = vec4(col, 1.0);
   }
