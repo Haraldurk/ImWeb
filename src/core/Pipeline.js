@@ -26,7 +26,8 @@ import {
 } from '../shaders/index.js';
 
 export const DEFAULT_FX_ORDER = [
-  'pixelate','edge','vasulka','rgbshift','kaleidoscope','quadmirror',
+  // VasulkaWarp — hidden, experimental, architecture unresolved. See dev notes.
+  'pixelate','edge',/*'vasulka',*/'rgbshift','kaleidoscope','quadmirror',
   'posterize','solarize','vignette','bloom','levels','lut','whitebal','pixelsort','grain',
 ];
 

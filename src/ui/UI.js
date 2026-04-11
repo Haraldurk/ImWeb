@@ -710,10 +710,12 @@ export function buildMappingPanels(ps, contextMenu) {
     'particle-params':     ps.getGroup('particle'),
     'sdf-params':          ps.getGroup('sdf'),
     'delay-params':        ps.getGroup('delay'),
-    'vasulka-params':      ps.getGroup('vasulka'),
+    // VasulkaWarp — hidden, experimental, architecture unresolved. See dev notes.
+    // 'vasulka-params':   ps.getGroup('vasulka'),
     'vectorscope-params':  ps.getGroup('vectorscope'),
     'slitscan-params':     ps.getGroup('slitscan'),
-    'vwarp-params':        ps.getGroup('vwarp'),
+    // VasulkaWarp — hidden, experimental, architecture unresolved. See dev notes.
+    // 'vwarp-params':     ps.getGroup('vwarp'),
     // 'seq-params' is built by buildSeqParams() — skip here
     // 'layer-params' is owned by buildLayerButtons() — do not render here
     'lut-params':          ps.getGroup('lut'),
