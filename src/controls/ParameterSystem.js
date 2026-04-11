@@ -526,6 +526,23 @@ export function registerCoreParameters(ps) {
     type: PARAM_TYPE.SELECT, value: 2,
     options: ['1 beat','2 beats','4 beats','8 beats','16 beats'] });
 
+  // ── Clip Library ──────────────────────────────────────────────────────────
+  ps.register({ id: 'clip.recordSrc', label: 'RecordSrc', group: 'clip',
+    type: PARAM_TYPE.SELECT, value: 0,
+    options: ['Out','Cam','Mov','FG','BG','S1','S2','S3'] });
+  ps.register({ id: 'clip.bank',     label: 'Bank',      group: 'clip',
+    type: PARAM_TYPE.SELECT, value: 0,
+    options: ['0','1','2','3','4','5','6','7'] });
+  ps.register({ id: 'clip.slot',     label: 'Slot',      group: 'clip',
+    type: PARAM_TYPE.SELECT, value: 0,
+    options: ['0','1','2','3','4','5','6','7','8','9','10','11','12','13','14','15'] });
+  ps.register({ id: 'clip.duration', label: 'Duration',  group: 'clip',
+    type: PARAM_TYPE.CONTINUOUS, min: 1, max: 30, step: 1, value: 5 });
+  ps.register({ id: 'clip.record',   label: 'Record',    group: 'clip',
+    type: PARAM_TYPE.TRIGGER });
+  ps.register({ id: 'clip.recall',   label: 'Recall',    group: 'clip',
+    type: PARAM_TYPE.TRIGGER });
+
   // ── Camera ────────────────────────────────────────────────────────────────
   ps.register({ id: 'camera.active', label: 'CameraOn',   group: 'camera',
     type: PARAM_TYPE.TOGGLE, value: 0, feedbackVisible: true });

@@ -39,6 +39,7 @@ import { Pipeline } from './core/Pipeline.js';
 import { PresetManager, openDB } from './state/Preset.js';
 import { OSCBridge }    from './io/OSCBridge.js';
 import { ProjectFile }  from './io/ProjectFile.js';
+import clipLibrary      from './io/ClipLibrary.js';
 import { importImX }    from './io/ImXImporter.js';
 import { parseCubeFile } from './io/CubeLoader.js';
 import {
@@ -1769,6 +1770,42 @@ async function main() {
   });
   ps.get('movie.mute').onChange(v => {
     movieInput.clips.forEach(c => { c.video.muted = !!v; });
+  });
+
+  // ── Clip Library wiring ───────────────────────────────────────────────────
+  let _clipRecording = false;
+
+  ps.get('clip.record').onChange(async () => {
+    if (_clipRecording) return; // debounce: ignore re-trigger while recording
+    _clipRecording = true;
+    const slotIndex = ps.get('clip.bank').value * 16 + ps.get('clip.slot').value;
+    const maxSec    = ps.get('clip.duration').value;
+    const stream    = canvas.captureStream(60);
+    console.info(`[Clip] Recording slot ${slotIndex} for ${maxSec}s…`);
+    try {
+      await clipLibrary.record(stream, slotIndex, maxSec, canvas);
+      console.info(`[Clip] Slot ${slotIndex} saved (${maxSec}s)`);
+    } catch (err) {
+      console.error('[Clip] Record failed:', err);
+    } finally {
+      _clipRecording = false;
+    }
+  });
+
+  ps.get('clip.recall').onChange(async () => {
+    const slotIndex = ps.get('clip.bank').value * 16 + ps.get('clip.slot').value;
+    try {
+      const clip = await clipLibrary.recall(slotIndex);
+      if (!clip) { console.warn(`[Clip] Slot ${slotIndex} is empty`); return; }
+      const idx = await movieInput.addClip(clip.blobUrl);
+      if (idx >= 0) {
+        movieInput.selectClip(idx);
+        ps.set('movie.active', 1);
+        console.info(`[Clip] Slot ${slotIndex} recalled (${clip.duration.toFixed(1)}s)`);
+      }
+    } catch (err) {
+      console.error('[Clip] Recall failed:', err);
+    }
   });
 
   // Auto-activate / deactivate 3D scene based on layer source selection
