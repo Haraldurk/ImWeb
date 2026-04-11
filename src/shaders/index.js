@@ -526,6 +526,34 @@ export const NOISE_BFG = /* glsl */ `
     return sum / norm;
   }
 
+  // ── Turbulence — absolute-value Perlin fBm (Perlin 1985) ─────────────────
+  float turbulence(vec3 p, int oct, float lac, float gn) {
+    float sum = 0.0, amp = 0.5, freq = 1.0, norm = 0.0;
+    for (int i = 0; i < 8; i++) {
+      if (i >= oct) break;
+      float n = abs(pNoise(p * freq) * 2.0 - 1.0);
+      sum  += n * amp;
+      norm += amp;
+      amp  *= gn;
+      freq *= lac;
+    }
+    return sum / norm;
+  }
+
+  // ── Billowed — inverted-abs fBm, rounded bubbly peaks ────────────────────
+  float billowed(vec3 p, int oct, float lac, float gn) {
+    float sum = 0.0, amp = 0.5, freq = 1.0, norm = 0.0;
+    for (int i = 0; i < 8; i++) {
+      if (i >= oct) break;
+      float n = 1.0 - abs(pNoise(p * freq) * 2.0 - 1.0);
+      sum  += n * amp;
+      norm += amp;
+      amp  *= gn;
+      freq *= lac;
+    }
+    return sum / norm;
+  }
+
   // ── Curl Noise — numerically differentiated fBm → divergence-free field ──
   // Output: RG = flow vector (remapped 0–1), B = magnitude.
   // Use as DisplaceSrc for fluid video displacement.
@@ -715,6 +743,32 @@ export const NOISE_BFG = /* glsl */ `
       float bands = floor(h1(vec3(floor(p.y * uScale * 5.0) + uSeed, 0.0, 0.0)) * 8.0) / 8.0;
       float detail = h1(vec3(p.xy * uScale * 0.1 + uSeed, 0.0)) * 0.15;
       n = clamp(bands + detail, 0.0, 1.0);             // Pixel Sort
+    } else if (uType == 31) {
+      n = fbm(p, oct, uLacunarity, uGain, 1);          // fBm (Perlin)
+    } else if (uType == 32) {
+      n = turbulence(p, oct, uLacunarity, uGain);      // Turbulence
+    } else if (uType == 33) {
+      n = billowed(p, oct, uLacunarity, uGain);        // Billowed
+    } else if (uType == 34) {
+      n = domainWarp(p, oct, uLacunarity, uGain);      // Domain Warp 2
+    } else if (uType == 35) {
+      vec2 pos = p.xy;
+      for (int i = 0; i < 3; i++) {
+        vec2 cv = curlField(vec3(pos * uScale * 0.3, p.z), oct, uLacunarity, uGain);
+        pos += cv * 0.02 * uGain;
+      }
+      curlV = curlField(vec3(pos * uScale * 0.3, p.z), oct, uLacunarity, uGain);
+      n = length(curlV) * 0.5;
+      isCurl = true;                                   // Velocity Field
+    } else if (uType == 36) {
+      vec2 vel = curlField(vec3(p.xy * uScale * 0.3, p.z), oct, uLacunarity, uGain);
+      vec3 advP = vec3((p.xy - vel * 0.08) * uScale * 0.3, p.z);
+      float n1 = fbm(advP, oct, uLacunarity, uGain, 1);
+      float n2 = fbm(p * uScale * 0.3, oct, uLacunarity, uGain, 1);
+      n = mix(n1, n2, 0.4);                            // Advection
+    } else if (uType == 37) {
+      float w = domainWarp(p, oct, uLacunarity, uGain);
+      n = 0.5 + 0.5 * sin(uScale * 1.5 * p.x + w * 6.0 + uTime * uSpeed * 0.3); // Marble
     }
 
     // ── Post-process ────────────────────────────────────────────────────────
