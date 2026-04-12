@@ -4154,7 +4154,7 @@ void main() {
   });
 
   window.addEventListener('keydown', e => {
-    if (e.ctrlKey && e.metaKey && e.key === 'c') {
+    if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 'd') {
       e.preventDefault();
       _dcVisible ? _dcClose2() : _dcOpen();
     }
