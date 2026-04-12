@@ -82,11 +82,10 @@ echo -e "${CYAN}Model : default${RESET}"
 echo -e "${CYAN}Output: ${OUTPUT_FILE}${RESET}"
 echo
 
-# Pass Brainstorms dir so Gemini's file-read tool can access the image/audio,
-# use --yolo to auto-approve tool calls, -p for headless, pipe output to file.
+# Run gemini without --include-directories so the gitignore restriction does not
+# apply. Text content (state JSON, notes) is already inlined in the prompt.
+# Absolute paths for media files are passed in the prompt for the read_file tool.
 gemini \
-  --include-directories "${BRAINSTORMS_DIR}" \
-  --ignore-repo-rules \
   --yolo \
   --output-format text \
   -p "$PROMPT" \
