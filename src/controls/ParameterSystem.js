@@ -1864,10 +1864,10 @@ export function registerCoreParameters(ps) {
     id: "scene3d.clone.spread",
     label: "Spread",
     group: "scene3d",
-    min: 0.1,
+    min: 0,
     max: 10,
     value: 2.0,
-    step: 0.05,
+    step: 0.01,
   });
   ps.register({
     id: "scene3d.clone.wave",
