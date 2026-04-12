@@ -4022,8 +4022,9 @@ void main() {
     borderRadius:   '8px',
     padding:        '12px 18px',
     display:        'none',
-    alignItems:     'center',
-    gap:            '12px',
+    flexDirection:  'column',
+    gap:            '8px',
+    width:          '340px',
     zIndex:         '99999',
     fontFamily:     'monospace',
     fontSize:       '12px',
@@ -4066,7 +4067,27 @@ void main() {
     padding:    '0 2px',
   });
 
-  _dcModal.append(_dcLabel, _dcBtn, _dcStatus, _dcClose);
+  const _dcNotes = document.createElement('textarea');
+  _dcNotes.placeholder = 'Quick notes…';
+  Object.assign(_dcNotes.style, {
+    width:        '100%',
+    height:       '64px',
+    background:   'rgba(255,255,255,0.05)',
+    border:       '1px solid #3a3a50',
+    borderRadius: '4px',
+    color:        'var(--text-1,#e0e0f0)',
+    fontFamily:   'monospace',
+    fontSize:     '11px',
+    padding:      '6px 8px',
+    resize:       'vertical',
+    boxSizing:    'border-box',
+  });
+
+  const _dcRow = document.createElement('div');
+  Object.assign(_dcRow.style, { display: 'flex', alignItems: 'center', gap: '12px' });
+  _dcRow.append(_dcLabel, _dcBtn, _dcStatus, _dcClose);
+
+  _dcModal.append(_dcNotes, _dcRow);
   document.body.appendChild(_dcModal);
 
   function _dcOpen() {
@@ -4087,6 +4108,7 @@ void main() {
     _dcChunks   = [];
     _dcBtn.textContent = 'Start Recording';
     _dcStatus.textContent = '';
+    _dcNotes.value = '';
   }
 
   _dcClose.addEventListener('click', _dcClose2);
@@ -4123,9 +4145,11 @@ void main() {
             );
 
             const fd = new FormData();
+            const notesBlob = new Blob([_dcNotes.value], { type: 'text/plain' });
             fd.append('files', imgBlob,   'screenshot.png');
             fd.append('files', audioBlob, 'audio.webm');
             fd.append('files', stateBlob, 'state.json');
+            fd.append('files', notesBlob, 'notes.txt');
 
             await fetch('http://localhost:5174/capture', { method: 'POST', body: fd });
             _dcStatus.textContent = 'Saved!';
