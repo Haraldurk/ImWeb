@@ -3199,10 +3199,10 @@ void main() {
     return new THREE.Vector3(r, g, b);
   }
 
-  document.getElementById('color1-picker')?.addEventListener('input', e => {
+  document.getElementById('noise-color1-picker')?.addEventListener('input', e => {
     _noiseColor1 = _hexToVec3(e.target.value);
   });
-  document.getElementById('color2-picker')?.addEventListener('input', e => {
+  document.getElementById('noise-color2-picker')?.addEventListener('input', e => {
     _noiseColor2 = _hexToVec3(e.target.value);
   });
 

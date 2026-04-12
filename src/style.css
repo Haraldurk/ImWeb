@@ -533,13 +533,12 @@ button {
   width: 100%;
   cursor: pointer;
   outline: none;
+  color-scheme: dark;
 }
 .param-select:focus { border-color: var(--accent); }
 .param-select option,
-.param-select optgroup {
-  background: var(--bg-1);
-  color: var(--text-1);
-}
+.param-select optgroup { background: var(--bg-1); color: var(--text-1); }
+
 
 /* Select row — button group (≤8 options) */
 .param-btn-group {
