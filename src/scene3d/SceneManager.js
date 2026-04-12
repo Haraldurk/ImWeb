@@ -331,6 +331,38 @@ export class SceneManager {
         if (uDisplace > 0.0) {
           float dn = _dispNoise(position * uDispScale);
           transformed += objectNormal * dn * uDisplace;
+
+          // ── Finite-difference normal recalculation ──────────────────────
+          float _eps = 0.005;
+          // Build object-space tangent frame from undisplaced normal
+          vec3 _arbUp    = abs(objectNormal.x) > 0.9 ? vec3(0.0,1.0,0.0) : vec3(1.0,0.0,0.0);
+          vec3 _tan      = normalize(cross(_arbUp, objectNormal));
+          vec3 _btan     = cross(objectNormal, _tan);
+          // Displaced neighbour positions
+          vec3 _pA   = position + _tan  * _eps;
+          vec3 _pB   = position + _btan * _eps;
+          vec3 _dispA = _pA + objectNormal * _dispNoise(_pA * uDispScale) * uDisplace;
+          vec3 _dispB = _pB + objectNormal * _dispNoise(_pB * uDispScale) * uDisplace;
+          // New object-space normal via cross product of edge vectors
+          vec3 _newON = normalize(cross(_dispA - transformed, _dispB - transformed));
+          if (dot(_newON, objectNormal) < 0.0) _newON = -_newON;
+          // Re-apply normalMatrix transform (mirrors defaultnormal_vertex logic)
+          vec3 _newTN = _newON;
+          #ifdef USE_INSTANCING
+            mat3 _iMat = mat3(instanceMatrix);
+            _newTN /= vec3(dot(_iMat[0],_iMat[0]), dot(_iMat[1],_iMat[1]), dot(_iMat[2],_iMat[2]));
+            _newTN = _iMat * _newTN;
+          #endif
+          transformedNormal = normalMatrix * _newTN;
+          #ifdef FLIP_SIDED
+            transformedNormal = -transformedNormal;
+          #endif
+          #ifdef DOUBLE_SIDED
+            transformedNormal = transformedNormal * (float(gl_FrontFacing) * 2.0 - 1.0);
+          #endif
+          #ifndef FLAT_SHADED
+            vNormal = normalize(transformedNormal);
+          #endif
         }`
       );
 
