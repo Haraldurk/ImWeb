@@ -4159,6 +4159,7 @@ void main() {
         draw: drawLayer.texture,
         buffer: stillsBuffer.texture,
         warpMaps,
+        dispTex: _resolveLayerTex(ps.get('layer.ds')?.value ?? 0),
       });
 
     // Assemble input sources

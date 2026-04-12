@@ -267,9 +267,11 @@ export class SceneManager {
       shader.uniforms.uBlobAmount = { value: 0 };
       shader.uniforms.uBlobScale  = { value: 1 };
       shader.uniforms.uBlobSpeed  = { value: 1 };
-      shader.uniforms.uDisplace   = { value: 0 };
-      shader.uniforms.uDispScale  = { value: 1 };
-      shader.uniforms.uDispSpeed  = { value: 0.5 };
+      shader.uniforms.uDisplace    = { value: 0 };
+      shader.uniforms.uDispScale   = { value: 1 };
+      shader.uniforms.uDispSpeed   = { value: 0.5 };
+      shader.uniforms.uDispTexture = { value: this._fallback };
+      shader.uniforms.uDispTexMix  = { value: 0 };
       shader.uniforms.uRimAmount  = { value: 0 };
       shader.uniforms.uRimColor   = { value: new THREE.Color(0xffffff) };
       mat._shader = shader;
@@ -284,6 +286,8 @@ export class SceneManager {
         uniform float uDisplace;
         uniform float uDispScale;
         uniform float uDispSpeed;
+        uniform sampler2D uDispTexture;
+        uniform float uDispTexMix;
 
         float _bHash(vec3 p) {
           p = fract(p * vec3(127.1, 311.7, 74.7));
@@ -305,6 +309,12 @@ export class SceneManager {
           return _bNoise(p)
                + 0.5  * _bNoise(p * 2.0)
                + 0.25 * _bNoise(p * 4.0);
+        }
+        // Mix procedural noise and live texture for displacement
+        float getDisplacement(vec3 pos, vec2 uv, vec3 tOff) {
+          float mathNoise = _dispNoise(pos * uDispScale + tOff);
+          float texVal    = texture2D(uDispTexture, uv).r * 2.0 - 1.0;
+          return mix(mathNoise, texVal, uDispTexMix);
         }
         ${shader.vertexShader}
       `
@@ -333,20 +343,22 @@ export class SceneManager {
         }
         if (uDisplace > 0.0) {
           vec3 _dispOff = vec3(uTime * uDispSpeed);
-          float dn = _dispNoise(position * uDispScale + _dispOff);
+          float dn = getDisplacement(position, vUv, _dispOff);
           transformed += objectNormal * dn * uDisplace;
 
           // ── Finite-difference normal recalculation ──────────────────────
-          float _eps = 0.005;
+          float _eps   = 0.005;
+          float _uvEps = 0.01;
           // Build object-space tangent frame from undisplaced normal
           vec3 _arbUp    = abs(objectNormal.x) > 0.9 ? vec3(0.0,1.0,0.0) : vec3(1.0,0.0,0.0);
           vec3 _tan      = normalize(cross(_arbUp, objectNormal));
           vec3 _btan     = cross(objectNormal, _tan);
-          // Displaced neighbour positions (same time offset for consistent normals)
+          // Displaced neighbour positions — UV offset approximates tangent/bitangent
+          // direction in texture space so texture-driven bumps produce correct normals
           vec3 _pA   = position + _tan  * _eps;
           vec3 _pB   = position + _btan * _eps;
-          vec3 _dispA = _pA + objectNormal * _dispNoise(_pA * uDispScale + _dispOff) * uDisplace;
-          vec3 _dispB = _pB + objectNormal * _dispNoise(_pB * uDispScale + _dispOff) * uDisplace;
+          vec3 _dispA = _pA + objectNormal * getDisplacement(_pA, vUv + vec2(_uvEps, 0.0),   _dispOff) * uDisplace;
+          vec3 _dispB = _pB + objectNormal * getDisplacement(_pB, vUv + vec2(0.0,   _uvEps), _dispOff) * uDisplace;
           // New object-space normal via cross product of edge vectors
           vec3 _newON = normalize(cross(_dispA - transformed, _dispB - transformed));
           if (dot(_newON, objectNormal) < 0.0) _newON = -_newON;
@@ -382,7 +394,7 @@ export class SceneManager {
         }`
       );
     };
-    mat.customProgramCacheKey = () => 'warpblobrimdisp'; // unique cache key for custom shader
+    mat.customProgramCacheKey = () => 'warpblobrimdispvtf'; // unique cache key for custom shader
   }
 
   _rebuildMaterial(type) {
@@ -861,14 +873,18 @@ export class SceneManager {
       }
 
       // Vertex displacement uniform updates
-      const displaceAmt   = p.get('scene3d.mat.displace')?.value   ?? 0;
-      const displaceScale = p.get('scene3d.mat.dispScale')?.value  ?? 1;
-      const displaceSpeed = p.get('scene3d.mat.dispSpeed')?.value  ?? 0.5;
+      const displaceAmt    = p.get('scene3d.mat.displace')?.value    ?? 0;
+      const displaceScale  = p.get('scene3d.mat.dispScale')?.value   ?? 1;
+      const displaceSpeed  = p.get('scene3d.mat.dispSpeed')?.value   ?? 0.5;
+      const displaceTexMix = p.get('scene3d.mat.dispTexMix')?.value  ?? 0;
+      const dispTex        = inputs.dispTex ?? null;
       const updateDisplace = (m) => {
         if (m._shader) {
-          m._shader.uniforms.uDisplace.value  = displaceAmt;
-          m._shader.uniforms.uDispScale.value = displaceScale;
-          m._shader.uniforms.uDispSpeed.value = displaceSpeed;
+          m._shader.uniforms.uDisplace.value      = displaceAmt;
+          m._shader.uniforms.uDispScale.value     = displaceScale;
+          m._shader.uniforms.uDispSpeed.value     = displaceSpeed;
+          m._shader.uniforms.uDispTexture.value   = dispTex ?? this._fallback;
+          m._shader.uniforms.uDispTexMix.value    = displaceTexMix;
         }
       };
       updateDisplace(this.material);

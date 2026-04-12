@@ -1705,6 +1705,15 @@ export function registerCoreParameters(ps) {
     step: 0.01,
   });
   ps.register({
+    id: "scene3d.mat.dispTexMix",
+    label: "Disp. Tex Mix",
+    group: "scene3d",
+    min: 0,
+    max: 1,
+    value: 0,
+    step: 0.01,
+  });
+  ps.register({
     id: "scene3d.mat.envIntensity",
     label: "EnvInt",
     group: "lights3d",
