@@ -5,10 +5,10 @@
  *
  * Parameters:
  *   sdf.active   — toggle rendering
- *   sdf.opMode   — 0=Soft Union, 1=Soft Cut, 2=Morph
- *   sdf.opAmount — blend radius / cut depth / morph factor
+ *   sdf.opMode   — 0=Union, 1=Smooth Union, 2=Subtraction, 3=Intersection
+ *   sdf.opAmount — smooth blend radius 0–1
  *   sdf.distance — orbit radius (world units, or cell fraction when repeat > 0)
- *   sdf.shape    — primitive: 0=Sphere, 1=Box, 2=Torus
+ *   sdf.shape    — 0=Sphere,1=Box,2=Torus,3=Capsule,4=HexPrism,5=Octahedron,6=Link,7=Mandelbulb
  *   sdf.repeat   — domain repetition cell spacing; 0 = off
  *   sdf.warp     — surface displacement amplitude
  */
@@ -23,10 +23,10 @@ void main() { vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }
 const FRAG = `
 precision highp float;
 uniform float uTime;
-uniform float uSdfOpMode;   // 0=Soft Union, 1=Soft Cut, 2=Morph (float for WebGL compat)
-uniform float uSdfOpAmount; // blend / cut / morph amount 0–1
+uniform float uSdfOpMode;   // 0=Union, 1=Smooth Union, 2=Subtraction, 3=Intersection
+uniform float uSdfOpAmount; // blend / smooth radius 0–1
 uniform float uDistance;
-uniform float uShape;    // 0=Sphere, 1=Box, 2=Torus (float for WebGL compat)
+uniform float uShape;    // 0=Sphere,1=Box,2=Torus,3=Capsule,4=HexPrism,5=Octahedron,6=Link,7=Mandelbulb
 uniform float uRepeat;   // domain repetition spacing; 0 = off
 uniform float uWarp;      // surface displacement amplitude
 uniform vec3  uSDFCamPos; // camera position; always looks at origin
@@ -57,14 +57,74 @@ float sdBox(vec3 p, vec3 b) {
 }
 
 float sdTorus(vec3 p, vec2 t) {
-  // t.x = major radius, t.y = minor radius
   return length(vec2(length(p.xz) - t.x, p.y)) - t.y;
 }
 
+// Capsule between two points
+float sdCapsule(vec3 p, vec3 a, vec3 b, float r) {
+  vec3 pa = p - a, ba = b - a;
+  float h = clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0);
+  return length(pa - ba * h) - r;
+}
+
+// Hexagonal prism (IQ)
+float sdHexPrism(vec3 p, vec2 h) {
+  const vec3 k = vec3(-0.8660254, 0.5, 0.57735);
+  p = abs(p);
+  p.xy -= 2.0 * min(dot(k.xy, p.xy), 0.0) * k.xy;
+  vec2 d = vec2(
+    length(p.xy - vec2(clamp(p.x, -k.z * h.x, k.z * h.x), h.x)) * sign(p.y - h.x),
+    p.z - h.y
+  );
+  return min(max(d.x, d.y), 0.0) + length(max(d, 0.0));
+}
+
+// Octahedron (IQ exact)
+float sdOctahedron(vec3 p, float s) {
+  p = abs(p);
+  float m = p.x + p.y + p.z - s;
+  vec3 q;
+  if      (3.0 * p.x < m) q = p.xyz;
+  else if (3.0 * p.y < m) q = p.yzx;
+  else if (3.0 * p.z < m) q = p.zxy;
+  else return m * 0.57735027;
+  float k = clamp(0.5 * (q.z - q.y + s), 0.0, s);
+  return length(vec3(q.x, q.y - s + k, q.z - k));
+}
+
+// Link (chain-link torus variant)
+float sdLink(vec3 p, float le, float r1, float r2) {
+  vec3 q = vec3(p.x, max(abs(p.y) - le, 0.0), p.z);
+  return length(vec2(length(q.xy) - r1, q.z)) - r2;
+}
+
+// Mandelbulb distance estimator (power 7, 6 iterations)
+float sdMandelbulb(vec3 pos) {
+  vec3 z = pos;
+  float dr = 1.0, r = 0.0;
+  for (int i = 0; i < 6; i++) {
+    r = length(z);
+    if (r > 2.0) break;
+    float theta = acos(z.z / r);
+    float phi   = atan(z.y, z.x);
+    float zr    = pow(r, 7.0);
+    dr = pow(r, 6.0) * 7.0 * dr + 1.0;
+    z  = zr * vec3(sin(theta * 7.0) * cos(phi * 7.0),
+                   sin(phi   * 7.0) * sin(theta * 7.0),
+                   cos(theta * 7.0)) + pos;
+  }
+  return 0.5 * log(r) * r / dr;
+}
+
 float sdShape(vec3 p) {
-  if (uShape > 1.5) return sdTorus(p, vec2(0.45, 0.18));
-  if (uShape > 0.5) return sdBox(p, vec3(0.42));
-  return sdSphere(p, 0.6);
+  if      (uShape < 0.5) return sdSphere(p, 0.6);
+  else if (uShape < 1.5) return sdBox(p, vec3(0.42));
+  else if (uShape < 2.5) return sdTorus(p, vec2(0.45, 0.18));
+  else if (uShape < 3.5) return sdCapsule(p, vec3(0.0, -0.3, 0.0), vec3(0.0, 0.3, 0.0), 0.25);
+  else if (uShape < 4.5) return sdHexPrism(p, vec2(0.4, 0.2));
+  else if (uShape < 5.5) return sdOctahedron(p, 0.7);
+  else if (uShape < 6.5) return sdLink(p, 0.3, 0.3, 0.12);
+  else                   return sdMandelbulb(p * 1.2) * 0.8;
 }
 
 // ── Smooth-min (Inigo Quilez polynomial) ────────────────────────────────────
@@ -118,15 +178,18 @@ float scene(vec3 p) {
   // For Soft Cut, uSdfOpAmount=0 means no cut; =1 means deep bite.
   float k  = max(uSdfOpAmount, 0.001);
   float d1;
-  if (uSdfOpMode > 1.5) {
-    // Morph: linearly interpolate between the two raw distance fields
-    d1 = mix(dA, dB, uSdfOpAmount);
-  } else if (uSdfOpMode > 0.5) {
-    // Soft Cut: dB carves into dA
+  if (uSdfOpMode < 0.5) {
+    // Union: hard min, no blending
+    d1 = min(dA, dB);
+  } else if (uSdfOpMode < 1.5) {
+    // Smooth Union: polynomial smooth-min blend
+    d1 = smin(dA, dB, k);
+  } else if (uSdfOpMode < 2.5) {
+    // Subtraction: dB carves into dA
     d1 = opSmoothSub(dA, dB, k);
   } else {
-    // Soft Union: smooth blend both shapes together
-    d1 = smin(dA, dB, k);
+    // Intersection: smooth intersection (negate both, smin, negate result)
+    d1 = -smin(-dA, -dB, k);
   }
 
   // Surface displacement: sin-product warp on the distance field.

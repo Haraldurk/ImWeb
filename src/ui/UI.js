@@ -454,7 +454,7 @@ export function buildParamRow(param, contextMenu) {
 
   } else if (param.type === PARAM_TYPE.SELECT) {
     const opts = param.options ?? [];
-    if (opts.length <= 8) {
+    if (opts.length <= 8 && !param.select) {
       // Button group — compact, tactile, performance-friendly
       const group = document.createElement('div');
       group.className = 'param-btn-group';
