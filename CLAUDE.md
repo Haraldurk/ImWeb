@@ -240,6 +240,77 @@ Chrome 113+ recommended. Firefox and Safari work with minor WebGL limitations.
 
 ---
 
+## Dev Capture System
+
+A local-only multimodal brainstorming pipeline for capturing ideas during live performance sessions.
+**This is a development-only tool. It is never shipped in the production build.**
+
+### Purpose
+Lets the developer record a voice note + annotated screenshot + live parameter state while ImWeb is running, then synthesise everything into a structured Markdown specification via the Gemini CLI — without leaving the browser.
+
+### Keyboard shortcut
+`Ctrl + Shift + D` (in the browser, anywhere in the ImWeb UI)  
+Toggles the **Dev Capture Modal** open/closed.  
+Defined in `src/main.js` at the `keydown` listener near line 4221.
+
+### Architecture — three processes
+
+| Process | Port | Entry point | Role |
+|---|---|---|---|
+| ImWeb (Vite) | **5173** | `npm run dev` | The instrument itself |
+| Dev Catcher (Express) | **5174** | `node dev-catcher.js` | Receives multipart POST from the browser and writes files to `Brainstorms/` |
+| Gemini CLI | — | `./process-ideas.sh` | Reads the captured files and writes a Markdown spec to `Brainstorms/Idea-<ts>.md` |
+
+The catcher (`dev-catcher.js`) prefixes every saved file with a Unix timestamp (`Math.floor(Date.now() / 1000)`) so that files from a single capture session all share the same prefix (e.g. `1776007563-screenshot.png`, `1776007563-audio.webm`, `1776007563-state.json`, `1776007563-notes.txt`).
+
+### Files produced per capture
+
+| Suffix | Contents | Always present? |
+|---|---|---|
+| `-screenshot.png` | Canvas screenshot (WebGL readback) | Yes (recording path); No (send-only) |
+| `-audio.webm` | MediaRecorder mic/audio | Only when "Start Recording" was used |
+| `-state.json` | Full serialised ParameterSystem snapshot | Always |
+| `-notes.txt` | Free-text notes from the textarea | Always (may be empty) |
+
+### process-ideas.sh — how the synthesis works
+
+1. Finds the single newest timestamp-prefixed file in `Brainstorms/` (`ls -t [0-9]*-* | head -1`).
+2. Extracts the prefix (everything before the first `-`) and resolves all four paths from it.
+3. Files missing for that prefix are silently omitted — no cross-session contamination.
+4. Inlines `state.json` and `notes.txt` as text in the Gemini prompt; passes image and audio paths for the CLI's `read_file` tool.
+5. Writes output to `Brainstorms/Idea-<timestamp>.md`.
+
+### .gitignore bypass hack
+
+The Gemini CLI refuses to read files that are excluded by `.gitignore` (`Brainstorms/` is gitignored to keep captures out of version control). The script works around this immediately before invoking `gemini`:
+
+```bash
+# Temporarily rename .gitignore so the CLI cannot see it
+[[ -f "$GITIGNORE" ]] && mv "$GITIGNORE" "${GITIGNORE}.bak"
+
+# A bash trap guarantees restoration on EXIT, INT, and TERM
+trap 'restore_gitignore' EXIT INT TERM
+```
+
+After `gemini` exits (success, error, or Ctrl+C) the trap fires `restore_gitignore()`, which renames `.gitignore.bak` back to `.gitignore`. The file is never absent for more than the duration of the CLI run.
+
+### Relevant files
+
+| File | Role |
+|---|---|
+| `dev-catcher.js` | Express server; multer storage → `Brainstorms/`; runs on :5174 |
+| `process-ideas.sh` | Bash synthesis script; timestamp grouping; gitignore bypass |
+| `src/main.js` ~4004–4226 | `_dc*` vars, DevCaptureModal DOM, `Ctrl+Shift+D` keydown listener |
+| `Brainstorms/` | Output directory (gitignored) |
+
+---
+
+> **AGENT RULE — DO NOT VIOLATE**
+>
+> **No AI agent may modify, refactor, disable, rename, or interfere with any part of the Dev Capture pipeline** (the `_dc*` block in `src/main.js`, `dev-catcher.js`, `process-ideas.sh`, or the `Brainstorms/` directory layout) **without explicit written permission from the project owner in the same conversation.** This includes "cleanup", "simplification", or "improvement" passes. The pipeline is intentionally minimal and must remain exactly as-is unless the owner requests a specific change.
+
+---
+
 ## Credits
 
 Original Image/ine: Tom Demeyer and Steina Vasulka, STEIM Foundation, Amsterdam
