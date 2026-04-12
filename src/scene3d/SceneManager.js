@@ -343,7 +343,7 @@ export class SceneManager {
         }
         if (uDisplace > 0.0) {
           vec3 _dispOff = vec3(uTime * uDispSpeed);
-          float dn = getDisplacement(position, vUv, _dispOff);
+          float dn = getDisplacement(position, uv, _dispOff);
           transformed += objectNormal * dn * uDisplace;
 
           // ── Finite-difference normal recalculation ──────────────────────
@@ -357,8 +357,8 @@ export class SceneManager {
           // direction in texture space so texture-driven bumps produce correct normals
           vec3 _pA   = position + _tan  * _eps;
           vec3 _pB   = position + _btan * _eps;
-          vec3 _dispA = _pA + objectNormal * getDisplacement(_pA, vUv + vec2(_uvEps, 0.0),   _dispOff) * uDisplace;
-          vec3 _dispB = _pB + objectNormal * getDisplacement(_pB, vUv + vec2(0.0,   _uvEps), _dispOff) * uDisplace;
+          vec3 _dispA = _pA + objectNormal * getDisplacement(_pA, uv + vec2(_uvEps, 0.0),   _dispOff) * uDisplace;
+          vec3 _dispB = _pB + objectNormal * getDisplacement(_pB, uv + vec2(0.0,   _uvEps), _dispOff) * uDisplace;
           // New object-space normal via cross product of edge vectors
           vec3 _newON = normalize(cross(_dispA - transformed, _dispB - transformed));
           if (dot(_newON, objectNormal) < 0.0) _newON = -_newON;
