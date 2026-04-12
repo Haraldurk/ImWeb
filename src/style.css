@@ -362,10 +362,6 @@ button {
 
 .panel-section {
     border-bottom: 1px solid var(--border);
-    resize: both;
-    overflow: auto;
-    min-width: 200px;
-    min-height: 100px;
 }
 
 .section-header {
@@ -441,12 +437,13 @@ button {
     position: fixed;
     z-index: 900;
     min-width: 280px;
-    max-width: 420px;
+    min-height: 80px;
     background: var(--bg-2);
     border: 1px solid var(--border-hi);
     border-radius: 4px;
     box-shadow: 0 4px 24px rgba(0, 0, 0, 0.6);
-    overflow: hidden;
+    overflow: auto;
+    resize: both;
 }
 .detached-panel-title {
     display: flex;
