@@ -1374,20 +1374,21 @@ export function registerCoreParameters(ps) {
     label: "Geometry",
     group: "scene3d",
     type: PARAM_TYPE.SELECT,
+    select: true,
     options: [
-      "Sphere",
-      "Torus",
-      "Cube",
-      "Plane",
-      "Cylinder",
-      "Capsule",
-      "TorusKnot",
-      "Cone",
-      "Dodecahedron",
-      "Icosahedron",
-      "Octahedron",
-      "Tetrahedron",
-      "Ring",
+      "Basic: Sphere",
+      "Basic: Torus",
+      "Basic: Cube",
+      "Basic: Plane",
+      "Basic: Cylinder",
+      "Basic: Capsule",
+      "Complex: TorusKnot",
+      "Basic: Cone",
+      "Platonic: Dodecahedron",
+      "Platonic: Icosahedron",
+      "Platonic: Octahedron",
+      "Platonic: Tetrahedron",
+      "Basic: Ring",
     ],
     value: 0,
   });
@@ -1562,17 +1563,19 @@ export function registerCoreParameters(ps) {
   });
   ps.register({
     id: "scene3d.mat.texsrc",
-    label: "TexSrc",
+    label: "Texture Source",
     group: "scene3d",
     type: PARAM_TYPE.SELECT,
+    select: true,
     options: ["None", "Camera", "Movie", "Screen", "Draw", "Buffer", "Noise"],
     value: 0,
   });
   ps.register({
     id: "scene3d.mat.type",
-    label: "MatType",
+    label: "Material Shader",
     group: "scene3d",
     type: PARAM_TYPE.SELECT,
+    select: true,
     options: [
       "Standard",
       "Physical",
@@ -1677,7 +1680,7 @@ export function registerCoreParameters(ps) {
   ps.register({
     id: "scene3d.mat.envIntensity",
     label: "EnvInt",
-    group: "scene3d",
+    group: "lights3d",
     min: 0,
     max: 2,
     value: 1,
@@ -1686,7 +1689,7 @@ export function registerCoreParameters(ps) {
   ps.register({
     id: "scene3d.light.intensity",
     label: "Light Int.",
-    group: "scene3d",
+    group: "lights3d",
     min: 0,
     max: 5,
     value: 1.0,
@@ -1694,7 +1697,7 @@ export function registerCoreParameters(ps) {
   ps.register({
     id: "scene3d.light.ambient",
     label: "Ambient",
-    group: "scene3d",
+    group: "lights3d",
     min: 0,
     max: 2,
     step: 0.01,
@@ -1703,7 +1706,7 @@ export function registerCoreParameters(ps) {
   ps.register({
     id: "scene3d.light.point",
     label: "Point Int.",
-    group: "scene3d",
+    group: "lights3d",
     min: 0,
     max: 5,
     step: 0.01,
@@ -1712,7 +1715,7 @@ export function registerCoreParameters(ps) {
   ps.register({
     id: "scene3d.light.dirX",
     label: "Light X",
-    group: "scene3d",
+    group: "lights3d",
     min: -10,
     max: 10,
     step: 0.1,
@@ -1721,7 +1724,7 @@ export function registerCoreParameters(ps) {
   ps.register({
     id: "scene3d.light.dirY",
     label: "Light Y",
-    group: "scene3d",
+    group: "lights3d",
     min: -10,
     max: 10,
     step: 0.1,
@@ -1730,7 +1733,7 @@ export function registerCoreParameters(ps) {
   ps.register({
     id: "scene3d.light.dirZ",
     label: "Light Z",
-    group: "scene3d",
+    group: "lights3d",
     min: -10,
     max: 10,
     step: 0.1,
@@ -1907,7 +1910,7 @@ export function registerCoreParameters(ps) {
   });
   ps.register({
     id: "scene3d.blob.amount",
-    label: "BlobAmt",
+    label: "Metaball Amount",
     group: "scene3d",
     min: 0,
     max: 5,
@@ -1917,7 +1920,7 @@ export function registerCoreParameters(ps) {
   });
   ps.register({
     id: "scene3d.blob.scale",
-    label: "BlobScale",
+    label: "Metaball Scale",
     group: "scene3d",
     min: 0.1,
     max: 10,
@@ -1926,7 +1929,7 @@ export function registerCoreParameters(ps) {
   });
   ps.register({
     id: "scene3d.blob.speed",
-    label: "BlobSpeed",
+    label: "Metaball Speed",
     group: "scene3d",
     min: -5,
     max: 5,

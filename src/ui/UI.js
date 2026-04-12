@@ -722,7 +722,8 @@ export function buildMappingPanels(ps, contextMenu) {
     'clip-params':     ps.getGroup('movie'),
     'transform-params': ps.getGroup('scene3d').filter(p => p.id.includes('rot') || p.id.includes('pos') || p.id.includes('scale') || p.id.includes('spin')),
     'camera3d-params': ps.getGroup('scene3d').filter(p => p.id.includes('cam')),
-    'material-params': ps.getGroup('scene3d').filter(p => p.id.includes('mat') || p.id.includes('wire') || p.id.includes('light') || p.id.includes('depth')),
+    'material-params': ps.getGroup('scene3d').filter(p => p.id.includes('mat') || p.id.includes('wire') || p.id.includes('depth')),
+    'lights-params':   ps.getGroup('lights3d'),
     'draw-params':     ps.getGroup('draw'),
     'text-params':     ps.getGroup('text'),
     'fg-params':       ps.getGroup('fg'),
@@ -897,18 +898,7 @@ export function buildGeometryButtons(ps, sceneManager, contextMenu) {
   el.appendChild(btn3D);
 
   const geoParam = ps.get('scene3d.geo');
-  const names = geoParam.options;
-
-  names.forEach((name, i) => {
-    const btn = document.createElement('button');
-    btn.className = `geo-btn ${i === 0 ? 'active' : ''}`;
-    btn.textContent = name;
-    btn.addEventListener('click', () => {
-      geoParam.value = i;
-      document.querySelectorAll('.geo-btn').forEach((b, j) => b.classList.toggle('active', j === i));
-    });
-    el.appendChild(btn);
-  });
+  el.appendChild(buildParamRow(geoParam, contextMenu));
 
   // ── Transform section ────────────────────────────────────────────────────
   const transformEl = document.getElementById('transform-params');
