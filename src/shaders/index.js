@@ -618,76 +618,78 @@ export const NOISE_BFG = /* glsl */ `
 
     float n     = 0.0;
     vec2  curlV = vec2(0.0);
-    bool  isCurl = (uType == 6);
+    bool  isCurl = (uType == 7);  // Curl shifted from 6→7
     float r_rgb = 0.0, g_rgb = 0.0, b_rgb = 0.0;
 
     if (uType == 0) {
-      n = fbm(p, oct, uLacunarity, uGain, 0);           // Value
+      n = fract(sin(dot(vUv, vec2(12.9898, 78.233))) * 43758.5453); // WhiteNoise
     } else if (uType == 1) {
-      n = fbm(p, oct, uLacunarity, uGain, 1);           // Perlin
+      n = fbm(p, oct, uLacunarity, uGain, 0);           // Value
     } else if (uType == 2) {
-      n = fbm(p, oct, uLacunarity, uGain, 2);           // Simplex
+      n = fbm(p, oct, uLacunarity, uGain, 1);           // Perlin
     } else if (uType == 3) {
-      vec2 c = wNoise(p);
-      n = 1.0 - smoothstep(0.0, 0.9, c.x);             // Cellular F1
+      n = fbm(p, oct, uLacunarity, uGain, 2);           // Simplex
     } else if (uType == 4) {
       vec2 c = wNoise(p);
-      n = smoothstep(0.0, 0.5, c.y - c.x);             // Cellular F2-F1
+      n = 1.0 - smoothstep(0.0, 0.9, c.x);             // Cellular F1
     } else if (uType == 5) {
-      n = ridged(p, oct, uLacunarity, uGain);           // Ridged
+      vec2 c = wNoise(p);
+      n = smoothstep(0.0, 0.5, c.y - c.x);             // Cellular F2-F1
     } else if (uType == 6) {
+      n = ridged(p, oct, uLacunarity, uGain);           // Ridged
+    } else if (uType == 7) {
       curlV = curlField(p, oct, uLacunarity, uGain);
       n = length(curlV) * 0.5;                          // Curl
-    } else if (uType == 7) {
-      n = domainWarp(p, oct, uLacunarity, uGain);       // Domain Warp
     } else if (uType == 8) {
-      n = h1(vec3(p.xy, uSeed));                        // White Noise
+      n = domainWarp(p, oct, uLacunarity, uGain);       // Domain Warp
     } else if (uType == 9) {
+      n = h1(vec3(p.xy, uSeed));                        // White
+    } else if (uType == 10) {
       float fr = floor(uTime * uSpeed * 24.0);
       float vig = 1.0 - smoothstep(0.3, 0.8, length(p.xy/uScale - 0.5) * 2.0);
       n = h1(vec3(p.xy, uSeed + fr)) * (0.75 + vig * 0.5); // Film Grain
-    } else if (uType == 10) {
+    } else if (uType == 11) {
       float u1 = h1(vec3(p.xy, uSeed));
       float u2 = h1(vec3(p.xy + 17.0, uSeed));
       float gz = sqrt(-2.0 * log(max(u1, 0.0001))) * cos(6.2832 * u2);
       n = clamp(gz * 0.15 + 0.5, 0.0, 1.0);           // Gaussian
-    } else if (uType == 11) {
+    } else if (uType == 12) {
       float fr = floor(uTime * 30.0 + uSeed);
       n = h1(vec3(p.xy, fr));                           // TV Static
-    } else if (uType == 12) {
-      n = mod(p.y * 20.0, 1.0) < 0.5 + sin(t) * 0.1 ? 1.0 : 0.0; // Scan Lines
     } else if (uType == 13) {
+      n = mod(p.y * 20.0, 1.0) < 0.5 + sin(t) * 0.1 ? 1.0 : 0.0; // Scan Lines
+    } else if (uType == 14) {
       float hv = h1(vec3(p.xy, uSeed));
       n = hv < 0.05 ? 0.0 : hv > 0.95 ? 1.0 : 0.5;   // Salt-and-Pepper
-    } else if (uType == 14) {
+    } else if (uType == 15) {
       vec2 c = voronoi(p, 0);
       n = clamp(c.x * 1.5, 0.0, 1.0);                 // Voronoi F1
-    } else if (uType == 15) {
+    } else if (uType == 16) {
       vec2 c = voronoi(p, 1);
       n = clamp(c.x * 0.8, 0.0, 1.0);                 // Manhattan Voronoi
-    } else if (uType == 16) {
+    } else if (uType == 17) {
       vec2 c = voronoi(p, 2);
       n = clamp(c.x * 1.2, 0.0, 1.0);                 // Chebyshev Voronoi
-    } else if (uType == 17) {
+    } else if (uType == 18) {
       vec2 ca = wNoise(p);
       vec2 cb = wNoise(p * 1.7 + vec3(3.1, 1.7, 0.0));
       vec2 cc = wNoise(p * 0.6 + vec3(0.0, 0.0, 1.3));
       n = 1.0 - clamp(ca.x * 0.6 + cb.x * 0.3 + cc.x * 0.1, 0.0, 1.0); // Caustics
-    } else if (uType == 18) {
+    } else if (uType == 19) {
       float ang = t * 0.5;
       float cs = cos(ang), sn = sin(ang);
       vec3 rp = vec3(p.x * cs - p.y * sn, p.x * sn + p.y * cs, p.z);
       n = fbm(rp, oct, uLacunarity, uGain, 1);         // Flow Noise
-    } else if (uType == 19) {
+    } else if (uType == 20) {
       vec2 c = wNoise(p);
       n = 1.0 - smoothstep(0.0, 0.3, c.y - c.x);      // Worley Veins
-    } else if (uType == 20) {
+    } else if (uType == 21) {
       vec2 cell = floor(p.xy * 0.3);
       vec2 local = fract(p.xy * 0.3) - 0.5;
       float flip = step(0.5, h1(vec3(cell + uSeed + 37.3, 0.0)));
       vec2 corner = vec2(flip > 0.5 ? 0.5 : -0.5, 0.5);
       n = 1.0 - smoothstep(0.0, 0.08, abs(length(local - corner) - 0.5)); // Truchet
-    } else if (uType == 21) {
+    } else if (uType == 22) {
       vec2 hUv = p.xy * 0.3;
       float q = hUv.x * 2.0 / 3.0;
       float r = (-hUv.x + sqrt(3.0) * hUv.y) / 3.0;
@@ -696,7 +698,7 @@ export const NOISE_BFG = /* glsl */ `
       float cellN = h1(vec3(hid + uSeed + 73.1, 0.0));
       float dist = length(hex - hid);
       n = cellN * (1.0 - smoothstep(0.3, 0.5, dist));  // Hex Grid
-    } else if (uType == 22) {
+    } else if (uType == 23) {
       float sum = 0.0;
       vec2 uv22 = p.xy * 0.2;
       for (int i = 0; i < 8; i++) {
@@ -708,52 +710,52 @@ export const NOISE_BFG = /* glsl */ `
         sum += env * wave;
       }
       n = clamp(sum / 8.0 * 0.5 + 0.5, 0.0, 1.0);     // Gabor
-    } else if (uType == 23) {
+    } else if (uType == 24) {
       vec2 uv23 = p.xy * 0.1 + uSeed;
       n = fract(52.9829189 * fract(dot(uv23, vec2(0.06711056, 0.00583715)))); // Blue Noise
-    } else if (uType == 24) {
+    } else if (uType == 25) {
       vec2 cell = floor(p.xy * 0.2);
       vec2 local = fract(p.xy * 0.2);
       vec2 jitter = h2(cell + uSeed + 19.4) * 0.7 + 0.15;
       float d2 = length(local - jitter);
       n = 1.0 - smoothstep(0.1, 0.4, d2);              // Poisson Disc
-    } else if (uType == 25) {
+    } else if (uType == 26) {
       float sp = h1(vec3(p.xy * 0.5 + uSeed, 0.0));
       n = clamp(0.5 * (1.0 + (sp - 0.5) * 2.0 * uGain), 0.0, 1.0); // Speckle
-    } else if (uType == 26) {
+    } else if (uType == 27) {
       r_rgb = h1(vec3(p.xy * 0.2 + uSeed + vec2(0.1, 0.0), 0.0));
       g_rgb = h1(vec3(p.xy * 0.2 + uSeed + vec2(0.0, 0.1), 0.0));
       b_rgb = h1(vec3(p.xy * 0.2 + uSeed + vec2(0.1, 0.1), 0.0));
       n = (r_rgb + g_rgb + b_rgb) / 3.0;               // RGB Shift
-    } else if (uType == 27) {
+    } else if (uType == 28) {
       float line = floor(p.y * 10.0);
       float shift = (h1(vec3(line, floor(uTime * uSpeed * 5.0) + uSeed, 0.0)) - 0.5) * 0.3;
       n = h1(vec3(p.x * 0.2 + shift + uSeed, line * 0.1 + uSeed, 0.0)); // Interlace
-    } else if (uType == 28) {
+    } else if (uType == 29) {
       float bandY = fract(p.y * 2.0 + uTime * uSpeed * 0.08);
       float track = smoothstep(0.0, 0.15, bandY) * (1.0 - smoothstep(0.15, 0.4, bandY));
       float shift2 = (h1(vec3(floor(p.y * 8.0), floor(uTime * 4.0) + uSeed, 0.0)) - 0.5) * track * 0.4;
       float dropout = step(0.96, h1(vec3(p.y, floor(uTime * 8.0) + uSeed, 0.0)));
       float signal = h1(vec3(p.x * 0.3 + shift2 + uSeed, p.y * 0.3 + uSeed, floor(uTime * 30.0)));
       n = mix(signal, 1.0, dropout * 0.9);             // VCR Noise
-    } else if (uType == 29) {
+    } else if (uType == 30) {
       r_rgb = 0.5 * (1.0 + (h1(vec3(p.xy * 0.5 + uSeed + vec2(0.3, 0.0), 0.0)) - 0.5) * 2.0 * uGain);
       g_rgb = 0.5 * (1.0 + (h1(vec3(p.xy * 0.5 + uSeed + vec2(0.0, 0.3), 0.0)) - 0.5) * 2.0 * uGain);
       b_rgb = 0.5 * (1.0 + (h1(vec3(p.xy * 0.5 + uSeed + vec2(0.3, 0.3), 0.0)) - 0.5) * 2.0 * uGain);
       n = (r_rgb + g_rgb + b_rgb) / 3.0;               // Speckle Colour
-    } else if (uType == 30) {
+    } else if (uType == 31) {
       float bands = floor(h1(vec3(floor(p.y * 5.0) + uSeed, 0.0, 0.0)) * 8.0) / 8.0;
       float detail = h1(vec3(p.xy * 0.1 + uSeed, 0.0)) * 0.15;
       n = clamp(bands + detail, 0.0, 1.0);             // Pixel Sort
-    } else if (uType == 31) {
-      n = fbm(p, oct, uLacunarity, uGain, 1);          // fBm (Perlin)
     } else if (uType == 32) {
-      n = turbulence(p, oct, uLacunarity, uGain);      // Turbulence
+      n = fbm(p, oct, uLacunarity, uGain, 1);          // fBm (Perlin)
     } else if (uType == 33) {
-      n = billowed(p, oct, uLacunarity, uGain);        // Billowed
+      n = turbulence(p, oct, uLacunarity, uGain);      // Turbulence
     } else if (uType == 34) {
-      n = domainWarp(p, oct, uLacunarity, uGain);      // Domain Warp 2
+      n = billowed(p, oct, uLacunarity, uGain);        // Billowed
     } else if (uType == 35) {
+      n = domainWarp(p, oct, uLacunarity, uGain);      // Domain Warp 2
+    } else if (uType == 36) {
       vec2 pos = p.xy;
       for (int i = 0; i < 3; i++) {
         vec2 cv = curlField(vec3(pos * 0.3, p.z), oct, uLacunarity, uGain);
@@ -762,13 +764,13 @@ export const NOISE_BFG = /* glsl */ `
       curlV = curlField(vec3(pos * 0.3, p.z), oct, uLacunarity, uGain);
       n = length(curlV) * 0.5;
       isCurl = true;                                   // Velocity Field
-    } else if (uType == 36) {
+    } else if (uType == 37) {
       vec2 vel = curlField(vec3(p.xy * 0.3, p.z), oct, uLacunarity, uGain);
       vec3 advP = vec3((p.xy - vel * 0.08) * 0.3, p.z);
       float n1 = fbm(advP, oct, uLacunarity, uGain, 1);
       float n2 = fbm(p * 0.3, oct, uLacunarity, uGain, 1);
       n = mix(n1, n2, 0.4);                            // Advection
-    } else if (uType == 37) {
+    } else if (uType == 38) {
       float w = domainWarp(p, oct, uLacunarity, uGain);
       n = 0.5 + 0.5 * sin(1.5 * p.x + w * 6.0 + uTime * uSpeed * 0.3); // Marble
     }
@@ -797,10 +799,12 @@ export const NOISE_BFG = /* glsl */ `
       b = pow(clamp(b, 0.0, 1.0), uContrast);
       col = mix(vec3(n), vec3(r, g, b), 0.75);
     } else {
-      col = vec3(n);
+      // Default: mix between the two noise colors (color pickers always active)
+      // With defaults white/black this is identical to grayscale vec3(n)
+      col = mix(uColor1, uColor2, n);
     }
 
-    if (uType == 26 || uType == 29) col = vec3(r_rgb, g_rgb, b_rgb);
+    if (uType == 27 || uType == 30) col = vec3(r_rgb, g_rgb, b_rgb);
 
     gl_FragColor = vec4(col, 1.0);
   }
