@@ -622,7 +622,8 @@ export const NOISE_BFG = /* glsl */ `
     float r_rgb = 0.0, g_rgb = 0.0, b_rgb = 0.0;
 
     if (uType == 0) {
-      n = fract(sin(dot(vUv, vec2(12.9898, 78.233))) * 43758.5453); // WhiteNoise
+        // We use 'p' for Scale/Offset, and add 'uTime * uSpeed' to make it boil!
+        n = fract(sin(dot(p.xy + vec2(uTime * uSpeed), vec2(12.9898, 78.233))) * 43758.5453);
     } else if (uType == 1) {
       n = fbm(p, oct, uLacunarity, uGain, 0);           // Value
     } else if (uType == 2) {
