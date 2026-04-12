@@ -110,3 +110,18 @@ gemini \
 
 echo -e "\n${BOLD}${GREEN}✓ Specification written to:${RESET}"
 echo -e "  ${OUTPUT_FILE}"
+
+# ── Archive raw capture files ─────────────────────────────────────────────────
+# Only reached on success (set -euo pipefail aborts on any error above).
+ARCHIVE_DIR="${BRAINSTORMS_DIR}/Archive"
+mkdir -p "$ARCHIVE_DIR"
+
+ARCHIVED=0
+for RAW_FILE in "$AUDIO_FILE" "$IMAGE_FILE" "$JSON_FILE" "$NOTES_FILE"; do
+  if [[ -n "$RAW_FILE" && -f "$RAW_FILE" ]]; then
+    mv "$RAW_FILE" "$ARCHIVE_DIR/"
+    ARCHIVED=$((ARCHIVED + 1))
+  fi
+done
+
+echo -e "${CYAN}Archived ${BOLD}${ARCHIVED}${RESET}${CYAN} raw file(s) → Brainstorms/Archive/${RESET}"
