@@ -54,6 +54,19 @@ body {
     font-size: 13px;
     line-height: 1.4;
     -webkit-font-smoothing: antialiased;
+    color-scheme: dark;
+}
+
+/* Force dark-mode on all native <select> popup menus */
+select {
+    background-color: var(--bg-1, #111114) !important;
+    color: var(--text-0, #e8e8f0) !important;
+    color-scheme: dark;
+}
+option,
+optgroup {
+    background-color: var(--bg-1, #111114) !important;
+    color: var(--text-0, #e8e8f0) !important;
 }
 
 button {

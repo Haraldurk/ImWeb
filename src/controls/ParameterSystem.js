@@ -910,6 +910,15 @@ export function registerCoreParameters(ps) {
     value: 1,
   }); // default: WhiteNoise
   ps.register({
+    id: "noise.color",
+    label: "Color Mode",
+    group: "noise",
+    type: PARAM_TYPE.SELECT,
+    select: true,
+    options: ["Grayscale", "RGB Channels", "Two-Tone"],
+    value: 2,
+  });
+  ps.register({
     id: "noise.scale",
     label: "Scale",
     group: "noise",
@@ -997,15 +1006,6 @@ export function registerCoreParameters(ps) {
     value: 0,
     step: 0.5,
   });
-  ps.register({
-    id: "noise.color",
-    label: "ColorMode",
-    group: "noise",
-    type: PARAM_TYPE.SELECT,
-    options: ["Off", "Tri-channel", "Color Mix"],
-    value: 0,
-  });
-
   // ── Mirror ────────────────────────────────────────────────────────────────
   ps.register({
     id: "mirror.camera",
