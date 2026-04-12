@@ -361,9 +361,6 @@ export class SceneManager {
           #ifdef FLIP_SIDED
             transformedNormal = -transformedNormal;
           #endif
-          #ifdef DOUBLE_SIDED
-            transformedNormal = transformedNormal * (float(gl_FrontFacing) * 2.0 - 1.0);
-          #endif
           #ifndef FLAT_SHADED
             vNormal = normalize(transformedNormal);
           #endif
