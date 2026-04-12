@@ -614,7 +614,7 @@ export const NOISE_BFG = /* glsl */ `
     int  oct = int(uOctaves + 0.5);
     // Time is the 3rd spatial dimension — smooth continuous animation
     float t  = uTime * uSpeed + uSeed;
-    vec3  p  = vec3((vUv + vec2(uOffsetX, uOffsetY)) * uScale, t);
+    vec3  p  = vec3(vUv * uScale + vec2(uOffsetX, uOffsetY), t);
 
     float n     = 0.0;
     vec2  curlV = vec2(0.0);
