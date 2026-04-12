@@ -4131,7 +4131,7 @@ void main() {
             _dcStatus.textContent = 'Saved!';
             setTimeout(_dcClose2, 1500);
           } catch (err) {
-            console.warn('[DevCapture] send failed:', err);
+            console.error('Capture delivery failed:', err);
             _dcStatus.textContent = 'Error :(';
           }
         };

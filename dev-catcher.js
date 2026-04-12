@@ -13,10 +13,10 @@ const storage = multer.diskStorage({
     cb(null, `${ts}-${file.originalname}`);
   },
 });
-const upload = multer({ storage });
+const upload = multer({ storage, limits: { fieldSize: 50 * 1024 * 1024 } });
 
 const app = express();
-app.use(cors({ origin: 'http://localhost:5173' }));
+app.use(cors());
 
 app.post('/capture', upload.any(), (req, res) => {
   const saved = (req.files ?? []).map(f => f.filename);
