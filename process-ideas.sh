@@ -16,27 +16,36 @@ BRAINSTORMS_DIR="$(cd "$(dirname "$0")/Brainstorms" && pwd)"
 echo -e "${BOLD}${CYAN}=== ImWeb Dev Capture → Gemini ===${RESET}"
 echo -e "${CYAN}Scanning ${BRAINSTORMS_DIR} for latest captures…${RESET}"
 
-# ── Find the most recent file of each type ────────────────────────────────────
-AUDIO_FILE=$(ls -t "${BRAINSTORMS_DIR}"/*-audio.webm     2>/dev/null | head -1 || true)
-IMAGE_FILE=$(ls -t "${BRAINSTORMS_DIR}"/*-screenshot.png 2>/dev/null | head -1 || true)
-JSON_FILE=$(ls  -t "${BRAINSTORMS_DIR}"/*-state.json     2>/dev/null | head -1 || true)
-NOTES_FILE=$(ls -t "${BRAINSTORMS_DIR}"/*-notes.txt      2>/dev/null | head -1 || true)
+# ── Find the newest capture by timestamp prefix ───────────────────────────────
+NEWEST=$(ls -t "${BRAINSTORMS_DIR}"/[0-9]*-* 2>/dev/null | head -1 || true)
 
-# Abort if core files are missing
-if [[ -z "$AUDIO_FILE" || -z "$IMAGE_FILE" || -z "$JSON_FILE" ]]; then
-  echo -e "${YELLOW}⚠  Could not find all capture files in ${BRAINSTORMS_DIR}/${RESET}"
-  echo    "   Expected: *-audio.webm, *-screenshot.png, *-state.json"
+if [[ -z "$NEWEST" ]]; then
+  echo -e "${YELLOW}⚠  No timestamp-prefixed capture files found in ${BRAINSTORMS_DIR}/${RESET}"
   exit 1
 fi
 
-echo -e "  ${GREEN}✓${RESET} Audio     : $(basename "$AUDIO_FILE")"
-echo -e "  ${GREEN}✓${RESET} Screenshot: $(basename "$IMAGE_FILE")"
-echo -e "  ${GREEN}✓${RESET} State JSON: $(basename "$JSON_FILE")"
-if [[ -n "$NOTES_FILE" ]]; then
-  echo -e "  ${GREEN}✓${RESET} Notes     : $(basename "$NOTES_FILE")"
-else
-  echo -e "  ${YELLOW}-${RESET} Notes     : (none found, skipping)"
+PREFIX=$(basename "$NEWEST" | cut -d'-' -f1)
+echo -e "${CYAN}Using capture prefix: ${PREFIX}${RESET}"
+
+AUDIO_FILE="${BRAINSTORMS_DIR}/${PREFIX}-audio.webm"
+IMAGE_FILE="${BRAINSTORMS_DIR}/${PREFIX}-screenshot.png"
+JSON_FILE="${BRAINSTORMS_DIR}/${PREFIX}-state.json"
+NOTES_FILE="${BRAINSTORMS_DIR}/${PREFIX}-notes.txt"
+[[ -f "$AUDIO_FILE"  ]] || AUDIO_FILE=""
+[[ -f "$IMAGE_FILE"  ]] || IMAGE_FILE=""
+[[ -f "$JSON_FILE"   ]] || JSON_FILE=""
+[[ -f "$NOTES_FILE"  ]] || NOTES_FILE=""
+
+# Abort only if state JSON is missing (always produced by a capture)
+if [[ -z "$JSON_FILE" ]]; then
+  echo -e "${YELLOW}⚠  No state.json found for prefix ${PREFIX} in ${BRAINSTORMS_DIR}/${RESET}"
+  exit 1
 fi
+
+[[ -n "$AUDIO_FILE"  ]] && echo -e "  ${GREEN}✓${RESET} Audio     : $(basename "$AUDIO_FILE")"  || echo -e "  ${YELLOW}-${RESET} Audio     : (none for this capture)"
+[[ -n "$IMAGE_FILE"  ]] && echo -e "  ${GREEN}✓${RESET} Screenshot: $(basename "$IMAGE_FILE")"  || echo -e "  ${YELLOW}-${RESET} Screenshot: (none for this capture)"
+echo -e "  ${GREEN}✓${RESET} State JSON: $(basename "$JSON_FILE")"
+[[ -n "$NOTES_FILE"  ]] && echo -e "  ${GREEN}✓${RESET} Notes     : $(basename "$NOTES_FILE")"  || echo -e "  ${YELLOW}-${RESET} Notes     : (none for this capture)"
 echo
 
 # ── Read files inline so they travel in the text prompt ──────────────────────
@@ -82,9 +91,17 @@ echo -e "${CYAN}Model : default${RESET}"
 echo -e "${CYAN}Output: ${OUTPUT_FILE}${RESET}"
 echo
 
-# Run gemini without --include-directories so the gitignore restriction does not
-# apply. Text content (state JSON, notes) is already inlined in the prompt.
-# Absolute paths for media files are passed in the prompt for the read_file tool.
+# ── Temporarily hide .gitignore so Gemini CLI can read all project files ──────
+PROJECT_ROOT="$(cd "$(dirname "$0")" && pwd)"
+GITIGNORE="${PROJECT_ROOT}/.gitignore"
+
+restore_gitignore() {
+  [[ -f "${GITIGNORE}.bak" ]] && mv "${GITIGNORE}.bak" "${GITIGNORE}"
+}
+trap restore_gitignore EXIT INT TERM
+
+[[ -f "$GITIGNORE" ]] && mv "$GITIGNORE" "${GITIGNORE}.bak"
+
 gemini \
   --yolo \
   --output-format text \
