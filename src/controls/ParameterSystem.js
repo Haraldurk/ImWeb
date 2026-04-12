@@ -49,6 +49,7 @@ export class Parameter {
     this.table = null; // response curve table name (string)
 
     // Flags
+    this.select = config.select ?? false; // force native <select> dropdown regardless of option count
     this.invert = false;
     this.cycle = false; // for SELECT: cycle on trigger
     this.slew = 0; // 0=instant, 0.001–1.0 seconds (lag time)
