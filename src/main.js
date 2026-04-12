@@ -4083,9 +4083,23 @@ void main() {
     boxSizing:    'border-box',
   });
 
+  const _dcSendBtn = document.createElement('button');
+  _dcSendBtn.textContent = 'Send Note';
+  Object.assign(_dcSendBtn.style, {
+    background:   'transparent',
+    color:        'var(--accent,#c8a020)',
+    border:       '1px solid var(--accent,#c8a020)',
+    borderRadius: '4px',
+    padding:      '4px 10px',
+    cursor:       'pointer',
+    fontFamily:   'monospace',
+    fontSize:     '12px',
+    fontWeight:   '700',
+  });
+
   const _dcRow = document.createElement('div');
   Object.assign(_dcRow.style, { display: 'flex', alignItems: 'center', gap: '12px' });
-  _dcRow.append(_dcLabel, _dcBtn, _dcStatus, _dcClose);
+  _dcRow.append(_dcLabel, _dcBtn, _dcSendBtn, _dcStatus, _dcClose);
 
   _dcModal.append(_dcNotes, _dcRow);
   document.body.appendChild(_dcModal);
@@ -4174,6 +4188,33 @@ void main() {
       _dcBtn.disabled = true;
       _dcRecorder?.stop();
       _dcStream?.getTracks().forEach(t => t.stop());
+    }
+  });
+
+  _dcSendBtn.addEventListener('click', async () => {
+    _dcSendBtn.disabled = true;
+    _dcStatus.textContent = 'Sending…';
+    _dcStatus.style.color = 'var(--accent,#c8a020)';
+    try {
+      const cvs      = document.getElementById('output-canvas');
+      const imgBlob  = await fetch(cvs.toDataURL('image/png')).then(r => r.blob());
+      const stateObj = {};
+      ps.getAll().forEach(p => { stateObj[p.id] = p.value; });
+      const stateBlob = new Blob([JSON.stringify(stateObj, null, 2)], { type: 'application/json' });
+      const notesBlob = new Blob([_dcNotes.value], { type: 'text/plain' });
+
+      const fd = new FormData();
+      fd.append('files', imgBlob,   'screenshot.png');
+      fd.append('files', stateBlob, 'state.json');
+      fd.append('files', notesBlob, 'notes.txt');
+
+      await fetch('http://localhost:5174/capture', { method: 'POST', body: fd });
+      _dcStatus.textContent = 'Saved!';
+      setTimeout(_dcClose2, 1500);
+    } catch (err) {
+      console.error('Capture delivery failed:', err);
+      _dcStatus.textContent = 'Error :(';
+      _dcSendBtn.disabled = false;
     }
   });
 

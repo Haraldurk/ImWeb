@@ -86,6 +86,7 @@ echo
 # use --yolo to auto-approve tool calls, -p for headless, pipe output to file.
 gemini \
   --include-directories "${BRAINSTORMS_DIR}" \
+  --ignore-repo-rules \
   --yolo \
   --output-format text \
   -p "$PROMPT" \
