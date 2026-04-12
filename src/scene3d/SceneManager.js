@@ -148,6 +148,7 @@ export class SceneManager {
         color:     0xffffff,
         roughness: 0.5,
         metalness: 0.1,
+        side:      THREE.DoubleSide,
       });
       this._setupMaterial(this.material);
     }
@@ -268,6 +269,7 @@ export class SceneManager {
       shader.uniforms.uBlobSpeed  = { value: 1 };
       shader.uniforms.uDisplace   = { value: 0 };
       shader.uniforms.uDispScale  = { value: 1 };
+      shader.uniforms.uDispSpeed  = { value: 0.5 };
       shader.uniforms.uRimAmount  = { value: 0 };
       shader.uniforms.uRimColor   = { value: new THREE.Color(0xffffff) };
       mat._shader = shader;
@@ -281,6 +283,7 @@ export class SceneManager {
         uniform float uBlobSpeed;
         uniform float uDisplace;
         uniform float uDispScale;
+        uniform float uDispSpeed;
 
         float _bHash(vec3 p) {
           p = fract(p * vec3(127.1, 311.7, 74.7));
@@ -329,7 +332,8 @@ export class SceneManager {
           transformed += objectNormal * n * uBlobAmount;
         }
         if (uDisplace > 0.0) {
-          float dn = _dispNoise(position * uDispScale);
+          vec3 _dispOff = vec3(uTime * uDispSpeed);
+          float dn = _dispNoise(position * uDispScale + _dispOff);
           transformed += objectNormal * dn * uDisplace;
 
           // ── Finite-difference normal recalculation ──────────────────────
@@ -338,11 +342,11 @@ export class SceneManager {
           vec3 _arbUp    = abs(objectNormal.x) > 0.9 ? vec3(0.0,1.0,0.0) : vec3(1.0,0.0,0.0);
           vec3 _tan      = normalize(cross(_arbUp, objectNormal));
           vec3 _btan     = cross(objectNormal, _tan);
-          // Displaced neighbour positions
+          // Displaced neighbour positions (same time offset for consistent normals)
           vec3 _pA   = position + _tan  * _eps;
           vec3 _pB   = position + _btan * _eps;
-          vec3 _dispA = _pA + objectNormal * _dispNoise(_pA * uDispScale) * uDisplace;
-          vec3 _dispB = _pB + objectNormal * _dispNoise(_pB * uDispScale) * uDisplace;
+          vec3 _dispA = _pA + objectNormal * _dispNoise(_pA * uDispScale + _dispOff) * uDisplace;
+          vec3 _dispB = _pB + objectNormal * _dispNoise(_pB * uDispScale + _dispOff) * uDisplace;
           // New object-space normal via cross product of edge vectors
           vec3 _newON = normalize(cross(_dispA - transformed, _dispB - transformed));
           if (dot(_newON, objectNormal) < 0.0) _newON = -_newON;
@@ -425,6 +429,7 @@ export class SceneManager {
 
     mat.opacity     = opacity;
     mat.transparent = opacity < 1;
+    mat.side        = THREE.DoubleSide;
     if (map) mat.map = map;
 
     this._setupMaterial(mat);
@@ -859,12 +864,14 @@ export class SceneManager {
       }
 
       // Vertex displacement uniform updates
-      const displaceAmt   = p.get('scene3d.mat.displace')?.value  ?? 0;
-      const displaceScale = p.get('scene3d.mat.dispScale')?.value ?? 1;
+      const displaceAmt   = p.get('scene3d.mat.displace')?.value   ?? 0;
+      const displaceScale = p.get('scene3d.mat.dispScale')?.value  ?? 1;
+      const displaceSpeed = p.get('scene3d.mat.dispSpeed')?.value  ?? 0.5;
       const updateDisplace = (m) => {
         if (m._shader) {
           m._shader.uniforms.uDisplace.value  = displaceAmt;
           m._shader.uniforms.uDispScale.value = displaceScale;
+          m._shader.uniforms.uDispSpeed.value = displaceSpeed;
         }
       };
       updateDisplace(this.material);

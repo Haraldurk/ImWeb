@@ -1643,8 +1643,8 @@ export function registerCoreParameters(ps) {
   });
   ps.register({
     id: "scene3d.mat.rim",
-    label: "RimLight",
-    group: "scene3d",
+    label: "Rim Intensity",
+    group: "lights3d",
     min: 0,
     max: 1,
     value: 0,
@@ -1652,8 +1652,8 @@ export function registerCoreParameters(ps) {
   });
   ps.register({
     id: "scene3d.mat.rimHue",
-    label: "RimHue",
-    group: "scene3d",
+    label: "Rim Hue",
+    group: "lights3d",
     min: 0,
     max: 360,
     value: 180,
@@ -1661,8 +1661,8 @@ export function registerCoreParameters(ps) {
   });
   ps.register({
     id: "scene3d.mat.emissiveHue",
-    label: "EmiHue",
-    group: "scene3d",
+    label: "Glow Hue",
+    group: "lights3d",
     min: 0,
     max: 360,
     value: 0,
@@ -1670,8 +1670,8 @@ export function registerCoreParameters(ps) {
   });
   ps.register({
     id: "scene3d.mat.emissiveSat",
-    label: "EmiSat",
-    group: "scene3d",
+    label: "Glow Sat",
+    group: "lights3d",
     min: 0,
     max: 100,
     value: 0,
@@ -1694,6 +1694,15 @@ export function registerCoreParameters(ps) {
     max: 10,
     value: 1.0,
     step: 0.05,
+  });
+  ps.register({
+    id: "scene3d.mat.dispSpeed",
+    label: "Disp. Speed",
+    group: "scene3d",
+    min: -5,
+    max: 5,
+    value: 0.5,
+    step: 0.01,
   });
   ps.register({
     id: "scene3d.mat.envIntensity",
