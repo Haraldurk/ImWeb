@@ -641,23 +641,23 @@ export const NOISE_BFG = /* glsl */ `
     } else if (uType == 7) {
       n = domainWarp(p, oct, uLacunarity, uGain);       // Domain Warp
     } else if (uType == 8) {
-      n = h1(vec3(vUv * uScale, uSeed));                // White Noise
+      n = h1(vec3(p.xy, uSeed));                        // White Noise
     } else if (uType == 9) {
       float fr = floor(uTime * uSpeed * 24.0);
-      float vig = 1.0 - smoothstep(0.3, 0.8, length(vUv - 0.5) * 2.0);
-      n = h1(vec3(vUv * uScale, uSeed + fr)) * (0.75 + vig * 0.5); // Film Grain
+      float vig = 1.0 - smoothstep(0.3, 0.8, length(p.xy/uScale - 0.5) * 2.0);
+      n = h1(vec3(p.xy, uSeed + fr)) * (0.75 + vig * 0.5); // Film Grain
     } else if (uType == 10) {
-      float u1 = h1(vec3(vUv * uScale, uSeed));
-      float u2 = h1(vec3(vUv * uScale + 17.0, uSeed));
+      float u1 = h1(vec3(p.xy, uSeed));
+      float u2 = h1(vec3(p.xy + 17.0, uSeed));
       float gz = sqrt(-2.0 * log(max(u1, 0.0001))) * cos(6.2832 * u2);
       n = clamp(gz * 0.15 + 0.5, 0.0, 1.0);           // Gaussian
     } else if (uType == 11) {
       float fr = floor(uTime * 30.0 + uSeed);
-      n = h1(vec3(vUv * uScale, fr));                  // TV Static
+      n = h1(vec3(p.xy, fr));                           // TV Static
     } else if (uType == 12) {
-      n = mod(vUv.y * uScale * 20.0, 1.0) < 0.5 + sin(t) * 0.1 ? 1.0 : 0.0; // Scan Lines
+      n = mod(p.y * 20.0, 1.0) < 0.5 + sin(t) * 0.1 ? 1.0 : 0.0; // Scan Lines
     } else if (uType == 13) {
-      float hv = h1(vec3(vUv * uScale, uSeed));
+      float hv = h1(vec3(p.xy, uSeed));
       n = hv < 0.05 ? 0.0 : hv > 0.95 ? 1.0 : 0.5;   // Salt-and-Pepper
     } else if (uType == 14) {
       vec2 c = voronoi(p, 0);
@@ -682,13 +682,13 @@ export const NOISE_BFG = /* glsl */ `
       vec2 c = wNoise(p);
       n = 1.0 - smoothstep(0.0, 0.3, c.y - c.x);      // Worley Veins
     } else if (uType == 20) {
-      vec2 cell = floor(p.xy * uScale * 0.3);
-      vec2 local = fract(p.xy * uScale * 0.3) - 0.5;
+      vec2 cell = floor(p.xy * 0.3);
+      vec2 local = fract(p.xy * 0.3) - 0.5;
       float flip = step(0.5, h1(vec3(cell + uSeed + 37.3, 0.0)));
       vec2 corner = vec2(flip > 0.5 ? 0.5 : -0.5, 0.5);
       n = 1.0 - smoothstep(0.0, 0.08, abs(length(local - corner) - 0.5)); // Truchet
     } else if (uType == 21) {
-      vec2 hUv = p.xy * uScale * 0.3;
+      vec2 hUv = p.xy * 0.3;
       float q = hUv.x * 2.0 / 3.0;
       float r = (-hUv.x + sqrt(3.0) * hUv.y) / 3.0;
       vec2 hex = vec2(q, r);
@@ -698,52 +698,52 @@ export const NOISE_BFG = /* glsl */ `
       n = cellN * (1.0 - smoothstep(0.3, 0.5, dist));  // Hex Grid
     } else if (uType == 22) {
       float sum = 0.0;
-      vec2 uv22 = p.xy * uScale * 0.2;
+      vec2 uv22 = p.xy * 0.2;
       for (int i = 0; i < 8; i++) {
         float a = h1(vec3(float(i), uSeed + 11.0, 0.0)) * 6.283;
         vec2 off = h2(vec2(float(i), uSeed + 23.0));
         vec2 gd = fract(uv22) - off;
         float env = exp(-dot(gd, gd) * 4.0);
-        float wave = cos(uScale * dot(gd, vec2(cos(a), sin(a))) + t);
+        float wave = cos(dot(gd, vec2(cos(a), sin(a))) + t);
         sum += env * wave;
       }
       n = clamp(sum / 8.0 * 0.5 + 0.5, 0.0, 1.0);     // Gabor
     } else if (uType == 23) {
-      vec2 uv23 = p.xy * uScale * 0.1 + uSeed;
+      vec2 uv23 = p.xy * 0.1 + uSeed;
       n = fract(52.9829189 * fract(dot(uv23, vec2(0.06711056, 0.00583715)))); // Blue Noise
     } else if (uType == 24) {
-      vec2 cell = floor(p.xy * uScale * 0.2);
-      vec2 local = fract(p.xy * uScale * 0.2);
+      vec2 cell = floor(p.xy * 0.2);
+      vec2 local = fract(p.xy * 0.2);
       vec2 jitter = h2(cell + uSeed + 19.4) * 0.7 + 0.15;
       float d2 = length(local - jitter);
       n = 1.0 - smoothstep(0.1, 0.4, d2);              // Poisson Disc
     } else if (uType == 25) {
-      float sp = h1(vec3(p.xy * uScale * 0.5 + uSeed, 0.0));
+      float sp = h1(vec3(p.xy * 0.5 + uSeed, 0.0));
       n = clamp(0.5 * (1.0 + (sp - 0.5) * 2.0 * uGain), 0.0, 1.0); // Speckle
     } else if (uType == 26) {
-      r_rgb = h1(vec3(p.xy * uScale * 0.2 + uSeed + vec2(0.1, 0.0), 0.0));
-      g_rgb = h1(vec3(p.xy * uScale * 0.2 + uSeed + vec2(0.0, 0.1), 0.0));
-      b_rgb = h1(vec3(p.xy * uScale * 0.2 + uSeed + vec2(0.1, 0.1), 0.0));
+      r_rgb = h1(vec3(p.xy * 0.2 + uSeed + vec2(0.1, 0.0), 0.0));
+      g_rgb = h1(vec3(p.xy * 0.2 + uSeed + vec2(0.0, 0.1), 0.0));
+      b_rgb = h1(vec3(p.xy * 0.2 + uSeed + vec2(0.1, 0.1), 0.0));
       n = (r_rgb + g_rgb + b_rgb) / 3.0;               // RGB Shift
     } else if (uType == 27) {
-      float line = floor(p.y * uScale * 10.0);
+      float line = floor(p.y * 10.0);
       float shift = (h1(vec3(line, floor(uTime * uSpeed * 5.0) + uSeed, 0.0)) - 0.5) * 0.3;
-      n = h1(vec3(p.x * uScale * 0.2 + shift + uSeed, line * 0.1 + uSeed, 0.0)); // Interlace
+      n = h1(vec3(p.x * 0.2 + shift + uSeed, line * 0.1 + uSeed, 0.0)); // Interlace
     } else if (uType == 28) {
       float bandY = fract(p.y * 2.0 + uTime * uSpeed * 0.08);
       float track = smoothstep(0.0, 0.15, bandY) * (1.0 - smoothstep(0.15, 0.4, bandY));
-      float shift2 = (h1(vec3(floor(p.y * uScale * 8.0), floor(uTime * 4.0) + uSeed, 0.0)) - 0.5) * track * 0.4;
-      float dropout = step(0.96, h1(vec3(p.y * uScale, floor(uTime * 8.0) + uSeed, 0.0)));
-      float signal = h1(vec3(p.x * uScale * 0.3 + shift2 + uSeed, p.y * uScale * 0.3 + uSeed, floor(uTime * 30.0)));
+      float shift2 = (h1(vec3(floor(p.y * 8.0), floor(uTime * 4.0) + uSeed, 0.0)) - 0.5) * track * 0.4;
+      float dropout = step(0.96, h1(vec3(p.y, floor(uTime * 8.0) + uSeed, 0.0)));
+      float signal = h1(vec3(p.x * 0.3 + shift2 + uSeed, p.y * 0.3 + uSeed, floor(uTime * 30.0)));
       n = mix(signal, 1.0, dropout * 0.9);             // VCR Noise
     } else if (uType == 29) {
-      r_rgb = 0.5 * (1.0 + (h1(vec3(p.xy * uScale * 0.5 + uSeed + vec2(0.3, 0.0), 0.0)) - 0.5) * 2.0 * uGain);
-      g_rgb = 0.5 * (1.0 + (h1(vec3(p.xy * uScale * 0.5 + uSeed + vec2(0.0, 0.3), 0.0)) - 0.5) * 2.0 * uGain);
-      b_rgb = 0.5 * (1.0 + (h1(vec3(p.xy * uScale * 0.5 + uSeed + vec2(0.3, 0.3), 0.0)) - 0.5) * 2.0 * uGain);
+      r_rgb = 0.5 * (1.0 + (h1(vec3(p.xy * 0.5 + uSeed + vec2(0.3, 0.0), 0.0)) - 0.5) * 2.0 * uGain);
+      g_rgb = 0.5 * (1.0 + (h1(vec3(p.xy * 0.5 + uSeed + vec2(0.0, 0.3), 0.0)) - 0.5) * 2.0 * uGain);
+      b_rgb = 0.5 * (1.0 + (h1(vec3(p.xy * 0.5 + uSeed + vec2(0.3, 0.3), 0.0)) - 0.5) * 2.0 * uGain);
       n = (r_rgb + g_rgb + b_rgb) / 3.0;               // Speckle Colour
     } else if (uType == 30) {
-      float bands = floor(h1(vec3(floor(p.y * uScale * 5.0) + uSeed, 0.0, 0.0)) * 8.0) / 8.0;
-      float detail = h1(vec3(p.xy * uScale * 0.1 + uSeed, 0.0)) * 0.15;
+      float bands = floor(h1(vec3(floor(p.y * 5.0) + uSeed, 0.0, 0.0)) * 8.0) / 8.0;
+      float detail = h1(vec3(p.xy * 0.1 + uSeed, 0.0)) * 0.15;
       n = clamp(bands + detail, 0.0, 1.0);             // Pixel Sort
     } else if (uType == 31) {
       n = fbm(p, oct, uLacunarity, uGain, 1);          // fBm (Perlin)
@@ -756,21 +756,21 @@ export const NOISE_BFG = /* glsl */ `
     } else if (uType == 35) {
       vec2 pos = p.xy;
       for (int i = 0; i < 3; i++) {
-        vec2 cv = curlField(vec3(pos * uScale * 0.3, p.z), oct, uLacunarity, uGain);
+        vec2 cv = curlField(vec3(pos * 0.3, p.z), oct, uLacunarity, uGain);
         pos += cv * 0.02 * uGain;
       }
-      curlV = curlField(vec3(pos * uScale * 0.3, p.z), oct, uLacunarity, uGain);
+      curlV = curlField(vec3(pos * 0.3, p.z), oct, uLacunarity, uGain);
       n = length(curlV) * 0.5;
       isCurl = true;                                   // Velocity Field
     } else if (uType == 36) {
-      vec2 vel = curlField(vec3(p.xy * uScale * 0.3, p.z), oct, uLacunarity, uGain);
-      vec3 advP = vec3((p.xy - vel * 0.08) * uScale * 0.3, p.z);
+      vec2 vel = curlField(vec3(p.xy * 0.3, p.z), oct, uLacunarity, uGain);
+      vec3 advP = vec3((p.xy - vel * 0.08) * 0.3, p.z);
       float n1 = fbm(advP, oct, uLacunarity, uGain, 1);
-      float n2 = fbm(p * uScale * 0.3, oct, uLacunarity, uGain, 1);
+      float n2 = fbm(p * 0.3, oct, uLacunarity, uGain, 1);
       n = mix(n1, n2, 0.4);                            // Advection
     } else if (uType == 37) {
       float w = domainWarp(p, oct, uLacunarity, uGain);
-      n = 0.5 + 0.5 * sin(uScale * 1.5 * p.x + w * 6.0 + uTime * uSpeed * 0.3); // Marble
+      n = 0.5 + 0.5 * sin(1.5 * p.x + w * 6.0 + uTime * uSpeed * 0.3); // Marble
     }
 
     // ── Post-process ────────────────────────────────────────────────────────
