@@ -449,7 +449,7 @@ export function registerCoreParameters(ps) {
     min: -200, max: 200, value: 0, unit: '%' });
 
   // ── Noise BFG (Basis Function Generator) ─────────────────────────────────
-  ps.register({ id: 'noise.type', label: 'BasisType', group: 'noise',
+  ps.register({ id: 'noise.type', label: 'NoiseType', group: 'noise',
     type: PARAM_TYPE.SELECT,
     options: ['Value','Perlin','Simplex','Cellular-F1','Cellular-F2','Ridged','Curl','DomainWarp',
     'White','FilmGrain','Gaussian','TVStatic','ScanLines','SaltPepper',
