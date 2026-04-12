@@ -4120,9 +4120,12 @@ void main() {
     _dcRecorder = null;
     _dcStream   = null;
     _dcChunks   = [];
-    _dcBtn.textContent = 'Start Recording';
+    _dcBtn.textContent    = 'Start Recording';
+    _dcBtn.disabled       = false;
+    _dcSendBtn.disabled   = false;
     _dcStatus.textContent = '';
-    _dcNotes.value = '';
+    _dcStatus.style.color = 'var(--accent,#c8a020)';
+    _dcNotes.value        = '';
   }
 
   _dcClose.addEventListener('click', _dcClose2);
