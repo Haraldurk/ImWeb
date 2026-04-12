@@ -63,6 +63,9 @@ select {
     color: var(--text-0, #e8e8f0) !important;
     color-scheme: dark;
 }
+select:hover {
+    background-color: var(--bg-4, #26262e) !important;
+}
 option,
 optgroup {
     background-color: var(--bg-1, #111114) !important;
@@ -359,6 +362,10 @@ button {
 
 .panel-section {
     border-bottom: 1px solid var(--border);
+    resize: both;
+    overflow: auto;
+    min-width: 200px;
+    min-height: 100px;
 }
 
 .section-header {
@@ -372,10 +379,9 @@ button {
     text-transform: uppercase;
     user-select: none;
     cursor: pointer;
-}
-.section-header {
-    position: relative;
-    cursor: pointer;
+    position: sticky;
+    top: 0;
+    z-index: 1;
 }
 .section-header:hover {
     color: var(--text-1);
