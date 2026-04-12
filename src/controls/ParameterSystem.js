@@ -1678,6 +1678,24 @@ export function registerCoreParameters(ps) {
     unit: "%",
   });
   ps.register({
+    id: "scene3d.mat.displace",
+    label: "Displace",
+    group: "scene3d",
+    min: 0,
+    max: 2,
+    value: 0,
+    step: 0.01,
+  });
+  ps.register({
+    id: "scene3d.mat.dispScale",
+    label: "DispScale",
+    group: "scene3d",
+    min: 0.1,
+    max: 10,
+    value: 1.0,
+    step: 0.05,
+  });
+  ps.register({
     id: "scene3d.mat.envIntensity",
     label: "EnvInt",
     group: "lights3d",

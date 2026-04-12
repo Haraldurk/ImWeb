@@ -266,6 +266,8 @@ export class SceneManager {
       shader.uniforms.uBlobAmount = { value: 0 };
       shader.uniforms.uBlobScale  = { value: 1 };
       shader.uniforms.uBlobSpeed  = { value: 1 };
+      shader.uniforms.uDisplace   = { value: 0 };
+      shader.uniforms.uDispScale  = { value: 1 };
       shader.uniforms.uRimAmount  = { value: 0 };
       shader.uniforms.uRimColor   = { value: new THREE.Color(0xffffff) };
       mat._shader = shader;
@@ -277,6 +279,8 @@ export class SceneManager {
         uniform float uBlobAmount;
         uniform float uBlobScale;
         uniform float uBlobSpeed;
+        uniform float uDisplace;
+        uniform float uDispScale;
 
         float _bHash(vec3 p) {
           p = fract(p * vec3(127.1, 311.7, 74.7));
@@ -292,6 +296,12 @@ export class SceneManager {
             mix(mix(_bHash(i+vec3(0,0,1)), _bHash(i+vec3(1,0,1)), u.x),
                 mix(_bHash(i+vec3(0,1,1)), _bHash(i+vec3(1,1,1)), u.x), u.y), u.z
           ) * 2.0 - 1.0;
+        }
+        // fBm layered noise for richer displacement
+        float _dispNoise(vec3 p) {
+          return _bNoise(p)
+               + 0.5  * _bNoise(p * 2.0)
+               + 0.25 * _bNoise(p * 4.0);
         }
         ${shader.vertexShader}
       `
@@ -317,6 +327,10 @@ export class SceneManager {
           #endif
           float n = _bNoise(noisePos * uBlobScale + uTime * uBlobSpeed);
           transformed += objectNormal * n * uBlobAmount;
+        }
+        if (uDisplace > 0.0) {
+          float dn = _dispNoise(position * uDispScale);
+          transformed += objectNormal * dn * uDisplace;
         }`
       );
 
@@ -335,7 +349,7 @@ export class SceneManager {
         }`
       );
     };
-    mat.customProgramCacheKey = () => 'warpblobrim'; // unique cache key for custom shader
+    mat.customProgramCacheKey = () => 'warpblobrimdisp'; // unique cache key for custom shader
   }
 
   _rebuildMaterial(type) {
@@ -808,6 +822,25 @@ export class SceneManager {
           if (child.isMesh && child.material) {
             if (Array.isArray(child.material)) child.material.forEach(updateBlob);
             else updateBlob(child.material);
+          }
+        });
+      }
+
+      // Vertex displacement uniform updates
+      const displaceAmt   = p.get('scene3d.mat.displace')?.value  ?? 0;
+      const displaceScale = p.get('scene3d.mat.dispScale')?.value ?? 1;
+      const updateDisplace = (m) => {
+        if (m._shader) {
+          m._shader.uniforms.uDisplace.value  = displaceAmt;
+          m._shader.uniforms.uDispScale.value = displaceScale;
+        }
+      };
+      updateDisplace(this.material);
+      if (this._importedModelName && this.mesh) {
+        this.mesh.traverse(child => {
+          if (child.isMesh && child.material) {
+            if (Array.isArray(child.material)) child.material.forEach(updateDisplace);
+            else updateDisplace(child.material);
           }
         });
       }
