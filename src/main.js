@@ -4001,6 +4001,165 @@ void main() {
     navigator.serviceWorker.register('/sw.js').catch(() => {});
   }
 
+  // ── Dev Capture Modal (Ctrl+Cmd+C) ───────────────────────────────────────
+  // Sends screenshot + audio + state JSON to dev-catcher.js on :5174.
+  // Only active during development; harmless if :5174 is not running.
+
+  let _dcRecorder   = null;
+  let _dcChunks     = [];
+  let _dcStream     = null;
+  let _dcVisible    = false;
+
+  const _dcModal = document.createElement('div');
+  _dcModal.id = 'dev-capture-modal';
+  Object.assign(_dcModal.style, {
+    position:       'fixed',
+    bottom:         '24px',
+    left:           '50%',
+    transform:      'translateX(-50%)',
+    background:     'rgba(18,18,26,0.92)',
+    border:         '1px solid #3a3a50',
+    borderRadius:   '8px',
+    padding:        '12px 18px',
+    display:        'none',
+    alignItems:     'center',
+    gap:            '12px',
+    zIndex:         '99999',
+    fontFamily:     'monospace',
+    fontSize:       '12px',
+    color:          'var(--text-1, #e0e0f0)',
+    backdropFilter: 'blur(6px)',
+    boxShadow:      '0 4px 24px rgba(0,0,0,0.6)',
+    userSelect:     'none',
+  });
+
+  const _dcLabel  = document.createElement('span');
+  _dcLabel.textContent = 'Dev Capture';
+  _dcLabel.style.cssText = 'color:var(--text-2,#8888a0);font-size:11px;';
+
+  const _dcBtn    = document.createElement('button');
+  _dcBtn.textContent = 'Start Recording';
+  Object.assign(_dcBtn.style, {
+    background:   'var(--accent,#c8a020)',
+    color:        '#12121a',
+    border:       'none',
+    borderRadius: '4px',
+    padding:      '4px 12px',
+    cursor:       'pointer',
+    fontFamily:   'monospace',
+    fontSize:     '12px',
+    fontWeight:   '700',
+  });
+
+  const _dcStatus = document.createElement('span');
+  _dcStatus.style.cssText = 'color:var(--accent,#c8a020);font-size:11px;min-width:60px;';
+
+  const _dcClose  = document.createElement('button');
+  _dcClose.textContent = '✕';
+  Object.assign(_dcClose.style, {
+    background: 'transparent',
+    border:     'none',
+    color:      'var(--text-2,#8888a0)',
+    cursor:     'pointer',
+    fontFamily: 'monospace',
+    fontSize:   '14px',
+    padding:    '0 2px',
+  });
+
+  _dcModal.append(_dcLabel, _dcBtn, _dcStatus, _dcClose);
+  document.body.appendChild(_dcModal);
+
+  function _dcOpen() {
+    if (_dcVisible) return;
+    _dcVisible = true;
+    _dcModal.style.display = 'flex';
+    _dcBtn.textContent = 'Start Recording';
+    _dcStatus.textContent = '';
+  }
+
+  function _dcClose2() {
+    _dcVisible = false;
+    _dcModal.style.display = 'none';
+    if (_dcRecorder && _dcRecorder.state !== 'inactive') _dcRecorder.stop();
+    _dcStream?.getTracks().forEach(t => t.stop());
+    _dcRecorder = null;
+    _dcStream   = null;
+    _dcChunks   = [];
+    _dcBtn.textContent = 'Start Recording';
+    _dcStatus.textContent = '';
+  }
+
+  _dcClose.addEventListener('click', _dcClose2);
+
+  _dcBtn.addEventListener('click', async () => {
+    if (_dcBtn.textContent === 'Start Recording') {
+      // — Grab canvas snapshot immediately
+      const cvs = document.getElementById('output-canvas');
+      const imgDataUrl = cvs.toDataURL('image/png');
+
+      // — Capture current parameter state
+      const stateObj = {};
+      ps.getAll().forEach(p => { stateObj[p.id] = p.value; });
+
+      // — Start audio recording
+      try {
+        _dcStream  = await navigator.mediaDevices.getUserMedia({ audio: true });
+        _dcChunks  = [];
+        _dcRecorder = new MediaRecorder(_dcStream);
+        _dcRecorder.ondataavailable = e => { if (e.data.size > 0) _dcChunks.push(e.data); };
+
+        // Store snapshot + state on the recorder for use in onstop
+        _dcRecorder._imgDataUrl = imgDataUrl;
+        _dcRecorder._stateObj   = stateObj;
+
+        _dcRecorder.onstop = async () => {
+          _dcStatus.textContent = 'Sending…';
+          try {
+            const audioBlob = new Blob(_dcChunks, { type: 'audio/webm' });
+            const imgBlob   = await fetch(_dcRecorder._imgDataUrl).then(r => r.blob());
+            const stateBlob = new Blob(
+              [JSON.stringify(_dcRecorder._stateObj, null, 2)],
+              { type: 'application/json' }
+            );
+
+            const fd = new FormData();
+            fd.append('files', imgBlob,   'screenshot.png');
+            fd.append('files', audioBlob, 'audio.webm');
+            fd.append('files', stateBlob, 'state.json');
+
+            await fetch('http://localhost:5174/capture', { method: 'POST', body: fd });
+            _dcStatus.textContent = 'Saved!';
+            setTimeout(_dcClose2, 1500);
+          } catch (err) {
+            console.warn('[DevCapture] send failed:', err);
+            _dcStatus.textContent = 'Error :(';
+          }
+        };
+
+        _dcRecorder.start();
+        _dcBtn.textContent = 'Stop & Save';
+        _dcStatus.textContent = '● REC';
+        _dcStatus.style.color = '#e84040';
+      } catch (err) {
+        console.warn('[DevCapture] mic denied:', err);
+        _dcStatus.textContent = 'No mic';
+      }
+    } else {
+      // Stop recording — onstop handler fires async and sends
+      _dcStatus.style.color = 'var(--accent,#c8a020)';
+      _dcBtn.disabled = true;
+      _dcRecorder?.stop();
+      _dcStream?.getTracks().forEach(t => t.stop());
+    }
+  });
+
+  window.addEventListener('keydown', e => {
+    if (e.ctrlKey && e.metaKey && e.key === 'c') {
+      e.preventDefault();
+      _dcVisible ? _dcClose2() : _dcOpen();
+    }
+  });
+
   // Auto-load all clips from _imweb_ready/manifest.json on startup
   try {
     const res = await fetch('/_imweb_ready/manifest.json');
