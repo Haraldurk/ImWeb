@@ -10,6 +10,9 @@
     "prep-video": "node imweb-prep.js"
   },
   "dependencies": {
+    "cors": "^2.8.6",
+    "express": "^5.2.1",
+    "multer": "^2.1.1",
     "three": "^0.168.0"
   },
   "devDependencies": {

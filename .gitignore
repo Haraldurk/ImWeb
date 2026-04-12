@@ -157,3 +157,7 @@ _imweb_ready/*.webm
 _imweb_ready/*.mov
 _raw_videos/
 seamless_videos/
+
+# Brainstorm captures — heavy media, keep only the sentinel
+Brainstorms/*
+!Brainstorms/.gitkeep
