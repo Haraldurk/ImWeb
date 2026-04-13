@@ -513,7 +513,7 @@ export class SceneManager {
       this.gltfLoader.load(url, gltf => {
         const model = gltf.scene;
         model.traverse(child => {
-          if (child.isMesh && child.material) this._setupMaterial(child.material);
+          if (child.isMesh) child.material = this.material;
         });
         this._setupAnimations(model, gltf.animations, params);
         const pivot = this._wrapInPivot(model);
@@ -531,7 +531,7 @@ export class SceneManager {
     return new Promise((resolve, reject) => {
       this.objLoader.load(url, obj => {
         obj.traverse(child => {
-          if (child.isMesh && child.material) this._setupMaterial(child.material);
+          if (child.isMesh) child.material = this.material;
         });
         this._setupAnimations(null, [], null);
         const pivot = this._wrapInPivot(obj);
@@ -566,7 +566,7 @@ export class SceneManager {
       this.colladaLoader.load(url, collada => {
         const model = collada.scene;
         model.traverse(child => {
-          if (child.isMesh && child.material) this._setupMaterial(child.material);
+          if (child.isMesh) child.material = this.material;
         });
 
         // Wrap first so the pivot is the animation root
@@ -819,13 +819,6 @@ export class SceneManager {
         this.material.map = liveTex
           ? Object.assign(liveTex, { wrapS: THREE.RepeatWrapping, wrapT: THREE.RepeatWrapping })
           : null;
-      }
-
-      // If a texture source is active, override imported model materials with our pipeline-ready material
-      if (this._importedModelName && this.mesh && texSrcIdx > 0) {
-        this.mesh.traverse(child => {
-          if (child.isMesh) child.material = this.material;
-        });
       }
 
       // WarpMap displacement on UVs
