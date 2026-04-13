@@ -270,8 +270,10 @@ export class SceneManager {
       shader.uniforms.uDisplace    = { value: 0 };
       shader.uniforms.uDispScale   = { value: 1 };
       shader.uniforms.uDispSpeed   = { value: 0.5 };
-      shader.uniforms.uDispTexture = { value: this._fallback };
-      shader.uniforms.uDispTexMix  = { value: 0 };
+      shader.uniforms.uDispTexture  = { value: this._fallback };
+      shader.uniforms.uDispTexMix   = { value: 0 };
+      shader.uniforms.uDispTexScale = { value: 1 };
+      shader.uniforms.uDispTexProj  = { value: 0 };
       shader.uniforms.uRimAmount  = { value: 0 };
       shader.uniforms.uRimColor   = { value: new THREE.Color(0xffffff) };
       mat._shader = shader;
@@ -288,6 +290,8 @@ export class SceneManager {
         uniform float uDispSpeed;
         uniform sampler2D uDispTexture;
         uniform float uDispTexMix;
+        uniform float uDispTexScale;
+        uniform float uDispTexProj;
 
         float _bHash(vec3 p) {
           p = fract(p * vec3(127.1, 311.7, 74.7));
@@ -311,9 +315,13 @@ export class SceneManager {
                + 0.25 * _bNoise(p * 4.0);
         }
         // Mix procedural noise and live texture for displacement
-        float getDisplacement(vec3 pos, vec2 uv, vec3 tOff) {
+        float getDisplacement(vec3 pos, vec2 rawUv, vec3 tOff) {
+          vec4 clipPos  = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
+          vec2 screenUv = (clipPos.xy / clipPos.w) * 0.5 + 0.5;
+          vec2 finalUv  = mix(rawUv, screenUv, uDispTexProj);
+          finalUv = (finalUv - 0.5) * uDispTexScale + 0.5;
           float mathNoise = _dispNoise(pos * uDispScale + tOff);
-          float texVal    = texture2D(uDispTexture, uv).r * 2.0 - 1.0;
+          float texVal    = texture2D(uDispTexture, finalUv).r * 2.0 - 1.0;
           return mix(mathNoise, texVal, uDispTexMix);
         }
         ${shader.vertexShader}
@@ -866,18 +874,22 @@ export class SceneManager {
       }
 
       // Vertex displacement uniform updates
-      const displaceAmt    = p.get('scene3d.mat.displace')?.value    ?? 0;
-      const displaceScale  = p.get('scene3d.mat.dispScale')?.value   ?? 1;
-      const displaceSpeed  = p.get('scene3d.mat.dispSpeed')?.value   ?? 0.5;
-      const displaceTexMix = p.get('scene3d.mat.dispTexMix')?.value  ?? 0;
-      const dispTex        = inputs.dispTex ?? null;
+      const displaceAmt      = p.get('scene3d.mat.displace')?.value      ?? 0;
+      const displaceScale    = p.get('scene3d.mat.dispScale')?.value     ?? 1;
+      const displaceSpeed    = p.get('scene3d.mat.dispSpeed')?.value     ?? 0.5;
+      const displaceTexMix   = p.get('scene3d.mat.dispTexMix')?.value    ?? 0;
+      const displaceTexScale = p.get('scene3d.mat.dispTexScale')?.value  ?? 1;
+      const displaceTexProj  = p.get('scene3d.mat.dispTexProj')?.value   ?? 0;
+      const dispTex          = inputs.dispTex ?? null;
       const updateDisplace = (m) => {
         if (m._shader) {
-          m._shader.uniforms.uDisplace.value      = displaceAmt;
-          m._shader.uniforms.uDispScale.value     = displaceScale;
-          m._shader.uniforms.uDispSpeed.value     = displaceSpeed;
-          m._shader.uniforms.uDispTexture.value   = dispTex ?? this._fallback;
-          m._shader.uniforms.uDispTexMix.value    = displaceTexMix;
+          m._shader.uniforms.uDisplace.value       = displaceAmt;
+          m._shader.uniforms.uDispScale.value      = displaceScale;
+          m._shader.uniforms.uDispSpeed.value      = displaceSpeed;
+          m._shader.uniforms.uDispTexture.value    = dispTex ?? this._fallback;
+          m._shader.uniforms.uDispTexMix.value     = displaceTexMix;
+          m._shader.uniforms.uDispTexScale.value   = displaceTexScale;
+          m._shader.uniforms.uDispTexProj.value    = displaceTexProj;
         }
       };
       updateDisplace(this.material);

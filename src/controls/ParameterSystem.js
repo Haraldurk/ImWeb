@@ -1715,6 +1715,23 @@ export function registerCoreParameters(ps) {
     step: 0.01,
   });
   ps.register({
+    id: "scene3d.mat.dispTexScale",
+    label: "Disp. Tex Scale",
+    group: "scene3d",
+    min: 0.1,
+    max: 10,
+    value: 1,
+    step: 0.01,
+  });
+  ps.register({
+    id: "scene3d.mat.dispTexProj",
+    label: "Disp. Projection",
+    group: "scene3d",
+    type: PARAM_TYPE.SELECT,
+    options: ['UV (Skin)', 'Screen (Projector)'],
+    value: 0,
+  });
+  ps.register({
     id: "scene3d.mat.envIntensity",
     label: "EnvInt",
     group: "lights3d",
