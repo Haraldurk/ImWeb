@@ -4159,6 +4159,7 @@ void main() {
         screen: pipeline.prev.texture,
         draw: drawLayer.texture,
         buffer: stillsBuffer.texture,
+        noise: noiseTexture,
         warpMaps,
         dispTex: _resolveLayerTex(ps.get('layer.ds')?.value ?? 0),
       });

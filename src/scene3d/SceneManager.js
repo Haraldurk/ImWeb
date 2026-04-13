@@ -271,7 +271,7 @@ export class SceneManager {
       shader.uniforms.uDispScale   = { value: 1 };
       shader.uniforms.uDispSpeed   = { value: 0.5 };
       shader.uniforms.uDispTexture  = { value: this._fallback };
-      shader.uniforms.uDispTexMix   = { value: 0 };
+      shader.uniforms.uTDisplace    = { value: 0 };
       shader.uniforms.uDispTexScale = { value: 1 };
       shader.uniforms.uDispTexProj  = { value: 0 };
       shader.uniforms.uRimAmount  = { value: 0 };
@@ -289,7 +289,7 @@ export class SceneManager {
         uniform float uDispScale;
         uniform float uDispSpeed;
         uniform sampler2D uDispTexture;
-        uniform float uDispTexMix;
+        uniform float uTDisplace;
         uniform float uDispTexScale;
         uniform float uDispTexProj;
 
@@ -314,15 +314,15 @@ export class SceneManager {
                + 0.5  * _bNoise(p * 2.0)
                + 0.25 * _bNoise(p * 4.0);
         }
-        // Mix procedural noise and live texture for displacement
+        // Additive math noise + texture displacement (independent strengths)
         float getDisplacement(vec3 pos, vec2 rawUv, vec3 tOff) {
           vec4 clipPos  = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
           vec2 screenUv = (clipPos.xy / clipPos.w) * 0.5 + 0.5;
           vec2 finalUv  = mix(rawUv, screenUv, uDispTexProj);
           finalUv = (finalUv - 0.5) * uDispTexScale + 0.5;
-          float mathNoise = _dispNoise(pos * uDispScale + tOff);
-          float texVal    = texture2D(uDispTexture, finalUv).r * 2.0 - 1.0;
-          return mix(mathNoise, texVal, uDispTexMix);
+          float mathNoise = _dispNoise(pos * uDispScale + tOff) * uDisplace;
+          float texVal    = (texture2D(uDispTexture, finalUv).r * 2.0 - 1.0) * uTDisplace;
+          return mathNoise + texVal;
         }
         ${shader.vertexShader}
       `
@@ -349,10 +349,10 @@ export class SceneManager {
           float n = _bNoise(noisePos * uBlobScale + uTime * uBlobSpeed);
           transformed += objectNormal * n * uBlobAmount;
         }
-        if (uDisplace > 0.0) {
+        if (uDisplace > 0.0 || uTDisplace > 0.0) {
           vec3 _dispOff = vec3(uTime * uDispSpeed);
           float dn = getDisplacement(position, uv, _dispOff);
-          transformed += objectNormal * dn * uDisplace;
+          transformed += objectNormal * dn;
 
           // ── Finite-difference normal recalculation ──────────────────────
           float _eps   = 0.005;
@@ -365,8 +365,8 @@ export class SceneManager {
           // direction in texture space so texture-driven bumps produce correct normals
           vec3 _pA   = position + _tan  * _eps;
           vec3 _pB   = position + _btan * _eps;
-          vec3 _dispA = _pA + objectNormal * getDisplacement(_pA, uv + vec2(_uvEps, 0.0),   _dispOff) * uDisplace;
-          vec3 _dispB = _pB + objectNormal * getDisplacement(_pB, uv + vec2(0.0,   _uvEps), _dispOff) * uDisplace;
+          vec3 _dispA = _pA + objectNormal * getDisplacement(_pA, uv + vec2(_uvEps, 0.0),   _dispOff);
+          vec3 _dispB = _pB + objectNormal * getDisplacement(_pB, uv + vec2(0.0,   _uvEps), _dispOff);
           // New object-space normal via cross product of edge vectors
           vec3 _newON = normalize(cross(_dispA - transformed, _dispB - transformed));
           if (dot(_newON, objectNormal) < 0.0) _newON = -_newON;
@@ -877,7 +877,7 @@ export class SceneManager {
       const displaceAmt      = p.get('scene3d.mat.displace')?.value      ?? 0;
       const displaceScale    = p.get('scene3d.mat.dispScale')?.value     ?? 1;
       const displaceSpeed    = p.get('scene3d.mat.dispSpeed')?.value     ?? 0.5;
-      const displaceTexMix   = p.get('scene3d.mat.dispTexMix')?.value    ?? 0;
+      const tDisplaceAmt     = p.get('scene3d.mat.tDisplace')?.value      ?? 0;
       const displaceTexScale = p.get('scene3d.mat.dispTexScale')?.value  ?? 1;
       const displaceTexProj  = p.get('scene3d.mat.dispTexProj')?.value   ?? 0;
       const dispTex          = inputs.dispTex ?? null;
@@ -887,7 +887,7 @@ export class SceneManager {
           m._shader.uniforms.uDispScale.value      = displaceScale;
           m._shader.uniforms.uDispSpeed.value      = displaceSpeed;
           m._shader.uniforms.uDispTexture.value    = dispTex ?? this._fallback;
-          m._shader.uniforms.uDispTexMix.value     = displaceTexMix;
+          m._shader.uniforms.uTDisplace.value      = tDisplaceAmt;
           m._shader.uniforms.uDispTexScale.value   = displaceTexScale;
           m._shader.uniforms.uDispTexProj.value    = displaceTexProj;
         }

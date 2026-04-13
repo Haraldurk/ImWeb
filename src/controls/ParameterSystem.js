@@ -1680,7 +1680,16 @@ export function registerCoreParameters(ps) {
   });
   ps.register({
     id: "scene3d.mat.displace",
-    label: "Displace",
+    label: "Math Displace",
+    group: "scene3d",
+    min: 0,
+    max: 2,
+    value: 0,
+    step: 0.01,
+  });
+  ps.register({
+    id: "scene3d.mat.tDisplace",
+    label: "T-Displace",
     group: "scene3d",
     min: 0,
     max: 2,
@@ -1703,15 +1712,6 @@ export function registerCoreParameters(ps) {
     min: -5,
     max: 5,
     value: 0.5,
-    step: 0.01,
-  });
-  ps.register({
-    id: "scene3d.mat.dispTexMix",
-    label: "Disp. Tex Mix",
-    group: "scene3d",
-    min: 0,
-    max: 1,
-    value: 0,
     step: 0.01,
   });
   ps.register({
