@@ -2143,6 +2143,7 @@ async function main() {
     if (key === "scene3d") return scene3d.texture;
     if (key === "draw") return drawLayer.texture;
     if (key === "buffer") return stillsBuffer.texture;
+    if (key === "noise") return noiseTexture;
     if (key === "output") return pipeline.prev.texture;
     if (key === "seq1") return seq1.texture;
     if (key === "seq2") return seq2.texture;
