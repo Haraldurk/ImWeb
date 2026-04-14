@@ -1079,6 +1079,7 @@ export class StateDots {
     this.pm = presetManager;
     this.el = document.getElementById('state-dots');
     this.dots = [];
+    this._captureThumbFn = null; // injected from main.js
     this._build();
     this._wirePresetManager();
   }
@@ -1100,7 +1101,22 @@ export class StateDots {
 
       dot.addEventListener('contextmenu', e => {
         e.preventDefault();
-        this.pm.saveCurrentState(i).then(() => this._refresh());
+        this.pm.saveCurrentState(i).then(stateIdx => {
+          // Auto-capture thumbnail for the saved State
+          if (this._captureThumbFn) {
+            const bank = this.pm.presets[this.pm.currentIdx];
+            const idx = stateIdx ?? i;
+            if (bank?.states[idx]) {
+              bank.states[idx].thumbnail = this._captureThumbFn();
+              bank.save?.();
+              // Notify listeners (e.g. PresetsPanel) that state data updated
+              this.pm.dispatchEvent(new CustomEvent('stateSaved', {
+                detail: { presetIndex: this.pm.currentIdx, stateIndex: idx }
+              }));
+            }
+          }
+          this._refresh();
+        });
       });
 
       this.el.appendChild(dot);
@@ -1847,6 +1863,15 @@ export class PresetsPanel {
       nameSpan.title = 'Click to rename';
       nameSpan.addEventListener('click', () => this._startRename(nameSpan, state, bank));
       row.appendChild(nameSpan);
+
+      // Load button
+      const loadBtn = document.createElement('button');
+      loadBtn.className = 'import-btn';
+      loadBtn.textContent = '▶';
+      loadBtn.title = `Load State ${i}`;
+      loadBtn.style.cssText = 'padding:1px 6px;font-size:10px;flex-shrink:0;';
+      loadBtn.addEventListener('click', () => this.pm.recallState(i));
+      row.appendChild(loadBtn);
 
       this.el.appendChild(row);
     });

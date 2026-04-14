@@ -1243,8 +1243,9 @@ async function main() {
     return t.toDataURL("image/jpeg", 0.7);
   }
 
-  // Inject thumbnail capture function into PresetsPanel for State thumb clicks
+  // Inject thumbnail capture into PresetsPanel (manual thumb click) and StateDots (auto on save)
   presetsPanel._captureThumbFn = capturePresetThumb;
+  stateDots._captureThumbFn    = capturePresetThumb;
 
   // ── OSC bridge ────────────────────────────────────────────────────────────
   const oscBridge = new OSCBridge(ps, presetMgr);
@@ -1366,9 +1367,10 @@ async function main() {
     ioRow.style.cssText =
       "display:flex;gap:6px;padding:8px 10px 4px;flex-wrap:wrap;";
 
+    // Random State button — lives in the STATES section, above the list
     const btnRandomize = document.createElement("button");
     btnRandomize.className = "import-btn";
-    btnRandomize.textContent = "🎲 Randomize";
+    btnRandomize.textContent = "🎲 Random State";
     btnRandomize.title = "Randomize all continuous parameters";
     btnRandomize.addEventListener("click", () => {
       const SKIP = new Set([
@@ -1390,6 +1392,13 @@ async function main() {
         p.value = p.min + Math.random() * (p.max - p.min);
       });
     });
+    const statesListEl = document.getElementById('states-list');
+    if (statesListEl) {
+      const randRow = document.createElement("div");
+      randRow.style.cssText = "padding:4px 10px 0;";
+      randRow.appendChild(btnRandomize);
+      statesListEl.parentElement.insertBefore(randRow, statesListEl);
+    }
 
     // ImX import
     const btnImportImX = document.createElement("button");
@@ -1412,7 +1421,6 @@ async function main() {
     });
 
     ioRow.appendChild(btnImportImX);
-    ioRow.appendChild(btnRandomize);
     presetsSection.appendChild(ioRow);
 
     // Automation row
@@ -4337,13 +4345,13 @@ void main() {
       });
 
     document.addEventListener("click", (e) => {
-      if (!panel.contains(e.target) && e.target.id !== "btn-ai-settings") {
+      if (!panel.contains(e.target) && e.target.id !== "btn-ai-settings" && e.target.id !== "ai-settings-btn-inline") {
         panel.classList.add("hidden");
       }
     });
   })();
 
-  // ── Feature 1: AI Preset Generator ────────────────────────────────────────
+  // ── Feature 1: AI State Generator ─────────────────────────────────────────
   (() => {
     const container = document.getElementById("ai-preset-ui");
     if (!container) return;
@@ -4351,12 +4359,15 @@ void main() {
     container.innerHTML = `
       <div style="padding:8px 10px;display:flex;flex-direction:column;gap:6px;">
         <div style="font-size:10px;color:var(--text-2);font-family:var(--mono);">
-          Describe a visual mood or look:
+          AI State Generator — describe a visual mood or look:
         </div>
         <textarea id="ai-preset-input" class="ai-text-input"
           placeholder="e.g. slow organic ocean, aggressive glitch rhythm, dreamy feedback vortex…"
           rows="2"></textarea>
-        <button id="ai-preset-btn" class="import-btn">✦ Generate Preset</button>
+        <div style="display:flex;gap:4px;">
+          <button id="ai-preset-btn" class="import-btn" style="flex:1;">✦ Generate State</button>
+          <button id="ai-settings-btn-inline" class="import-btn" title="API Settings">⚙ API</button>
+        </div>
         <div id="ai-preset-result" class="ai-result hidden"></div>
       </div>
     `;
@@ -4402,10 +4413,15 @@ void main() {
           result.classList.remove("hidden");
           result.style.color = "var(--red, #e05)";
         } finally {
-          btn.textContent = "✦ Generate Preset";
+          btn.textContent = "✦ Generate State";
           btn.disabled = false;
         }
       });
+
+    document.getElementById("ai-settings-btn-inline")?.addEventListener("click", (e) => {
+      document.getElementById("ai-settings-panel")?.classList.toggle("hidden");
+      e.stopPropagation();
+    });
   })();
 
   // ── Feature 2: Parameter Narrator ─────────────────────────────────────────
