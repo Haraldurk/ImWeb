@@ -79,7 +79,7 @@ export class Preset {
   }
 
   addState(values, index = null, fxOrder = null) {
-    const ds = { values: { ...values }, created: Date.now() };
+    const ds = { values: { ...values }, created: Date.now(), name: null, thumbnail: null };
     if (fxOrder) ds.fxOrder = [...fxOrder];
     if (index !== null && index >= 0 && index < 128) {
       this.states[index] = ds;
@@ -221,7 +221,8 @@ export class PresetManager extends EventTarget {
 
     // Update UI
     document.getElementById('status-preset').textContent = p.name;
-    document.getElementById('preset-label').textContent  = p.name;
+    const _bankSel = document.getElementById('bank-select');
+    if (_bankSel) _bankSel.value = String(index);
 
     this.dispatchEvent(new CustomEvent('presetActivated', {
       detail: { index, preset: p }

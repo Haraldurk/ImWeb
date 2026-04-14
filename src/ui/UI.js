@@ -1799,70 +1799,130 @@ export class FeedbackOverlay {
   }
 }
 
-// ── Presets panel ─────────────────────────────────────────────────────────────
+// ── Project panel (States list + Bank selector) ───────────────────────────────
 
 export class PresetsPanel {
   constructor(presetManager) {
     this.pm = presetManager;
-    this.el = document.getElementById('presets-list');
+    this.el = document.getElementById('states-list');
+    this._captureThumbFn = null; // injected from main.js after construction
     this._build();
-    this._wireNav();
-    this.pm.addEventListener('presetActivated', () => this._refresh());
+    this._wireBankSelect();
+    this.pm.addEventListener('presetActivated', () => { this._build(); this._refreshBankSelect(); });
+    this.pm.addEventListener('stateSaved',      () => this._build());
+    this.pm.addEventListener('stateRecalled',   () => this._build());
   }
 
   _build() {
     if (!this.el) return;
     this.el.innerHTML = '';
-    this.pm.getAll().forEach((p, i) => {
+    const bank = this.pm.presets[this.pm.currentIdx];
+    if (!bank) return;
+    let hasAny = false;
+    bank.states.forEach((state, i) => {
+      if (!state) return;
+      hasAny = true;
       const row = document.createElement('div');
-      row.className = `preset-item ${i === this.pm.currentIdx ? 'active' : ''}`;
+      row.className = 'preset-item';
       row.dataset.idx = i;
 
-      const thumbEl = document.createElement('div');
-      thumbEl.className = 'preset-thumb';
-      if (p.thumbnail) {
-        thumbEl.style.backgroundImage = `url(${p.thumbnail})`;
-        thumbEl.classList.add('preset-thumb--has');
-      }
+      // Thumbnail — click to capture
+      const thumb = document.createElement('div');
+      thumb.className = 'preset-thumb' + (state.thumbnail ? ' preset-thumb--has' : '');
+      if (state.thumbnail) thumb.style.backgroundImage = `url(${state.thumbnail})`;
+      thumb.title = 'Click to capture thumbnail for this State';
+      thumb.addEventListener('click', () => this._captureStateThumb(i));
+      row.appendChild(thumb);
 
-      row.innerHTML = `<span class="preset-num">${i}</span><span class="preset-name">${p.name}</span>`;
-      row.insertBefore(thumbEl, row.firstChild);
+      // Index number
+      const num = document.createElement('span');
+      num.className = 'preset-num';
+      num.textContent = i;
+      row.appendChild(num);
 
-      row.addEventListener('dblclick', () => {
-        clearTimeout(row._timer); // prevent rename prompt from firing after dblclick
-        this.pm.activatePreset(i);
-      });
-      row.addEventListener('click', e => {
-        clearTimeout(row._timer);
-        row._timer = setTimeout(() => {
-          const newName = prompt('Rename preset:', p.name);
-          if (newName) { p.name = newName; this._refresh(); p.save(); }
-        }, 800);
-      });
-      row.addEventListener('mouseup', () => clearTimeout(row._timer));
+      // Name — click to rename inline
+      const nameSpan = document.createElement('span');
+      nameSpan.className = 'preset-name';
+      nameSpan.textContent = state.name || `State ${i}`;
+      nameSpan.title = 'Click to rename';
+      nameSpan.addEventListener('click', () => this._startRename(nameSpan, state, bank));
+      row.appendChild(nameSpan);
+
       this.el.appendChild(row);
     });
+    if (!hasAny) {
+      const empty = document.createElement('div');
+      empty.style.cssText = 'padding:8px 10px;font-size:11px;color:var(--text-2);';
+      empty.textContent = 'No states saved in this Bank.';
+      this.el.appendChild(empty);
+    }
   }
 
-  _refresh() {
-    if (!this.el) return;
-    this.el.querySelectorAll('.preset-item').forEach((row, i) => {
-      row.classList.toggle('active', i === this.pm.currentIdx);
-      const p = this.pm.presets[i];
-      if (!p) return;
-      row.querySelector('.preset-name').textContent = p.name;
-      const thumb = row.querySelector('.preset-thumb');
-      if (thumb && p.thumbnail) {
-        thumb.style.backgroundImage = `url(${p.thumbnail})`;
-        thumb.classList.add('preset-thumb--has');
+  _startRename(span, state, bank) {
+    const origName = state.name || span.textContent;
+    const inp = document.createElement('input');
+    inp.type = 'text';
+    inp.className = 'preset-name-input';
+    inp.value = origName;
+    span.replaceWith(inp);
+    inp.focus(); inp.select();
+    let committed = false;
+    const commit = () => {
+      if (committed) return;
+      committed = true;
+      state.name = inp.value.trim() || origName;
+      bank.save?.();
+      this._build();
+    };
+    inp.addEventListener('blur', commit);
+    inp.addEventListener('keydown', e => {
+      if (e.key === 'Enter') { e.preventDefault(); inp.blur(); }
+      if (e.key === 'Escape') {
+        committed = true; // prevent blur commit
+        this._build();
       }
     });
   }
 
-  _wireNav() {
-    document.getElementById('btn-preset-prev')?.addEventListener('click', () => this.pm.prevPreset());
-    document.getElementById('btn-preset-next')?.addEventListener('click', () => this.pm.nextPreset());
+  _captureStateThumb(stateIdx) {
+    if (!this._captureThumbFn) return;
+    const thumb = this._captureThumbFn();
+    const bank = this.pm.presets[this.pm.currentIdx];
+    if (bank?.states[stateIdx]) {
+      bank.states[stateIdx].thumbnail = thumb;
+      bank.save?.();
+      this._build();
+    }
   }
+
+  _wireBankSelect() {
+    const sel = document.getElementById('bank-select');
+    if (!sel) return;
+    // Populate options
+    this.pm.getAll().forEach((p, i) => {
+      const opt = document.createElement('option');
+      opt.value = i;
+      opt.textContent = p.name || `Bank ${i}`;
+      sel.appendChild(opt);
+    });
+    sel.value = String(this.pm.currentIdx);
+    sel.addEventListener('change', () => {
+      this.pm.activatePreset(parseInt(sel.value));
+    });
+  }
+
+  _refreshBankSelect() {
+    const sel = document.getElementById('bank-select');
+    if (!sel) return;
+    // Update option labels (names may have changed) and current selection
+    this.pm.getAll().forEach((p, i) => {
+      if (sel.options[i]) sel.options[i].textContent = p.name || `Bank ${i}`;
+    });
+    sel.value = String(this.pm.currentIdx);
+  }
+
+  // Kept for compatibility with main.js callsites that call _refresh()
+  _refresh() { this._build(); this._refreshBankSelect(); }
 }
 
 // ── Tables editor ────────────────────────────────────────────────────────────

@@ -83,7 +83,7 @@
         <button class="tab" data-tab="text">Text</button>
         <button class="tab" data-tab="scene3d">3D</button>
         <button class="tab" data-tab="clips">Clips</button>
-        <button class="tab" data-tab="presets">Presets</button>
+        <button class="tab" data-tab="presets">Project</button>
         <button class="tab" data-tab="tables">Tables</button>
         <button class="tab" data-tab="glsl">GLSL</button>
       </div>
@@ -305,24 +305,32 @@
         </div>
       </div>
 
-      <!-- PRESETS TAB -->
+      <!-- PROJECT TAB -->
       <div id="tab-presets" class="tab-content">
+
+        <!-- 1. PROJECT — file import/export + AI generator -->
         <div class="panel-section">
-          <div class="section-header">Project File</div>
+          <div class="section-header">Project</div>
           <div id="project-file-ui"></div>
-        </div>
-        <div class="panel-section">
-          <div class="section-header">AI Preset Generator</div>
           <div id="ai-preset-ui"></div>
         </div>
-        <div class="panel-section">
-          <div class="section-header">Presets</div>
-          <div style="display:flex;gap:4px;padding:4px 10px;">
-            <button id="btn-save-preset" title="Save controllers to current preset">💾 Save Preset</button>
-            <button id="btn-save-state" title="Save current values as a Display State">📌 Save State</button>
-          </div>
-          <div id="presets-list"></div>
+
+        <!-- 2. BANKS — Randomize / Import .imx / Automation (appended by main.js) -->
+        <div id="banks-section" class="panel-section">
+          <div class="section-header">Banks</div>
         </div>
+
+        <!-- 3. STATES — list of States in current Bank (built by PresetsPanel) -->
+        <div class="panel-section">
+          <div class="section-header">States</div>
+          <div id="states-list"></div>
+        </div>
+
+        <!-- 4. STATE STEP SEQUENCER (controls appended by main.js) -->
+        <div id="state-seq-section" class="panel-section">
+          <div class="section-header">State Step Sequencer</div>
+        </div>
+
       </div>
 
       <!-- TABLES TAB -->
@@ -391,9 +399,7 @@ void main() {
       <!-- 128 dots built by StateDots.js -->
     </div>
     <div id="preset-nav">
-      <button id="btn-preset-prev" title="Previous preset (−)">−</button>
-      <span id="preset-label">Preset 0</span>
-      <button id="btn-preset-next" title="Next preset (+)">+</button>
+      <select id="bank-select" class="param-select" title="Select Bank"></select>
     </div>
   </div>
 

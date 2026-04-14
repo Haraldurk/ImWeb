@@ -1243,29 +1243,8 @@ async function main() {
     return t.toDataURL("image/jpeg", 0.7);
   }
 
-  document
-    .getElementById("btn-save-preset")
-    ?.addEventListener("click", async () => {
-      await presetMgr.saveCurrentPreset(capturePresetThumb());
-      presetsPanel._refresh();
-      const btn = document.getElementById("btn-save-preset");
-      const orig = btn.textContent;
-      btn.textContent = "✓ Saved";
-      setTimeout(() => {
-        btn.textContent = orig;
-      }, 1200);
-    });
-  document
-    .getElementById("btn-save-state")
-    ?.addEventListener("click", async () => {
-      const idx = await presetMgr.saveCurrentState();
-      const btn = document.getElementById("btn-save-state");
-      const orig = btn.textContent;
-      btn.textContent = `✓ State ${idx}`;
-      setTimeout(() => {
-        btn.textContent = orig;
-      }, 1200);
-    });
+  // Inject thumbnail capture function into PresetsPanel for State thumb clicks
+  presetsPanel._captureThumbFn = capturePresetThumb;
 
   // ── OSC bridge ────────────────────────────────────────────────────────────
   const oscBridge = new OSCBridge(ps, presetMgr);
@@ -1380,9 +1359,7 @@ async function main() {
   })();
 
   (() => {
-    const presetsSection = document.querySelector(
-      "#tab-presets .panel-section:last-of-type",
-    );
+    const presetsSection = document.getElementById('banks-section');
     if (!presetsSection) return;
 
     const ioRow = document.createElement("div");
@@ -1505,16 +1482,12 @@ async function main() {
     autoRow2.appendChild(btnAutoInfo);
     presetsSection.appendChild(autoRow2);
 
-    // ── Step Sequencer ──────────────────────────────────────────────────────
-    const seqHeader = document.createElement("div");
-    seqHeader.style.cssText =
-      "font-family:var(--mono);font-size:10px;color:var(--text-2);padding:8px 10px 4px;text-transform:uppercase;letter-spacing:0.1em;";
-    seqHeader.textContent = "Step Sequencer";
-    presetsSection.appendChild(seqHeader);
+    // ── State Step Sequencer ─────────────────────────────────────────────────
+    const stateSeqSection = document.getElementById('state-seq-section');
 
     const seqControlRow = document.createElement("div");
     seqControlRow.style.cssText =
-      "display:flex;gap:4px;padding:0 10px 4px;align-items:center;flex-wrap:wrap;";
+      "display:flex;gap:4px;padding:4px 10px;align-items:center;flex-wrap:wrap;";
 
     const btnSeqPlay = document.createElement("button");
     btnSeqPlay.className = "import-btn";
@@ -1566,13 +1539,13 @@ async function main() {
     seqControlRow.appendChild(btnSeqPlay);
     seqControlRow.appendChild(seqRateSel);
     seqControlRow.appendChild(seqStepsSel);
-    presetsSection.appendChild(seqControlRow);
+    stateSeqSection.appendChild(seqControlRow);
 
     // Step grid
     const seqGrid = document.createElement("div");
     seqGrid.style.cssText =
       "display:flex;flex-wrap:wrap;gap:3px;padding:4px 10px 8px;";
-    presetsSection.appendChild(seqGrid);
+    stateSeqSection.appendChild(seqGrid);
 
     function buildSeqGrid() {
       seqGrid.innerHTML = "";
