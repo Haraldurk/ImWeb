@@ -6,7 +6,7 @@
 
 Real-time video compositing, 3D scene integration, and a complete parameter/controller mapping system — all in a Progressive Web App.
 
-Current version: **v0.6.0**
+Current version: **v0.61.0**
 
 ---
 
@@ -183,9 +183,14 @@ src/
 - [x] Output resolution — Fit / 540p / 720p / 1080p / Half
 - [x] WebM recording
 - [x] Non-realtime frame capture — 📷 pauses render loop; Step Frame / Auto-Run exports numbered PNG sequence
-- [x] Cmd+S quick-save preset
-- [x] Presets + 128 Display States per preset (IndexedDB)
-- [x] Factory demo presets — 5 camera-free presets load on first launch
+
+### Project & State Management
+- [x] **Project > Bank > State Hierarchy** — standard live performance mental model
+- [x] **Project Files (.imweb)** — export/import entire gig sessions
+- [x] **Banks** — Switch between groups of 64 states via the bottom right dropdown
+- [x] **States (Snapshots)** — 64 visual states per Bank, saved via right-clicking the bottom dots (auto-thumbnails!)
+- [x] **AI State Generator** — LLM-driven parameter patching ("make a slow organic ocean")
+- [x] **Factory Banks** — Human-editable `factory-banks.json` defaults
 
 ### UI
 - [x] Signal path display — float or dock
