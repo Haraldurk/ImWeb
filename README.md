@@ -60,7 +60,7 @@ INPUT SOURCES
 | `T` | Tap tempo |
 | `?` | Keyboard help overlay |
 | `/` | Parameter search overlay |
-| `0–9` | Recall Display States 0–9 |
+| `0–9` | Recall States 0–9 |
 | `Shift+1–8` | Select movie clip 1–8 |
 | `Cmd/Ctrl+F` | Fullscreen output |
 | `Cmd/Ctrl+S` | Quick-save current preset |
@@ -185,7 +185,7 @@ src/
 - [x] Non-realtime frame capture — 📷 pauses render loop; Step Frame / Auto-Run exports numbered PNG sequence
 
 ### Project & State Management
-- [x] **Project > Bank > State Hierarchy** — standard live performance mental model
+- [x] **Program > Bank > State Hierarchy** — standard live performance mental model
 - [x] **Project Files (.imweb)** — export/import entire gig sessions
 - [x] **Banks** — Switch between groups of 64 states via the bottom right dropdown
 - [x] **States (Snapshots)** — 64 visual states per Bank, saved via right-clicking the bottom dots (auto-thumbnails!)

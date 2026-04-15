@@ -1,3 +1,13 @@
+// ImWeb — Image/ine in the Browser
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) 2024–2026 Haraldur Karlsson
+//
+// Dedicated to Tom Demeyer (Image/ine, STEIM Amsterdam)
+// and Steina Vasulka.
+//
+// This program is free software under the GNU Affero General
+// Public License v3 or later. See LICENSE for details.
+
 /**
  * ImWeb — main.js
  * Application bootstrap. Initializes all subsystems and starts the render loop.

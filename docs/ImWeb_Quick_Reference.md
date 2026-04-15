@@ -98,16 +98,17 @@ Right-click any parameter row to assign.
 
 ---
 
-## Preset System
+## Program / Bank / State
 
 | Concept | Description |
 |---------|-------------|
-| **Preset (0–127)** | Full parameter snapshot + thumbnail |
-| **Display State (0–9)** | 10 sub-states per preset (recall with `0–9`) |
-| **Morph** | Smooth crossfade between presets over N seconds |
-| **MIDI PC** | Program Change 0–127 → preset 0–127 |
+| **Program** | The active performance patch; corresponds to one Bank |
+| **Bank** | Group of 64 States; switch via the Bank dropdown |
+| **State** | Full parameter snapshot + thumbnail (recall with `0–9`) |
+| **Morph** | Smooth crossfade between Banks over N seconds |
+| **MIDI PC** | Program Change 0–127 → Bank 0–127 |
 | **Quick save** | `Cmd+S` |
-| **Project file** | `.imweb` = all presets + tables + warp maps |
+| **Project file** | `.imweb` = all Banks + tables + warp maps |
 
 ---
 
@@ -134,8 +135,8 @@ Right-click any parameter row to assign.
 
 | Key | Action |
 |-----|--------|
-| `0–9` | Recall Display State |
-| `+` / `−` | Next / previous preset |
+| `0–9` | Recall State |
+| `+` / `−` | Next / previous Bank |
 | `Shift+1–8` | Select movie clip |
 | `/` | Parameter search |
 | `?` | Keyboard help |

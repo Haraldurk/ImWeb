@@ -15,7 +15,7 @@
 4. [Input Sources](#4-input-sources)
 5. [Signal Path & Effects](#5-signal-path--effects)
 6. [Controller Mapping System](#6-controller-mapping-system)
-7. [Preset & State Management](#7-preset--state-management)
+7. [Program / Bank / State](#7-program--bank--state)
 8. [Output & Recording](#8-output--recording)
 9. [Advanced Features](#9-advanced-features)
 10. [Keyboard Shortcuts Reference](#10-keyboard-shortcuts-reference)
@@ -70,8 +70,8 @@ Open Chrome at `localhost:5173`. On first load:
 |---------|----------|
 | App name | "ImWeb" — click for version info |
 | FPS / CPU / VRAM | Live performance monitor |
-| Preset indicator | Current preset number (0–127) |
-| State indicator | Current Display State (0–9) |
+| Bank indicator | Current Bank number |
+| State indicator | Current State |
 | BPM display | Current tempo; click = tap tempo, right-click = toggle MIDI clock sync |
 | MIDI dot | Flashes on incoming CC/Note |
 | OSC dot | WebSocket OSC bridge status |
@@ -108,7 +108,7 @@ Open Chrome at `localhost:5173`. On first load:
 | **Text** | Text layer content and formatting |
 | **3D** | 3D scene, geometry, import, material, camera |
 | **Clips** | Movie clip library and playback controls |
-| **Presets** | Preset/state list, save/load, automation, step sequencer |
+| **Program** | Bank/state list, save/load, automation, step sequencer |
 | **Tables** | Response curve editor |
 | **GLSL** | Live shader code editor |
 
@@ -891,33 +891,33 @@ Built-in presets: Linear, Logarithmic, Exponential, S-curve, Step.
 
 ---
 
-## 7. Preset & State Management
+## 7. Program / Bank / State
 
-### Presets (0–127)
+### Banks
 
-A preset stores a complete snapshot of all parameter values.
+A Bank stores a complete snapshot of all parameter values.
 
 | Action | How |
 |--------|-----|
-| Save preset | Presets tab → "Save Preset" button |
-| Load preset | Click preset card, or `+` / `−` keys |
+| Save Bank | Program tab → "Save Bank" button |
+| Load Bank | Click Bank card, or `+` / `−` keys |
 | Quick-save | `Cmd+S` |
-| Name preset | Click the name field in Presets tab |
+| Name Bank | Click the name field in Program tab |
 
 Thumbnails (160×90 JPEG) are captured from the output canvas when saving.
 
-MIDI Program Change messages (PC 0–127) recall presets 0–127 automatically.
+MIDI Program Change messages (PC 0–127) recall Banks 0–127 automatically.
 
 ---
 
-### Display States (0–9)
+### States
 
-Each preset has 10 sub-states. Useful for variations within a preset (e.g. different camera speeds, colour variations).
+Each Bank has 64 States. Useful for variations within a Bank (e.g. different camera speeds, colour variations).
 
 | Action | How |
 |--------|-----|
-| Save state | "Save State" button in Presets tab |
-| Recall state | Keys `0`–`9` |
+| Save State | "Save State" button in Program tab |
+| Recall State | Keys `0`–`9` |
 
 ---
 
@@ -945,20 +945,20 @@ Smooth crossfade interpolates all continuous parameters simultaneously.
 
 ### Project Files (.imweb)
 
-Full session export: all 128 presets, tables, warp maps, settings.
+Full session export: all Banks, tables, warp maps, settings.
 
 | Action | Key | Description |
 |--------|-----|-------------|
 | Export | Cmd+E | Save `.imweb` to disk |
 | Import | Cmd+O | Restore session from `.imweb` |
 
-Also available via buttons in the Presets tab.
+Also available via buttons in the Program tab.
 
 ---
 
 ### Legacy Import (.imx)
 
-Import preset files from the original Image/ine format. Best-effort parameter mapping. Button in Presets tab.
+Import Bank files from the original Image/ine format. Best-effort parameter mapping. Button in Program tab.
 
 ---
 
@@ -1119,9 +1119,9 @@ Click the ⊞ button in any section header to detach it as a floating panel. Dra
 |-----|--------|
 | `T` | Tap tempo |
 | `H` | Fade to black (toggle) |
-| `0–9` | Recall Display State 0–9 |
-| `+` / `−` | Next / previous preset |
-| `Cmd+S` | Quick-save current preset |
+| `0–9` | Recall State 0–9 |
+| `+` / `−` | Next / previous Bank |
+| `Cmd+S` | Quick-save current Bank |
 | `Cmd+E` | Export `.imweb` project |
 | `Cmd+O` | Import `.imweb` project |
 | `Shift+Esc` | Reset all parameters to defaults |

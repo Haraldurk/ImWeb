@@ -11,7 +11,7 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
 ## [0.61.0] — 2026-04-14
 
 ### Added
-- **Project > Bank > State Hierarchy:** Completely overhauled the UI and mental model to standard performance software hierarchy. "Presets" are now "Banks", and "Display States" are now "States".
+- **Program > Bank > State Hierarchy:** Completely overhauled the UI and mental model to standard performance software hierarchy. "Presets" are now "Banks", and "Display States" are now "States".
 - **Factory Banks JSON:** Engine now fetches default setups from `public/factory-banks.json` instead of relying on hardcoded JavaScript arrays, making them human-readable and easily editable.
 - **Auto-Thumbnailing:** Right-clicking a bottom menu dot to save a State now automatically captures the canvas and attaches a thumbnail to the State in the sidebar.
 - **Sidebar State Management:** The sidebar now lists all 64 States in the active Bank. Users can click a State name to rename it, or click the `▶` button to load it directly from the list.
@@ -19,8 +19,8 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
 - **AI State Generator Polish:** Renamed from "AI Preset Generator", moved into the Project tab, and added a quick-access `⚙ API Settings` button.
 
 ### Changed
-- **UI Tab Renamed:** The "Presets" tab is now the "Project" tab.
-- **Section Reorganization:** Side panel sections are logically ordered top-to-bottom: `PROJECT`, `BANKS`, `STATES`, `STATE STEP SEQUENCER`.
+- **UI Tab Renamed:** The "Presets" tab is now the "Program" tab.
+- **Section Reorganization:** Side panel sections are logically ordered top-to-bottom: `PROGRAM`, `BANKS`, `STATES`, `STATE STEP SEQUENCER`.
 - **Randomize Button:** Moved from the Banks section to the States section (as randomizing generates a new State, not a Bank).
 
 ### Added
