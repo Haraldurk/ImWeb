@@ -1243,12 +1243,12 @@ export const PIXEL_SORT = /* glsl */ `
     }
 
     // Sample a window of ±N/2 pixels and find the sorted replacement
-    int half = int(uLength * 0.5);
+    int halfLen = int(uLength * 0.5);
     vec4 best = src;
     float bestL = uMode < 0.5 ? -1.0 : 2.0; // looking for max (mode=0) or min (mode=1)
 
     for (int i = -128; i <= 128; i++) {
-      if (i < -half || i > half) continue;
+      if (i < -halfLen || i > halfLen) continue;
       vec2 uv2 = vUv + float(i) * step;
       if (uv2.x < 0.0 || uv2.x > 1.0 || uv2.y < 0.0 || uv2.y > 1.0) continue;
       vec4 s  = texture2D(uTexture, uv2);

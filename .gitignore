@@ -161,3 +161,15 @@ seamless_videos/
 # Brainstorm captures — heavy media, keep only the sentinel
 Brainstorms/*
 !Brainstorms/.gitkeep
+
+# Ignore heavy video work folders and loose video files
+_raw_videos/
+_imweb_ready/
+*.mp4
+*.webm
+*.mov
+
+# BUT allow the factory assets to be committed to GitHub!
+!public/assets/*.mp4
+!public/assets/*.webm
+!public/assets/*.mov
