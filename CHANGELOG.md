@@ -6,6 +6,19 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
 
 ---
 
+## [0.8.0] — 2026-04-16
+
+### Added
+- **N-D Hypercube engine (4D–12D)** — 60fps performance at 12D; vertex/edge generation, Givens projection, morph state machine with 5 easing functions; permanent Float32/Float64 buffers with zero per-frame allocation; `_colorsDirty` GPU gate; `MAX_DIM` draw range; circular points shader; vertex pub/sub
+- **Hypercube UI** — dimension pills, collapsible rotation tiers, deferred DOM rebuild on morph
+
+### Fixed
+- Color offset and morph doubling issues
+- JS heap leaks and redundant GPU uploads
+- Missing edges and morph freeze bugs
+
+---
+
 ## [Unreleased] — Noise System Overhaul (D1)
 
 ## [0.61.0] — 2026-04-14

@@ -181,11 +181,13 @@ AFTER: git add [files] && git commit -m "[message]" && git push
 
 ---
 
-## Current version: 0.7.0
+## Current version: 0.8.0
 
 See CHANGELOG.md for full history.
 
-### Completed through Phase 5 (current)
+### Completed through Phase 6 (current)
+- **N-D Hypercube engine (4D–12D)** — 60fps at 12D; vertex/edge generation, Givens projection, morph state machine, 5 easing functions; permanent Float32/Float64 buffers, zero per-frame allocation, `_colorsDirty` GPU gate, `MAX_DIM` draw range, circular points shader, vertex pub/sub
+- **Hypercube UI** — dimension pills, collapsible rotation tiers, deferred DOM rebuild on morph
 - Full signal chain: 23+ sources, 20+ effect passes
 - All ImOs9 features restored (WarpMap with interactive brush editor,
   Tables 16k, ExternalMapping, Sequencers ×3, FrameSelect, TransferMode 22 modes, rand1/2/3)
@@ -218,7 +220,7 @@ See CHANGELOG.md for full history.
 - **VASULKA_WARP shader**: exists in Pipeline, hidden from signal path and UI until wired
   to a proper effect slot with a UI section.
 
-### Remaining (Phase 5 / Phase 6)
+### Remaining (Phase 6)
 - [ ] Factory demo presets (4–6, no camera required; startup loads preset 0)
 - [ ] First-visit onboarding overlay (what this is, 3 gestures, link to manual; localStorage dismiss flag)
 - [ ] Keyboard shortcut lock toggle (status bar button; blocks 0–9/letter keys when typing in fields)
@@ -308,6 +310,18 @@ After `gemini` exits (success, error, or Ctrl+C) the trap fires `restore_gitigno
 > **AGENT RULE — DO NOT VIOLATE**
 >
 > **No AI agent may modify, refactor, disable, rename, or interfere with any part of the Dev Capture pipeline** (the `_dc*` block in `src/main.js`, `dev-catcher.js`, `process-ideas.sh`, or the `Brainstorms/` directory layout) **without explicit written permission from the project owner in the same conversation.** This includes "cleanup", "simplification", or "improvement" passes. The pipeline is intentionally minimal and must remain exactly as-is unless the owner requests a specific change.
+
+---
+
+## Session Log
+
+### 2026-04-16
+- feat(scene3d): N-D Hypercube engine (4D–12D), 60fps at 12D
+- HypercubeGeometry.js: vertex/edge generation, Givens projection, morph state machine, 5 easing functions
+- HypercubeObject.js: Three.js wrapper, permanent Float32/Float64 buffers, zero per-frame allocation, _colorsDirty GPU gate, MAX_DIM draw range, circular points shader, vertex pub/sub
+- HypercubeUI.js: dimension pills, collapsible rotation tiers, deferred DOM rebuild on morph
+- SceneManager.js: createHypercube(), update integration
+- 7 fix sessions: color offset, morph doubling, JS heap leak, GPU upload waste, missing edges, morph freeze
 
 ---
 
