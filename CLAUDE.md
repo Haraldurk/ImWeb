@@ -181,11 +181,12 @@ AFTER: git add [files] && git commit -m "[message]" && git push
 
 ---
 
-## Current version: 0.8.2
+## Current version: 0.8.3
 
 See CHANGELOG.md for full history.
 
 ### Completed through Phase 6 (current)
+- **Hypercube 2-cell face rendering (Session 1)** — `InstancedMesh` plane faces, centroid/normal tracking, `generate2CellFaces` N-D logic
 - **Real screen-space hypercube edge width** — quad `Mesh` edges, screen-space extrusion shader, `uResolution` sync, 0.5–8.0 px width
 - **Hypercube edge width shader (Session 1)** — `ShaderMaterial` on edges, `uEdgeWidth` uniform (0.5–8.0), `hypercube.edgeWidth` param and UI slider
 - **N-D Hypercube engine (4D–12D)** — 60fps at 12D; vertex/edge generation, Givens projection, morph state machine, 5 easing functions; permanent Float32/Float64 buffers, zero per-frame allocation, `_colorsDirty` GPU gate, `MAX_DIM` draw range, circular points shader, vertex pub/sub
@@ -316,6 +317,18 @@ After `gemini` exits (success, error, or Ctrl+C) the trap fires `restore_gitigno
 ---
 
 ## Session Log
+
+### 2026-04-16 (Session 4)
+- feat(hypercube): 2-cell face rendering — Session 1 complete
+- Added generate2CellFaces(dim) to HypercubeGeometry.js
+  Returns { corners:[i,i,i,i], axisA, axisB } for all C(dim,2)*2^(dim-2) faces
+- Added HypercubeFaces.js (new file)
+  InstancedMesh of PlaneGeometry(1,1), additive white material
+  update() culls by axis/vertex count, computes centroid, size, normal per frame
+  Module-level _zUp/_zAxis/_zeroMatrix avoid per-frame allocation
+- Wired into HypercubeObject.js (4 lines: import, construct, update, dispose)
+- 4D renders 24 faces correctly, rotating with the hypercube
+- Session 2: setFaceTexture(), pipeline texture assignment, opacity/active params
 
 ### 2026-04-16 (Session 3)
 - feat(hypercube): real screen-space edge width (commits 9823e07, a4a5fdb)
