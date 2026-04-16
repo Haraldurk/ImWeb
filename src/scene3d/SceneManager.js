@@ -999,6 +999,29 @@ export class SceneManager {
       this.material.map = null;
       this.material.needsUpdate = true;
     }
+    // Null pipeline-sourced shader uniforms before render passes to prevent feedback loop.
+    // inputs.dispTex can resolve to scene3d.texture (this.target.texture) — reading from
+    // and writing to the same RenderTarget in one draw call triggers GL_INVALID_OPERATION.
+    const _savedDispTex = this.material?._shader?.uniforms.uDispTexture?.value ?? null;
+    const _savedWarpMap = this.material?._shader?.uniforms.uWarpMap?.value ?? null;
+    if (this.material?._shader?.uniforms.uDispTexture) this.material._shader.uniforms.uDispTexture.value = this._fallback;
+    if (this.material?._shader?.uniforms.uWarpMap)     this.material._shader.uniforms.uWarpMap.value     = this._fallback;
+    const _savedSubMats = [];
+    if (this._importedModelName && this.mesh) {
+      this.mesh.traverse(child => {
+        if (child.isMesh && child.material) {
+          const mats = Array.isArray(child.material) ? child.material : [child.material];
+          for (const m of mats) {
+            if (!m._shader) continue;
+            const disp = m._shader.uniforms.uDispTexture?.value ?? null;
+            const warp = m._shader.uniforms.uWarpMap?.value ?? null;
+            if (m._shader.uniforms.uDispTexture) m._shader.uniforms.uDispTexture.value = this._fallback;
+            if (m._shader.uniforms.uWarpMap)     m._shader.uniforms.uWarpMap.value     = this._fallback;
+            _savedSubMats.push({ m, disp, warp });
+          }
+        }
+      });
+    }
     const prev = this.renderer.getRenderTarget();
 
     // Color pass
@@ -1019,6 +1042,13 @@ export class SceneManager {
     if (this.material && _savedMaterialMap) {
       this.material.map = _savedMaterialMap;
       this.material.needsUpdate = true;
+    }
+    // Restore pipeline-sourced shader uniforms
+    if (this.material?._shader?.uniforms.uDispTexture) this.material._shader.uniforms.uDispTexture.value = _savedDispTex;
+    if (this.material?._shader?.uniforms.uWarpMap)     this.material._shader.uniforms.uWarpMap.value     = _savedWarpMap;
+    for (const { m, disp, warp } of _savedSubMats) {
+      if (m._shader?.uniforms.uDispTexture) m._shader.uniforms.uDispTexture.value = disp;
+      if (m._shader?.uniforms.uWarpMap)     m._shader.uniforms.uWarpMap.value     = warp;
     }
   }
 
