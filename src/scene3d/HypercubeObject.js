@@ -81,6 +81,7 @@ export class HypercubeObject {
     // Edge/point colors only change on dim, edgeOpacity or morph events — flag
     // gates color writes + GPU upload to skip ~half the per-frame bandwidth.
     this._colorsDirty = true;
+    this._edgeWidth = 1.5;
 
     // Pre-computed RGB color table — eliminates _hexToRgb() per-frame allocations
     this._colorTable = new Float32Array(DIMENSION_COLORS.length * 3);
@@ -160,13 +161,32 @@ export class HypercubeObject {
       const lineGeo = new THREE.BufferGeometry();
       lineGeo.setAttribute('position', new THREE.BufferAttribute(this._linePosBuf, 3));
       lineGeo.setAttribute('color',    new THREE.BufferAttribute(this._lineColBuf, 3));
-      const lineMat = new THREE.LineBasicMaterial({
+      const lineMat = new THREE.ShaderMaterial({
         vertexColors: true,
         transparent:  true,
         depthWrite:   false,
         blending:     THREE.AdditiveBlending,
+        uniforms: {
+          uEdgeWidth: { value: 1.5 },
+        },
+        vertexShader: `
+          attribute vec3 color;
+          varying vec3 vColor;
+          void main() {
+            vColor = color;
+            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+          }
+        `,
+        fragmentShader: `
+          uniform float uEdgeWidth;
+          varying vec3 vColor;
+          void main() {
+            gl_FragColor = vec4(vColor, uEdgeWidth > 0.5 ? 1.0 : 0.0);
+          }
+        `,
       });
       this._lines = new THREE.LineSegments(lineGeo, lineMat);
+      this._lineMat = lineMat;
       this._lines.frustumCulled = false;
       this._scene.add(this._lines);
     }
@@ -365,6 +385,9 @@ export class HypercubeObject {
     if (writeColors) this._points.geometry.attributes.color.needsUpdate = true;
 
     if (writeColors) this._colorsDirty = false;
+    if (this._lineMat) {
+      this._lineMat.uniforms.uEdgeWidth.value = this._edgeWidth ?? 1.5;
+    }
   }
 
   _notifySubscribers() {
@@ -472,6 +495,10 @@ export class HypercubeObject {
   setEdgeOpacity(v) {
     this._edgeOpacityMult = v;
     this._colorsDirty = true;
+  }
+
+  setEdgeWidth(w) {
+    this._edgeWidth = Math.max(0.5, Math.min(8.0, w));
   }
 
   /**

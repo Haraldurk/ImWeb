@@ -122,6 +122,7 @@ export function buildHypercubePanel(container, hypercube, ps) {
   });
   _paramRow(renderSec, 'Pt size',      hypercube._pointSize ?? 3,       0.5,   20,  0.5, v => hypercube.setPointSize(v));
   _paramRow(renderSec, 'Edge opacity', (hypercube._edgeOpacityMult ?? 1) * 100, 0, 100, 1, v => hypercube.setEdgeOpacity(v / 100));
+  _paramRow(renderSec, 'Edge width',  hypercube._edgeWidth ?? 1.5, 0.5, 8.0, 0.1, v => hypercube.setEdgeWidth(v));
 
   // ── Stats ────────────────────────────────────────────────────────────────
   const statsDiv = document.createElement('div');

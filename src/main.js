@@ -142,6 +142,7 @@ async function main() {
   ps.register('hypercube.rot.xz',        { type:'CONTINUOUS', value:0.20, min:-2.0, max:2.0,  step:0.01,  group:'hypercube' });
   ps.register('hypercube.rot.yz',        { type:'CONTINUOUS', value:0.15, min:-2.0, max:2.0,  step:0.01,  group:'hypercube' });
   ps.register('hypercube.rot.xw',        { type:'CONTINUOUS', value:0.40, min:-2.0, max:2.0,  step:0.01,  group:'hypercube' });
+  ps.register('hypercube.edgeWidth',     { type:'CONTINUOUS', value:1.5,  min:0.5,  max:8.0,  step:0.1,   label:'Edge Width', group:'hypercube' });
 
   // ── 3. Controllers ────────────────────────────────────────────────────────
 
