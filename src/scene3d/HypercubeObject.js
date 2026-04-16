@@ -101,88 +101,75 @@ export class HypercubeObject {
     const nVerts = this._vertices.length;
     const nEdges = this._edges.length;
 
-    // ── LineSegments ──────────────────────────────────────────────────────
-    const linePos  = new Float32Array(nEdges * 6);
-    const lineCol  = new Float32Array(nEdges * 6);
-    const lineGeo  = new THREE.BufferGeometry();
-    lineGeo.setAttribute('position', new THREE.BufferAttribute(linePos, 3));
-    lineGeo.setAttribute('color',    new THREE.BufferAttribute(lineCol, 3));
+    // ── New typed arrays ──────────────────────────────────────────────────
+    const linePos = new Float32Array(nEdges * 6);
+    const lineCol = new Float32Array(nEdges * 6);
+    const newLineGeo = new THREE.BufferGeometry();
+    newLineGeo.setAttribute('position', new THREE.BufferAttribute(linePos, 3));
+    newLineGeo.setAttribute('color',    new THREE.BufferAttribute(lineCol, 3));
 
-    const lineMat = new THREE.LineBasicMaterial({
-      vertexColors: true,
-      transparent:  true,
-      depthWrite:   false,
-      blending:     THREE.AdditiveBlending,
-    });
-
-    // ── Points ────────────────────────────────────────────────────────────
     const ptPos = new Float32Array(nVerts * 3);
     const ptCol = new Float32Array(nVerts * 3);
-    const ptGeo = new THREE.BufferGeometry();
-    ptGeo.setAttribute('position', new THREE.BufferAttribute(ptPos, 3));
-    ptGeo.setAttribute('color',    new THREE.BufferAttribute(ptCol, 3));
+    const newPtGeo = new THREE.BufferGeometry();
+    newPtGeo.setAttribute('position', new THREE.BufferAttribute(ptPos, 3));
+    newPtGeo.setAttribute('color',    new THREE.BufferAttribute(ptCol, 3));
 
-    this._pointMat = new THREE.ShaderMaterial({
-      uniforms: { opacity: { value: 0.8 } },
-      vertexShader: `
-        attribute vec3 color;
-        varying vec3 vColor;
-        void main() {
-          vColor = color;
-          vec4 mv = modelViewMatrix * vec4(position, 1.0);
-          gl_Position = projectionMatrix * mv;
-          gl_PointSize = 6.0 * (300.0 / -mv.z);
-        }
-      `,
-      fragmentShader: `
-        varying vec3 vColor;
-        uniform float opacity;
-        void main() {
-          vec2 uv = gl_PointCoord - vec2(0.5);
-          if (length(uv) > 0.5) discard;
-          gl_FragColor = vec4(vColor, opacity);
-        }
-      `,
-      transparent: true,
-      depthWrite: false,
-      blending: THREE.AdditiveBlending,
-    });
-
-    // Release TypedArrays from old geometries before disposal (prevents memory leak)
-    if (this._lines) {
-      if (this._lines.geometry.attributes.position) {
-        this._lines.geometry.attributes.position.array = null;
-        this._lines.geometry.deleteAttribute('position');
-        this._lines.geometry.deleteAttribute('color');
-      }
-    }
-    if (this._points) {
-      if (this._points.geometry.attributes.position) {
-        this._points.geometry.attributes.position.array = null;
-        this._points.geometry.deleteAttribute('position');
-        this._points.geometry.deleteAttribute('color');
-      }
+    // Create ShaderMaterial once; reuse on subsequent rebuilds
+    if (!this._pointMat) {
+      this._pointMat = new THREE.ShaderMaterial({
+        uniforms: { opacity: { value: 0.8 }, uPointSize: { value: 3.0 } },
+        vertexShader: `
+          attribute vec3 color;
+          varying vec3 vColor;
+          uniform float uPointSize;
+          void main() {
+            vColor = color;
+            vec4 mv = modelViewMatrix * vec4(position, 1.0);
+            gl_Position = projectionMatrix * mv;
+            gl_PointSize = uPointSize * (200.0 / max(-mv.z, 0.1));
+          }
+        `,
+        fragmentShader: `
+          varying vec3 vColor;
+          uniform float opacity;
+          void main() {
+            vec2 uv = gl_PointCoord - vec2(0.5);
+            if (length(uv) > 0.5) discard;
+            gl_FragColor = vec4(vColor, opacity);
+          }
+        `,
+        transparent: true,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
+      });
+      this._pointMat.uniforms.uPointSize.value = this._pointSize;
     }
 
-    // Dispose old objects
     if (this._lines) {
-      this._scene.remove(this._lines);
+      // Reuse existing mesh — dispose old GPU buffers, swap in new geometry
       this._lines.geometry.dispose();
-      this._lines.material.dispose();
+      this._lines.geometry = newLineGeo;
+    } else {
+      const lineMat = new THREE.LineBasicMaterial({
+        vertexColors: true,
+        transparent:  true,
+        depthWrite:   false,
+        blending:     THREE.AdditiveBlending,
+      });
+      this._lines = new THREE.LineSegments(newLineGeo, lineMat);
+      this._lines.frustumCulled = false;
+      this._scene.add(this._lines);
     }
+
     if (this._points) {
-      this._scene.remove(this._points);
+      // Reuse existing mesh
       this._points.geometry.dispose();
-      this._points.material.dispose();
+      this._points.geometry = newPtGeo;
+    } else {
+      this._points = new THREE.Points(newPtGeo, this._pointMat);
+      this._points.frustumCulled = false;
+      this._scene.add(this._points);
     }
-
-    this._lines  = new THREE.LineSegments(lineGeo, lineMat);
-    this._points = new THREE.Points(ptGeo, this._pointMat);
-    this._lines.frustumCulled  = false;
-    this._points.frustumCulled = false;
-
-    this._scene.add(this._lines);
-    this._scene.add(this._points);
 
     this._updateVisibility();
   }
@@ -203,7 +190,9 @@ export class HypercubeObject {
         morphStep(this._morphState, deltaMs);
       }
       if (this._morphState.done) {
-        this._rebuild();
+        if (this._morphState.toDim < this._morphState.fromDim) {
+          this._rebuild();
+        }
         this._morphState = null;
         if (this._morphQueue.length > 0) this._startNextMorph();
       }
@@ -270,6 +259,15 @@ export class HypercubeObject {
 
     for (let e = 0; e < edges.length; e++) {
       const [a, b, dimAxis] = edges[e];
+      if (dimAxis >= this._dim) {
+        // Zero out this edge — belongs to a higher dimension than currently visible
+        const base = e * 6;
+        lp[base] = lp[base+1] = lp[base+2] = 0;
+        lp[base+3] = lp[base+4] = lp[base+5] = 0;
+        lc[base] = lc[base+1] = lc[base+2] = 0;
+        lc[base+3] = lc[base+4] = lc[base+5] = 0;
+        continue;
+      }
       const pa  = proj[a] ?? [0, 0, 0];
       const pb  = proj[b] ?? [0, 0, 0];
       const base = e * 6;
@@ -342,9 +340,12 @@ export class HypercubeObject {
 
     // Switch to target dimension
     this._dim = toDim;
+    // For upward morphs: rebuild immediately so new geometry exists during animation
+    // For downward morphs: keep old geometry, defer rebuild to avoid ghost doubling
+    if (toDim > this._morphFromDim) {
+      this._rebuild();
+    }
     this._morphState = createMorphState(this._morphFromDim, toDim, durationMs, easing);
-    // Defer rebuild until morph completes — avoids geometry doubling
-    // _rebuild() will be called in update() when morphState.done
   }
 
   // ── Pub/sub ───────────────────────────────────────────────────────────────
@@ -394,7 +395,9 @@ export class HypercubeObject {
 
   setPointSize(size) {
     this._pointSize = size;
-    if (this._points) this._points.material.size = size;
+    if (this._pointMat && this._pointMat.uniforms) {
+      this._pointMat.uniforms.uPointSize.value = size;
+    }
   }
 
   setEdgeOpacity(v) {
