@@ -18,6 +18,7 @@ import {
   morphStep,
   edgeOpacity,
 } from './HypercubeGeometry.js';
+import { HypercubeFaces } from './HypercubeFaces.js';
 
 export class HypercubeObject {
   /**
@@ -121,6 +122,7 @@ export class HypercubeObject {
     }
 
     this._rebuild();
+    this._hFaces = new HypercubeFaces(scene);
   }
 
   // ── Internal rebuild ──────────────────────────────────────────────────────
@@ -338,6 +340,7 @@ export class HypercubeObject {
     }
 
     this._updateBuffers();
+    this._hFaces.update(this._projBuf, this._dim, this._scale);
     this._notifySubscribers();
   }
 
@@ -616,6 +619,7 @@ export class HypercubeObject {
       this._points.material.dispose();
       this._points = null;
     }
+    if (this._hFaces) { this._hFaces.dispose(); this._hFaces = null; }
     this._subscribers.clear();
   }
 }

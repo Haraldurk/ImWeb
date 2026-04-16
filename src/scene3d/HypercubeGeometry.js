@@ -186,6 +186,46 @@ export function generate2CellCentroids(dim) {
   return centroids;
 }
 
+// ── 2-cell faces ──────────────────────────────────────────────────────────────
+
+/**
+ * Generate all 2-cell faces of a dim-D hypercube.
+ * Returns array of { corners: [i,i,i,i], axisA: number, axisB: number }
+ * where corners are the 4 vertex indices from generateVertices().
+ */
+export function generate2CellFaces(dim) {
+  if (dim < 2) return [];
+  const verts = generateVertices(dim);
+  const faces = [];
+
+  for (let a = 0; a < dim; a++) {
+    for (let b = a + 1; b < dim; b++) {
+      const fixedAxes = [];
+      for (let d = 0; d < dim; d++) {
+        if (d !== a && d !== b) fixedAxes.push(d);
+      }
+      const fixedCount = 1 << fixedAxes.length;
+
+      for (let fi = 0; fi < fixedCount; fi++) {
+        const corners = [];
+        for (let vi = 0; vi < verts.length; vi++) {
+          const v = verts[vi];
+          let match = true;
+          for (let k = 0; k < fixedAxes.length; k++) {
+            const expected = (fi >> k) & 1 ? 1 : -1;
+            if (v[fixedAxes[k]] !== expected) { match = false; break; }
+          }
+          if (match) corners.push(vi);
+        }
+        if (corners.length === 4) {
+          faces.push({ corners, axisA: a, axisB: b });
+        }
+      }
+    }
+  }
+  return faces;
+}
+
 // ── Edge opacity ──────────────────────────────────────────────────────────────
 
 /**
