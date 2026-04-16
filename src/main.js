@@ -132,6 +132,17 @@ async function main() {
   const ps = new ParameterSystem();
   registerCoreParameters(ps);
 
+  // ── Hypercube parameters ───────────────────────────────────────────────────
+  ps.register('hypercube.morphDuration', { type:'CONTINUOUS', value:2000, min:200,  max:8000, step:100,   group:'hypercube' });
+  ps.register('hypercube.wDistance',     { type:'CONTINUOUS', value:3.0,  min:1.5,  max:8.0,  step:0.1,   group:'hypercube' });
+  ps.register('hypercube.scale',         { type:'CONTINUOUS', value:1.0,  min:0.1,  max:3.0,  step:0.05,  group:'hypercube' });
+  ps.register('hypercube.edgeOpacity',   { type:'CONTINUOUS', value:0.7,  min:0.0,  max:1.0,  step:0.01,  group:'hypercube' });
+  ps.register('hypercube.pointSize',     { type:'CONTINUOUS', value:0.04, min:0.01, max:0.2,  step:0.005, group:'hypercube' });
+  ps.register('hypercube.rot.xy',        { type:'CONTINUOUS', value:0.30, min:-2.0, max:2.0,  step:0.01,  group:'hypercube' });
+  ps.register('hypercube.rot.xz',        { type:'CONTINUOUS', value:0.20, min:-2.0, max:2.0,  step:0.01,  group:'hypercube' });
+  ps.register('hypercube.rot.yz',        { type:'CONTINUOUS', value:0.15, min:-2.0, max:2.0,  step:0.01,  group:'hypercube' });
+  ps.register('hypercube.rot.xw',        { type:'CONTINUOUS', value:0.40, min:-2.0, max:2.0,  step:0.01,  group:'hypercube' });
+
   // ── 3. Controllers ────────────────────────────────────────────────────────
 
   const ctrl = new ControllerManager(ps);
@@ -163,6 +174,7 @@ async function main() {
   const textLayer = new TextLayer();
 
   const scene3d = new SceneManager(renderer, W, H);
+  await scene3d.createHypercube({ startDim: 4 });
 
   // Helper to manage sequence buffers for profiler/VRAM estimation
   const sequencerManager = {
@@ -366,6 +378,30 @@ async function main() {
   _patchNoiseTypeOptgroups();
   buildSeqParams(ps, contextMenu);
   buildGeometryButtons(ps, scene3d, contextMenu);
+
+  // ── Hypercube panel — appended as a section inside #tab-scene3d ───────────
+  {
+    const scene3dTab = document.getElementById('tab-scene3d');
+    if (scene3dTab) {
+      const hcSection = document.createElement('div');
+      hcSection.className = 'panel-section';
+      const hcHeader = document.createElement('div');
+      hcHeader.className = 'section-header';
+      hcHeader.textContent = 'Hypercube';
+      const hcContainer = document.createElement('div');
+      hcSection.appendChild(hcHeader);
+      hcSection.appendChild(hcContainer);
+      scene3dTab.appendChild(hcSection);
+
+      const hc = scene3d.getHypercube();
+      if (hc) {
+        import('./scene3d/HypercubeUI.js').then(({ buildHypercubePanel }) => {
+          buildHypercubePanel(hcContainer, hc, ps);
+        });
+      }
+    }
+  }
+
   buildWarpEditor(warpEditor, ps, contextMenu);
   const { refreshClipGrid, setRecording } = buildClipLibrary(
     ps,
