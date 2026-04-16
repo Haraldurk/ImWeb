@@ -122,14 +122,47 @@ export class HypercubeObject {
     ptGeo.setAttribute('position', new THREE.BufferAttribute(ptPos, 3));
     ptGeo.setAttribute('color',    new THREE.BufferAttribute(ptCol, 3));
 
-    const ptMat = new THREE.PointsMaterial({
-      vertexColors:   true,
-      size:           this._pointSize,
-      sizeAttenuation: false,
-      transparent:    true,
-      depthWrite:     false,
-      blending:       THREE.AdditiveBlending,
+    this._pointMat = new THREE.ShaderMaterial({
+      uniforms: { opacity: { value: 0.8 } },
+      vertexShader: `
+        attribute vec3 color;
+        varying vec3 vColor;
+        void main() {
+          vColor = color;
+          vec4 mv = modelViewMatrix * vec4(position, 1.0);
+          gl_Position = projectionMatrix * mv;
+          gl_PointSize = 6.0 * (300.0 / -mv.z);
+        }
+      `,
+      fragmentShader: `
+        varying vec3 vColor;
+        uniform float opacity;
+        void main() {
+          vec2 uv = gl_PointCoord - vec2(0.5);
+          if (length(uv) > 0.5) discard;
+          gl_FragColor = vec4(vColor, opacity);
+        }
+      `,
+      transparent: true,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
     });
+
+    // Release TypedArrays from old geometries before disposal (prevents memory leak)
+    if (this._lines) {
+      if (this._lines.geometry.attributes.position) {
+        this._lines.geometry.attributes.position.array = null;
+        this._lines.geometry.deleteAttribute('position');
+        this._lines.geometry.deleteAttribute('color');
+      }
+    }
+    if (this._points) {
+      if (this._points.geometry.attributes.position) {
+        this._points.geometry.attributes.position.array = null;
+        this._points.geometry.deleteAttribute('position');
+        this._points.geometry.deleteAttribute('color');
+      }
+    }
 
     // Dispose old objects
     if (this._lines) {
@@ -144,7 +177,7 @@ export class HypercubeObject {
     }
 
     this._lines  = new THREE.LineSegments(lineGeo, lineMat);
-    this._points = new THREE.Points(ptGeo, ptMat);
+    this._points = new THREE.Points(ptGeo, this._pointMat);
     this._lines.frustumCulled  = false;
     this._points.frustumCulled = false;
 
@@ -170,6 +203,7 @@ export class HypercubeObject {
         morphStep(this._morphState, deltaMs);
       }
       if (this._morphState.done) {
+        this._rebuild();
         this._morphState = null;
         if (this._morphQueue.length > 0) this._startNextMorph();
       }
@@ -242,7 +276,7 @@ export class HypercubeObject {
       lp[base]     = pa[0] * s; lp[base + 1] = pa[1] * s; lp[base + 2] = pa[2] * s;
       lp[base + 3] = pb[0] * s; lp[base + 4] = pb[1] * s; lp[base + 5] = pb[2] * s;
 
-      const hex = DIMENSION_COLORS[Math.min(dimAxis + 3, DIMENSION_COLORS.length - 1)] ?? '#ffffff';
+      const hex = DIMENSION_COLORS[Math.min(dimAxis, DIMENSION_COLORS.length - 1)] ?? '#ffffff';
       const col = _hexToRgb(hex);
       const op  = edgeOpacity(dimAxis, this._dim) * this._edgeOpacityMult;
       lc[base]     = col[0] * op; lc[base + 1] = col[1] * op; lc[base + 2] = col[2] * op;
@@ -255,7 +289,7 @@ export class HypercubeObject {
     // ── Point buffer ──────────────────────────────────────────────────────
     const pp = this._points.geometry.attributes.position.array;
     const pc = this._points.geometry.attributes.color.array;
-    const dimCol = _hexToRgb(DIMENSION_COLORS[Math.min(this._dim, DIMENSION_COLORS.length - 1)] ?? '#ffffff');
+    const dimCol = _hexToRgb(DIMENSION_COLORS[Math.min(this._dim - 1, DIMENSION_COLORS.length - 1)] ?? '#ffffff');
 
     for (let i = 0; i < proj.length; i++) {
       const p3 = proj[i] ?? [0, 0, 0];
@@ -308,9 +342,9 @@ export class HypercubeObject {
 
     // Switch to target dimension
     this._dim = toDim;
-    this._rebuild();
-
     this._morphState = createMorphState(this._morphFromDim, toDim, durationMs, easing);
+    // Defer rebuild until morph completes — avoids geometry doubling
+    // _rebuild() will be called in update() when morphState.done
   }
 
   // ── Pub/sub ───────────────────────────────────────────────────────────────
