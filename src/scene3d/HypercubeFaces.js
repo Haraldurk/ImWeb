@@ -3,7 +3,6 @@ import {
   generate2CellFaces,
   generateVertices,
   faceCount,
-  vertexCount,
   MAX_DIM,
 } from './HypercubeGeometry.js';
 
@@ -11,8 +10,13 @@ export class HypercubeFaces {
   constructor(scene) {
     this._scene    = scene;
     this._mesh     = null;
-    this._faces    = generate2CellFaces(MAX_DIM);
-    this._verts    = generateVertices(MAX_DIM);
+    // Pre-generate faces and vertices per dimension — no per-frame culling needed
+    this._facesByDim = {};
+    this._vertsByDim = {};
+    for (let d = 2; d <= MAX_DIM; d++) {
+      this._facesByDim[d] = generate2CellFaces(d);
+      this._vertsByDim[d] = generateVertices(d);
+    }
     this._maxFaces = faceCount(MAX_DIM);
     this._visible  = true;
     this._opacity  = 0.4;
@@ -68,16 +72,12 @@ export class HypercubeFaces {
    * scale: current scale factor.
    */
   update(projBuf, dim, scale) {
-    const faces   = this._faces;
-    const verts   = this._verts;
-    const nActive = vertexCount(dim);
-    let   drawn   = 0;
+    const faces  = this._facesByDim[dim] ?? [];
+    const verts  = this._vertsByDim[dim] ?? [];
+    let   drawn  = 0;
 
     for (let f = 0; f < faces.length; f++) {
       const { corners, axisA, axisB } = faces[f];
-
-      if (axisA >= dim || axisB >= dim) continue;
-      if (corners.some(ci => ci >= nActive)) continue;
 
       // Sort corners by (axisA, axisB) N-D coords into consistent winding
       const sorted = [...corners].sort((i, j) => {
