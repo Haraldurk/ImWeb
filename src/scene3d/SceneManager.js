@@ -955,7 +955,14 @@ export class SceneManager {
 
   // ── Render ────────────────────────────────────────────────────────────────
 
+  update(deltaMs) {
+    if (this._hypercube) {
+      this._hypercube.update(deltaMs);
+    }
+  }
+
   render(params, dt = 0, inputs = {}) {
+    this.update(dt * 1000);
     this.applyParams(params, dt, inputs);
     const prev = this.renderer.getRenderTarget();
 
@@ -996,4 +1003,17 @@ export class SceneManager {
       if (obj.material) obj.material.dispose();
     });
   }
+
+  async createHypercube(options = {}) {
+    if (this._hypercube) {
+      this._hypercube.dispose();
+      this.scene.remove(this._hypercube._lines);
+      this.scene.remove(this._hypercube._points);
+    }
+    const { HypercubeObject } = await import('./HypercubeObject.js');
+    this._hypercube = new HypercubeObject(this.scene, options);
+    return this._hypercube;
+  }
+
+  getHypercube() { return this._hypercube ?? null; }
 }
