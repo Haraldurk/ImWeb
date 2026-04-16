@@ -220,6 +220,10 @@ export class HypercubeObject {
   // ── Update ────────────────────────────────────────────────────────────────
 
   update(deltaMs) {
+    // Skip all CPU work if not visible — avoids 12D projection
+    // cost when hypercube is not the active scene source
+    if (this._lines && !this._lines.visible &&
+        this._points && !this._points.visible) return;
     const dt = deltaMs / 1000;
 
     // Advance morph
@@ -423,6 +427,11 @@ export class HypercubeObject {
 
   setScale(s) {
     this._scale = s;
+  }
+
+  setVisible(visible) {
+    if (this._lines)  this._lines.visible  = visible && this._renderMode !== 'points';
+    if (this._points) this._points.visible = visible && this._renderMode !== 'wireframe';
   }
 
   setPointSize(size) {
