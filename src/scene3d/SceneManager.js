@@ -972,6 +972,12 @@ export class SceneManager {
     // Clear face texture before render passes to avoid WebGL feedback loop —
     // any input texture may be bound as a sampler during the 3D scene draw.
     this._hypercube?.setFaceTexture(null);
+    // Null mesh material map before render passes to break pipeline.prev feedback loop
+    const _savedMaterialMap = this.material?.map ?? null;
+    if (this.material && _savedMaterialMap) {
+      this.material.map = null;
+      this.material.needsUpdate = true;
+    }
     const prev = this.renderer.getRenderTarget();
 
     // Color pass
@@ -988,6 +994,11 @@ export class SceneManager {
     }
 
     this.renderer.setRenderTarget(prev);
+    // Restore mesh material map after all render passes
+    if (this.material && _savedMaterialMap) {
+      this.material.map = _savedMaterialMap;
+      this.material.needsUpdate = true;
+    }
     // Restore face texture after all render passes are complete
     this._hypercube?.setFaceTexture(inputs.faceTex ?? null);
   }
