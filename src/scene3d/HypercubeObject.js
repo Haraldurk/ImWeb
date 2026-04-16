@@ -69,6 +69,34 @@ export class HypercubeObject {
     const maxVerts = vertexCount(MAX_DIM);
     this._linePosBuf = new Float32Array(maxEdges * 6);
     this._lineColBuf = new Float32Array(maxEdges * 6);
+
+    // Quad buffers — 4 verts per edge, 2 triangles per edge
+    this._quadEndABuf  = new Float32Array(maxEdges * 4 * 3);  // 4 verts × A.xyz
+    this._quadEndBBuf  = new Float32Array(maxEdges * 4 * 3);  // 4 verts × B.xyz
+    this._quadColBuf   = new Float32Array(maxEdges * 4 * 3);  // 4 verts × [r g b]
+    this._quadSideBuf  = new Float32Array(maxEdges * 4);      // 4 verts × side (+1/-1)
+    this._quadIndexBuf = new Uint32Array(maxEdges * 6);       // 2 tris × 3 indices
+
+    // Index buffer — fixed topology, build once
+    for (let e = 0; e < maxEdges; e++) {
+      const vi = e * 4;
+      const ii = e * 6;
+      this._quadIndexBuf[ii]     = vi;
+      this._quadIndexBuf[ii + 1] = vi + 1;
+      this._quadIndexBuf[ii + 2] = vi + 2;
+      this._quadIndexBuf[ii + 3] = vi + 2;
+      this._quadIndexBuf[ii + 4] = vi + 1;
+      this._quadIndexBuf[ii + 5] = vi + 3;
+    }
+
+    // Side buffer — fixed (+1 = +extrude, -1 = -extrude), build once
+    for (let e = 0; e < maxEdges; e++) {
+      const vi = e * 4;
+      this._quadSideBuf[vi]     =  1.0;  // vert 0: A end, +extrude
+      this._quadSideBuf[vi + 1] =  1.0;  // vert 1: B end, +extrude
+      this._quadSideBuf[vi + 2] = -1.0;  // vert 2: A end, -extrude
+      this._quadSideBuf[vi + 3] = -1.0;  // vert 3: B end, -extrude
+    }
     this._ptPosBuf   = new Float32Array(maxVerts * 3);
     this._ptColBuf   = new Float32Array(maxVerts * 3);
 
@@ -156,35 +184,63 @@ export class HypercubeObject {
       // Buffers permanent at MAX_DIM. Edges aren't sorted by dimAxis, so we
       // must always draw the full range and rely on the cull-zero in
       // _updateBuffers to hide inactive edges.
-      this._lines.geometry.setDrawRange(0, edgeCount(MAX_DIM) * 2);
+      this._lines.geometry.setDrawRange(0, edgeCount(MAX_DIM) * 6);
     } else {
-      const lineGeo = new THREE.BufferGeometry();
-      lineGeo.setAttribute('position', new THREE.BufferAttribute(this._linePosBuf, 3));
-      lineGeo.setAttribute('color',    new THREE.BufferAttribute(this._lineColBuf, 3));
+      const quadGeo = new THREE.BufferGeometry();
+      quadGeo.setAttribute('aEndA', new THREE.BufferAttribute(this._quadEndABuf, 3));
+      quadGeo.setAttribute('aEndB', new THREE.BufferAttribute(this._quadEndBBuf, 3));
+      quadGeo.setAttribute('aSide', new THREE.BufferAttribute(this._quadSideBuf, 1));
+      quadGeo.setAttribute('color', new THREE.BufferAttribute(this._quadColBuf,  3));
+      quadGeo.setIndex(new THREE.BufferAttribute(this._quadIndexBuf, 1));
+      quadGeo.setDrawRange(0, edgeCount(MAX_DIM) * 6);
+
       const lineMat = new THREE.ShaderMaterial({
-        transparent:  true,
-        depthWrite:   false,
-        blending:     THREE.AdditiveBlending,
+        transparent: true,
+        depthWrite:  false,
+        blending:    THREE.AdditiveBlending,
         uniforms: {
-          uEdgeWidth: { value: 1.5 },
+          uEdgeWidth:  { value: 1.5 },
+          uResolution: { value: new THREE.Vector2(800, 600) },
         },
         vertexShader: `
+          attribute vec3 aEndA;
+          attribute vec3 aEndB;
+          attribute float aSide;
           attribute vec3 color;
           varying vec3 vColor;
+          uniform float uEdgeWidth;
+          uniform vec2 uResolution;
           void main() {
             vColor = color;
-            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+            vec4 clipA = projectionMatrix * modelViewMatrix * vec4(aEndA, 1.0);
+            vec4 clipB = projectionMatrix * modelViewMatrix * vec4(aEndB, 1.0);
+            vec2 ndcA = clipA.xy / clipA.w;
+            vec2 ndcB = clipB.xy / clipB.w;
+            // Skip degenerate edges (collapsed / culled to origin)
+            vec2 delta = (ndcB - ndcA) * uResolution;
+            if (dot(delta, delta) < 1e-6) {
+              gl_Position = vec4(2.0, 0.0, 0.0, 1.0); // off-screen
+              return;
+            }
+            vec2 dir  = normalize(delta);
+            vec2 perp = vec2(-dir.y, dir.x);
+            // gl_VertexID mod 2: 0 = A endpoint, 1 = B endpoint
+            float tB = mod(float(gl_VertexID), 2.0);
+            vec4 clipPos = tB < 0.5 ? clipA : clipB;
+            // aSide drives extrusion direction (+1 / -1)
+            vec2 offset = perp * aSide * uEdgeWidth / uResolution;
+            clipPos.xy += offset * clipPos.w;
+            gl_Position = clipPos;
           }
         `,
         fragmentShader: `
-          uniform float uEdgeWidth;
           varying vec3 vColor;
           void main() {
-            gl_FragColor = vec4(vColor, uEdgeWidth > 0.5 ? 1.0 : 0.0);
+            gl_FragColor = vec4(vColor, 1.0);
           }
         `,
       });
-      this._lines = new THREE.LineSegments(lineGeo, lineMat);
+      this._lines = new THREE.Mesh(quadGeo, lineMat);
       this._lineMat = lineMat;
       this._lines.frustumCulled = false;
       this._scene.add(this._lines);
@@ -351,7 +407,40 @@ export class HypercubeObject {
       }
     }
 
-    this._lines.geometry.attributes.position.needsUpdate = true;
+    // ── Quad buffer (screen-space width mesh) ────────────────────────────
+    const qa = this._quadEndABuf;
+    const qb = this._quadEndBBuf;
+    const qc = this._quadColBuf;
+
+    for (let e = 0; e < edges.length; e++) {
+      const [a, b, dimAxis] = edges[e];
+      const base6 = e * 6;
+      if (dimAxis >= this._dim || a >= nActiveVerts || b >= nActiveVerts) {
+        // Culled edge — zero all quad verts so the degenerate quad clips cleanly
+        for (let v = 0; v < 4; v++) {
+          const qi3 = (e * 4 + v) * 3;
+          qa[qi3] = qa[qi3+1] = qa[qi3+2] = 0;
+          qb[qi3] = qb[qi3+1] = qb[qi3+2] = 0;
+          if (writeColors) { qc[qi3] = qc[qi3+1] = qc[qi3+2] = 0; }
+        }
+        continue;
+      }
+      const ax = lp[base6],     ay = lp[base6+1], az = lp[base6+2];
+      const bx = lp[base6+3],   by = lp[base6+4], bz = lp[base6+5];
+      for (let v = 0; v < 4; v++) {
+        const qi3 = (e * 4 + v) * 3;
+        qa[qi3] = ax; qa[qi3+1] = ay; qa[qi3+2] = az;
+        qb[qi3] = bx; qb[qi3+1] = by; qb[qi3+2] = bz;
+        if (writeColors) {
+          qc[qi3]   = lc[base6];
+          qc[qi3+1] = lc[base6+1];
+          qc[qi3+2] = lc[base6+2];
+        }
+      }
+    }
+
+    this._lines.geometry.attributes.aEndA.needsUpdate = true;
+    this._lines.geometry.attributes.aEndB.needsUpdate = true;
     if (writeColors) this._lines.geometry.attributes.color.needsUpdate = true;
 
     // ── Point buffer ──────────────────────────────────────────────────────

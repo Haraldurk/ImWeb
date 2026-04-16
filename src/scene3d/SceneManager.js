@@ -958,6 +958,11 @@ export class SceneManager {
   update(deltaMs) {
     if (this._hypercube) {
       this._hypercube.update(deltaMs);
+      if (this._hypercube._lineMat) {
+        this._hypercube._lineMat.uniforms.uResolution.value.set(
+          this.width, this.height
+        );
+      }
     }
   }
 
