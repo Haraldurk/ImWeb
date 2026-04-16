@@ -4193,7 +4193,7 @@ void main() {
       scene3d.render(ps, dt, {
         camera: camera3d.active ? camera3d.currentTexture : null,
         movie: movieInput.active ? movieInput.currentTexture : null,
-        faceTex: pipeline.prev.texture,
+        faceTex: drawLayer.texture,
         screen: pipeline.prev.texture,
         draw: drawLayer.texture,
         buffer: stillsBuffer.texture,
