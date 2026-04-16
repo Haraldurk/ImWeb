@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import {
   generate2CellFaces,
+  generateVertices,
   faceCount,
   vertexCount,
   MAX_DIM,
@@ -10,8 +11,8 @@ export class HypercubeFaces {
   constructor(scene) {
     this._scene    = scene;
     this._mesh     = null;
-    this._dummy    = new THREE.Object3D();
     this._faces    = generate2CellFaces(MAX_DIM);
+    this._verts    = generateVertices(MAX_DIM);
     this._maxFaces = faceCount(MAX_DIM);
     this._visible  = true;
     this._opacity  = 0.4;
@@ -67,67 +68,66 @@ export class HypercubeFaces {
    * scale: current scale factor.
    */
   update(projBuf, dim, scale) {
-    const dummy   = this._dummy;
     const faces   = this._faces;
+    const verts   = this._verts;
     const nActive = vertexCount(dim);
     let   drawn   = 0;
 
     for (let f = 0; f < faces.length; f++) {
       const { corners, axisA, axisB } = faces[f];
 
-      // Cull faces whose spanning axes exceed current dim
       if (axisA >= dim || axisB >= dim) continue;
-
-      // Cull faces referencing inactive vertices
       if (corners.some(ci => ci >= nActive)) continue;
 
-      // Centroid = average of 4 projected corners
-      let cx = 0, cy = 0, cz = 0;
-      for (const ci of corners) {
+      // Sort corners by (axisA, axisB) N-D coords into consistent winding
+      const sorted = [...corners].sort((i, j) => {
+        const va = verts[i], vb = verts[j];
+        if (va[axisA] !== vb[axisA]) return va[axisA] - vb[axisA];
+        return va[axisB] - vb[axisB];
+      });
+      // sorted: [(-1,-1), (-1,+1), (+1,-1), (+1,+1)]
+      // Rearrange to winding order: c0=(-1,-1) c1=(+1,-1) c2=(-1,+1)
+      const c0 = sorted[0], c1 = sorted[2], c2 = sorted[1];
+
+      const get = (ci) => {
         const pi = ci * 3;
-        cx += projBuf[pi]     * scale;
-        cy += projBuf[pi + 1] * scale;
-        cz += projBuf[pi + 2] * scale;
-      }
-      cx /= 4; cy /= 4; cz /= 4;
+        return [projBuf[pi]*scale, projBuf[pi+1]*scale, projBuf[pi+2]*scale];
+      };
+      const v0 = get(c0), v1 = get(c1), v2 = get(c2);
 
-      // Size = edge length between first two corners in projected space
-      const p0 = corners[0] * 3, p1 = corners[1] * 3;
-      const dx = projBuf[p0]     * scale - projBuf[p1]     * scale;
-      const dy = projBuf[p0 + 1] * scale - projBuf[p1 + 1] * scale;
-      const dz = projBuf[p0 + 2] * scale - projBuf[p1 + 2] * scale;
-      const size = Math.sqrt(dx*dx + dy*dy + dz*dz);
+      // Centroid of all 4 corners
+      const v3 = get(sorted[3]);
+      const cx = (v0[0]+v1[0]+v2[0]+v3[0])/4;
+      const cy = (v0[1]+v1[1]+v2[1]+v3[1])/4;
+      const cz = (v0[2]+v1[2]+v2[2]+v3[2])/4;
 
-      // Two edge vectors for face normal (cross product)
-      const p2 = corners[2] * 3;
-      const ax = projBuf[p1]     * scale - projBuf[p0]     * scale;
-      const ay = projBuf[p1 + 1] * scale - projBuf[p0 + 1] * scale;
-      const az = projBuf[p1 + 2] * scale - projBuf[p0 + 2] * scale;
-      const bx = projBuf[p2]     * scale - projBuf[p0]     * scale;
-      const by = projBuf[p2 + 1] * scale - projBuf[p0 + 1] * scale;
-      const bz = projBuf[p2 + 2] * scale - projBuf[p0 + 2] * scale;
+      // Tangent = v1 - v0 (adjacent edge, length carries X scale)
+      const tx = v1[0]-v0[0], ty = v1[1]-v0[1], tz = v1[2]-v0[2];
+      const tLen = Math.sqrt(tx*tx + ty*ty + tz*tz);
+      if (tLen < 1e-6) continue;
 
-      const nx = ay*bz - az*by;
-      const ny = az*bx - ax*bz;
-      const nz = ax*by - ay*bx;
+      // Bitangent = v2 - v0 (adjacent edge, length carries Y scale)
+      const bx = v2[0]-v0[0], by = v2[1]-v0[1], bz = v2[2]-v0[2];
+
+      // Normal = tangent × bitangent (normalised — only orientation)
+      const nx = ty*bz - tz*by;
+      const ny = tz*bx - tx*bz;
+      const nz = tx*by - ty*bx;
       const nLen = Math.sqrt(nx*nx + ny*ny + nz*nz);
+      if (nLen < 1e-6) continue;
 
-      dummy.position.set(cx, cy, cz);
-      dummy.scale.setScalar(size);
-
-      if (nLen > 1e-6) {
-        _zAxis.set(nx/nLen, ny/nLen, nz/nLen);
-        dummy.quaternion.setFromUnitVectors(_zUp, _zAxis);
-      } else {
-        dummy.quaternion.identity();
-      }
-
-      dummy.updateMatrix();
-      this._mesh.setMatrixAt(drawn, dummy.matrix);
+      // Matrix: tangent/bitangent columns carry scale, normal column normalised
+      // PlaneGeometry spans [-0.5,0.5] in local X/Y so tLen maps to face width
+      _mat4.set(
+        tx,        bx,        nx/nLen,  cx,
+        ty,        by,        ny/nLen,  cy,
+        tz,        bz,        nz/nLen,  cz,
+        0,         0,         0,        1
+      );
+      this._mesh.setMatrixAt(drawn, _mat4);
       drawn++;
     }
 
-    // Zero out unused slots
     for (let i = drawn; i < this._maxFaces; i++) {
       this._mesh.setMatrixAt(i, _zeroMatrix);
     }
@@ -157,7 +157,6 @@ export class HypercubeFaces {
   }
 }
 
-// Module-level reusable vectors — avoid per-frame allocation
-const _zUp       = new THREE.Vector3(0, 0, 1);
-const _zAxis     = new THREE.Vector3();
+// Module-level reusable matrices — avoid per-frame allocation
+const _mat4       = new THREE.Matrix4();
 const _zeroMatrix = new THREE.Matrix4();
