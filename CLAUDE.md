@@ -327,6 +327,7 @@ After `gemini` exits (success, error, or Ctrl+C) the trap fires `restore_gitigno
 - main.js: faceTex: pipeline.prev.texture added to scene3d.render() call; hypercube.faces.active (toggle) and hypercube.faces.opacity (continuous) registered with correct single-object form; onChange callbacks wired
 - HypercubeUI.js: Faces toggle and Face opacity slider added to RENDER section
 - Critical fix: all 12 hypercube param registrations corrected from two-arg form ps.register('id', {}) to single-object form ps.register({ id:'', ... }) — previously every param stored under key undefined, silently breaking all ps.get() lookups on hypercube params
+- fix(scene3d): break GL_INVALID_OPERATION feedback loop by nulling face texture and mesh material.map before render pass (97e88e8)
 - sw.js cache errors on video range requests: known PWA limitation, benign
 
 ### 2026-04-16 (Session 4)

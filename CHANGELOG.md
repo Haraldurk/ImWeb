@@ -11,6 +11,10 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
 ### Added
 - **Hypercube pipeline texture on faces (Session 2)** — `HypercubeFaces.js` now uses `ShaderMaterial` with `uFaceTexture` to sample the real-time pipeline texture onto hypercube faces; added `hypercube.faces.active` and `hypercube.faces.opacity` parameters with UI controls; corrected all hypercube parameter registrations in `main.js` to use the valid single-object `ps.register({})` form, fixing a critical bug where parameters were stored under `undefined`.
 
+### Fixed
+- fix(scene3d): null face texture before render pass to break WebGL feedback loop (97e88e8 — actually committed earlier)
+- fix(scene3d): null mesh material.map before render pass to break pipeline feedback loop (97e88e8)
+
 ---
 
 ## [0.8.3] — 2026-04-16
