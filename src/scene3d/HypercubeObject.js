@@ -162,7 +162,6 @@ export class HypercubeObject {
       lineGeo.setAttribute('position', new THREE.BufferAttribute(this._linePosBuf, 3));
       lineGeo.setAttribute('color',    new THREE.BufferAttribute(this._lineColBuf, 3));
       const lineMat = new THREE.ShaderMaterial({
-        vertexColors: true,
         transparent:  true,
         depthWrite:   false,
         blending:     THREE.AdditiveBlending,
