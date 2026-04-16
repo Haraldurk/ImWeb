@@ -21,14 +21,37 @@ export class HypercubeFaces {
 
   _build() {
     const geo = new THREE.PlaneGeometry(1, 1);
-    const mat = new THREE.MeshBasicMaterial({
-      color:       0xffffff,
+    const mat = new THREE.ShaderMaterial({
       side:        THREE.DoubleSide,
       transparent: true,
       depthWrite:  false,
       blending:    THREE.AdditiveBlending,
-      opacity:     this._opacity,
+      uniforms: {
+        uFaceTexture: { value: null },
+        uOpacity:     { value: this._opacity },
+        uHasTexture:  { value: 0.0 },
+      },
+      vertexShader: `
+        varying vec2 vUv;
+        void main() {
+          vUv = uv;
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: `
+        uniform sampler2D uFaceTexture;
+        uniform float uOpacity;
+        uniform float uHasTexture;
+        varying vec2 vUv;
+        void main() {
+          vec4 col = uHasTexture > 0.5
+            ? texture2D(uFaceTexture, vUv)
+            : vec4(1.0);
+          gl_FragColor = vec4(col.rgb, col.a * uOpacity);
+        }
+      `,
     });
+    this._mat = mat;
 
     this._mesh = new THREE.InstancedMesh(geo, mat, this._maxFaces);
     this._mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
@@ -115,7 +138,16 @@ export class HypercubeFaces {
   }
 
   setVisible(v) { this._visible = v; }
-  setOpacity(v) { this._mesh.material.opacity = v; }
+
+  setOpacity(v) {
+    this._opacity = v;
+    this._mat.uniforms.uOpacity.value = v;
+  }
+
+  setFaceTexture(tex) {
+    this._mat.uniforms.uFaceTexture.value = tex;
+    this._mat.uniforms.uHasTexture.value  = tex ? 1.0 : 0.0;
+  }
 
   dispose() {
     this._scene.remove(this._mesh);

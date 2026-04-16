@@ -969,6 +969,10 @@ export class SceneManager {
   render(params, dt = 0, inputs = {}) {
     this.update(dt * 1000);
     this.applyParams(params, dt, inputs);
+    if (this._hypercube) {
+      const tex = inputs.faceTex ?? inputs.screen ?? null;
+      this._hypercube.setFaceTexture(tex);
+    }
     const prev = this.renderer.getRenderTarget();
 
     // Color pass

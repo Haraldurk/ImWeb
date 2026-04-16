@@ -593,6 +593,10 @@ export class HypercubeObject {
     this._edgeWidth = Math.max(0.5, Math.min(8.0, w));
   }
 
+  setFaceTexture(tex) { this._hFaces?.setFaceTexture(tex); }
+  setFaceOpacity(v)   { this._hFaces?.setOpacity(v); }
+  setFacesVisible(v)  { this._hFaces?.setVisible(v); }
+
   /**
    * Set rotation speed (rad/s) for one rotation plane by index.
    */

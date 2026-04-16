@@ -142,7 +142,9 @@ async function main() {
   ps.register('hypercube.rot.xz',        { type:'CONTINUOUS', value:0.20, min:-2.0, max:2.0,  step:0.01,  group:'hypercube' });
   ps.register('hypercube.rot.yz',        { type:'CONTINUOUS', value:0.15, min:-2.0, max:2.0,  step:0.01,  group:'hypercube' });
   ps.register('hypercube.rot.xw',        { type:'CONTINUOUS', value:0.40, min:-2.0, max:2.0,  step:0.01,  group:'hypercube' });
-  ps.register('hypercube.edgeWidth',     { type:'CONTINUOUS', value:1.5,  min:0.5,  max:8.0,  step:0.1,   label:'Edge Width', group:'hypercube' });
+  ps.register('hypercube.edgeWidth',     { type:'CONTINUOUS', value:1.5,  min:0.5,  max:8.0,  step:0.1,   label:'Edge Width',   group:'hypercube' });
+  ps.register('hypercube.faces.active',  { type:'TOGGLE',     value:1,                                     label:'Faces',        group:'hypercube' });
+  ps.register('hypercube.faces.opacity', { type:'CONTINUOUS', value:0.15, min:0.0,  max:1.0,  step:0.01,  label:'Face opacity', group:'hypercube' });
 
   // ── 3. Controllers ────────────────────────────────────────────────────────
 
@@ -176,6 +178,13 @@ async function main() {
 
   const scene3d = new SceneManager(renderer, W, H);
   await scene3d.createHypercube({ startDim: 4 });
+
+  ps.get('hypercube.faces.active').onChange(v => {
+    scene3d.getHypercube()?.setFacesVisible(!!v);
+  });
+  ps.get('hypercube.faces.opacity').onChange(v => {
+    scene3d.getHypercube()?.setFaceOpacity(v);
+  });
 
   // Helper to manage sequence buffers for profiler/VRAM estimation
   const sequencerManager = {
@@ -4184,6 +4193,7 @@ void main() {
       scene3d.render(ps, dt, {
         camera: camera3d.active ? camera3d.currentTexture : null,
         movie: movieInput.active ? movieInput.currentTexture : null,
+        faceTex: pipeline.prev.texture,
         screen: pipeline.prev.texture,
         draw: drawLayer.texture,
         buffer: stillsBuffer.texture,
