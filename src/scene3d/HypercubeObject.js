@@ -10,7 +10,6 @@ import {
   DIMENSION_COLORS,
   generateVertices,
   generateEdges,
-  projectAllVertices,
   rotationPlaneCount,
   defaultRotationSpeeds,
   vertexCount,
@@ -46,7 +45,6 @@ export class HypercubeObject {
     // Generated once at MAX_DIM — never reallocated
     this._vertices = generateVertices(MAX_DIM);
     this._edges    = generateEdges(MAX_DIM);
-    this._projected = null;  // [x,y,z][] — current projected positions
 
     // Rotation state
     this._rotAngles = null;  // Float64Array – one angle per (i<j) plane
@@ -74,6 +72,21 @@ export class HypercubeObject {
     this._ptPosBuf   = new Float32Array(maxVerts * 3);
     this._ptColBuf   = new Float32Array(maxVerts * 3);
 
+    // Zero-allocation projection buffers
+    this._projBuf          = new Float64Array(maxVerts * 3); // flat xyz output per vertex
+    this._scratchCoords    = new Float64Array(MAX_DIM);      // single-vertex scratch
+    this._morphFromProjBuf = new Float64Array(maxVerts * 3); // from-projection during morph
+    this._morphToProjBuf   = new Float64Array(maxVerts * 3); // to-projection during morph
+
+    // Pre-computed RGB color table — eliminates _hexToRgb() per-frame allocations
+    this._colorTable = new Float32Array(DIMENSION_COLORS.length * 3);
+    for (let _i = 0; _i < DIMENSION_COLORS.length; _i++) {
+      const _h = DIMENSION_COLORS[_i];
+      this._colorTable[_i * 3]     = parseInt(_h.slice(1, 3), 16) / 255;
+      this._colorTable[_i * 3 + 1] = parseInt(_h.slice(3, 5), 16) / 255;
+      this._colorTable[_i * 3 + 2] = parseInt(_h.slice(5, 7), 16) / 255;
+    }
+
     this._rebuild();
   }
 
@@ -99,9 +112,6 @@ export class HypercubeObject {
       for (let i = 0; i < n; i++) this._rotSpeeds[i] = oldSpeeds[i];
     }
 
-    this._projected = projectAllVertices(
-      this._vertices, this._dim, this._rotAngles, this._wDistance
-    );
     this._rebuildGeometry();
   }
 
@@ -168,6 +178,40 @@ export class HypercubeObject {
     this._updateVisibility();
   }
 
+  /**
+   * Zero-allocation projection: rotates and perspective-projects every active vertex
+   * into outBuf as flat [x0,y0,z0, x1,y1,z1, ...] Float64 values.
+   */
+  _projectInPlace(vertices, dim, rotAngles, wDistance, outBuf) {
+    const scratch = this._scratchCoords;
+    const nVerts  = vertexCount(dim);
+    for (let vi = 0; vi < nVerts; vi++) {
+      const v = vertices[vi];
+      // Copy active coords into scratch
+      for (let d = 0; d < dim; d++) scratch[d] = v[d];
+      // Apply all Givens rotation planes (inlined for zero call overhead)
+      let planeIdx = 0;
+      for (let i = 0; i < dim; i++) {
+        for (let j = i + 1; j < dim; j++) {
+          const angle = rotAngles[planeIdx++] ?? 0;
+          const c = Math.cos(angle), s = Math.sin(angle);
+          const xi = scratch[i], xj = scratch[j];
+          scratch[i] =  c * xi - s * xj;
+          scratch[j] =  s * xi + c * xj;
+        }
+      }
+      // Perspective project dim → 3 (in-place on scratch)
+      for (let d = dim - 1; d >= 3; d--) {
+        const scale = wDistance / (wDistance - scratch[d]);
+        for (let k = 0; k < d; k++) scratch[k] *= scale;
+      }
+      // Write result
+      outBuf[vi * 3]     = scratch[0];
+      outBuf[vi * 3 + 1] = scratch[1];
+      outBuf[vi * 3 + 2] = scratch[2];
+    }
+  }
+
   _updateVisibility() {
     if (this._lines)  this._lines.visible  = this._renderMode !== 'points';
     if (this._points) this._points.visible = this._renderMode !== 'wireframe';
@@ -199,13 +243,11 @@ export class HypercubeObject {
       this._rotAngles[i] += this._rotSpeeds[i] * dt;
     }
 
-    // Project
+    // Project — zero-allocation path
     if (this._morphState && this._morphFromVertices) {
       this._projectMorphInterp();
     } else {
-      this._projected = projectAllVertices(
-        this._vertices, this._dim, this._rotAngles, this._wDistance
-      );
+      this._projectInPlace(this._vertices, this._dim, this._rotAngles, this._wDistance, this._projBuf);
     }
 
     this._updateBuffers();
@@ -213,39 +255,38 @@ export class HypercubeObject {
   }
 
   _projectMorphInterp() {
-    const fromDim    = this._morphFromDim;
+    // fromAngles may be longer than fromDim needs — _projectInPlace only reads
+    // rotationPlaneCount(fromDim) entries, so passing the full array is safe.
     const fromAngles = this._morphFromAngles ?? this._rotAngles;
+    this._projectInPlace(this._morphFromVertices, this._morphFromDim, fromAngles,    this._wDistance, this._morphFromProjBuf);
+    this._projectInPlace(this._vertices,          this._dim,          this._rotAngles, this._wDistance, this._morphToProjBuf);
 
-    const fromProj = projectAllVertices(
-      this._morphFromVertices,
-      fromDim,
-      fromAngles.slice(0, rotationPlaneCount(fromDim)),
-      this._wDistance
-    );
-    const toProj = projectAllVertices(
-      this._vertices, this._dim, this._rotAngles, this._wDistance
-    );
-
-    const t     = this._morphState.t;
-    const count = Math.min(fromProj.length, toProj.length);
-    this._projected = [];
+    const t         = this._morphState.t;
+    const mt        = 1 - t;
+    const fromCount = vertexCount(this._morphFromDim);
+    const toCount   = vertexCount(this._dim);
+    const count     = Math.min(fromCount, toCount);
 
     for (let i = 0; i < count; i++) {
-      this._projected.push([
-        fromProj[i][0] * (1 - t) + toProj[i][0] * t,
-        fromProj[i][1] * (1 - t) + toProj[i][1] * t,
-        fromProj[i][2] * (1 - t) + toProj[i][2] * t,
-      ]);
+      const bi = i * 3;
+      this._projBuf[bi]     = this._morphFromProjBuf[bi]     * mt + this._morphToProjBuf[bi]     * t;
+      this._projBuf[bi + 1] = this._morphFromProjBuf[bi + 1] * mt + this._morphToProjBuf[bi + 1] * t;
+      this._projBuf[bi + 2] = this._morphFromProjBuf[bi + 2] * mt + this._morphToProjBuf[bi + 2] * t;
     }
-    for (let i = count; i < toProj.length; i++) {
-      this._projected.push(toProj[i]);
+    for (let i = count; i < toCount; i++) {
+      const bi = i * 3;
+      this._projBuf[bi]     = this._morphToProjBuf[bi];
+      this._projBuf[bi + 1] = this._morphToProjBuf[bi + 1];
+      this._projBuf[bi + 2] = this._morphToProjBuf[bi + 2];
     }
   }
 
   _updateBuffers() {
-    const s     = this._scale;
-    const proj  = this._projected;
-    const edges = this._edges;
+    const s          = this._scale;
+    const projBuf    = this._projBuf;
+    const edges      = this._edges;
+    const colorTable = this._colorTable;
+    const colLen     = colorTable.length / 3 | 0;
 
     // ── Line buffer ───────────────────────────────────────────────────────
     const lp = this._linePosBuf;
@@ -253,44 +294,43 @@ export class HypercubeObject {
 
     for (let e = 0; e < edges.length; e++) {
       const [a, b, dimAxis] = edges[e];
+      const base = e * 6;
       if (dimAxis >= this._dim) {
-        // Zero out this edge — belongs to a higher dimension than currently visible
-        const base = e * 6;
         lp[base] = lp[base+1] = lp[base+2] = 0;
         lp[base+3] = lp[base+4] = lp[base+5] = 0;
         lc[base] = lc[base+1] = lc[base+2] = 0;
         lc[base+3] = lc[base+4] = lc[base+5] = 0;
         continue;
       }
-      const pa  = proj[a] ?? [0, 0, 0];
-      const pb  = proj[b] ?? [0, 0, 0];
-      const base = e * 6;
-      lp[base]     = pa[0] * s; lp[base + 1] = pa[1] * s; lp[base + 2] = pa[2] * s;
-      lp[base + 3] = pb[0] * s; lp[base + 4] = pb[1] * s; lp[base + 5] = pb[2] * s;
+      const ai = a * 3, bi = b * 3;
+      lp[base]     = projBuf[ai]     * s; lp[base + 1] = projBuf[ai + 1] * s; lp[base + 2] = projBuf[ai + 2] * s;
+      lp[base + 3] = projBuf[bi]     * s; lp[base + 4] = projBuf[bi + 1] * s; lp[base + 5] = projBuf[bi + 2] * s;
 
-      const hex = DIMENSION_COLORS[Math.min(dimAxis, DIMENSION_COLORS.length - 1)] ?? '#ffffff';
-      const col = _hexToRgb(hex);
-      const op  = edgeOpacity(dimAxis, this._dim) * this._edgeOpacityMult;
-      lc[base]     = col[0] * op; lc[base + 1] = col[1] * op; lc[base + 2] = col[2] * op;
-      lc[base + 3] = col[0] * op; lc[base + 4] = col[1] * op; lc[base + 5] = col[2] * op;
+      const ci = Math.min(dimAxis, colLen - 1) * 3;
+      const op = edgeOpacity(dimAxis, this._dim) * this._edgeOpacityMult;
+      const cr = colorTable[ci] * op, cg = colorTable[ci + 1] * op, cb = colorTable[ci + 2] * op;
+      lc[base]     = cr; lc[base + 1] = cg; lc[base + 2] = cb;
+      lc[base + 3] = cr; lc[base + 4] = cg; lc[base + 5] = cb;
     }
 
     this._lines.geometry.attributes.position.needsUpdate = true;
     this._lines.geometry.attributes.color.needsUpdate    = true;
 
     // ── Point buffer ──────────────────────────────────────────────────────
-    const pp = this._ptPosBuf;
-    const pc = this._ptColBuf;
-    const dimCol = _hexToRgb(DIMENSION_COLORS[Math.min(this._dim - 1, DIMENSION_COLORS.length - 1)] ?? '#ffffff');
+    const pp  = this._ptPosBuf;
+    const pc  = this._ptColBuf;
+    const dci = Math.min(this._dim - 1, colLen - 1) * 3;
+    const dcr = colorTable[dci], dcg = colorTable[dci + 1], dcb = colorTable[dci + 2];
+    const nVerts = vertexCount(this._dim);
 
-    for (let i = 0; i < proj.length; i++) {
-      const p3 = proj[i] ?? [0, 0, 0];
-      pp[i * 3]     = p3[0] * s;
-      pp[i * 3 + 1] = p3[1] * s;
-      pp[i * 3 + 2] = p3[2] * s;
-      pc[i * 3]     = dimCol[0];
-      pc[i * 3 + 1] = dimCol[1];
-      pc[i * 3 + 2] = dimCol[2];
+    for (let i = 0; i < nVerts; i++) {
+      const pi = i * 3;
+      pp[pi]     = projBuf[pi]     * s;
+      pp[pi + 1] = projBuf[pi + 1] * s;
+      pp[pi + 2] = projBuf[pi + 2] * s;
+      pc[pi]     = dcr;
+      pc[pi + 1] = dcg;
+      pc[pi + 2] = dcb;
     }
 
     this._points.geometry.attributes.position.needsUpdate = true;
@@ -301,11 +341,9 @@ export class HypercubeObject {
     if (this._subscribers.size === 0) return;
     const s = this._scale;
     for (const [vi, callbacks] of this._subscribers) {
-      const p = this._projected[vi];
-      if (p) {
-        const wx = p[0] * s, wy = p[1] * s, wz = p[2] * s;
-        for (const cb of callbacks) cb(wx, wy, wz);
-      }
+      const pi = vi * 3;
+      const wx = this._projBuf[pi] * s, wy = this._projBuf[pi + 1] * s, wz = this._projBuf[pi + 2] * s;
+      for (const cb of callbacks) cb(wx, wy, wz);
     }
   }
 
