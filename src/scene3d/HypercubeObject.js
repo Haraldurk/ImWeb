@@ -43,8 +43,9 @@ export class HypercubeObject {
     this._edgeOpacityMult = options.edgeOpacity   ?? 1.0;
 
     // N-D geometry
-    this._vertices = null;   // Float64Array[] — raw hypercube coords
-    this._edges    = null;   // [indexA, indexB, dimAxis][]
+    // Generated once at MAX_DIM — never reallocated
+    this._vertices = generateVertices(MAX_DIM);
+    this._edges    = generateEdges(MAX_DIM);
     this._projected = null;  // [x,y,z][] — current projected positions
 
     // Rotation state
@@ -79,8 +80,7 @@ export class HypercubeObject {
   // ── Internal rebuild ──────────────────────────────────────────────────────
 
   _rebuild() {
-    this._vertices = generateVertices(this._dim);
-    this._edges    = generateEdges(this._dim);
+    // vertices and edges are permanent MAX_DIM arrays — no regeneration needed
 
     const nPlanes   = rotationPlaneCount(this._dim);
     const oldAngles = this._rotAngles;
@@ -138,7 +138,7 @@ export class HypercubeObject {
 
     if (this._lines) {
       // Already exists — buffers are permanent, just update draw range
-      this._lines.geometry.setDrawRange(0, this._edges.length * 2);
+      this._lines.geometry.setDrawRange(0, edgeCount(this._dim) * 2);
     } else {
       const lineGeo = new THREE.BufferGeometry();
       lineGeo.setAttribute('position', new THREE.BufferAttribute(this._linePosBuf, 3));
@@ -155,7 +155,7 @@ export class HypercubeObject {
     }
 
     if (this._points) {
-      this._points.geometry.setDrawRange(0, this._vertices.length);
+      this._points.geometry.setDrawRange(0, vertexCount(this._dim));
     } else {
       const ptGeo = new THREE.BufferGeometry();
       ptGeo.setAttribute('position', new THREE.BufferAttribute(this._ptPosBuf, 3));
@@ -329,7 +329,7 @@ export class HypercubeObject {
 
     // Snapshot the current state as "from"
     this._morphFromDim      = this._dim;
-    this._morphFromVertices = generateVertices(this._dim);
+    this._morphFromVertices = this._vertices;
     this._morphFromAngles   = this._rotAngles.slice();
 
     // Switch to target dimension
