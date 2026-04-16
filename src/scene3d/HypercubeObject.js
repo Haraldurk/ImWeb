@@ -305,6 +305,9 @@ export class HypercubeObject {
   // ── Update ────────────────────────────────────────────────────────────────
 
   update(deltaMs) {
+    // Faces update independently of edge/point visibility
+    this._hFaces.update(this._projBuf, this._dim, this._scale);
+
     // Skip all CPU work if not visible — avoids 12D projection
     // cost when hypercube is not the active scene source
     if (this._lines && !this._lines.visible &&
@@ -340,7 +343,6 @@ export class HypercubeObject {
     }
 
     this._updateBuffers();
-    this._hFaces.update(this._projBuf, this._dim, this._scale);
     this._notifySubscribers();
   }
 
