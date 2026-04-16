@@ -112,7 +112,7 @@ export function buildHypercubePanel(container, hypercube, ps) {
   _selectRow(renderSec, 'Mode', ['wireframe', 'points', 'both'], 0, idx => {
     hypercube.setRenderMode(['wireframe', 'points', 'both'][idx]);
   });
-  _paramRow(renderSec, 'Pt size',      hypercube._pointSize ?? 3,         1,   20,  0.5, v => hypercube.setPointSize(v));
+  _paramRow(renderSec, 'Pt size',      hypercube._pointSize ?? 3,       0.5,   20,  0.5, v => hypercube.setPointSize(v));
   _paramRow(renderSec, 'Edge opacity', (hypercube._edgeOpacityMult ?? 1) * 100, 0, 100, 1, v => hypercube.setEdgeOpacity(v / 100));
 
   // ── Stats ────────────────────────────────────────────────────────────────

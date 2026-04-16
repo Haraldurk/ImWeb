@@ -65,6 +65,14 @@ export class HypercubeObject {
     this._lines  = null;
     this._points = null;
 
+    // Permanent buffers — allocated once at MAX_DIM capacity, never reallocated
+    const maxEdges = edgeCount(MAX_DIM);
+    const maxVerts = vertexCount(MAX_DIM);
+    this._linePosBuf = new Float32Array(maxEdges * 6);
+    this._lineColBuf = new Float32Array(maxEdges * 6);
+    this._ptPosBuf   = new Float32Array(maxVerts * 3);
+    this._ptColBuf   = new Float32Array(maxVerts * 3);
+
     this._rebuild();
   }
 
@@ -98,26 +106,10 @@ export class HypercubeObject {
   }
 
   _rebuildGeometry() {
-    const nVerts = this._vertices.length;
-    const nEdges = this._edges.length;
-
-    // ── New typed arrays ──────────────────────────────────────────────────
-    const linePos = new Float32Array(nEdges * 6);
-    const lineCol = new Float32Array(nEdges * 6);
-    const newLineGeo = new THREE.BufferGeometry();
-    newLineGeo.setAttribute('position', new THREE.BufferAttribute(linePos, 3));
-    newLineGeo.setAttribute('color',    new THREE.BufferAttribute(lineCol, 3));
-
-    const ptPos = new Float32Array(nVerts * 3);
-    const ptCol = new Float32Array(nVerts * 3);
-    const newPtGeo = new THREE.BufferGeometry();
-    newPtGeo.setAttribute('position', new THREE.BufferAttribute(ptPos, 3));
-    newPtGeo.setAttribute('color',    new THREE.BufferAttribute(ptCol, 3));
-
-    // Create ShaderMaterial once; reuse on subsequent rebuilds
+    // ShaderMaterial created once
     if (!this._pointMat) {
       this._pointMat = new THREE.ShaderMaterial({
-        uniforms: { opacity: { value: 0.8 }, uPointSize: { value: 3.0 } },
+        uniforms: { opacity: { value: 0.8 }, uPointSize: { value: this._pointSize } },
         vertexShader: `
           attribute vec3 color;
           varying vec3 vColor;
@@ -126,7 +118,7 @@ export class HypercubeObject {
             vColor = color;
             vec4 mv = modelViewMatrix * vec4(position, 1.0);
             gl_Position = projectionMatrix * mv;
-            gl_PointSize = uPointSize * (200.0 / max(-mv.z, 0.1));
+            gl_PointSize = uPointSize * (60.0 / max(-mv.z, 0.1));
           }
         `,
         fragmentShader: `
@@ -142,31 +134,33 @@ export class HypercubeObject {
         depthWrite: false,
         blending: THREE.AdditiveBlending,
       });
-      this._pointMat.uniforms.uPointSize.value = this._pointSize;
     }
 
     if (this._lines) {
-      // Reuse existing mesh — dispose old GPU buffers, swap in new geometry
-      this._lines.geometry.dispose();
-      this._lines.geometry = newLineGeo;
+      // Already exists — buffers are permanent, just update draw range
+      this._lines.geometry.setDrawRange(0, this._edges.length * 2);
     } else {
+      const lineGeo = new THREE.BufferGeometry();
+      lineGeo.setAttribute('position', new THREE.BufferAttribute(this._linePosBuf, 3));
+      lineGeo.setAttribute('color',    new THREE.BufferAttribute(this._lineColBuf, 3));
       const lineMat = new THREE.LineBasicMaterial({
         vertexColors: true,
         transparent:  true,
         depthWrite:   false,
         blending:     THREE.AdditiveBlending,
       });
-      this._lines = new THREE.LineSegments(newLineGeo, lineMat);
+      this._lines = new THREE.LineSegments(lineGeo, lineMat);
       this._lines.frustumCulled = false;
       this._scene.add(this._lines);
     }
 
     if (this._points) {
-      // Reuse existing mesh
-      this._points.geometry.dispose();
-      this._points.geometry = newPtGeo;
+      this._points.geometry.setDrawRange(0, this._vertices.length);
     } else {
-      this._points = new THREE.Points(newPtGeo, this._pointMat);
+      const ptGeo = new THREE.BufferGeometry();
+      ptGeo.setAttribute('position', new THREE.BufferAttribute(this._ptPosBuf, 3));
+      ptGeo.setAttribute('color',    new THREE.BufferAttribute(this._ptColBuf, 3));
+      this._points = new THREE.Points(ptGeo, this._pointMat);
       this._points.frustumCulled = false;
       this._scene.add(this._points);
     }
@@ -254,8 +248,8 @@ export class HypercubeObject {
     const edges = this._edges;
 
     // ── Line buffer ───────────────────────────────────────────────────────
-    const lp = this._lines.geometry.attributes.position.array;
-    const lc = this._lines.geometry.attributes.color.array;
+    const lp = this._linePosBuf;
+    const lc = this._lineColBuf;
 
     for (let e = 0; e < edges.length; e++) {
       const [a, b, dimAxis] = edges[e];
@@ -285,8 +279,8 @@ export class HypercubeObject {
     this._lines.geometry.attributes.color.needsUpdate    = true;
 
     // ── Point buffer ──────────────────────────────────────────────────────
-    const pp = this._points.geometry.attributes.position.array;
-    const pc = this._points.geometry.attributes.color.array;
+    const pp = this._ptPosBuf;
+    const pc = this._ptColBuf;
     const dimCol = _hexToRgb(DIMENSION_COLORS[Math.min(this._dim - 1, DIMENSION_COLORS.length - 1)] ?? '#ffffff');
 
     for (let i = 0; i < proj.length; i++) {
