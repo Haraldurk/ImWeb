@@ -78,6 +78,10 @@ export class HypercubeObject {
     this._morphFromProjBuf = new Float64Array(maxVerts * 3); // from-projection during morph
     this._morphToProjBuf   = new Float64Array(maxVerts * 3); // to-projection during morph
 
+    // Edge/point colors only change on dim, edgeOpacity or morph events — flag
+    // gates color writes + GPU upload to skip ~half the per-frame bandwidth.
+    this._colorsDirty = true;
+
     // Pre-computed RGB color table — eliminates _hexToRgb() per-frame allocations
     this._colorTable = new Float32Array(DIMENSION_COLORS.length * 3);
     for (let _i = 0; _i < DIMENSION_COLORS.length; _i++) {
@@ -112,6 +116,7 @@ export class HypercubeObject {
       for (let i = 0; i < n; i++) this._rotSpeeds[i] = oldSpeeds[i];
     }
 
+    this._colorsDirty = true;
     this._rebuildGeometry();
   }
 
@@ -147,8 +152,10 @@ export class HypercubeObject {
     }
 
     if (this._lines) {
-      // Already exists — buffers are permanent, just update draw range
-      this._lines.geometry.setDrawRange(0, edgeCount(this._dim) * 2);
+      // Buffers permanent at MAX_DIM. Edges aren't sorted by dimAxis, so we
+      // must always draw the full range and rely on the cull-zero in
+      // _updateBuffers to hide inactive edges.
+      this._lines.geometry.setDrawRange(0, edgeCount(MAX_DIM) * 2);
     } else {
       const lineGeo = new THREE.BufferGeometry();
       lineGeo.setAttribute('position', new THREE.BufferAttribute(this._linePosBuf, 3));
@@ -286,11 +293,13 @@ export class HypercubeObject {
   }
 
   _updateBuffers() {
-    const s          = this._scale;
-    const projBuf    = this._projBuf;
-    const edges      = this._edges;
-    const colorTable = this._colorTable;
-    const colLen     = colorTable.length / 3 | 0;
+    const s             = this._scale;
+    const projBuf       = this._projBuf;
+    const edges         = this._edges;
+    const colorTable    = this._colorTable;
+    const colLen        = colorTable.length / 3 | 0;
+    const nActiveVerts  = vertexCount(this._dim);
+    const writeColors   = this._colorsDirty;
 
     // ── Line buffer ───────────────────────────────────────────────────────
     const lp = this._linePosBuf;
@@ -299,46 +308,63 @@ export class HypercubeObject {
     for (let e = 0; e < edges.length; e++) {
       const [a, b, dimAxis] = edges[e];
       const base = e * 6;
-      if (dimAxis >= this._dim) {
+      // Cull edges that belong to inactive dimensions OR reference vertex
+      // indices outside the active vertex set (stale projBuf data otherwise).
+      if (dimAxis >= this._dim || a >= nActiveVerts || b >= nActiveVerts) {
         lp[base] = lp[base+1] = lp[base+2] = 0;
         lp[base+3] = lp[base+4] = lp[base+5] = 0;
-        lc[base] = lc[base+1] = lc[base+2] = 0;
-        lc[base+3] = lc[base+4] = lc[base+5] = 0;
+        if (writeColors) {
+          lc[base] = lc[base+1] = lc[base+2] = 0;
+          lc[base+3] = lc[base+4] = lc[base+5] = 0;
+        }
         continue;
       }
       const ai = a * 3, bi = b * 3;
       lp[base]     = projBuf[ai]     * s; lp[base + 1] = projBuf[ai + 1] * s; lp[base + 2] = projBuf[ai + 2] * s;
       lp[base + 3] = projBuf[bi]     * s; lp[base + 4] = projBuf[bi + 1] * s; lp[base + 5] = projBuf[bi + 2] * s;
 
-      const ci = Math.min(dimAxis, colLen - 1) * 3;
-      const op = edgeOpacity(dimAxis, this._dim) * this._edgeOpacityMult;
-      const cr = colorTable[ci] * op, cg = colorTable[ci + 1] * op, cb = colorTable[ci + 2] * op;
-      lc[base]     = cr; lc[base + 1] = cg; lc[base + 2] = cb;
-      lc[base + 3] = cr; lc[base + 4] = cg; lc[base + 5] = cb;
+      if (writeColors) {
+        const ci = Math.min(dimAxis, colLen - 1) * 3;
+        const op = edgeOpacity(dimAxis, this._dim) * this._edgeOpacityMult;
+        const cr = colorTable[ci] * op, cg = colorTable[ci + 1] * op, cb = colorTable[ci + 2] * op;
+        lc[base]     = cr; lc[base + 1] = cg; lc[base + 2] = cb;
+        lc[base + 3] = cr; lc[base + 4] = cg; lc[base + 5] = cb;
+      }
     }
 
     this._lines.geometry.attributes.position.needsUpdate = true;
-    this._lines.geometry.attributes.color.needsUpdate    = true;
+    if (writeColors) this._lines.geometry.attributes.color.needsUpdate = true;
 
     // ── Point buffer ──────────────────────────────────────────────────────
     const pp  = this._ptPosBuf;
     const pc  = this._ptColBuf;
-    const dci = Math.min(this._dim - 1, colLen - 1) * 3;
-    const dcr = colorTable[dci], dcg = colorTable[dci + 1], dcb = colorTable[dci + 2];
-    const nVerts = vertexCount(this._dim);
+    const nVerts = nActiveVerts;
 
-    for (let i = 0; i < nVerts; i++) {
-      const pi = i * 3;
-      pp[pi]     = projBuf[pi]     * s;
-      pp[pi + 1] = projBuf[pi + 1] * s;
-      pp[pi + 2] = projBuf[pi + 2] * s;
-      pc[pi]     = dcr;
-      pc[pi + 1] = dcg;
-      pc[pi + 2] = dcb;
+    if (writeColors) {
+      const dci = Math.min(this._dim - 1, colLen - 1) * 3;
+      const dcr = colorTable[dci], dcg = colorTable[dci + 1], dcb = colorTable[dci + 2];
+      for (let i = 0; i < nVerts; i++) {
+        const pi = i * 3;
+        pp[pi]     = projBuf[pi]     * s;
+        pp[pi + 1] = projBuf[pi + 1] * s;
+        pp[pi + 2] = projBuf[pi + 2] * s;
+        pc[pi]     = dcr;
+        pc[pi + 1] = dcg;
+        pc[pi + 2] = dcb;
+      }
+    } else {
+      for (let i = 0; i < nVerts; i++) {
+        const pi = i * 3;
+        pp[pi]     = projBuf[pi]     * s;
+        pp[pi + 1] = projBuf[pi + 1] * s;
+        pp[pi + 2] = projBuf[pi + 2] * s;
+      }
     }
 
     this._points.geometry.attributes.position.needsUpdate = true;
-    this._points.geometry.attributes.color.needsUpdate    = true;
+    if (writeColors) this._points.geometry.attributes.color.needsUpdate = true;
+
+    if (writeColors) this._colorsDirty = false;
   }
 
   _notifySubscribers() {
@@ -381,6 +407,8 @@ export class HypercubeObject {
     if (toDim > this._morphFromDim) {
       this._rebuild();
     }
+    // dim changed → edge colors and dim cull mask must be rewritten next frame
+    this._colorsDirty = true;
     this._morphState = createMorphState(this._morphFromDim, toDim, durationMs, easing);
   }
 
@@ -443,6 +471,7 @@ export class HypercubeObject {
 
   setEdgeOpacity(v) {
     this._edgeOpacityMult = v;
+    this._colorsDirty = true;
   }
 
   /**

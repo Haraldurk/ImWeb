@@ -29,6 +29,8 @@ export function buildHypercubePanel(container, hypercube, ps) {
 
   let morphDuration = 800;
   let morphEasing   = 'easeInOut';
+  let lastRebuildDim = -1;
+  let pendingRebuild = null;
 
   // ── Dimension pills ─────────────────────────────────────────────────────
   const dimSec = _section(panel, 'DIMENSION');
@@ -50,7 +52,13 @@ export function buildHypercubePanel(container, hypercube, ps) {
     pill.addEventListener('mouseleave', () => { pill.style.background = `${col}22`; });
     pill.addEventListener('click', () => {
       hypercube.morphTo(d, { durationMs: morphDuration, easing: morphEasing });
-      updateStats();
+      // Stats text updates next interval tick. Defer the 66-row DOM rebuild
+      // until after the morph completes so it doesn't freeze the start frames.
+      if (pendingRebuild) clearTimeout(pendingRebuild);
+      pendingRebuild = setTimeout(() => {
+        pendingRebuild = null;
+        lastRebuildDim = -1; // force rebuild on next updateStats
+      }, morphDuration + 50);
     });
     pillRow.appendChild(pill);
   }
@@ -126,7 +134,12 @@ export function buildHypercubePanel(container, hypercube, ps) {
     const d = hypercube.dim;
     statsDiv.textContent =
       `dim:${d}  verts:${vertexCount(d)}  edges:${edgeCount(d)}  planes:${rotationPlaneCount(d)}`;
-    rebuildRotationRows();
+    // Only rebuild the rotation-plane rows when dim actually changed — at 12D
+    // this is 66 row creations and was firing every 200ms unconditionally.
+    if (d !== lastRebuildDim) {
+      lastRebuildDim = d;
+      rebuildRotationRows();
+    }
   }
   updateStats();
   setInterval(updateStats, 200);
