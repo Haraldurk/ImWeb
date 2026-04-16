@@ -8,19 +8,18 @@ export const MAX_DIM = 12;
 
 // One colour per dimension index (0–12); indices 0–2 unused / base.
 export const DIMENSION_COLORS = [
-  '#ffffff', // 0 (unused)
-  '#ffffff', // 1 (unused)
-  '#a0d8ef', // 2
-  '#82cfff', // 3 – base 3D cyan
-  '#ff6b6b', // 4 – red
-  '#ffd93d', // 5 – yellow
-  '#6bcb77', // 6 – green
-  '#4d96ff', // 7 – blue
-  '#ff922b', // 8 – orange
-  '#cc5de8', // 9 – purple
-  '#f06595', // 10 – pink
-  '#74c0fc', // 11 – sky
-  '#a9e34b', // 12 – lime
+  '#7F77DD', // 0  X — purple
+  '#7F77DD', // 1  Y — purple
+  '#7F77DD', // 2  Z — purple
+  '#D85A30', // 3  W — coral
+  '#1D9E75', // 4  V — teal
+  '#BA7517', // 5  U — amber
+  '#378ADD', // 6  T — blue
+  '#D4537E', // 7  S — pink
+  '#888780', // 8  R — gray
+  '#639922', // 9  Q — green
+  '#534AB7', // 10 P — deep purple
+  '#0F6E56', // 11 O — deep teal
 ];
 
 // ── Easing ────────────────────────────────────────────────────────────────────
