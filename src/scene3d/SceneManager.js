@@ -48,6 +48,18 @@ export class SceneManager {
       type:      THREE.UnsignedByteType,
       generateMipmaps: false,
     });
+    // Copy target for face texture — isolates drawLayer from feedback pipeline
+    this._faceTexCopy = new THREE.WebGLRenderTarget(width, height, {
+      minFilter: THREE.LinearFilter,
+      magFilter: THREE.LinearFilter,
+      format:    THREE.RGBAFormat,
+      depthBuffer: false,
+    });
+    this._copyMat    = new THREE.MeshBasicMaterial({ depthTest: false, depthWrite: false });
+    this._copyQuad   = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), this._copyMat);
+    this._copyScene  = new THREE.Scene();
+    this._copyScene.add(this._copyQuad);
+    this._copyCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
     this._depthMat = new THREE.MeshDepthMaterial({
       depthPacking: THREE.BasicDepthPacking,
     });
@@ -969,9 +981,18 @@ export class SceneManager {
   render(params, dt = 0, inputs = {}) {
     this.update(dt * 1000);
     this.applyParams(params, dt, inputs);
-    // Clear face texture before render passes to avoid WebGL feedback loop —
-    // any input texture may be bound as a sampler during the 3D scene draw.
-    this._hypercube?.setFaceTexture(null);
+    // Blit face texture into isolated copy target — avoids WebGL feedback loop
+    if (inputs.faceTex && this._hypercube) {
+      this._copyMat.map = inputs.faceTex;
+      this._copyMat.needsUpdate = true;
+      const _copyPrev = this.renderer.getRenderTarget();
+      this.renderer.setRenderTarget(this._faceTexCopy);
+      this.renderer.render(this._copyScene, this._copyCamera);
+      this.renderer.setRenderTarget(_copyPrev);
+      this._hypercube.setFaceTexture(this._faceTexCopy.texture);
+    } else {
+      this._hypercube?.setFaceTexture(null);
+    }
     // Null mesh material map before render passes to break pipeline.prev feedback loop
     const _savedMaterialMap = this.material?.map ?? null;
     if (this.material && _savedMaterialMap) {
@@ -999,8 +1020,6 @@ export class SceneManager {
       this.material.map = _savedMaterialMap;
       this.material.needsUpdate = true;
     }
-    // Restore face texture after all render passes are complete
-    this._hypercube?.setFaceTexture(inputs.faceTex ?? null);
   }
 
   get texture()      { return this.target.texture; }
@@ -1011,6 +1030,7 @@ export class SceneManager {
     this.width = w; this.height = h;
     this.target.setSize(w, h);
     this.depthTarget.setSize(w, h);
+    this._faceTexCopy.setSize(w, h);
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
   }
