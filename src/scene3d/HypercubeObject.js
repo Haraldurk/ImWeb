@@ -198,6 +198,7 @@ export class HypercubeObject {
         transparent: true,
         depthWrite:  false,
         blending:    THREE.AdditiveBlending,
+        side:        THREE.DoubleSide,
         uniforms: {
           uEdgeWidth:  { value: 1.5 },
           uResolution: { value: new THREE.Vector2(800, 600) },
