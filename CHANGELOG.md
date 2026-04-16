@@ -6,6 +6,13 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
 
 ---
 
+## [0.8.2] — 2026-04-16
+
+### Added
+- **Real screen-space hypercube edge width** — Replaced `LineSegments` with quad `Mesh` (2 triangles per edge) for true variable-width lines (0.5–8.0 px); implemented per-edge quad buffers (`_quadEndABuf`, `_quadEndBBuf`, etc.) with zero per-frame allocation; vertex shader performs screen-space extrusion perpendicular to edge direction; added `uResolution` uniform sync and `DoubleSide` rendering.
+
+---
+
 ## [0.8.1] — 2026-04-16
 
 ### Added

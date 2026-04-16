@@ -181,11 +181,12 @@ AFTER: git add [files] && git commit -m "[message]" && git push
 
 ---
 
-## Current version: 0.8.1
+## Current version: 0.8.2
 
 See CHANGELOG.md for full history.
 
 ### Completed through Phase 6 (current)
+- **Real screen-space hypercube edge width** — quad `Mesh` edges, screen-space extrusion shader, `uResolution` sync, 0.5–8.0 px width
 - **Hypercube edge width shader (Session 1)** — `ShaderMaterial` on edges, `uEdgeWidth` uniform (0.5–8.0), `hypercube.edgeWidth` param and UI slider
 - **N-D Hypercube engine (4D–12D)** — 60fps at 12D; vertex/edge generation, Givens projection, morph state machine, 5 easing functions; permanent Float32/Float64 buffers, zero per-frame allocation, `_colorsDirty` GPU gate, `MAX_DIM` draw range, circular points shader, vertex pub/sub
 - **Hypercube UI** — dimension pills, collapsible rotation tiers, deferred DOM rebuild on morph
@@ -315,6 +316,16 @@ After `gemini` exits (success, error, or Ctrl+C) the trap fires `restore_gitigno
 ---
 
 ## Session Log
+
+### 2026-04-16 (Session 3)
+- feat(hypercube): real screen-space edge width (commits 9823e07, a4a5fdb)
+- Replaced LineSegments with quad Mesh — each edge is now 2 triangles
+- Per-edge quad buffers: _quadEndABuf, _quadEndBBuf, _quadColBuf, _quadSideBuf, _quadIndexBuf
+- Vertex shader extrudes perpendicular to line direction in clip space
+- uResolution uniform synced from SceneManager each frame
+- DoubleSide added to ShaderMaterial — back-face culling was killing quads
+- Edge Width slider now produces real variable-width edges (0.5–8.0)
+- gl_VertexID selects A/B endpoint per vertex; aSide drives extrusion direction
 
 ### 2026-04-16 (Session 2)
 - feat(hypercube): edge width shader — Session 1 complete (commit b0d0820)
