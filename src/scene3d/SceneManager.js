@@ -969,10 +969,9 @@ export class SceneManager {
   render(params, dt = 0, inputs = {}) {
     this.update(dt * 1000);
     this.applyParams(params, dt, inputs);
-    if (this._hypercube) {
-      const tex = inputs.faceTex ?? inputs.screen ?? null;
-      this._hypercube.setFaceTexture(tex);
-    }
+    // Clear face texture before render passes to avoid WebGL feedback loop —
+    // any input texture may be bound as a sampler during the 3D scene draw.
+    this._hypercube?.setFaceTexture(null);
     const prev = this.renderer.getRenderTarget();
 
     // Color pass
@@ -989,6 +988,8 @@ export class SceneManager {
     }
 
     this.renderer.setRenderTarget(prev);
+    // Restore face texture after all render passes are complete
+    this._hypercube?.setFaceTexture(inputs.faceTex ?? null);
   }
 
   get texture()      { return this.target.texture; }
