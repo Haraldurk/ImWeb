@@ -133,18 +133,18 @@ async function main() {
   registerCoreParameters(ps);
 
   // ── Hypercube parameters ───────────────────────────────────────────────────
-  ps.register('hypercube.morphDuration', { type:'CONTINUOUS', value:2000, min:200,  max:8000, step:100,   group:'hypercube' });
-  ps.register('hypercube.wDistance',     { type:'CONTINUOUS', value:3.0,  min:1.5,  max:8.0,  step:0.1,   group:'hypercube' });
-  ps.register('hypercube.scale',         { type:'CONTINUOUS', value:1.0,  min:0.1,  max:3.0,  step:0.05,  group:'hypercube' });
-  ps.register('hypercube.edgeOpacity',   { type:'CONTINUOUS', value:0.7,  min:0.0,  max:1.0,  step:0.01,  group:'hypercube' });
-  ps.register('hypercube.pointSize',     { type:'CONTINUOUS', value:0.04, min:0.01, max:0.2,  step:0.005, group:'hypercube' });
-  ps.register('hypercube.rot.xy',        { type:'CONTINUOUS', value:0.30, min:-2.0, max:2.0,  step:0.01,  group:'hypercube' });
-  ps.register('hypercube.rot.xz',        { type:'CONTINUOUS', value:0.20, min:-2.0, max:2.0,  step:0.01,  group:'hypercube' });
-  ps.register('hypercube.rot.yz',        { type:'CONTINUOUS', value:0.15, min:-2.0, max:2.0,  step:0.01,  group:'hypercube' });
-  ps.register('hypercube.rot.xw',        { type:'CONTINUOUS', value:0.40, min:-2.0, max:2.0,  step:0.01,  group:'hypercube' });
-  ps.register('hypercube.edgeWidth',     { type:'continuous', value:1.5,  min:0.5,  max:8.0,  step:0.1,   label:'Edge Width',   group:'hypercube' });
-  ps.register('hypercube.faces.active',  { type:'toggle',     value:1,                                     label:'Faces',        group:'hypercube' });
-  ps.register('hypercube.faces.opacity', { type:'continuous', value:0.15, min:0.0,  max:1.0,  step:0.01,  label:'Face opacity', group:'hypercube' });
+  ps.register({ id:'hypercube.morphDuration', type:'continuous', value:2000, min:200,  max:8000, step:100,   group:'hypercube' });
+  ps.register({ id:'hypercube.wDistance',     type:'continuous', value:3.0,  min:1.5,  max:8.0,  step:0.1,   group:'hypercube' });
+  ps.register({ id:'hypercube.scale',         type:'continuous', value:1.0,  min:0.1,  max:3.0,  step:0.05,  group:'hypercube' });
+  ps.register({ id:'hypercube.edgeOpacity',   type:'continuous', value:0.7,  min:0.0,  max:1.0,  step:0.01,  group:'hypercube' });
+  ps.register({ id:'hypercube.pointSize',     type:'continuous', value:0.04, min:0.01, max:0.2,  step:0.005, group:'hypercube' });
+  ps.register({ id:'hypercube.rot.xy',        type:'continuous', value:0.30, min:-2.0, max:2.0,  step:0.01,  group:'hypercube' });
+  ps.register({ id:'hypercube.rot.xz',        type:'continuous', value:0.20, min:-2.0, max:2.0,  step:0.01,  group:'hypercube' });
+  ps.register({ id:'hypercube.rot.yz',        type:'continuous', value:0.15, min:-2.0, max:2.0,  step:0.01,  group:'hypercube' });
+  ps.register({ id:'hypercube.rot.xw',        type:'continuous', value:0.40, min:-2.0, max:2.0,  step:0.01,  group:'hypercube' });
+  ps.register({ id:'hypercube.edgeWidth',     type:'continuous', value:1.5,  min:0.5,  max:8.0,  step:0.1,   label:'Edge Width',   group:'hypercube' });
+  ps.register({ id:'hypercube.faces.active',  type:'toggle',     value:1,                                    label:'Faces',        group:'hypercube' });
+  ps.register({ id:'hypercube.faces.opacity', type:'continuous', value:0.15, min:0.0,  max:1.0,  step:0.01,  label:'Face opacity', group:'hypercube' });
 
   // ── 3. Controllers ────────────────────────────────────────────────────────
 
