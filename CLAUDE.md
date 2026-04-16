@@ -181,11 +181,12 @@ AFTER: git add [files] && git commit -m "[message]" && git push
 
 ---
 
-## Current version: 0.8.3
+## Current version: 0.8.4
 
 See CHANGELOG.md for full history.
 
 ### Completed through Phase 6 (current)
+- **Hypercube pipeline texture on faces (Session 2)** — `ShaderMaterial` faces sampling pipeline texture, `faces.active/opacity` params, UI controls
 - **Hypercube 2-cell face rendering (Session 1)** — `InstancedMesh` plane faces, centroid/normal tracking, `generate2CellFaces` N-D logic
 - **Real screen-space hypercube edge width** — quad `Mesh` edges, screen-space extrusion shader, `uResolution` sync, 0.5–8.0 px width
 - **Hypercube edge width shader (Session 1)** — `ShaderMaterial` on edges, `uEdgeWidth` uniform (0.5–8.0), `hypercube.edgeWidth` param and UI slider
@@ -317,6 +318,16 @@ After `gemini` exits (success, error, or Ctrl+C) the trap fires `restore_gitigno
 ---
 
 ## Session Log
+
+### 2026-04-16 (Session 5)
+- feat(hypercube): hypercube pipeline texture on faces (Session 2 complete)
+- HypercubeFaces.js: MeshBasicMaterial replaced with ShaderMaterial, uFaceTexture / uOpacity / uHasTexture uniforms, samples pipeline texture per face quad, falls back to white when no texture assigned
+- HypercubeObject.js: setFaceTexture(), setFaceOpacity(), setFacesVisible() proxy methods added
+- SceneManager.js: passes inputs.faceTex to hypercube each frame in render()
+- main.js: faceTex: pipeline.prev.texture added to scene3d.render() call; hypercube.faces.active (toggle) and hypercube.faces.opacity (continuous) registered with correct single-object form; onChange callbacks wired
+- HypercubeUI.js: Faces toggle and Face opacity slider added to RENDER section
+- Critical fix: all 12 hypercube param registrations corrected from two-arg form ps.register('id', {}) to single-object form ps.register({ id:'', ... }) — previously every param stored under key undefined, silently breaking all ps.get() lookups on hypercube params
+- sw.js cache errors on video range requests: known PWA limitation, benign
 
 ### 2026-04-16 (Session 4)
 - feat(hypercube): 2-cell face rendering — Session 1 complete
