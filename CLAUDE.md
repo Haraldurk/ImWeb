@@ -181,11 +181,12 @@ AFTER: git add [files] && git commit -m "[message]" && git push
 
 ---
 
-## Current version: 0.8.0
+## Current version: 0.8.1
 
 See CHANGELOG.md for full history.
 
 ### Completed through Phase 6 (current)
+- **Hypercube edge width shader (Session 1)** — `ShaderMaterial` on edges, `uEdgeWidth` uniform (0.5–8.0), `hypercube.edgeWidth` param and UI slider
 - **N-D Hypercube engine (4D–12D)** — 60fps at 12D; vertex/edge generation, Givens projection, morph state machine, 5 easing functions; permanent Float32/Float64 buffers, zero per-frame allocation, `_colorsDirty` GPU gate, `MAX_DIM` draw range, circular points shader, vertex pub/sub
 - **Hypercube UI** — dimension pills, collapsible rotation tiers, deferred DOM rebuild on morph
 - Full signal chain: 23+ sources, 20+ effect passes
@@ -315,7 +316,17 @@ After `gemini` exits (success, error, or Ctrl+C) the trap fires `restore_gitigno
 
 ## Session Log
 
-### 2026-04-16
+### 2026-04-16 (Session 2)
+- feat(hypercube): edge width shader — Session 1 complete (commit b0d0820)
+- Replaced LineBasicMaterial with ShaderMaterial on hypercube edges
+- vertexColors flag removed (breaks GLSL compile on ShaderMaterial)
+- uEdgeWidth uniform wired through _lineMat, updated each frame in _updateBuffers
+- setEdgeWidth() public setter added, clamped 0.5–8.0
+- hypercube.edgeWidth param registered in main.js, slider added to HypercubeUI.js
+- Current behavior: value > 0.5 = visible, ≤ 0.5 = hidden (on/off stub)
+- Session 2 will replace LineSegments with quad geometry for real screen-space width
+
+### 2026-04-16 (Session 1)
 - feat(scene3d): N-D Hypercube engine (4D–12D), 60fps at 12D
 - HypercubeGeometry.js: vertex/edge generation, Givens projection, morph state machine, 5 easing functions
 - HypercubeObject.js: Three.js wrapper, permanent Float32/Float64 buffers, zero per-frame allocation, _colorsDirty GPU gate, MAX_DIM draw range, circular points shader, vertex pub/sub

@@ -6,6 +6,13 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
 
 ---
 
+## [0.8.1] — 2026-04-16
+
+### Added
+- **Hypercube edge width shader (Session 1)** — Replaced `LineBasicMaterial` with `ShaderMaterial` on hypercube edges; `uEdgeWidth` uniform wired through `_lineMat` and updated per-frame; added `setEdgeWidth()` public setter (0.5–8.0 clamp); `hypercube.edgeWidth` parameter registered and UI slider added.
+
+---
+
 ## [0.8.0] — 2026-04-16
 
 ### Added
