@@ -8,6 +8,7 @@ export class HypercubeInstancer {
     this._scene    = scene;
     this._mesh     = null;
     this._mat      = null;
+    this._instScale = 0.08;
     this._visible  = false;
     this._opacity  = 0.8;
     this._geoType  = 'sphere';
@@ -54,7 +55,7 @@ export class HypercubeInstancer {
    */
   update(projBuf, dim, scale, instScale) {
     const count = Math.min(vertexCount(dim), MAX_INSTANCES);
-    const s = instScale ?? 0.1;
+    const s = instScale ?? this._instScale;
 
     for (let i = 0; i < count; i++) {
       const bi = i * 3;
@@ -81,6 +82,8 @@ export class HypercubeInstancer {
     this._visible = v;
     if (this._mesh) this._mesh.visible = v;
   }
+
+  setInstanceScale(v) { this._instScale = v; }
 
   setOpacity(v) {
     this._opacity = v;
