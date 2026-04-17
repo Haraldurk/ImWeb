@@ -60,7 +60,6 @@ export class SceneManager {
     this._copyScene  = new THREE.Scene();
     this._copyScene.add(this._copyQuad);
     this._copyCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
-    this._rendering  = false;  // true during renderer.render() — blocks pipeline tex bindings in applyParams
     this._depthMat = new THREE.MeshDepthMaterial({
       depthPacking: THREE.BasicDepthPacking,
     });
@@ -835,9 +834,8 @@ export class SceneManager {
       const texSrcIdx = p.get('scene3d.mat.texsrc')?.value ?? 0;
       const texSrcMap = [null, inputs.camera, inputs.movie, inputs.screen, inputs.draw, inputs.buffer, inputs.noise];
       const liveTex = texSrcMap[texSrcIdx] ?? null;
-      // During render pass, block unsafe pipeline-sourced textures (screen=3, buffer=5)
-      // to prevent WebGL feedback loop. Safe textures (camera, movie, draw, noise) pass through.
-      const useTex = (this._rendering && (texSrcIdx === 3 || texSrcIdx === 5)) ? null : liveTex;
+      // Block any texture that is the current render target — prevents WebGL feedback loop.
+      const useTex = (liveTex === this.target.texture) ? null : liveTex;
       if (useTex !== this._liveTex) {
         this._liveTex = useTex;
         this.material.map = useTex
@@ -852,7 +850,7 @@ export class SceneManager {
 
       const updateMat = (m) => {
         if (m._shader) {
-          m._shader.uniforms.uWarpMap.value = this._rendering ? this._fallback : (activeWarp || this._fallback);
+          m._shader.uniforms.uWarpMap.value = (activeWarp === this.target.texture) ? this._fallback : (activeWarp || this._fallback);
           m._shader.uniforms.uWarpAmt.value = warpAmt;
         }
       };
@@ -902,7 +900,7 @@ export class SceneManager {
           m._shader.uniforms.uDisplace.value       = displaceAmt;
           m._shader.uniforms.uDispScale.value      = displaceScale;
           m._shader.uniforms.uDispSpeed.value      = displaceSpeed;
-          m._shader.uniforms.uDispTexture.value    = this._rendering ? this._fallback : (dispTex ?? this._fallback);
+          m._shader.uniforms.uDispTexture.value    = (dispTex === this.target.texture) ? this._fallback : (dispTex ?? this._fallback);
           m._shader.uniforms.uTDisplace.value      = tDisplaceAmt;
           m._shader.uniforms.uDispTexScale.value   = displaceTexScale;
           m._shader.uniforms.uDispTexProj.value    = displaceTexProj;
@@ -985,7 +983,6 @@ export class SceneManager {
   render(params, dt = 0, inputs = {}) {
     this.update(dt * 1000);
     this.applyParams(params, dt, inputs);
-    this._rendering = true;
     // Blit face texture into isolated copy target — avoids WebGL feedback loop
     if (inputs.faceTex && this._hypercube) {
       this._copyMat.map = inputs.faceTex;
@@ -1014,7 +1011,6 @@ export class SceneManager {
     }
 
     this.renderer.setRenderTarget(prev);
-    this._rendering = false;
   }
 
   get texture()      { return this.target.texture; }
