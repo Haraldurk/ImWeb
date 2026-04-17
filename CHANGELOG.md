@@ -15,6 +15,9 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
 - fix(scene3d): null face texture before render pass to break WebGL feedback loop (97e88e8 — actually committed earlier)
 - fix(scene3d): null mesh material.map before render pass to break pipeline feedback loop (97e88e8)
 
+### Known Issues
+- WebGL feedback loop (GL_INVALID_OPERATION) fires on startup in SDF/Metaballs pipeline. Source not yet identified — SceneManager.js confirmed not involved. Investigation deferred to next session.
+
 ---
 
 ## [0.8.3] — 2026-04-16
