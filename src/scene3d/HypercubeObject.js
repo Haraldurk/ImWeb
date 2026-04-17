@@ -19,6 +19,7 @@ import {
   edgeOpacity,
 } from './HypercubeGeometry.js';
 import { HypercubeFaces } from './HypercubeFaces.js';
+import { HypercubeInstancer } from './HypercubeInstancer.js';
 
 export class HypercubeObject {
   /**
@@ -123,6 +124,7 @@ export class HypercubeObject {
 
     this._rebuild();
     this._hFaces = new HypercubeFaces(scene);
+    this._hInstancer = new HypercubeInstancer(scene);
   }
 
   // ── Internal rebuild ──────────────────────────────────────────────────────
@@ -342,6 +344,7 @@ export class HypercubeObject {
     this._updateBuffers();
     this._notifySubscribers();
     this._hFaces.update(this._projBuf, this._dim, this._scale);
+    this._hInstancer.update(this._projBuf, this._dim, this._scale, 0.08);
   }
 
   _projectMorphInterp() {
@@ -597,6 +600,12 @@ export class HypercubeObject {
   setFaceOpacity(v)   { this._hFaces?.setOpacity(v); }
   setFacesVisible(v)  { this._hFaces?.setVisible(v); }
 
+  setInstancerVisible(v)   { this._hInstancer?.setVisible(v); }
+  setInstancerOpacity(v)   { this._hInstancer?.setOpacity(v); }
+  setInstancerGeoType(t)   { this._hInstancer?.setGeoType(t); }
+  setInstancerScale(v)     { this._hInstancer?.setInstScale(v); }
+  setInstancerTexture(tex) { this._hInstancer?.setTexture(tex); }
+
   /**
    * Set rotation speed (rad/s) for one rotation plane by index.
    */
@@ -624,6 +633,7 @@ export class HypercubeObject {
       this._points = null;
     }
     if (this._hFaces) { this._hFaces.dispose(); this._hFaces = null; }
+    if (this._hInstancer) { this._hInstancer.dispose(); this._hInstancer = null; }
     this._subscribers.clear();
   }
 }
