@@ -60,12 +60,17 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
 - feat(scene3d): HypercubeInstancer — InstancedMesh at hypercube vertex positions, geo types sphere/box/cone/torus/octahedron, scale, opacity controls
 - feat(scene3d): Instancer texture — pipeline output wired to instancer material each frame
 - feat(scene3d): render mode 'none' — hides wireframe and points for instancer-only view
+- feat(scene3d): SceneManager adopts HypercubeInstancer mesh — unified material pipeline; instancer now receives texture, lights, and material params from existing Material panel without separate wiring
 
 ### Fixed
 - fix(pipeline): unbind blend uPrev before copyToPrev — eliminates WebGL feedback loop
 - fix(scene3d): zeroMatrix was identity — caused ghost planes at origin
 - fix(scene3d): hFaces.update moved after projection — was reading stale projBuf
 - fix(scene3d): use emissiveMap on instancer — texture now renders without scene light dependency
+- fix(scene3d): setVisible() now updates _visible flag — was only setting mesh.visible
+- fix(scene3d): removed per-frame setInstancerTexture() call from main.js — SceneManager now owns instancer texture via _adoptMesh
+- fix(scene3d): emissive forced white when texture active on adopted mesh
+- fix(scene3d): feedback loop guard bypassed for adopted instancer mesh
 
 ## [0.61.0] — 2026-04-14
 
