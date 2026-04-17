@@ -159,4 +159,4 @@ export class HypercubeFaces {
 
 // Module-level reusable matrices — avoid per-frame allocation
 const _mat4       = new THREE.Matrix4();
-const _zeroMatrix = new THREE.Matrix4();
+const _zeroMatrix = new THREE.Matrix4().makeScale(0, 0, 0);
