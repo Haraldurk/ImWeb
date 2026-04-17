@@ -125,6 +125,10 @@ export function buildHypercubePanel(container, hypercube, ps) {
   _paramRow(renderSec, 'Edge width',  hypercube._edgeWidth ?? 1.5, 0.5, 8.0, 0.1, v => hypercube.setEdgeWidth(v));
   _selectRow(renderSec, 'Faces', ['off', 'on'], hypercube._hFaces?._visible ? 1 : 0, idx => hypercube.setFacesVisible(idx === 1));
   _paramRow(renderSec, 'Face opacity', hypercube._hFaces?._opacity ?? 0.15, 0.0, 1.0, 0.01, v => hypercube.setFaceOpacity(v));
+  _selectRow(renderSec, 'Instancer', ['off', 'on'], 0, idx => hypercube.setInstancerVisible(idx === 1));
+  _selectRow(renderSec, 'Inst geo', ['sphere', 'box', 'cone', 'torus', 'octahedron'], 0, idx => hypercube.setInstancerGeoType(['sphere', 'box', 'cone', 'torus', 'octahedron'][idx]));
+  _paramRow(renderSec, 'Inst scale', 0.08, 0.01, 2.0, 0.01, v => hypercube.setInstancerScale(v));
+  _paramRow(renderSec, 'Inst opacity', 1.0, 0.0, 1.0, 0.01, v => hypercube.setInstancerOpacity(v));
 
   // ── Stats ────────────────────────────────────────────────────────────────
   const statsDiv = document.createElement('div');
