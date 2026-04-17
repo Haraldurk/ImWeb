@@ -56,6 +56,9 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
 
 ## [Unreleased] — Noise System Overhaul (D1)
 
+### Added
+- feat(scene3d): HypercubeInstancer — InstancedMesh at vertex positions, driven by subscribeVertex, following Cloner pattern
+
 ## [0.61.0] — 2026-04-14
 
 ### Added
