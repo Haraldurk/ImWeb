@@ -6,7 +6,7 @@
 
 Real-time video compositing, 3D scene integration, and a complete parameter/controller mapping system — all in a Progressive Web App.
 
-Current version: **v0.61.0**
+Current version: **v0.8.4**
 
 ---
 
@@ -15,7 +15,7 @@ Current version: **v0.61.0**
 ```bash
 npm install
 npm run dev
-# → open http://localhost:3000
+# → open http://localhost:5173
 ```
 
 Chrome 113+ recommended (best WebGL performance).
@@ -113,7 +113,7 @@ src/
 
 ---
 
-## Features (v0.6.0)
+## Features (v0.8.4)
 
 ### Input sources
 - [x] Camera (WebRTC, auto-start on load)
@@ -121,7 +121,7 @@ src/
 - [x] Stills buffer — capture up to 16 frames, FrameSelect 1/2/3
 - [x] Color source (HSV solid)
 - [x] Noise source (pixel)
-- [x] 3D scene — all geometry, transforms, material, camera; GLTF/GLB/OBJ/STL import; auto-spin; Cloner (MoGraph InstancedMesh) with Twist/Scatter/Wave/ScaleStep effectors; Blob/Morph vertex displacement
+- [x] 3D scene — all geometry, transforms, material, camera; GLTF/GLB/OBJ/STL import; auto-spin; Cloner (MoGraph InstancedMesh) with Twist/Scatter/Wave/ScaleStep effectors; Blob/Morph vertex displacement; N-D Hypercube engine (4D–12D) with edge/face/instancer rendering; real-time pipeline texture on instancer geometry via unified material pipeline
 - [x] Slit scan buffer
 - [x] Draw layer (freehand canvas)
 - [x] Text layer
@@ -210,6 +210,8 @@ src/
 ### Phase 6
 - [ ] **Mobile-friendly UI** — touch targets, responsive layout, swipe gestures
 - [ ] **GLSL editor fixes** — resolve WebGL 1281/1282 on preset apply
+- [ ] Hypercube instancer texture switching (live source change without reset)
+- [ ] Hypercube instancer default off; geometry controls in Geometry section
 - [ ] Performance profiling / GPU display
 - [ ] Multi-quad projection mapping (independent sources per quad)
 - [ ] Multi-cam workflow (per-layer camera selector)
