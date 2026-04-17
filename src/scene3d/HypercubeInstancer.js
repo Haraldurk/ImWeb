@@ -96,8 +96,11 @@ export class HypercubeInstancer {
   }
 
   setTexture(tex) {
-    this._mat.map = tex;
-    this._mat.needsUpdate = true;
+    this._mat.map           = tex;
+    this._mat.emissiveMap   = tex;
+    this._mat.emissive.set(1, 1, 1);
+    this._mat.emissiveIntensity = 1.0;
+    this._mat.needsUpdate   = true;
   }
 
   dispose() {
