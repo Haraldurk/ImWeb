@@ -4201,6 +4201,7 @@ void main() {
         warpMaps,
         dispTex: _resolveLayerTex(ps.get('layer.ds')?.value ?? 0),
       });
+      scene3d.getHypercube()?.setInstancerTexture(pipeline.prev.texture);
 
     // Assemble input sources
     const inputs = {
