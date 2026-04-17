@@ -965,6 +965,7 @@ export class SceneManager {
       p.get('scene3d.light.dirY').value,
       p.get('scene3d.light.dirZ').value
     );
+    this._hypercube?._hInstancer?.applyParams(p, inputs, this.target);
   }
 
   // ── Render ────────────────────────────────────────────────────────────────

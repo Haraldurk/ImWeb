@@ -8,6 +8,8 @@ export class HypercubeInstancer {
     this._scene    = scene;
     this._mesh     = null;
     this._mat      = null;
+    this._matType  = -1;
+    this._liveTex  = null;
     this._instScale = 0.08;
     this._visible  = false;
     this._opacity  = 0.8;
@@ -34,11 +36,12 @@ export class HypercubeInstancer {
 
     if (!this._mat) {
       this._mat = new THREE.MeshStandardMaterial({
-        side:       THREE.DoubleSide,
+        side:        THREE.DoubleSide,
         transparent: true,
-        depthWrite: false,
-        opacity:    this._opacity,
+        depthWrite:  false,
+        opacity:     this._opacity,
       });
+      this._matType = 0;
     }
 
     this._mesh = new THREE.InstancedMesh(geo, this._mat, MAX_INSTANCES);
@@ -46,6 +49,32 @@ export class HypercubeInstancer {
     this._mesh.frustumCulled = false;
     this._mesh.visible = false;
     this._scene.add(this._mesh);
+  }
+
+  _rebuildMat(type) {
+    if (this._matType === type) return;
+    this._matType = type;
+    const old      = this._mat;
+    const color    = old?.color?.clone()    ?? new THREE.Color(0xffffff);
+    const roughness = old?.roughness        ?? 0.5;
+    const metalness = old?.metalness        ?? 0.0;
+    const opacity   = old?.opacity          ?? this._opacity;
+    const emissive  = old?.emissive?.clone() ?? new THREE.Color(0x000000);
+    const emissiveMap = old?.emissiveMap    ?? null;
+    const map       = old?.map              ?? null;
+
+    const shared = { color, roughness, metalness, side: THREE.DoubleSide, transparent: true, depthWrite: false };
+    const mat = type === 1
+      ? new THREE.MeshPhysicalMaterial(shared)
+      : new THREE.MeshStandardMaterial(shared);
+    mat.opacity     = opacity;
+    mat.map         = map;
+    mat.emissiveMap = emissiveMap;
+    mat.emissive.copy(emissive);
+
+    if (old) old.dispose();
+    this._mat = mat;
+    if (this._mesh) this._mesh.material = mat;
   }
 
   /**
@@ -101,6 +130,59 @@ export class HypercubeInstancer {
     this._mat.emissive.set(1, 1, 1);
     this._mat.emissiveIntensity = 1.0;
     this._mat.needsUpdate   = true;
+  }
+
+  applyParams(p, inputs, renderTarget) {
+    const matType = Math.round(p.get('scene3d.mat.type')?.value ?? 0);
+    const instMatType = matType === 1 ? 1 : 0; // only Standard / Physical on instancer
+    if (instMatType !== this._matType) this._rebuildMat(instMatType);
+
+    const hue = (p.get('scene3d.mat.hue')?.value ?? 240) / 360;
+    const sat = (p.get('scene3d.mat.sat')?.value ?? 50) / 100;
+    if (this._mat.color) this._mat.color.setHSL(hue, sat, sat > 0 ? 0.5 : 1.0);
+
+    const emissiveAmt = p.get('scene3d.mat.emissive')?.value ?? 0;
+    const emHue = (p.get('scene3d.mat.emissiveHue')?.value ?? 0) / 360;
+    const emSat = (p.get('scene3d.mat.emissiveSat')?.value ?? 0) / 100;
+    if (this._mat.emissive) {
+      const useIndep = emSat > 0;
+      this._mat.emissive.setHSL(
+        useIndep ? emHue : hue,
+        useIndep ? emSat : sat,
+        0.15 * emissiveAmt,
+      );
+      this._mat.emissiveIntensity = emissiveAmt;
+    }
+
+    if (this._mat.roughness !== undefined) this._mat.roughness = p.get('scene3d.mat.roughness').value;
+    if (this._mat.metalness !== undefined) this._mat.metalness = p.get('scene3d.mat.metalness').value;
+
+    const opacity = p.get('scene3d.mat.opacity').value;
+    this._mat.opacity     = opacity;
+    this._mat.transparent = opacity < 1;
+
+    if (instMatType === 1 && this._mat.isMeshPhysicalMaterial) {
+      this._mat.clearcoat    = p.get('scene3d.mat.clearcoat')?.value ?? 0;
+      this._mat.transmission = p.get('scene3d.mat.transmit')?.value  ?? 0;
+      this._mat.ior          = p.get('scene3d.mat.ior')?.value        ?? 1.5;
+      this._mat.transparent  = this._mat.transmission > 0 || opacity < 1;
+    }
+
+    // Texture source — mirrors SceneManager texSrc logic
+    const texSrcIdx = p.get('scene3d.mat.texsrc')?.value ?? 0;
+    const texSrcMap = [null, inputs.camera, inputs.movie, inputs.screen, inputs.draw, inputs.buffer, inputs.noise];
+    const liveTex   = texSrcMap[texSrcIdx] ?? null;
+    const useTex    = (liveTex && renderTarget && liveTex === renderTarget.texture) ? null : liveTex;
+    if (useTex !== this._liveTex) {
+      this._liveTex         = useTex;
+      this._mat.map         = useTex
+        ? Object.assign(useTex, { wrapS: THREE.RepeatWrapping, wrapT: THREE.RepeatWrapping })
+        : null;
+      this._mat.emissiveMap = useTex;
+      if (useTex) this._mat.emissive.set(1, 1, 1);
+    }
+
+    this._mat.needsUpdate = true;
   }
 
   dispose() {
