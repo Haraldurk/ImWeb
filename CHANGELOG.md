@@ -65,6 +65,7 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
 - fix(pipeline): unbind blend uPrev before copyToPrev — eliminates WebGL feedback loop
 - fix(scene3d): zeroMatrix was identity — caused ghost planes at origin
 - fix(scene3d): hFaces.update moved after projection — was reading stale projBuf
+- fix(scene3d): use emissiveMap on instancer — texture now renders without scene light dependency
 
 ## [0.61.0] — 2026-04-14
 
