@@ -152,6 +152,11 @@ export class HypercubeInstancer {
         0.15 * emissiveAmt,
       );
       this._mat.emissiveIntensity = emissiveAmt;
+      // emissiveMap needs a non-black emissive color and intensity ≥ 1 to show
+      if (this._mat.emissiveMap) {
+        this._mat.emissive.set(1, 1, 1);
+        if (this._mat.emissiveIntensity < 1.0) this._mat.emissiveIntensity = 1.0;
+      }
     }
 
     if (this._mat.roughness !== undefined) this._mat.roughness = p.get('scene3d.mat.roughness').value;
