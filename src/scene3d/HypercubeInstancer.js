@@ -75,6 +75,7 @@ export class HypercubeInstancer {
     if (old) old.dispose();
     this._mat = mat;
     if (this._mesh) this._mesh.material = mat;
+    mat.needsUpdate = true;
   }
 
   /**
@@ -134,8 +135,8 @@ export class HypercubeInstancer {
 
   applyParams(p, inputs, renderTarget) {
     const matType = Math.round(p.get('scene3d.mat.type')?.value ?? 0);
-    const instMatType = matType === 1 ? 1 : 0; // only Standard / Physical on instancer
-    if (instMatType !== this._matType) this._rebuildMat(instMatType);
+    if (matType !== this._matType) this._rebuildMat(matType);
+    if (this._mesh) this._mat = this._mesh.material; // defensive sync after potential rebuild
 
     const hue = (p.get('scene3d.mat.hue')?.value ?? 240) / 360;
     const sat = (p.get('scene3d.mat.sat')?.value ?? 50) / 100;
@@ -166,7 +167,7 @@ export class HypercubeInstancer {
     this._mat.opacity     = opacity;
     this._mat.transparent = opacity < 1;
 
-    if (instMatType === 1 && this._mat.isMeshPhysicalMaterial) {
+    if (matType === 1 && this._mat.isMeshPhysicalMaterial) {
       this._mat.clearcoat    = p.get('scene3d.mat.clearcoat')?.value ?? 0;
       this._mat.transmission = p.get('scene3d.mat.transmit')?.value  ?? 0;
       this._mat.ior          = p.get('scene3d.mat.ior')?.value        ?? 1.5;
