@@ -344,7 +344,7 @@ export class HypercubeObject {
     this._updateBuffers();
     this._notifySubscribers();
     this._hFaces.update(this._projBuf, this._dim, this._scale);
-    this._hInstancer.update(this._projBuf, this._dim, this._scale, 0.08);
+    this._hInstancer.update(this._projBuf, this._dim, this._scale);
   }
 
   _projectMorphInterp() {
