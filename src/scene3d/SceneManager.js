@@ -984,8 +984,8 @@ export class SceneManager {
 
   render(params, dt = 0, inputs = {}) {
     this.update(dt * 1000);
-    this._rendering = true;
     this.applyParams(params, dt, inputs);
+    this._rendering = true;
     // Blit face texture into isolated copy target — avoids WebGL feedback loop
     if (inputs.faceTex && this._hypercube) {
       this._copyMat.map = inputs.faceTex;
