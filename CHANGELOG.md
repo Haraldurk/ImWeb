@@ -57,7 +57,14 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
 ## [Unreleased] — Noise System Overhaul (D1)
 
 ### Added
-- feat(scene3d): HypercubeInstancer — InstancedMesh at vertex positions, driven by subscribeVertex, following Cloner pattern
+- feat(scene3d): HypercubeInstancer — InstancedMesh at hypercube vertex positions, geo types sphere/box/cone/torus/octahedron, scale, opacity controls
+- feat(scene3d): Instancer texture — pipeline output wired to instancer material each frame
+- feat(scene3d): render mode 'none' — hides wireframe and points for instancer-only view
+
+### Fixed
+- fix(pipeline): unbind blend uPrev before copyToPrev — eliminates WebGL feedback loop
+- fix(scene3d): zeroMatrix was identity — caused ghost planes at origin
+- fix(scene3d): hFaces.update moved after projection — was reading stale projBuf
 
 ## [0.61.0] — 2026-04-14
 
