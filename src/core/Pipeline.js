@@ -508,6 +508,7 @@ export class Pipeline {
     }
 
     // Save to prev buffer
+    if (this.m.blend?.uniforms?.uPrev) this.m.blend.uniforms.uPrev.value = null;
     this._copyToPrev(customOut);
   }
 
