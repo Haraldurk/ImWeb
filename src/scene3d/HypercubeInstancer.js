@@ -26,10 +26,10 @@ export class HypercubeInstancer {
     let geo;
     switch (geoType) {
       case 'box':         geo = new THREE.BoxGeometry(1, 1, 1);             break;
-      case 'cone':        geo = new THREE.ConeGeometry(0.5, 1, 8);          break;
-      case 'torus':       geo = new THREE.TorusGeometry(0.4, 0.15, 8, 16);  break;
-      case 'octahedron':  geo = new THREE.OctahedronGeometry(0.6);          break;
-      default:            geo = new THREE.SphereGeometry(0.5, 8, 6);        break;
+      case 'cone':        geo = new THREE.ConeGeometry(0.5, 1, 16);         break;
+      case 'torus':       geo = new THREE.TorusGeometry(0.4, 0.18, 16, 32); break;
+      case 'octahedron':  geo = new THREE.OctahedronGeometry(0.5, 1);       break;
+      default:            geo = new THREE.SphereGeometry(0.5, 24, 16);      break;
     }
 
     if (!this._mat) {

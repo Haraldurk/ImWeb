@@ -300,8 +300,8 @@ export class HypercubeObject {
   }
 
   _updateVisibility() {
-    if (this._lines)  this._lines.visible  = this._renderMode !== 'points';
-    if (this._points) this._points.visible = this._renderMode !== 'wireframe';
+    if (this._lines)  this._lines.visible  = this._renderMode !== 'points'     && this._renderMode !== 'none';
+    if (this._points) this._points.visible = this._renderMode !== 'wireframe'  && this._renderMode !== 'none';
   }
 
   // ── Update ────────────────────────────────────────────────────────────────
