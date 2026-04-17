@@ -177,7 +177,6 @@ async function main() {
   const textLayer = new TextLayer();
 
   const scene3d = new SceneManager(renderer, W, H);
-  window._scene3d = scene3d;
   await scene3d.createHypercube({ startDim: 4 });
 
   ps.get('hypercube.faces.active').onChange(v => {
