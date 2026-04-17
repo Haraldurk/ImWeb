@@ -1037,17 +1037,17 @@ export class SceneManager {
 
   _adoptMesh(mesh) {
     if (this._adoptedMesh) {
-      this.scene.remove(this._adoptedMesh);
       if (this._ownMesh) this.scene.add(this._ownMesh);
     }
     if (mesh) {
       this._ownMesh = this.mesh;
       this._adoptedMesh = mesh;
       if (this._ownMesh) this.scene.remove(this._ownMesh);
-      this.scene.add(mesh);
+      // mesh already in scene via HypercubeInstancer constructor
       this.mesh = mesh;
       this.material = mesh.material;
     } else {
+      if (this._ownMesh) this.scene.add(this._ownMesh);
       this.mesh = this._ownMesh;
       this.material = this._ownMesh?.material ?? this.material;
       this._adoptedMesh = null;
