@@ -141,7 +141,6 @@ export class SceneManager {
   // ── Geometry ───────────────────────────────────────────────────────────────
 
   setGeometry(name) {
-    if (this._adoptedMesh) return;
     if (name === this._geoKey) return;
     this._geoKey = name;
     this._importedModelName = null;
@@ -419,7 +418,6 @@ export class SceneManager {
   }
 
   _rebuildMaterial(type) {
-    if (this._adoptedMesh) return;
     if (this._matType === type) return;
     this._matType = type;
 
@@ -967,12 +965,7 @@ export class SceneManager {
       p.get('scene3d.light.dirY').value,
       p.get('scene3d.light.dirZ').value
     );
-    const wantInstancer = !!(this._hypercube?._hInstancer?._visible);
-    const hasInstancer = this._adoptedMesh != null;
-    if (wantInstancer && !hasInstancer)
-      this._adoptMesh(this._hypercube._hInstancer.getMesh());
-    if (!wantInstancer && hasInstancer)
-      this._adoptMesh(null);
+    this._hypercube?._hInstancer?.applyParams(p, inputs, this.target);
   }
 
   // ── Render ────────────────────────────────────────────────────────────────
@@ -1032,28 +1025,6 @@ export class SceneManager {
     this._faceTexCopy.setSize(w, h);
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
-  }
-
-  _adoptMesh(mesh) {
-    if (this._adoptedMesh) {
-      this.scene.remove(this._adoptedMesh);
-      if (this._ownMesh) this.scene.add(this._ownMesh);
-    }
-    if (mesh) {
-      this._ownMesh     = this.mesh;
-      this._ownMaterial = this.material;
-      this._adoptedMesh = mesh;
-      if (this._ownMesh) this.scene.remove(this._ownMesh);
-      this.scene.add(mesh);
-      this.mesh     = mesh;
-      this.material = mesh.material;
-    } else {
-      this.mesh     = this._ownMesh;
-      this.material = this._ownMaterial;
-      this._adoptedMesh = null;
-      this._ownMesh     = null;
-      this._ownMaterial = null;
-    }
   }
 
   dispose() {
