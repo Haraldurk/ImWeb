@@ -177,6 +177,7 @@ async function main() {
   const textLayer = new TextLayer();
 
   const scene3d = new SceneManager(renderer, W, H);
+  window._scene3d = scene3d;
   await scene3d.createHypercube({ startDim: 4 });
 
   ps.get('hypercube.faces.active').onChange(v => {
@@ -4189,7 +4190,7 @@ void main() {
       ps.get("layer.bg").value === SCENE3D_IDX ||
       ps.get("layer.ds").value === SCENE3D_IDX ||
       depthUsed;
-    scene3d.getHypercube()?.setInstancerTexture(pipeline.prev.texture);
+    // scene3d.getHypercube()?.setInstancerTexture(pipeline.prev.texture); — removed: SceneManager now owns instancer texture via _adoptMesh
     if (scene3dNeeded)
       scene3d.render(ps, dt, {
         camera: camera3d.active ? camera3d.currentTexture : null,
