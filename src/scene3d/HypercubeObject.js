@@ -310,7 +310,8 @@ export class HypercubeObject {
     // Skip all CPU work if not visible — avoids 12D projection
     // cost when hypercube is not the active scene source
     if (this._lines && !this._lines.visible &&
-        this._points && !this._points.visible) return;
+        this._points && !this._points.visible &&
+        !this._hInstancer?._visible) return;
     const dt = deltaMs / 1000;
 
     // Advance morph
