@@ -603,7 +603,7 @@ export class HypercubeObject {
   setInstancerVisible(v)   { this._hInstancer?.setVisible(v); }
   setInstancerOpacity(v)   { this._hInstancer?.setOpacity(v); }
   setInstancerGeoType(t)   { this._hInstancer?.setGeoType(t); }
-  setInstancerScale(v)     { this._hInstancer?.setInstScale(v); }
+  setInstancerScale(v)     { this._hInstancer?.setInstanceScale(v); }
   setInstancerTexture(tex) { this._hInstancer?.setTexture(tex); }
 
   /**
