@@ -113,6 +113,13 @@ export class HypercubeInstancer {
     if (this._mesh) this._mesh.visible = v;
   }
 
+  getMesh() { return this._mesh; }
+
+  _dead() {
+    this._visible = v;
+    if (this._mesh) this._mesh.visible = v;
+  }
+
   setInstanceScale(v) { this._instScale = v; }
 
   setOpacity(v) {
