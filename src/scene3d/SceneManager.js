@@ -838,12 +838,20 @@ export class SceneManager {
       const texSrcMap = [null, inputs.camera, inputs.movie, inputs.screen, inputs.draw, inputs.buffer, inputs.noise];
       const liveTex = texSrcMap[texSrcIdx] ?? null;
       // Block any texture that is the current render target — prevents WebGL feedback loop.
-      const useTex = (liveTex === this.target.texture) ? null : liveTex;
+      // Skip the guard when instancer is adopted (its mesh is not the render target).
+      const useTex = (!this._adoptedMesh && liveTex === this.target.texture) ? null : liveTex;
       if (useTex !== this._liveTex) {
         this._liveTex = useTex;
         this.material.map = useTex
           ? Object.assign(useTex, { wrapS: THREE.RepeatWrapping, wrapT: THREE.RepeatWrapping })
           : null;
+        if (this._adoptedMesh) {
+          this.material.emissive?.set(1, 1, 1);
+          if (this.material.emissiveMap !== undefined)
+            this.material.emissiveMap = this.material.map;
+          this.material.emissiveIntensity = 1.0;
+          this.material.needsUpdate = true;
+        }
       }
 
       // WarpMap displacement on UVs
@@ -968,8 +976,14 @@ export class SceneManager {
       p.get('scene3d.light.dirY').value,
       p.get('scene3d.light.dirZ').value
     );
-    const wantInstancer = this._hypercube?._hInstancer?._visible === true;
+    const _hi = this._hypercube?._hInstancer;
+    const wantInstancer = _hi?._visible === true;
     const hasInstancer = this._adoptedMesh != null;
+    if (wantInstancer !== hasInstancer)
+      console.log('[adopt]', { wantInstancer, hasInstancer,
+        _visible: _hi?._visible,
+        _hypercube: !!this._hypercube,
+        _hInstancer: !!_hi });
     if (wantInstancer && !hasInstancer)
       this._adoptMesh(this._hypercube._hInstancer.getMesh());
     if (!wantInstancer && hasInstancer)
