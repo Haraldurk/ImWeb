@@ -148,6 +148,22 @@ All GLSL in src/shaders/index.js as named exports. Minimal fragment shaders read
 
 ---
 
+## Guard Logic Rules
+
+Before implementing any flag or conditional guard:
+1. State explicitly: what value does the flag hold at the exact line where
+   the guard is evaluated?
+2. If the answer is 'always the same value' — the guard is dead code. Stop.
+   Rethink the architecture before writing any code.
+3. For WebGL feedback loop fixes: the identity check pattern
+   (tex === this.target.texture) is always preferred over timing flags.
+   Flags depend on call order. Identity checks depend on values.
+4. If a fix fails: git revert to the last clean commit. Do not stack a
+   new patch on a broken fix. Clean slate only.
+5. Before any fix: state one way this fix could still fail.
+
+---
+
 ## Project-Specific Notes
 
 For barlowgen.html and ImWeb projects: these are large single-file HTML/JS apps. Use surgical edits — never rewrite entire files. Always verify edit targets with grep first, and check that updateDisplay() or similar refresh functions won't overwrite new UI elements.
