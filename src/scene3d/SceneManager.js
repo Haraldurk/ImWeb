@@ -60,6 +60,7 @@ export class SceneManager {
     this._copyScene  = new THREE.Scene();
     this._copyScene.add(this._copyQuad);
     this._copyCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+    this._rendering  = false;  // true during renderer.render() — blocks pipeline tex bindings in applyParams
     this._depthMat = new THREE.MeshDepthMaterial({
       depthPacking: THREE.BasicDepthPacking,
     });
@@ -834,10 +835,13 @@ export class SceneManager {
       const texSrcIdx = p.get('scene3d.mat.texsrc')?.value ?? 0;
       const texSrcMap = [null, inputs.camera, inputs.movie, inputs.screen, inputs.draw, inputs.buffer, inputs.noise];
       const liveTex = texSrcMap[texSrcIdx] ?? null;
-      if (liveTex !== this._liveTex) {
-        this._liveTex = liveTex;
-        this.material.map = liveTex
-          ? Object.assign(liveTex, { wrapS: THREE.RepeatWrapping, wrapT: THREE.RepeatWrapping })
+      // During render pass, block unsafe pipeline-sourced textures (screen=3, buffer=5)
+      // to prevent WebGL feedback loop. Safe textures (camera, movie, draw, noise) pass through.
+      const useTex = (this._rendering && (texSrcIdx === 3 || texSrcIdx === 5)) ? null : liveTex;
+      if (useTex !== this._liveTex) {
+        this._liveTex = useTex;
+        this.material.map = useTex
+          ? Object.assign(useTex, { wrapS: THREE.RepeatWrapping, wrapT: THREE.RepeatWrapping })
           : null;
       }
 
@@ -848,7 +852,7 @@ export class SceneManager {
 
       const updateMat = (m) => {
         if (m._shader) {
-          m._shader.uniforms.uWarpMap.value = activeWarp || this._fallback;
+          m._shader.uniforms.uWarpMap.value = this._rendering ? this._fallback : (activeWarp || this._fallback);
           m._shader.uniforms.uWarpAmt.value = warpAmt;
         }
       };
@@ -898,7 +902,7 @@ export class SceneManager {
           m._shader.uniforms.uDisplace.value       = displaceAmt;
           m._shader.uniforms.uDispScale.value      = displaceScale;
           m._shader.uniforms.uDispSpeed.value      = displaceSpeed;
-          m._shader.uniforms.uDispTexture.value    = dispTex ?? this._fallback;
+          m._shader.uniforms.uDispTexture.value    = this._rendering ? this._fallback : (dispTex ?? this._fallback);
           m._shader.uniforms.uTDisplace.value      = tDisplaceAmt;
           m._shader.uniforms.uDispTexScale.value   = displaceTexScale;
           m._shader.uniforms.uDispTexProj.value    = displaceTexProj;
@@ -980,6 +984,7 @@ export class SceneManager {
 
   render(params, dt = 0, inputs = {}) {
     this.update(dt * 1000);
+    this._rendering = true;
     this.applyParams(params, dt, inputs);
     // Blit face texture into isolated copy target — avoids WebGL feedback loop
     if (inputs.faceTex && this._hypercube) {
@@ -992,35 +997,6 @@ export class SceneManager {
       this._hypercube.setFaceTexture(this._faceTexCopy.texture);
     } else {
       this._hypercube?.setFaceTexture(null);
-    }
-    // Null mesh material map before render passes to break pipeline.prev feedback loop
-    const _savedMaterialMap = this.material?.map ?? null;
-    if (this.material && _savedMaterialMap) {
-      this.material.map = null;
-      this.material.needsUpdate = true;
-    }
-    // Null pipeline-sourced shader uniforms before render passes to prevent feedback loop.
-    // inputs.dispTex can resolve to scene3d.texture (this.target.texture) — reading from
-    // and writing to the same RenderTarget in one draw call triggers GL_INVALID_OPERATION.
-    const _savedDispTex = this.material?._shader?.uniforms.uDispTexture?.value ?? null;
-    const _savedWarpMap = this.material?._shader?.uniforms.uWarpMap?.value ?? null;
-    if (this.material?._shader?.uniforms.uDispTexture) this.material._shader.uniforms.uDispTexture.value = this._fallback;
-    if (this.material?._shader?.uniforms.uWarpMap)     this.material._shader.uniforms.uWarpMap.value     = this._fallback;
-    const _savedSubMats = [];
-    if (this._importedModelName && this.mesh) {
-      this.mesh.traverse(child => {
-        if (child.isMesh && child.material) {
-          const mats = Array.isArray(child.material) ? child.material : [child.material];
-          for (const m of mats) {
-            if (!m._shader) continue;
-            const disp = m._shader.uniforms.uDispTexture?.value ?? null;
-            const warp = m._shader.uniforms.uWarpMap?.value ?? null;
-            if (m._shader.uniforms.uDispTexture) m._shader.uniforms.uDispTexture.value = this._fallback;
-            if (m._shader.uniforms.uWarpMap)     m._shader.uniforms.uWarpMap.value     = this._fallback;
-            _savedSubMats.push({ m, disp, warp });
-          }
-        }
-      });
     }
     const prev = this.renderer.getRenderTarget();
 
@@ -1038,18 +1014,7 @@ export class SceneManager {
     }
 
     this.renderer.setRenderTarget(prev);
-    // Restore mesh material map after all render passes
-    if (this.material && _savedMaterialMap) {
-      this.material.map = _savedMaterialMap;
-      this.material.needsUpdate = true;
-    }
-    // Restore pipeline-sourced shader uniforms
-    if (this.material?._shader?.uniforms.uDispTexture) this.material._shader.uniforms.uDispTexture.value = _savedDispTex;
-    if (this.material?._shader?.uniforms.uWarpMap)     this.material._shader.uniforms.uWarpMap.value     = _savedWarpMap;
-    for (const { m, disp, warp } of _savedSubMats) {
-      if (m._shader?.uniforms.uDispTexture) m._shader.uniforms.uDispTexture.value = disp;
-      if (m._shader?.uniforms.uWarpMap)     m._shader.uniforms.uWarpMap.value     = warp;
-    }
+    this._rendering = false;
   }
 
   get texture()      { return this.target.texture; }
