@@ -4189,6 +4189,7 @@ void main() {
       ps.get("layer.bg").value === SCENE3D_IDX ||
       ps.get("layer.ds").value === SCENE3D_IDX ||
       depthUsed;
+    scene3d.getHypercube()?.setInstancerTexture(pipeline.prev.texture);
     if (scene3dNeeded)
       scene3d.render(ps, dt, {
         camera: camera3d.active ? camera3d.currentTexture : null,
@@ -4201,7 +4202,6 @@ void main() {
         warpMaps,
         dispTex: _resolveLayerTex(ps.get('layer.ds')?.value ?? 0),
       });
-      scene3d.getHypercube()?.setInstancerTexture(pipeline.prev.texture);
 
     // Assemble input sources
     const inputs = {
