@@ -110,6 +110,7 @@ export class HypercubeInstancer {
 
   setVisible(v) {
     this._visible = v;
+    this._visible = v;
     if (this._mesh) this._mesh.visible = v;
   }
 
