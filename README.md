@@ -8,6 +8,7 @@ Real-time video compositing, 3D scene integration, and a complete parameter/cont
 
 Current version: **v0.8.4**
 
+💖 **[Support ImWeb's development on Patreon!](https://www.patreon.com/ImWeb)**
 ---
 
 ## Quick Start
