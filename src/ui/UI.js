@@ -1082,8 +1082,9 @@ export class StateBar {
     this.bankBtn     = document.getElementById('bank-name-btn');
     this.bankDropdown= document.getElementById('bank-dropdown');
     this.tiles       = [];
-    this._captureThumbFn = null; // injected from main.js
-    this._menuEl     = null;
+    this._captureThumbFn  = null; // injected from main.js
+    this._menuEl          = null;
+    this._morphingIndices = new Set(); // tile indices highlighted during morph
     this._build();
     this._wireNeutral();
     this._wireBankBtn();
@@ -1367,6 +1368,7 @@ export class StateBar {
         tile.style.backgroundImage = state.thumbnail ? `url(${state.thumbnail})` : '';
       }
       if (bank.activeState === i) tile.classList.add('state-tile--active');
+      if (this._morphingIndices.has(i)) tile.classList.add('state-tile--morphing');
     });
     this._updateBankBtn();
     const sel = document.getElementById('bank-select');
@@ -1378,15 +1380,12 @@ export class StateBar {
     this.pm.addEventListener('stateSaved',      () => this._refresh());
     this.pm.addEventListener('stateRecalled',   () => this._refresh());
     this.pm.addEventListener('morphStarted', e => {
-      this._refresh(); // update active tile first
       const { fromIndex, toIndex } = e.detail;
-      const fromTile = this.tiles[fromIndex];
-      const toTile   = this.tiles[toIndex];
-      if (fromTile) fromTile.classList.add('state-tile--morphing');
-      if (toTile)   toTile.classList.add('state-tile--morphing');
+      this._morphingIndices = new Set([fromIndex, toIndex]);
+      this._refresh();
     });
     this.pm.addEventListener('morphEnded', () => {
-      this.tiles.forEach(t => t.classList.remove('state-tile--morphing'));
+      this._morphingIndices = new Set();
       this._refresh();
     });
   }

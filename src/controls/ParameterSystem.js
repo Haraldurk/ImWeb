@@ -344,13 +344,19 @@ export class ParameterSystem extends EventTarget {
   captureState() {
     const s = {};
     this.params.forEach((p, id) => {
-      s[id] = p.value;
+      // Skip 'global' group — BPM, morph speed etc. are session-level settings,
+      // not per-State snapshots.
+      if (p.group !== 'global') s[id] = p.value;
     });
     return s;
   }
 
   restoreState(state) {
-    Object.entries(state).forEach(([id, v]) => this.set(id, v));
+    Object.entries(state).forEach(([id, v]) => {
+      const p = this.params.get(id);
+      // Guard: skip global params even if present in old saved states
+      if (p && p.group !== 'global') this.set(id, v);
+    });
     this.dispatchEvent(new CustomEvent("stateRestored", { detail: state }));
   }
 
