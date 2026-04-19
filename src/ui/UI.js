@@ -1090,6 +1090,9 @@ export class StateBar {
     this._wireBankBtn();
     this._wirePresetManager();
     this._wireMenu();
+    // Paint thumbnails for whichever bank is already active at construction time
+    // (presetActivated fires during init(), before StateBar is created)
+    this._refresh();
   }
 
   _build() {
