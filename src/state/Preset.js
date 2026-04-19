@@ -196,6 +196,15 @@ export class PresetManager extends EventTarget {
 
     this.currentIdx = index;
 
+    // Cancel any running morph from the previous bank
+    this._morphActive = false;
+    this._morphFrom   = null;
+    this._morphTo     = null;
+
+    // Clear all assignments so leftover controllers from the previous bank
+    // don't leak into the new one
+    this.ctrl.clearAllAssignments();
+
     // Restore controller assignments
     if (p.controllers) {
       this.ps.deserializeControllers(p.controllers);
@@ -293,6 +302,16 @@ export class PresetManager extends EventTarget {
     const ds = p.getState(stateIndex);
     if (!ds) return;
     p.activeState = stateIndex;
+
+    // Cancel any active morph — it would overwrite restored values on the next tick
+    this._morphActive = false;
+    this._morphFrom   = null;
+    this._morphTo     = null;
+
+    // Clear all controller assignments — states are self-contained;
+    // leftover LFOs/randoms/exprs from the previous state would keep writing
+    // to params and corrupt the restored values on the very next frame.
+    this.ctrl.clearAllAssignments();
 
     // Restore parameter values
     this.ps.restoreState(ds.values);
