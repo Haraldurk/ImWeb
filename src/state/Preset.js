@@ -5,25 +5,24 @@
 
 import { DEMO_PRESETS } from './DemoPresets.js';
 
+export const MAX_STATES = 32;
+
 // ── IndexedDB storage ─────────────────────────────────────────────────────────
 
 const DB_NAME    = 'imweb';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 
 export function openDB() {
   return new Promise((resolve, reject) => {
     const req = indexedDB.open(DB_NAME, DB_VERSION);
     req.onupgradeneeded = e => {
       const db = e.target.result;
-      if (!db.objectStoreNames.contains('presets')) {
-        db.createObjectStore('presets', { keyPath: 'index' });
+      if (e.oldVersion < 2) {
+        if (db.objectStoreNames.contains('presets')) db.deleteObjectStore('presets');
+        if (!db.objectStoreNames.contains('banks'))  db.createObjectStore('banks', { keyPath: 'index' });
       }
-      if (!db.objectStoreNames.contains('tables')) {
-        db.createObjectStore('tables', { keyPath: 'name' });
-      }
-      if (!db.objectStoreNames.contains('assets')) {
-        db.createObjectStore('assets', { keyPath: 'hash' });
-      }
+      if (!db.objectStoreNames.contains('tables')) db.createObjectStore('tables', { keyPath: 'name' });
+      if (!db.objectStoreNames.contains('assets')) db.createObjectStore('assets', { keyPath: 'hash' });
     };
     req.onsuccess = e => resolve(e.target.result);
     req.onerror   = e => reject(e.target.error);
@@ -65,31 +64,32 @@ async function dbGetAll(store) {
 export class Preset {
   constructor(index = 0) {
     this.index        = index;
-    this.name         = `Preset ${index}`;
-    this.controllers  = {};     // paramId → controller config
-    this.states       = [];     // Array of DisplayState snapshots (max 128)
+    this.name         = `Bank ${index + 1}`;
+    this.controllers  = {};
+    this.states       = [];
     this.activeState  = 0;
-    this.movieRef     = null;
-    this.textRef      = null;
-    this.scene3dRef   = null;
-    this.bufferRef    = null;
     this.created      = Date.now();
     this.modified     = Date.now();
-    this.thumbnail    = null; // base64 JPEG data URL, captured on save
+    this.thumbnail    = null;
   }
 
-  addState(values, index = null, fxOrder = null) {
-    const ds = { values: { ...values }, created: Date.now(), name: null, thumbnail: null };
-    if (fxOrder) ds.fxOrder = [...fxOrder];
-    if (index !== null && index >= 0 && index < 128) {
-      this.states[index] = ds;
-      return index;
+  addState(values, index = null, fxOrder = null, controllers = {}, mediaRefs = {}) {
+    const ds = {
+      values:      { ...values },
+      fxOrder:     fxOrder ? [...fxOrder] : null,
+      controllers: { ...controllers },
+      mediaRefs:   { movie: null, scene3d: null, text: null, buffer: null, ...mediaRefs },
+      name:        null,
+      thumbnail:   null,
+      created:     Date.now(),
+    };
+    if (index !== null && index >= 0 && index < MAX_STATES) {
+      this.states[index] = ds; return index;
     }
-    // Find next empty slot
-    for (let i = 0; i < 128; i++) {
+    for (let i = 0; i < MAX_STATES; i++) {
       if (!this.states[i]) { this.states[i] = ds; return i; }
     }
-    return null; // Full
+    return null;
   }
 
   getState(index) { return this.states[index] ?? null; }
@@ -103,14 +103,23 @@ export class Preset {
       controllers: this.controllers,
       states:      this.states,
       activeState: this.activeState,
-      movieRef:    this.movieRef,
-      textRef:     this.textRef,
-      scene3dRef:  this.scene3dRef,
-      bufferRef:   this.bufferRef,
       created:     this.created,
       modified:    this.modified,
       thumbnail:   this.thumbnail,
     };
+  }
+
+  exportBank() {
+    return { __type: 'imbank', version: 1, name: this.name,
+             states: this.states, activeState: this.activeState, exported: Date.now() };
+  }
+
+  static importBank(data, targetIndex) {
+    const p = new Preset(targetIndex);
+    p.name        = data.name   || `Bank ${targetIndex + 1}`;
+    p.states      = data.states || [];
+    p.activeState = data.activeState ?? 0;
+    return p;
   }
 
   static deserialize(data) {
@@ -121,16 +130,16 @@ export class Preset {
 
   async save() {
     this.modified = Date.now();
-    await dbPut('presets', this.serialize());
+    await dbPut('banks', this.serialize());
   }
 
   static async load(index) {
-    const data = await dbGet('presets', index);
+    const data = await dbGet('banks', index);
     return data ? Preset.deserialize(data) : null;
   }
 
   static async loadAll() {
-    const all = await dbGetAll('presets');
+    const all = await dbGetAll('banks');
     return all.map(d => Preset.deserialize(d));
   }
 }
@@ -147,13 +156,16 @@ export class PresetManager extends EventTarget {
     this.currentIdx  = 0;
     this._fadePresets = true;
     this._fadeTimeoutId = null;
+    this._mediaRefs  = { movie: null, scene3d: null, text: null, buffer: null };
 
     // Morph animation state
-    this._morphFrom   = null; // { paramId: value } snapshot of source state
-    this._morphTo     = null; // { paramId: value } snapshot of target state
-    this._morphT      = 0;   // 0→1 progress
+    this._morphFrom   = null;
+    this._morphTo     = null;
+    this._morphT      = 0;
     this._morphActive = false;
   }
+
+  setMediaRef(key, filename) { this._mediaRefs[key] = filename; }
 
   async init() {
     const saved = await Preset.loadAll();
@@ -265,37 +277,74 @@ export class PresetManager extends EventTarget {
   async saveCurrentState(stateIndex = null) {
     const p = this.current;
     if (!p) return;
-
-    const values = this.ps.captureState();
-    const fxOrder = this.pipeline ? [...this.pipeline.fxOrder] : null;
-    const idx = p.addState(values, stateIndex, fxOrder);
+    const values      = this.ps.captureState();
+    const fxOrder     = this.pipeline ? [...this.pipeline.fxOrder] : null;
+    const controllers = this.ps.serializeControllers();
+    const mediaRefs   = { ...this._mediaRefs };
+    const idx = p.addState(values, stateIndex, fxOrder, controllers, mediaRefs);
     await p.save();
-
-    this.dispatchEvent(new CustomEvent('stateSaved', { detail: { presetIndex: this.currentIdx, stateIndex: idx } }));
+    this.dispatchEvent(new CustomEvent('stateSaved',
+      { detail: { presetIndex: this.currentIdx, stateIndex: idx } }));
     return idx;
   }
 
   async recallState(stateIndex) {
     const p = this.current;
     if (!p) return;
-
     const ds = p.getState(stateIndex);
     if (!ds) return;
-
     p.activeState = stateIndex;
-    this.ps.restoreState(ds.values);
-    this.ctrl.retriggerLFOs();
 
-    // Restore fx order if saved
-    if (ds.fxOrder && this.pipeline) {
-      this.pipeline.setFxOrder(ds.fxOrder);
+    // Restore parameter values
+    this.ps.restoreState(ds.values);
+
+    // Restore fx chain order
+    if (ds.fxOrder && this.pipeline) this.pipeline.setFxOrder(ds.fxOrder);
+
+    // Restore controller assignments
+    if (ds.controllers && Object.keys(ds.controllers).length) {
+      this.ps.deserializeControllers(ds.controllers);
+      Object.entries(ds.controllers).forEach(([paramId, cfg]) => {
+        if (cfg.controller) this.ctrl.assign(paramId, cfg.controller);
+      });
+      this.ctrl.rebuildXControllers();
+      this.ctrl.retriggerLFOs();
     }
 
-    document.getElementById('status-state').textContent = `State ${stateIndex}`;
+    // Check media refs — warn if mismatch
+    if (ds.mediaRefs) this._checkMediaRefs(ds.mediaRefs);
 
-    this.dispatchEvent(new CustomEvent('stateRecalled', {
-      detail: { presetIndex: this.currentIdx, stateIndex, state: ds }
-    }));
+    // Send MIDI feedback to motorized faders
+    this.ps.getAll().forEach(p => this.ctrl.sendParamFeedback(p));
+
+    document.getElementById('status-state').textContent = ds.name || `State ${stateIndex}`;
+    this.dispatchEvent(new CustomEvent('stateRecalled',
+      { detail: { presetIndex: this.currentIdx, stateIndex, state: ds } }));
+  }
+
+  _checkMediaRefs(saved) {
+    const current = this._mediaRefs;
+    const mismatches = [];
+    if (saved.movie   && saved.movie   !== current.movie)   mismatches.push(`Movie: "${saved.movie}"`);
+    if (saved.scene3d && saved.scene3d !== current.scene3d) mismatches.push(`3D model: "${saved.scene3d}"`);
+    if (mismatches.length) {
+      this.dispatchEvent(new CustomEvent('toast',
+        { detail: { msg: `⚠ State was saved with: ${mismatches.join(', ')} — please load manually` } }));
+    }
+  }
+
+  exportState(stateIndex) {
+    const state = this.current?.getState(stateIndex);
+    if (!state) return null;
+    return { __type: 'imstate', version: 1, ...state, exported: Date.now() };
+  }
+
+  importState(data, targetSlot = null) {
+    const { values, fxOrder, controllers, mediaRefs, name, thumbnail } = data;
+    const idx = this.current?.addState(values, targetSlot, fxOrder, controllers, mediaRefs);
+    if (idx !== null && name)      this.current.states[idx].name = name;
+    if (idx !== null && thumbnail) this.current.states[idx].thumbnail = thumbnail;
+    return idx;
   }
 
   async nextPreset() {

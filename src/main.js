@@ -301,6 +301,7 @@ async function main() {
   // ── 6. Preset manager + Table manager ────────────────────────────────────
 
   const presetMgr = new PresetManager(ps, ctrl, pipeline);
+  presetMgr.addEventListener('toast', e => showToast(e.detail.msg));
   await presetMgr.init();
   ps.set("movie.active", 0); // always start with movie off regardless of saved preset state
   const stepSequencer = new StepSequencer(presetMgr);
@@ -1789,6 +1790,14 @@ async function main() {
     setTimeout(() => el.remove(), 4000);
   }
 
+  function showToast(msg, duration = 5000) {
+    const el = document.createElement('div');
+    el.className = 'clip-error-toast';
+    el.textContent = msg;
+    document.body.appendChild(el);
+    setTimeout(() => el.remove(), duration);
+  }
+
   function refreshClipsList() {
     if (!clipsList) return;
     clipsList.innerHTML = "";
@@ -2004,6 +2013,7 @@ async function main() {
             movieInput.currentClip.video.play().catch(() => {});
             ps.set("layer.fg", 1);
           }
+          presetMgr.setMediaRef('movie', file.name);
         } catch (err) {
           console.error("[DnD] video load failed:", err);
           _showClipError(err.message);
@@ -2017,6 +2027,7 @@ async function main() {
           ps.set("scene3d.anim.active", 1);
           _refreshModelLabel();
           console.info(`[3D] Loaded model: ${file.name}`);
+          presetMgr.setMediaRef('scene3d', file.name);
         } catch (err) {
           console.error("[DnD] 3D model load failed:", err);
         }
