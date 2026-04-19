@@ -2047,13 +2047,20 @@ export class MemoryPanel {
     this._build();
     this._wireBankControls();
     this._wireImportState();
-    this.pm.addEventListener('presetActivated', () => this._build());
+    this.pm.addEventListener('presetActivated', () => { this._build(); this._updateBankName(); });
     this.pm.addEventListener('stateSaved',      () => this._build());
     this.pm.addEventListener('stateRecalled',   () => this._build());
+    this._updateBankName();
+  }
+
+  _updateBankName() {
+    const el = document.getElementById('current-bank-name');
+    if (el) el.textContent = this.pm.current?.name || `Bank ${this.pm.currentIdx + 1}`;
   }
 
   _build() {
     if (!this.listEl) return;
+    this._updateBankName();
     this.listEl.innerHTML = '';
     const bank = this.pm.current;
     if (!bank) return;

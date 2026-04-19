@@ -1365,7 +1365,7 @@ async function main() {
           try {
             const name =
               document.getElementById("project-name-input")?.value.trim() ||
-              document.getElementById("status-preset")?.textContent ||
+              document.getElementById("status-bank")?.textContent ||
               "imweb-session";
             await projectFile.export(name);
             setStatus(`✓ Exported "${name}"`, "var(--green)");

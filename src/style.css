@@ -382,6 +382,10 @@ button {
 .section-header:hover {
     color: var(--text-1);
 }
+#current-bank-name {
+    color: var(--accent);
+    font-weight: normal;
+}
 .section-header.collapsed {
     color: var(--text-2);
     opacity: 0.6;
@@ -1696,8 +1700,8 @@ body.sp-floating #signal-path-docked-space {
 .memory-state-row {
     display: flex;
     align-items: center;
-    gap: 5px;
-    padding: 3px 8px;
+    gap: 6px;
+    padding: 4px 8px;
     border-bottom: 1px solid var(--bg-3);
     transition: background 0.1s;
 }
@@ -1705,8 +1709,9 @@ body.sp-floating #signal-path-docked-space {
 .memory-state-row.active { background: var(--bg-3); border-left: 2px solid var(--accent); }
 
 .memory-state-thumb {
-    width: 40px;
-    height: 28px;
+    width: 44px;
+    min-width: 44px;
+    height: 30px;
     flex-shrink: 0;
     background: var(--bg-4);
     border: 1px solid var(--border);
