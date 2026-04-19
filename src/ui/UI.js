@@ -127,9 +127,12 @@ function _openCtrlPopover(param, anchorEl, ctrl, tables) {
     const noneOpt = document.createElement('option');
     noneOpt.value = ''; noneOpt.textContent = 'none';
     sel.appendChild(noneOpt);
-    (tables ? tables.getNames() : []).forEach(name => {
+    const globalOpt = document.createElement('option');
+    globalOpt.value = 'global'; globalOpt.textContent = '⟳ global slot';
+    sel.appendChild(globalOpt);
+    (tables ? tables.getNames() : []).forEach((name, idx) => {
       const opt = document.createElement('option');
-      opt.value = name; opt.textContent = name;
+      opt.value = name; opt.textContent = `${idx}  ${name}`;
       sel.appendChild(opt);
     });
     sel.value = param.table ?? '';
@@ -1957,6 +1960,17 @@ export class ContextMenu {
     });
     popup.appendChild(noneBtn);
 
+    // "Follow global slot" option
+    const globalBtn = document.createElement('button');
+    globalBtn.className = 'menu-item' + (this._currentParam?.table === 'global' ? ' active' : '');
+    globalBtn.textContent = '⟳ Follow global slot';
+    globalBtn.style.cssText = 'border-top:1px solid var(--border);margin-top:2px;padding-top:4px;color:var(--accent);';
+    globalBtn.addEventListener('click', () => {
+      if (this._currentParam) this._currentParam.table = 'global';
+      popup.remove(); this.hide();
+    });
+    popup.appendChild(globalBtn);
+
     names.forEach(name => {
       const btn = document.createElement('button');
       btn.className = 'menu-item' + (this._currentParam?.table === name ? ' active' : '');
@@ -2338,8 +2352,10 @@ const _BEZIER_PRESETS = {
 };
 
 export class TablesEditor {
-  constructor(tableManager) {
+  constructor(tableManager, ps = null, ctrl = null) {
     this.tm      = tableManager;
+    this.ps      = ps;
+    this.ctrl    = ctrl;
     this.canvas  = document.getElementById('table-editor');
     this.listEl  = document.getElementById('tables-list');
     this._current = null;
@@ -2354,7 +2370,29 @@ export class TablesEditor {
     this._buildList();
     this._buildPresets();
     this._wireCanvas();
+    this._wireHeader();
     this.tm.addEventListener('change', () => this._buildList());
+  }
+
+  // ── Header right-click → controller popover for global.tableSlot ─────────
+
+  _wireHeader() {
+    const hdr = document.getElementById('tables-section-header');
+    if (!hdr || !this.ps) return;
+    hdr.style.cursor = 'context-menu';
+    hdr.title = 'Right-click to assign a controller to the global Table Slot';
+
+    hdr.addEventListener('contextmenu', e => {
+      e.preventDefault();
+      e.stopPropagation();
+      const param = this.ps.get('global.tableSlot');
+      if (!param) return;
+      // Ensure a controller exists so the popover opens
+      if (!param.controller) {
+        param.controller = { type: 'fixed', value: 0 };
+      }
+      _openCtrlPopover(param, hdr, this.ctrl, this.tm);
+    });
   }
 
   // ── Coord helpers ────────────────────────────────────────────────────────
@@ -2372,9 +2410,15 @@ export class TablesEditor {
     if (!this.listEl) return;
     this.listEl.innerHTML = '';
 
-    this.tm.getNames().forEach(name => {
+    this.tm.getNames().forEach((name, idx) => {
       const row = document.createElement('div');
       row.className = 'table-list-row' + (name === this._current ? ' active' : '');
+
+      const idxEl = document.createElement('span');
+      idxEl.textContent = idx;
+      idxEl.style.cssText = 'font-size:10px;color:var(--text-2);min-width:18px;text-align:right;margin-right:5px;font-family:var(--mono);';
+      row.appendChild(idxEl);
+
       const lbl = document.createElement('span');
       lbl.textContent = name;
       lbl.style.cssText = 'flex:1;font-size:11px;cursor:pointer;';

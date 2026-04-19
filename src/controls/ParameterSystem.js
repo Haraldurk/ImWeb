@@ -12,8 +12,16 @@
 
 // Set by main.js after TableManager is initialised
 let _tableManager = null;
+let _ps           = null;   // set by registerCoreParameters; used by setTableManager
 export function setTableManager(tm) {
   _tableManager = tm;
+  // Keep global.tableSlot options in sync with the table list
+  const syncSlot = () => {
+    const p = _ps?.params.get('global.tableSlot');
+    if (p) p.options = tm.getNames();
+  };
+  syncSlot();
+  tm.addEventListener('change', syncSlot);
 }
 
 export const PARAM_TYPE = {
@@ -322,8 +330,19 @@ export class ParameterSystem extends EventTarget {
     const p = this.params.get(id);
     if (!p) return;
     // Resolve table by name if the param has one assigned and none provided directly
-    const resolved =
-      table ?? (p.table && _tableManager ? _tableManager.get(p.table) : null);
+    let resolved = table;
+    if (!resolved && p.table && _tableManager) {
+      if (p.table === 'global') {
+        // Follow global.tableSlot index
+        const slotP = this.params.get('global.tableSlot');
+        const idx   = slotP ? Math.round(slotP.value) : 0;
+        const names = _tableManager.getNames();
+        const name  = names[Math.max(0, Math.min(idx, names.length - 1))];
+        resolved = name ? _tableManager.get(name) : null;
+      } else {
+        resolved = _tableManager.get(p.table);
+      }
+    }
     p.setNormalized(n, resolved);
   }
 
@@ -400,6 +419,7 @@ export class ParameterSystem extends EventTarget {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export function registerCoreParameters(ps) {
+  _ps = ps;  // make ps accessible to setTableManager for global.tableSlot sync
   // ── Layer source selection ────────────────────────────────────────────────
   const SOURCES = [
     "Camera",
@@ -2751,6 +2771,14 @@ export function registerCoreParameters(ps) {
     label: "KeyLock",
     group: "global",
     type: PARAM_TYPE.TOGGLE,
+    value: 0,
+  });
+  ps.register({
+    id: "global.tableSlot",
+    label: "Table Slot",
+    group: "global",
+    type: PARAM_TYPE.SELECT,
+    options: [],   // populated by setTableManager() once tableManager is ready
     value: 0,
   });
   // ── Per-layer color correction ────────────────────────────────────────────
