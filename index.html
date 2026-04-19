@@ -393,14 +393,18 @@ void main() {
     </div>
   </div>
 
-  <!-- STATE DOTS (bottom) -->
+  <!-- STATE BAR (bottom) -->
   <div id="state-bar">
-    <div id="state-dots">
-      <!-- 128 dots built by StateDots.js -->
+    <button id="state-neutral" class="state-tile state-tile--neutral" title="Neutral — reset all parameters to default">○</button>
+    <div id="state-grid">
+      <!-- 32 tiles built by StateBar -->
     </div>
-    <div id="preset-nav">
-      <select id="bank-select" class="param-select" title="Select Bank"></select>
+    <div id="bank-nav">
+      <button id="bank-name-btn">Bank 1 ▾</button>
+      <div id="bank-dropdown" class="hidden"></div>
     </div>
+    <!-- Hidden select kept as MIDI-assignable proxy -->
+    <select id="bank-select" class="hidden" title="Select Bank" aria-hidden="true"></select>
   </div>
 
   <!-- Context menu for parameter mapping (shown on right-click) -->

@@ -75,7 +75,7 @@ import {
   buildSeqParams,
   buildGeometryButtons,
   buildWarpEditor,
-  StateDots,
+  StateBar,
   SignalPath,
   ContextMenu,
   FeedbackOverlay,
@@ -302,6 +302,12 @@ async function main() {
 
   const presetMgr = new PresetManager(ps, ctrl, pipeline);
   presetMgr.addEventListener('toast', e => showToast(e.detail.msg));
+  presetMgr.addEventListener('neutralState', () => {
+    ps.getAll().forEach(p => p.reset());
+    ps.set('layer.fg', 0);
+    ps.set('layer.bg', 0);
+    ps.set('layer.ds', 0);
+  });
   await presetMgr.init();
   ps.set("movie.active", 0); // always start with movie off regardless of saved preset state
   const stepSequencer = new StepSequencer(presetMgr);
@@ -623,7 +629,7 @@ async function main() {
   });
   // LUT amount updates are read directly from ps in pipeline.render()
 
-  const stateDots = new StateDots(presetMgr);
+  const stateBar = new StateBar(presetMgr);
   const signalPath = new SignalPath({
     ps,
     pipeline,
@@ -1300,9 +1306,9 @@ async function main() {
     return t.toDataURL("image/jpeg", 0.7);
   }
 
-  // Inject thumbnail capture into PresetsPanel (manual thumb click) and StateDots (auto on save)
+  // Inject thumbnail capture into PresetsPanel (manual thumb click) and StateBar (auto on save)
   presetsPanel._captureThumbFn = capturePresetThumb;
-  stateDots._captureThumbFn    = capturePresetThumb;
+  stateBar._captureThumbFn     = capturePresetThumb;
 
   // ── OSC bridge ────────────────────────────────────────────────────────────
   const oscBridge = new OSCBridge(ps, presetMgr);
@@ -3525,6 +3531,15 @@ void main() {
       (/^[vmcbskdxhtfqaz]$/i.test(e.key) || /^Digit[0-9]$/.test(e.code))
     )
       return;
+
+    // Shift+S = quick-save State to next empty slot
+    if (e.shiftKey && e.key === 'S' && !e.target.closest('input,textarea')) {
+      e.preventDefault();
+      presetMgr.saveCurrentState(null).then(idx => {
+        if (idx !== null) stateBar._flashTile?.(idx);
+      });
+      return;
+    }
 
     // Shift+1–8 = Select movie clip (check first so Nordic /=Shift+7 doesn't bleed into search)
     if (e.shiftKey && !e.metaKey && /^Digit[1-8]$/.test(e.code)) {

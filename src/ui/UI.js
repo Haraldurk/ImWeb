@@ -1072,66 +1072,233 @@ export function buildGeometryButtons(ps, sceneManager, contextMenu) {
   clearBtn.addEventListener('click', refreshModelSections);
 }
 
-// ── State dots ────────────────────────────────────────────────────────────────
+// ── State bar (thumbnail tiles + bank selector) ───────────────────────────────
 
-export class StateDots {
+export class StateBar {
   constructor(presetManager) {
-    this.pm = presetManager;
-    this.el = document.getElementById('state-dots');
-    this.dots = [];
+    this.pm          = presetManager;
+    this.neutralEl   = document.getElementById('state-neutral');
+    this.gridEl      = document.getElementById('state-grid');
+    this.bankBtn     = document.getElementById('bank-name-btn');
+    this.bankDropdown= document.getElementById('bank-dropdown');
+    this.tiles       = [];
     this._captureThumbFn = null; // injected from main.js
+    this._menuEl     = null;
     this._build();
+    this._wireNeutral();
+    this._wireBankBtn();
     this._wirePresetManager();
+    this._wireMenu();
   }
 
   _build() {
-    if (!this.el) return;
-    this.el.innerHTML = '';
-    this.dots = [];
-    for (let i = 0; i < 128; i++) {
-      const dot = document.createElement('div');
-      dot.className = 'state-dot';
-      dot.title = `State ${i} (click to recall, right-click to store)`;
-      dot.dataset.idx = i;
-
-      dot.addEventListener('click', e => {
-        e.preventDefault();
-        this.pm.recallState(i);
+    if (!this.gridEl) return;
+    this.gridEl.innerHTML = '';
+    this.tiles = [];
+    for (let i = 0; i < 32; i++) {
+      const tile = document.createElement('button');
+      tile.className = 'state-tile state-tile--empty';
+      tile.dataset.idx = i;
+      const num = document.createElement('span');
+      num.className = 'state-tile-num';
+      num.textContent = i + 1;
+      tile.appendChild(num);
+      tile.addEventListener('click', () => {
+        if (this.pm.current?.states[i]) this.pm.recallState(i);
       });
-
-      dot.addEventListener('contextmenu', e => {
+      tile.addEventListener('contextmenu', e => {
         e.preventDefault();
-        this.pm.saveCurrentState(i).then(stateIdx => {
-          // Auto-capture thumbnail for the saved State
-          if (this._captureThumbFn) {
-            const bank = this.pm.presets[this.pm.currentIdx];
-            const idx = stateIdx ?? i;
-            if (bank?.states[idx]) {
-              bank.states[idx].thumbnail = this._captureThumbFn();
-              bank.save?.();
-              // Notify listeners (e.g. PresetsPanel) that state data updated
-              this.pm.dispatchEvent(new CustomEvent('stateSaved', {
-                detail: { presetIndex: this.pm.currentIdx, stateIndex: idx }
-              }));
-            }
-          }
-          this._refresh();
-        });
+        this._openTileMenu(i, e.clientX, e.clientY);
       });
-
-      this.el.appendChild(dot);
-      this.dots.push(dot);
+      this.gridEl.appendChild(tile);
+      this.tiles.push(tile);
     }
   }
 
-  _refresh() {
-    const preset = this.pm.current;
-    if (!preset) return;
-    this.dots.forEach((dot, i) => {
-      dot.className = 'state-dot';
-      if (preset.states[i])        dot.classList.add('stored');
-      if (preset.activeState === i) dot.classList.add('active');
+  _wireNeutral() {
+    if (!this.neutralEl) return;
+    this.neutralEl.addEventListener('click', () => {
+      this.pm.dispatchEvent(new CustomEvent('neutralState'));
     });
+  }
+
+  _wireBankBtn() {
+    if (!this.bankBtn) return;
+    this.bankBtn.addEventListener('click', e => {
+      e.stopPropagation();
+      const open = !this.bankDropdown.classList.contains('hidden');
+      if (open) { this.bankDropdown.classList.add('hidden'); return; }
+      this._buildDropdown();
+      this.bankDropdown.classList.remove('hidden');
+    });
+    document.addEventListener('click', () => this.bankDropdown?.classList.add('hidden'));
+    this.bankBtn.addEventListener('dblclick', e => {
+      e.preventDefault();
+      this._startBankRename();
+    });
+  }
+
+  _buildDropdown() {
+    if (!this.bankDropdown) return;
+    this.bankDropdown.innerHTML = '';
+    this.pm.presets.forEach((bank, i) => {
+      if (!bank) return;
+      const btn = document.createElement('button');
+      btn.className = 'bank-dropdown-item' + (i === this.pm.currentIdx ? ' active' : '');
+      btn.textContent = bank.name || `Bank ${i + 1}`;
+      btn.addEventListener('click', e => {
+        e.stopPropagation();
+        this.pm.activatePreset(i);
+        this.bankDropdown.classList.add('hidden');
+      });
+      this.bankDropdown.appendChild(btn);
+    });
+    // Sync hidden select for MIDI proxy
+    const sel = document.getElementById('bank-select');
+    if (sel) {
+      sel.innerHTML = '';
+      this.pm.presets.forEach((bank, i) => {
+        if (!bank) return;
+        const opt = document.createElement('option');
+        opt.value = i;
+        opt.textContent = bank.name || `Bank ${i + 1}`;
+        sel.appendChild(opt);
+      });
+      sel.value = String(this.pm.currentIdx);
+    }
+    const divider = document.createElement('div');
+    divider.className = 'bank-dropdown-divider';
+    this.bankDropdown.appendChild(divider);
+    const newBtn = document.createElement('button');
+    newBtn.className = 'bank-dropdown-item new-bank';
+    newBtn.textContent = '+ New Bank';
+    newBtn.addEventListener('click', async e => {
+      e.stopPropagation();
+      await this.pm.createBank();
+      this.bankDropdown.classList.add('hidden');
+    });
+    this.bankDropdown.appendChild(newBtn);
+  }
+
+  _startBankRename() {
+    const bank = this.pm.current;
+    if (!bank) return;
+    const orig = bank.name || `Bank ${this.pm.currentIdx + 1}`;
+    const inp = document.createElement('input');
+    inp.value = orig;
+    inp.style.cssText = 'background:transparent;border:none;color:inherit;font:inherit;outline:none;width:80px;';
+    this.bankBtn.innerHTML = '';
+    this.bankBtn.appendChild(inp);
+    inp.focus(); inp.select();
+    const commit = () => {
+      bank.name = inp.value.trim() || orig;
+      bank.save?.();
+      this._updateBankBtn();
+    };
+    inp.addEventListener('blur', commit);
+    inp.addEventListener('keydown', e => {
+      if (e.key === 'Enter') { e.preventDefault(); inp.blur(); }
+      if (e.key === 'Escape') { inp.value = orig; inp.blur(); }
+    });
+  }
+
+  _updateBankBtn() {
+    if (!this.bankBtn) return;
+    this.bankBtn.textContent =
+      (this.pm.current?.name || `Bank ${this.pm.currentIdx + 1}`) + ' ▾';
+  }
+
+  _wireMenu() {
+    const m = document.createElement('div');
+    m.id = 'state-tile-menu';
+    m.className = 'hidden';
+    document.body.appendChild(m);
+    this._menuEl = m;
+    document.addEventListener('click', () => m.classList.add('hidden'));
+    document.addEventListener('keydown', e => { if (e.key === 'Escape') m.classList.add('hidden'); });
+  }
+
+  _openTileMenu(idx, x, y) {
+    const m = this._menuEl;
+    if (!m) return;
+    m.innerHTML = '';
+    const bank = this.pm.current;
+    const hasState = !!bank?.states[idx];
+
+    const addItem = (label, cls, fn) => {
+      const btn = document.createElement('button');
+      btn.className = 'state-tile-menu-item' + (cls ? ' ' + cls : '');
+      btn.textContent = label;
+      btn.addEventListener('click', e => { e.stopPropagation(); m.classList.add('hidden'); fn(); });
+      m.appendChild(btn);
+    };
+
+    addItem('Save here', '', () => {
+      this.pm.saveCurrentState(idx).then(stateIdx => {
+        if (this._captureThumbFn && bank?.states[idx]) {
+          bank.states[idx].thumbnail = this._captureThumbFn();
+          bank.save?.();
+          this.pm.dispatchEvent(new CustomEvent('stateSaved',
+            { detail: { presetIndex: this.pm.currentIdx, stateIndex: idx } }));
+        }
+        this._flashTile(idx);
+        this._refresh();
+      });
+    });
+
+    if (hasState) {
+      addItem('Export .imstate', '', () => {
+        const data = this.pm.exportState(idx);
+        if (!data) return;
+        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = (bank.states[idx]?.name || `State-${idx + 1}`) + '.imstate';
+        a.click();
+        URL.revokeObjectURL(a.href);
+      });
+      addItem('Clear', 'danger', async () => {
+        bank.removeState(idx);
+        await bank.save?.();
+        this.pm.dispatchEvent(new CustomEvent('stateSaved',
+          { detail: { presetIndex: this.pm.currentIdx, stateIndex: idx } }));
+        this._refresh();
+      });
+    }
+
+    m.classList.remove('hidden');
+    const r = m.getBoundingClientRect();
+    m.style.left = Math.min(x, window.innerWidth  - r.width  - 8) + 'px';
+    m.style.top  = Math.max(8, y - r.height - 4) + 'px';
+  }
+
+  _flashTile(idx) {
+    const tile = this.tiles[idx];
+    if (!tile) return;
+    tile.classList.remove('state-tile--flash');
+    void tile.offsetWidth;
+    tile.classList.add('state-tile--flash');
+    setTimeout(() => tile.classList.remove('state-tile--flash'), 400);
+  }
+
+  _refresh() {
+    const bank = this.pm.current;
+    if (!bank) return;
+    this.tiles.forEach((tile, i) => {
+      const state = bank.states[i];
+      tile.className = 'state-tile';
+      if (!state) {
+        tile.classList.add('state-tile--empty');
+        tile.style.backgroundImage = '';
+      } else {
+        tile.classList.add('state-tile--stored');
+        tile.style.backgroundImage = state.thumbnail ? `url(${state.thumbnail})` : '';
+      }
+      if (bank.activeState === i) tile.classList.add('state-tile--active');
+    });
+    this._updateBankBtn();
+    const sel = document.getElementById('bank-select');
+    if (sel) sel.value = String(this.pm.currentIdx);
   }
 
   _wirePresetManager() {

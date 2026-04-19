@@ -367,6 +367,15 @@ export class PresetManager extends EventTarget {
 
   getAll() { return this.presets; }
 
+  async createBank() {
+    const idx = this.presets.length;
+    const bank = new Preset(idx);
+    this.presets[idx] = bank;
+    await bank.save();
+    await this.activatePreset(idx);
+    return idx;
+  }
+
   get currentIndex() { return this.currentIdx; }
 
   /** Return all preset data for project file export. */
