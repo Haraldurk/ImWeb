@@ -3532,11 +3532,20 @@ void main() {
     )
       return;
 
-    // Shift+S = quick-save State to next empty slot
+    // Shift+S = quick-save State to next empty slot (with auto-thumbnail)
     if (e.shiftKey && e.key === 'S' && !e.target.closest('input,textarea')) {
       e.preventDefault();
       presetMgr.saveCurrentState(null).then(idx => {
-        if (idx !== null) stateBar._flashTile?.(idx);
+        if (idx !== null) {
+          const bank = presetMgr.current;
+          if (stateBar._captureThumbFn && bank?.states[idx]) {
+            bank.states[idx].thumbnail = stateBar._captureThumbFn();
+            bank.save?.();
+            presetMgr.dispatchEvent(new CustomEvent('stateSaved',
+              { detail: { presetIndex: presetMgr.currentIdx, stateIndex: idx } }));
+          }
+          stateBar._flashTile?.(idx);
+        }
       });
       return;
     }
