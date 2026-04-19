@@ -3487,6 +3487,13 @@ void main() {
       return;
     }
 
+    // Shift+0 = Neutral State (reset all params, leave controllers intact)
+    if (e.shiftKey && e.code === 'Digit0' && !e.target.closest('input,textarea')) {
+      e.preventDefault();
+      presetMgr.dispatchEvent(new CustomEvent('neutralState'));
+      return;
+    }
+
     // Shift+1–8 = Select movie clip (check first so Nordic /=Shift+7 doesn't bleed into search)
     if (e.shiftKey && !e.metaKey && /^Digit[1-8]$/.test(e.code)) {
       const idx = parseInt(e.code.replace("Digit", "")) - 1;

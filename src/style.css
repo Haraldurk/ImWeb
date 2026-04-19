@@ -111,7 +111,7 @@ button {
     color: var(--text-1);
     min-width: 52px;
 }
-#status-preset {
+#status-bank {
     color: var(--text-0);
 }
 #status-state {
@@ -1128,64 +1128,6 @@ body.dnd-active::after {
 }
 .clip-remove:hover {
     color: var(--red) !important;
-}
-
-/* ── PRESETS LIST ────────────────────────────────────────────────────────── */
-
-.preset-item {
-    display: flex;
-    align-items: center;
-    padding: 6px 10px;
-    border-bottom: 1px solid var(--bg-1);
-    cursor: pointer;
-    gap: 8px;
-    transition: background 0.05s;
-    font-family: var(--mono);
-    font-size: 12px;
-}
-.preset-item:hover {
-    background: var(--bg-4);
-}
-.preset-item.active {
-    color: var(--accent);
-}
-.preset-num {
-    color: var(--text-2);
-    min-width: 24px;
-}
-.preset-name {
-    flex: 1;
-    color: var(--text-0);
-    cursor: text;
-}
-.preset-name-input {
-    flex: 1;
-    background: var(--bg-3);
-    border: 1px solid var(--accent);
-    border-radius: 2px;
-    color: var(--text-0);
-    font-family: var(--mono);
-    font-size: 11px;
-    padding: 1px 4px;
-    outline: none;
-    width: 100%;
-}
-.preset-name:empty::before {
-    content: "<empty>";
-    color: var(--text-2);
-}
-.preset-thumb {
-    width: 48px;
-    height: 27px;
-    flex-shrink: 0;
-    background: var(--bg-1);
-    border-radius: 2px;
-    border: 1px solid var(--bg-3);
-    background-size: cover;
-    background-position: center;
-}
-.preset-thumb--has {
-    border-color: var(--border);
 }
 
 /* ── TABLE EDITOR ────────────────────────────────────────────────────────── */
