@@ -159,10 +159,11 @@ export class PresetManager extends EventTarget {
     this._mediaRefs  = { movie: null, scene3d: null, text: null, buffer: null };
 
     // Morph animation state
-    this._morphFrom   = null;
-    this._morphTo     = null;
-    this._morphT      = 0;
-    this._morphActive = false;
+    this._morphFrom      = null;
+    this._morphTo        = null;
+    this._morphT         = 0;
+    this._morphActive    = false;
+    this._morphOnComplete = null;
   }
 
   setMediaRef(key, filename) { this._mediaRefs[key] = filename; }
@@ -197,9 +198,10 @@ export class PresetManager extends EventTarget {
     this.currentIdx = index;
 
     // Cancel any running morph from the previous bank
-    this._morphActive = false;
-    this._morphFrom   = null;
-    this._morphTo     = null;
+    this._morphActive    = false;
+    this._morphFrom      = null;
+    this._morphTo        = null;
+    this._morphOnComplete = null;
 
     // Clear all assignments so leftover controllers from the previous bank
     // don't leak into the new one
@@ -256,7 +258,9 @@ export class PresetManager extends EventTarget {
   tickMorph(dt) {
     if (!this._morphActive) return;
     const speed = this.ps.get('global.morphspeed')?.value ?? 2;
-    this._morphT = Math.min(1, this._morphT + dt / speed);
+    // If speed was set to 0 mid-morph, snap immediately to the end
+    if (speed <= 0) { this._morphT = 1; }
+    else { this._morphT = Math.min(1, this._morphT + dt / speed); }
     // Smooth step
     const t = this._morphT * this._morphT * (3 - 2 * this._morphT);
     this.ps.set('global.morph', Math.round(t * 100));
@@ -275,11 +279,26 @@ export class PresetManager extends EventTarget {
     if (this._morphT >= 1) {
       // Snap to final state and clean up
       if (this._morphTo) this.ps.restoreState(this._morphTo);
-      this.ctrl.retriggerLFOs();
-      this._morphActive = false;
-      this._morphFrom   = null;
-      this._morphTo     = null;
+      // Sync Fixed controller configs to restored values
+      this._syncFixedControllers();
+      const onComplete = this._morphOnComplete;
+      this._morphActive    = false;
+      this._morphFrom      = null;
+      this._morphTo        = null;
+      this._morphOnComplete = null;
+      if (onComplete) onComplete();
+      else this.ctrl.retriggerLFOs();
     }
+  }
+
+  /** Sync Fixed controller normalized values to match actual param values. */
+  _syncFixedControllers() {
+    this.ps.getAll().forEach(param => {
+      if (param.controller?.type === 'fixed' && param.max !== param.min) {
+        const norm = (param._value - param.min) / (param.max - param.min);
+        param.controller = { ...param.controller, value: norm };
+      }
+    });
   }
 
   async saveCurrentState(stateIndex = null) {
@@ -303,10 +322,17 @@ export class PresetManager extends EventTarget {
     if (!ds) return;
     p.activeState = stateIndex;
 
-    // Cancel any active morph — it would overwrite restored values on the next tick
-    this._morphActive = false;
-    this._morphFrom   = null;
-    this._morphTo     = null;
+    const speed    = this.ps.get('global.morphspeed')?.value ?? 0;
+    const useMorph = speed > 0 && ds.values;
+
+    // Capture current values BEFORE clearing anything (morph 'from' state)
+    const fromValues = useMorph ? this.ps.captureState() : null;
+
+    // Cancel any running morph
+    this._morphActive    = false;
+    this._morphFrom      = null;
+    this._morphTo        = null;
+    this._morphOnComplete = null;
 
     // Clear all controller assignments — states are self-contained;
     // leftover LFOs/randoms/exprs from the previous state would keep writing
@@ -316,10 +342,8 @@ export class PresetManager extends EventTarget {
     // Restore fx chain order
     if (ds.fxOrder && this.pipeline) this.pipeline.setFxOrder(ds.fxOrder);
 
-    // Restore controller assignments first so Fixed controllers are wired up,
-    // then restore values AFTER so the correct saved values always win.
-    // (Fixed controllers write their value once in ctrl.assign — restoring
-    //  values after that overrides the stale normalized value in the config.)
+    // Restore controller assignments so Fixed controllers are wired up.
+    // (Fixed controllers write their value once in ctrl.assign.)
     if (ds.controllers && Object.keys(ds.controllers).length) {
       this.ps.deserializeControllers(ds.controllers);
       Object.entries(ds.controllers).forEach(([paramId, cfg]) => {
@@ -328,26 +352,36 @@ export class PresetManager extends EventTarget {
       this.ctrl.rebuildXControllers();
     }
 
-    // Restore parameter values — AFTER controller setup so this always wins.
-    this.ps.restoreState(ds.values);
+    if (useMorph) {
+      // Start morph — tickMorph lerps values; restoreState + cleanup happen on completion
+      this._morphFrom   = fromValues;
+      this._morphTo     = { ...ds.values };
+      this._morphT      = 0;
+      this._morphActive = true;
+      this.ps.set('global.morph', 0);
+      this._morphOnComplete = () => {
+        this._syncFixedControllers();
+        this.ctrl.retriggerLFOs();
+        if (ds.mediaRefs) this._checkMediaRefs(ds.mediaRefs);
+        this.ps.getAll().forEach(param => this.ctrl.sendParamFeedback(param));
+      };
+    } else {
+      // Snap immediately — restore values AFTER controller setup so this always wins.
+      this.ps.restoreState(ds.values);
 
-    // Sync Fixed controller configs to the just-restored values so future
-    // saves and re-assigns use the correct normalized value.
-    this.ps.getAll().forEach(param => {
-      if (param.controller?.type === 'fixed' && param.max !== param.min) {
-        const norm = (param._value - param.min) / (param.max - param.min);
-        param.controller = { ...param.controller, value: norm };
-      }
-    });
+      // Sync Fixed controller configs to the just-restored values so future
+      // saves and re-assigns use the correct normalized value.
+      this._syncFixedControllers();
 
-    // Retrigger LFOs after values are set (LFOs will animate from here)
-    this.ctrl.retriggerLFOs();
+      // Retrigger LFOs after values are set (LFOs will animate from here)
+      this.ctrl.retriggerLFOs();
 
-    // Check media refs — warn if mismatch
-    if (ds.mediaRefs) this._checkMediaRefs(ds.mediaRefs);
+      // Check media refs — warn if mismatch
+      if (ds.mediaRefs) this._checkMediaRefs(ds.mediaRefs);
 
-    // Send MIDI feedback to motorized faders
-    this.ps.getAll().forEach(p => this.ctrl.sendParamFeedback(p));
+      // Send MIDI feedback to motorized faders
+      this.ps.getAll().forEach(param => this.ctrl.sendParamFeedback(param));
+    }
 
     const _statusState = document.getElementById('status-state');
     if (_statusState) _statusState.textContent = ds.name || `State ${stateIndex}`;

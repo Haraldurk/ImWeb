@@ -319,6 +319,74 @@ async function main() {
   setTableManager(tableManager);
   await tableManager.init(await openDB());
 
+  // ── Morph control (state bar) ─────────────────────────────────────────────
+  (function wireMorphCtrl() {
+    const morphCtrl   = document.getElementById('morph-ctrl');
+    const morphValEl  = document.getElementById('morph-speed-val');
+    if (!morphCtrl || !morphValEl) return;
+
+    const morphParam = ps.get('global.morphspeed');
+    if (!morphParam) return;
+
+    // Helper: format display value
+    function fmtMorph(v) {
+      if (v <= 0) return 'OFF';
+      return v.toFixed(1) + 's';
+    }
+
+    // Reflect param → display
+    function syncDisplay() {
+      const v = morphParam.value;
+      morphValEl.textContent = fmtMorph(v);
+      morphCtrl.classList.toggle('morph-active', v > 0);
+    }
+    morphParam.onChange(() => syncDisplay());
+    syncDisplay();
+
+    // Drag interaction (ns-resize: drag up = increase, down = decrease)
+    let _dragY = null, _dragStart = null;
+    morphCtrl.addEventListener('mousedown', e => {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      _dragY = e.clientY;
+      _dragStart = morphParam.value;
+      window.addEventListener('mousemove', onDrag);
+      window.addEventListener('mouseup', onUp);
+    });
+    function onDrag(e) {
+      const delta = (_dragY - e.clientY) * 0.1; // 1px = 0.1s
+      const v = Math.max(0, Math.min(20, _dragStart + delta));
+      ps.set('global.morphspeed', Math.round(v * 10) / 10);
+    }
+    function onUp() {
+      window.removeEventListener('mousemove', onDrag);
+      window.removeEventListener('mouseup', onUp);
+    }
+
+    // Double-click → inline edit
+    morphCtrl.addEventListener('dblclick', e => {
+      e.preventDefault();
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.value = morphParam.value <= 0 ? '0' : morphParam.value.toFixed(1);
+      input.style.cssText = 'width:38px;font-size:11px;text-align:center;background:var(--bg-1);color:var(--text-1);border:1px solid var(--accent);border-radius:2px;padding:0 2px;';
+      morphValEl.replaceWith(input);
+      input.focus();
+      input.select();
+      function commit() {
+        const v = parseFloat(input.value);
+        if (!isNaN(v)) ps.set('global.morphspeed', Math.max(0, Math.min(20, Math.round(v * 10) / 10)));
+        input.replaceWith(morphValEl);
+        syncDisplay();
+      }
+      input.addEventListener('keydown', ev => {
+        if (ev.key === 'Enter') { ev.preventDefault(); commit(); }
+        if (ev.key === 'Escape') { input.replaceWith(morphValEl); syncDisplay(); }
+      });
+      input.addEventListener('blur', commit);
+    });
+  })();
+
   // ── Cached status bar elements ────────────────────────────────────────────
   const _vuCanvas = document.getElementById("status-vu");
   const _vuCtx = _vuCanvas?.getContext("2d");

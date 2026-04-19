@@ -106,7 +106,7 @@ Right-click any parameter row to assign.
 | **Bank** | A named group of up to 32 States; switch via bottom-right dropdown or `+`/`−` |
 | **State** | Full snapshot: parameter values + FX order + controller assignments + media filenames |
 | **Neutral State** | Resets all parameter values without touching controller assignments (`Shift+0` or ○ tile) |
-| **Morph** | Smooth crossfade to the next recalled State over N seconds |
+| **Morph** | Smooth crossfade when recalling a State; set time in the MORPH control in the bottom bar |
 | **MIDI PC** | Program Change 0–127 → Bank 0–127 |
 | **Quick-save State** | `Shift+S` — saves to next empty slot with auto-thumbnail |
 | **Quick-save Project** | `Cmd+S` — downloads `.imweb` |
@@ -169,7 +169,7 @@ ImWeb  |  fps · CPU · VRAM  |  Bank name  |  State name  |  BPM ♩  |  MIDI  
 ## Bottom Bar
 
 ```
-[○ neutral]  [ state 1 ][ state 2 ][ ... ][ state 32 ]   Bank 1 ▼
+[○ neutral]  [ state 1 ][ state 2 ][ ... ][ state 32 ]   MORPH  Bank 1 ▼
 ```
 
 The state grid holds 32 thumbnail tiles (2 rows × 16 columns). Tiles show auto-captured thumbnails for saved states and are dim/empty for unsaved slots.
@@ -177,6 +177,7 @@ The state grid holds 32 thumbnail tiles (2 rows × 16 columns). Tiles show auto-
 - **Left-click** an empty tile: save current state there. Left-click a saved tile: recall it.
 - **Right-click** a tile: Save here / Import .imstate / Export .imstate / Clear.
 - **○** (leftmost): Neutral State — reset all parameter values, leave controllers intact.
+- **MORPH** (right of state grid): morph time in seconds for crossfading between states. Drag up/down to adjust; double-click to type. `0` / `OFF` = instant snap. Highlighted (gold) when active.
 - **Bank 1 ▼** (bottom-right): opens the Bank dropdown — switch bank, + New Bank, ⬆ Import Bank…, ⊞ Open Banks window.
 
 - **BPM**: click = tap tempo · right-click = MIDI clock sync

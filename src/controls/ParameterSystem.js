@@ -2713,9 +2713,10 @@ export function registerCoreParameters(ps) {
     id: "global.morphspeed",
     label: "MorphSpeed",
     group: "global",
-    min: 0.1,
+    min: 0,
     max: 20,
     value: 2,
+    step: 0.1,
     unit: "s",
   });
   ps.register({

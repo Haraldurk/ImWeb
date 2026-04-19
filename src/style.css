@@ -1555,6 +1555,37 @@ body.sp-floating #signal-path-docked-space {
 }
 .state-tile--flash { animation: state-tile-flash 0.4s ease-out forwards; }
 
+#morph-ctrl {
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 1px;
+    background: var(--bg-3);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: 2px 8px;
+    cursor: ns-resize;
+    user-select: none;
+    min-width: 44px;
+}
+#morph-ctrl:hover { border-color: var(--border-hi); }
+#morph-ctrl.morph-active { border-color: var(--accent); }
+.morph-label {
+    font-size: 8px;
+    color: var(--text-2);
+    letter-spacing: 0.05em;
+    line-height: 1;
+}
+#morph-speed-val {
+    font-size: 11px;
+    color: var(--text-1);
+    font-variant-numeric: tabular-nums;
+    line-height: 1;
+}
+#morph-ctrl.morph-active #morph-speed-val { color: var(--accent); }
+
 #bank-nav {
     flex-shrink: 0;
     position: relative;
