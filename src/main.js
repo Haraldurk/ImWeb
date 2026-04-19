@@ -713,7 +713,7 @@ async function main() {
   const memoryPanel = new MemoryPanel(presetMgr);
   const profiler = new Profiler();
   const debugOverlay = new DebugOverlay(ps);
-  const tablesEditor = new TablesEditor(tableManager, ps, ctrl);
+  const tablesEditor = new TablesEditor(tableManager, ps, ctrl, contextMenu);
 
   // ── Preset save buttons ───────────────────────────────────────────────────
 

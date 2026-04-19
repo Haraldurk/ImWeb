@@ -2352,10 +2352,11 @@ const _BEZIER_PRESETS = {
 };
 
 export class TablesEditor {
-  constructor(tableManager, ps = null, ctrl = null) {
-    this.tm      = tableManager;
-    this.ps      = ps;
-    this.ctrl    = ctrl;
+  constructor(tableManager, ps = null, ctrl = null, contextMenu = null) {
+    this.tm          = tableManager;
+    this.ps          = ps;
+    this.ctrl        = ctrl;
+    this.contextMenu = contextMenu;
     this.canvas  = document.getElementById('table-editor');
     this.listEl  = document.getElementById('tables-list');
     this._current = null;
@@ -2378,20 +2379,17 @@ export class TablesEditor {
 
   _wireHeader() {
     const hdr = document.getElementById('tables-section-header');
-    if (!hdr || !this.ps) return;
+    if (!hdr || !this.ps || !this.contextMenu) return;
     hdr.style.cursor = 'context-menu';
-    hdr.title = 'Right-click to assign a controller to the global Table Slot';
+    hdr.title = 'Right-click to assign a controller (MIDI, LFO…) to the global Table Slot';
 
     hdr.addEventListener('contextmenu', e => {
       e.preventDefault();
       e.stopPropagation();
       const param = this.ps.get('global.tableSlot');
       if (!param) return;
-      // Ensure a controller exists so the popover opens
-      if (!param.controller) {
-        param.controller = { type: 'fixed', value: 0 };
-      }
-      _openCtrlPopover(param, hdr, this.ctrl, this.tm);
+      // Open the full context menu so the user can pick MIDI Learn, LFO, etc.
+      this.contextMenu.show(param, e.clientX, e.clientY);
     });
   }
 
