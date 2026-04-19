@@ -133,11 +133,12 @@ async function main() {
   registerCoreParameters(ps);
 
   // ── Hypercube parameters ───────────────────────────────────────────────────
+  ps.register({ id:'hypercube.dim',           type:'continuous', value:4,    min:4,    max:12,   step:1,     label:'Dimension',    group:'hypercube' });
   ps.register({ id:'hypercube.morphDuration', type:'continuous', value:2000, min:200,  max:8000, step:100,   group:'hypercube' });
-  ps.register({ id:'hypercube.wDistance',     type:'continuous', value:3.0,  min:1.5,  max:8.0,  step:0.1,   group:'hypercube' });
-  ps.register({ id:'hypercube.scale',         type:'continuous', value:1.0,  min:0.1,  max:3.0,  step:0.05,  group:'hypercube' });
-  ps.register({ id:'hypercube.edgeOpacity',   type:'continuous', value:0.7,  min:0.0,  max:1.0,  step:0.01,  group:'hypercube' });
-  ps.register({ id:'hypercube.pointSize',     type:'continuous', value:0.04, min:0.01, max:0.2,  step:0.005, group:'hypercube' });
+  ps.register({ id:'hypercube.wDistance',     type:'continuous', value:3.0,  min:1.1,  max:20,   step:0.1,   group:'hypercube' });
+  ps.register({ id:'hypercube.scale',         type:'continuous', value:1.0,  min:0.1,  max:5.0,  step:0.05,  group:'hypercube' });
+  ps.register({ id:'hypercube.edgeOpacity',   type:'continuous', value:1.0,  min:0.0,  max:1.0,  step:0.01,  group:'hypercube' });
+  ps.register({ id:'hypercube.pointSize',     type:'continuous', value:3.0,  min:0.5,  max:20,   step:0.5,   group:'hypercube' });
   ps.register({ id:'hypercube.rot.xy',        type:'continuous', value:0.30, min:-2.0, max:2.0,  step:0.01,  group:'hypercube' });
   ps.register({ id:'hypercube.rot.xz',        type:'continuous', value:0.20, min:-2.0, max:2.0,  step:0.01,  group:'hypercube' });
   ps.register({ id:'hypercube.rot.yz',        type:'continuous', value:0.15, min:-2.0, max:2.0,  step:0.01,  group:'hypercube' });
@@ -185,6 +186,20 @@ async function main() {
   ps.get('hypercube.faces.opacity').onChange(v => {
     scene3d.getHypercube()?.setFaceOpacity(v);
   });
+
+  // Wire all hypercube ps params → HypercubeObject setters.
+  // These fire during restoreState so saved values are pushed into the object on recall/startup.
+  ps.get('hypercube.dim')?.onChange(v => scene3d.getHypercube()?.morphTo(Math.round(v), { durationMs: 0 }));
+  ps.get('hypercube.wDistance')?.onChange(v => scene3d.getHypercube()?.setWDistance(v));
+  ps.get('hypercube.scale')?.onChange(v => scene3d.getHypercube()?.setScale(v));
+  ps.get('hypercube.edgeOpacity')?.onChange(v => scene3d.getHypercube()?.setEdgeOpacity(v));
+  ps.get('hypercube.pointSize')?.onChange(v => scene3d.getHypercube()?.setPointSize(v));
+  ps.get('hypercube.edgeWidth')?.onChange(v => scene3d.getHypercube()?.setEdgeWidth(v));
+  // Rotation plane indices: 0=xy, 1=xz, 2=yz, 3=xw (matches HypercubeGeometry iteration order)
+  ps.get('hypercube.rot.xy')?.onChange(v => scene3d.getHypercube()?.setRotationSpeed(0, v));
+  ps.get('hypercube.rot.xz')?.onChange(v => scene3d.getHypercube()?.setRotationSpeed(1, v));
+  ps.get('hypercube.rot.yz')?.onChange(v => scene3d.getHypercube()?.setRotationSpeed(2, v));
+  ps.get('hypercube.rot.xw')?.onChange(v => scene3d.getHypercube()?.setRotationSpeed(3, v));
 
   // Helper to manage sequence buffers for profiler/VRAM estimation
   const sequencerManager = {

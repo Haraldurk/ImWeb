@@ -22,12 +22,15 @@ const EASING_KEYS = Object.keys(EASING);
  * @param {ParameterSystem|null} ps     – optional; unused currently but kept for future wiring
  * @returns {HTMLElement} the panel root
  */
+// Mapping from (i,j) plane to ps param id — covers the 4 base-4D planes
+const _ROT_PARAM = { '0,1':'hypercube.rot.xy', '0,2':'hypercube.rot.xz', '1,2':'hypercube.rot.yz', '0,3':'hypercube.rot.xw' };
+
 export function buildHypercubePanel(container, hypercube, ps) {
   const panel = document.createElement('div');
   panel.className = 'hc-panel';
   panel.style.cssText = 'padding:8px 0;font-family:monospace;font-size:11px;color:var(--text-1,#e0e0f0);';
 
-  let morphDuration = 800;
+  let morphDuration = ps?.get('hypercube.morphDuration')?.value ?? 800;
   let morphEasing   = 'easeInOut';
   let lastRebuildDim = -1;
   let pendingRebuild = null;
@@ -52,6 +55,7 @@ export function buildHypercubePanel(container, hypercube, ps) {
     pill.addEventListener('mouseleave', () => { pill.style.background = `${col}22`; });
     pill.addEventListener('click', () => {
       hypercube.morphTo(d, { durationMs: morphDuration, easing: morphEasing });
+      ps?.set('hypercube.dim', d);   // persist to state
       // Stats text updates next interval tick. Defer the 66-row DOM rebuild
       // until after the morph completes so it doesn't freeze the start frames.
       if (pendingRebuild) clearTimeout(pendingRebuild);
@@ -64,15 +68,24 @@ export function buildHypercubePanel(container, hypercube, ps) {
   }
   dimSec.appendChild(pillRow);
 
-  _paramRow(dimSec, 'Morph ms', morphDuration, 100, 4000, 50, v => { morphDuration = v; });
+  _paramRow(dimSec, 'Morph ms', morphDuration, 100, 4000, 50, v => {
+    morphDuration = v;
+    ps?.set('hypercube.morphDuration', v);
+  });
   _selectRow(dimSec, 'Easing', EASING_KEYS, EASING_KEYS.indexOf(morphEasing), idx => {
     morphEasing = EASING_KEYS[idx];
   });
 
   // ── Projection ──────────────────────────────────────────────────────────
   const projSec = _section(panel, 'PROJECTION');
-  _paramRow(projSec, 'W-dist', hypercube._wDistance ?? 4,  1.1, 20,  0.1,  v => hypercube.setWDistance(v));
-  _paramRow(projSec, 'Scale',  hypercube._scale ?? 1,       0.1, 5,   0.05, v => hypercube.setScale(v));
+  _paramRow(projSec, 'W-dist', ps?.get('hypercube.wDistance')?.value ?? hypercube._wDistance ?? 3.0, 1.1, 20, 0.1, v => {
+    hypercube.setWDistance(v);
+    ps?.set('hypercube.wDistance', v);
+  });
+  _paramRow(projSec, 'Scale', ps?.get('hypercube.scale')?.value ?? hypercube._scale ?? 1.0, 0.1, 5, 0.05, v => {
+    hypercube.setScale(v);
+    ps?.set('hypercube.scale', v);
+  });
   _selectRow(projSec, 'Mode', ['perspective', 'orthographic'], 0, idx => {
     hypercube.setProjectionMode(idx === 0 ? 'perspective' : 'orthographic');
   });
@@ -106,9 +119,14 @@ export function buildHypercubePanel(container, hypercube, ps) {
       if (planes.length === 0) continue;
       const { body } = _collapsible(rotSec, label, open);
       for (const { i, j, idx: pIdx } of planes) {
-        const speed = (hypercube._rotSpeeds?.[pIdx] ?? 0) * 100; // store × 100 for drag ergonomics
-        _paramRow(body, `${i}↔${j}`, speed, -628, 628, 1, v => {
+        const paramId = _ROT_PARAM[`${i},${j}`] ?? null;
+        // Read initial speed from ps if available, else from live object
+        const initSpeed = paramId && ps?.get(paramId)
+          ? ps.get(paramId).value * 100
+          : (hypercube._rotSpeeds?.[pIdx] ?? 0) * 100;
+        _paramRow(body, `${i}↔${j}`, initSpeed, -628, 628, 1, v => {
           hypercube.setRotationSpeed(pIdx, v / 100);
+          if (paramId) ps?.set(paramId, v / 100);  // persist to state
         });
       }
     }
@@ -120,9 +138,15 @@ export function buildHypercubePanel(container, hypercube, ps) {
   _selectRow(renderSec, 'Mode', ['wireframe', 'points', 'both', 'none'], 0, idx => {
     hypercube.setRenderMode(['wireframe', 'points', 'both', 'none'][idx]);
   });
-  _paramRow(renderSec, 'Pt size',      hypercube._pointSize ?? 3,       0.5,   20,  0.5, v => hypercube.setPointSize(v));
-  _paramRow(renderSec, 'Edge opacity', (hypercube._edgeOpacityMult ?? 1) * 100, 0, 100, 1, v => hypercube.setEdgeOpacity(v / 100));
-  _paramRow(renderSec, 'Edge width',  hypercube._edgeWidth ?? 1.5, 0.5, 8.0, 0.1, v => hypercube.setEdgeWidth(v));
+  _paramRow(renderSec, 'Pt size',
+    ps?.get('hypercube.pointSize')?.value ?? hypercube._pointSize ?? 3.0,
+    0.5, 20, 0.5, v => { hypercube.setPointSize(v);      ps?.set('hypercube.pointSize', v); });
+  _paramRow(renderSec, 'Edge opacity',
+    (ps?.get('hypercube.edgeOpacity')?.value ?? hypercube._edgeOpacityMult ?? 1.0) * 100,
+    0, 100, 1, v => { hypercube.setEdgeOpacity(v / 100); ps?.set('hypercube.edgeOpacity', v / 100); });
+  _paramRow(renderSec, 'Edge width',
+    ps?.get('hypercube.edgeWidth')?.value ?? hypercube._edgeWidth ?? 1.5,
+    0.5, 8.0, 0.1, v => { hypercube.setEdgeWidth(v);     ps?.set('hypercube.edgeWidth', v); });
   _selectRow(renderSec, 'Faces', ['off', 'on'], hypercube._hFaces?._visible ? 1 : 0, idx => hypercube.setFacesVisible(idx === 1));
   _paramRow(renderSec, 'Face opacity', hypercube._hFaces?._opacity ?? 0.15, 0.0, 1.0, 0.01, v => hypercube.setFaceOpacity(v));
   _selectRow(renderSec, 'Instancer', ['off', 'on'], 0, idx => hypercube.setInstancerVisible(idx === 1));
