@@ -1,6 +1,6 @@
 # ImWeb — Quick Reference
 
-> Browser-based real-time video synthesis instrument · v0.6.0
+> Browser-based real-time video synthesis instrument · v0.8.4
 
 ---
 
@@ -98,17 +98,19 @@ Right-click any parameter row to assign.
 
 ---
 
-## Program / Bank / State
+## Project / Bank / State
 
 | Concept | Description |
 |---------|-------------|
-| **Program** | The active performance patch; corresponds to one Bank |
-| **Bank** | Group of 64 States; switch via the Bank dropdown |
-| **State** | Full parameter snapshot + thumbnail (recall with `0–9`) |
-| **Morph** | Smooth crossfade between Banks over N seconds |
+| **Project** | The full session — all Banks, tables, warp maps, settings |
+| **Bank** | A named group of up to 32 States; switch via bottom-right dropdown or `+`/`−` |
+| **State** | Full snapshot: parameter values + FX order + controller assignments + media filenames |
+| **Neutral State** | Resets all parameter values without touching controller assignments (`Shift+0` or ○ tile) |
+| **Morph** | Smooth crossfade to the next recalled State over N seconds |
 | **MIDI PC** | Program Change 0–127 → Bank 0–127 |
-| **Quick save** | `Cmd+S` |
-| **Project file** | `.imweb` = all Banks + tables + warp maps |
+| **Quick-save State** | `Shift+S` — saves to next empty slot with auto-thumbnail |
+| **Quick-save Project** | `Cmd+S` — downloads `.imweb` |
+| **Open Banks window** | Bottom-right dropdown → "⊞ Open Banks window" — detaches the Banks panel |
 
 ---
 
@@ -136,6 +138,8 @@ Right-click any parameter row to assign.
 | Key | Action |
 |-----|--------|
 | `0–9` | Recall State |
+| `Shift+0` | Neutral State (reset params, keep controllers) |
+| `Shift+S` | Quick-save State (auto-thumbnail) |
 | `+` / `−` | Next / previous Bank |
 | `Shift+1–8` | Select movie clip |
 | `/` | Parameter search |
@@ -145,13 +149,12 @@ Right-click any parameter row to assign.
 
 | Key | Action |
 |-----|--------|
-| `Cmd+S` | Quick-save preset |
-| `Cmd+E` | Export `.imweb` |
+| `Cmd+S` | Save project → download `.imweb` |
+| `Cmd+E` | Export `.imweb` (same as Cmd+S) |
 | `Cmd+O` | Import `.imweb` |
 | `Cmd+F` | Fullscreen |
 | `Shift+P` | Float/dock signal path |
 | `Shift+V` | Output spy |
-| `Shift+Esc` | Reset all to defaults |
 | `N` | AI Narrator |
 | `P` | AI Coach |
 
@@ -160,8 +163,21 @@ Right-click any parameter row to assign.
 ## Status Bar (top)
 
 ```
-ImWeb  |  fps · CPU · VRAM  |  Preset N  |  BPM ♩  |  MIDI  OSC  VU  |  [FIT][FAST][MED][MAX][LOW]  [⊡][◫][⌨][◧][⛶][⏺][📷][𝔸][⬡][⚙]
+ImWeb  |  fps · CPU · VRAM  |  Bank name  |  State name  |  BPM ♩  |  MIDI  OSC  VU  |  [FIT][FAST][MED][MAX][LOW]  [⊡][◫][⌨][◧][⛶][⏺][📷][𝔸][⬡][⚙]
 ```
+
+## Bottom Bar
+
+```
+[○ neutral]  [ state 1 ][ state 2 ][ ... ][ state 32 ]   Bank 1 ▼
+```
+
+The state grid holds 32 thumbnail tiles (2 rows × 16 columns). Tiles show auto-captured thumbnails for saved states and are dim/empty for unsaved slots.
+
+- **Left-click** an empty tile: save current state there. Left-click a saved tile: recall it.
+- **Right-click** a tile: Save here / Import .imstate / Export .imstate / Clear.
+- **○** (leftmost): Neutral State — reset all parameter values, leave controllers intact.
+- **Bank 1 ▼** (bottom-right): opens the Bank dropdown — switch bank, + New Bank, ⬆ Import Bank…, ⊞ Open Banks window.
 
 - **BPM**: click = tap tempo · right-click = MIDI clock sync
 - **⊡** = second monitor popup (auto-letterbox)
@@ -197,8 +213,9 @@ ImWeb  |  fps · CPU · VRAM  |  Preset N  |  BPM ♩  |  MIDI  OSC  VU  |  [FIT
 | `.png .jpg` | Import | Still → buffer |
 | `.glb .gltf .obj .stl .dae` | Import | 3D models |
 | `.cube` | Import | LUT colour grade |
-| `.imweb` | Import / Export | Full session |
-| `.imx` | Import | Legacy Image/ine |
+| `.imweb` | Import / Export | Full session (all Banks + tables + warp maps) |
+| `.imbank` | Import / Export | Single Bank |
+| `.imstate` | Import / Export | Single State |
 
 Drag any supported file onto the output canvas to load it.
 
@@ -237,4 +254,4 @@ Requires: **Node.js** + **FFmpeg** (`brew install ffmpeg` / `apt install ffmpeg`
 
 ---
 
-*ImWeb v0.6.0 · H. Karlsson · [[ImWeb_Full_Manual|Full manual →]]*
+*ImWeb v0.8.4 · H. Karlsson · [Full manual →](ImWeb_Full_Manual.md)*

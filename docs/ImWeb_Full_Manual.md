@@ -1,6 +1,6 @@
 # ImWeb — Full Operation Manual
 
-> **Version:** 0.6.0
+> **Version:** 0.8.4
 > **Platform:** Browser (Chrome 113+ recommended)
 > **Original concept:** Image/ine — Tom Demeyer, STEIM Amsterdam 1997/2008
 > **ImWeb:** H. Karlsson
@@ -15,7 +15,7 @@
 4. [Input Sources](#4-input-sources)
 5. [Signal Path & Effects](#5-signal-path--effects)
 6. [Controller Mapping System](#6-controller-mapping-system)
-7. [Program / Bank / State](#7-program--bank--state)
+7. [Project / Bank / State](#7-project--bank--state)
 8. [Output & Recording](#8-output--recording)
 9. [Advanced Features](#9-advanced-features)
 10. [Keyboard Shortcuts Reference](#10-keyboard-shortcuts-reference)
@@ -108,9 +108,30 @@ Open Chrome at `localhost:5173`. On first load:
 | **Text** | Text layer content and formatting |
 | **3D** | 3D scene, geometry, import, material, camera |
 | **Clips** | Movie clip library and playback controls |
-| **Program** | Bank/state list, save/load, automation, step sequencer |
+| **Project** | Project save/load, AI generator, Banks panel, States list, Step Sequencer |
 | **Tables** | Response curve editor |
 | **GLSL** | Live shader code editor |
+
+### Bottom Bar
+
+The bottom bar runs across the full width of the app and contains three zones:
+
+**State grid** — 32 thumbnail tiles arranged in two rows of 16. Tiles show auto-captured thumbnails for saved states and appear dark for empty slots.
+
+| Action | Result |
+|--------|--------|
+| Left-click an empty tile | Save current state to that slot |
+| Left-click a saved tile | Recall that state |
+| Right-click any tile | Context menu: Save here / Import .imstate / Export .imstate / Clear |
+| ○ (leftmost tile) | Neutral State — resets all parameter values without touching controller assignments |
+
+**Bank dropdown** (bottom-right) — shows the current Bank name followed by ▼. Clicking it opens a menu:
+- Bank list — click any Bank to switch to it
+- **+ New Bank** — create a new empty Bank
+- **⬆ Import Bank…** — load a `.imbank` file as a new Bank
+- **⊞ Open Banks window** — detaches the Banks panel as a floating window
+
+---
 
 ### Signal Path Display
 
@@ -891,44 +912,117 @@ Built-in presets: Linear, Logarithmic, Exponential, S-curve, Step.
 
 ---
 
-## 7. Program / Bank / State
+## 7. Project / Bank / State
+
+ImWeb uses a three-level memory hierarchy. Understanding it makes saving and recalling work feel natural in performance.
+
+```
+Project (.imweb)
+  └── Bank 1 — SDF Metaballs
+  │     └── State 1 · State 2 · … · State 32
+  └── Bank 2 — Noise Feedback
+        └── State 1 · State 2 · …
+```
+
+---
+
+### Project
+
+A Project is a complete session: all Banks, Tables, Warp Map slots, and settings. It is saved as a `.imweb` JSON file.
+
+| Action | Key / Button |
+|--------|-------------|
+| Save (download) | `Cmd+S` or Project tab → **⇩ Export .imweb** |
+| Load | `Cmd+O` or Project tab → **⇧ Import .imweb** |
+
+There is no server-side auto-save. Use `Cmd+S` whenever you want a checkpoint.
+
+---
 
 ### Banks
 
-A Bank stores a complete snapshot of all parameter values.
+A Bank is a named group of up to 32 States. Banks also carry the current controller assignments as a reference baseline (though each State stores its own controller snapshot too).
 
-| Action | How |
-|--------|-----|
-| Save Bank | Program tab → "Save Bank" button |
-| Load Bank | Click Bank card, or `+` / `−` keys |
-| Quick-save | `Cmd+S` |
-| Name Bank | Click the name field in Program tab |
+#### Switching Banks
 
-Thumbnails (160×90 JPEG) are captured from the output canvas when saving.
+- **Bottom-right dropdown** ("Bank 1 ▼") — click to open, then click any Bank name
+- **Numpad `+` / `−`** — step forward/backward through Banks
+- **MIDI Program Change (PC 0–127)** — recalls Bank at the same index
 
-MIDI Program Change messages (PC 0–127) recall Banks 0–127 automatically.
+#### Managing Banks (Project tab → Banks section)
+
+| Button | Action |
+|--------|--------|
+| 💾 Save | Write the current state of this Bank to IndexedDB |
+| 💾 Save As | Deep-copy the current Bank to a new slot, activate it |
+| + New | Create a blank Bank |
+| ⬇ Export | Download the Bank as a `.imbank` file |
+| ⬆ Import | Load a `.imbank` file as a new Bank |
+| ✕ Delete | Remove the Bank (with confirmation) |
+
+The **bank list** below the buttons shows all Banks. Click any name to switch. The active Bank is highlighted in yellow. Click a name again to rename it inline.
+
+#### Opening Banks as a floating window
+
+Bottom-right dropdown → **⊞ Open Banks window** — detaches the Banks panel so it floats over the canvas for quick access during performance.
 
 ---
 
 ### States
 
-Each Bank has 64 States. Useful for variations within a Bank (e.g. different camera speeds, colour variations).
+A State is a complete, self-contained snapshot of the instrument at a moment in time. It captures:
 
-| Action | How |
-|--------|-----|
-| Save State | "Save State" button in Program tab |
-| Recall State | Keys `0`–`9` |
+- All **parameter values**
+- The **FX chain order**
+- All **controller assignments** (LFO shapes, rates, MIDI CC numbers, etc.)
+- **Media filenames** (the names of the movie clip and 3D model that were loaded — as a reminder, since the File API prevents auto-reloading files)
+
+Each Bank holds up to **32 States**, displayed as a thumbnail grid in the bottom bar.
+
+#### Saving a State
+
+| Method | Action |
+|--------|--------|
+| **Shift+S** | Quick-save to the next empty slot; generates an auto-thumbnail |
+| Left-click an empty tile | Save to that specific slot |
+| Right-click any tile → "Save here" | Save to that specific slot |
+
+#### Recalling a State
+
+| Method | Action |
+|--------|--------|
+| **`0–9`** (number row) | Recall State at that index |
+| Left-click a saved tile | Recall that State |
+
+When `global.morphspeed` > 0, recalling a State triggers a smooth morph animation instead of a snap. All continuous parameters (not toggles or triggers) interpolate using smooth-step easing.
+
+#### Neutral State
+
+Press **`Shift+0`** or click the **○** tile at the far left of the bottom bar to trigger a Neutral State. This resets all parameter values to their defaults without touching any controller assignments. Useful as a clean starting point or a "panic" reset.
+
+#### Per-State operations (right-click a tile)
+
+| Option | Description |
+|--------|-------------|
+| Save here | Overwrite this slot with current state |
+| Import .imstate | Load a `.imstate` file into this slot |
+| Export .imstate | Download this State as a `.imstate` file |
+| Clear | Delete this State |
+
+#### Media reference warnings
+
+If a State was saved with a specific movie clip or 3D model loaded, and those files are not currently loaded, ImWeb shows a toast warning: `⚠ State was saved with: Movie: "filename.mp4"`. Reload the file manually and re-save the State if needed.
 
 ---
 
-### Preset Morphing
+### State Morphing
 
 | Parameter | Range | Description |
 |-----------|-------|-------------|
-| `global.morph` | 0–100% | Blend ratio between current and target preset |
-| `global.morphspeed` | 0–10 sec | Duration of morph animation |
+| `global.morph` | 0–100% | Live blend ratio between source and target state |
+| `global.morphspeed` | 0–10 sec | Duration of the morph animation (0 = snap) |
 
-Smooth crossfade interpolates all continuous parameters simultaneously.
+When morphspeed > 0, recalling a State starts a morph animation that interpolates all continuous parameters (not toggles or selects). The `global.morph` parameter tracks progress from 0→100% and can be assigned a controller or read by the automation recorder.
 
 ---
 
@@ -939,26 +1033,7 @@ Smooth crossfade interpolates all continuous parameters simultaneously.
 | `global.bpm` | 20–300 bpm | Global tempo |
 | `global.beatdetect` | TOGGLE | Auto-detect BPM from audio onsets |
 
-**Tap Tempo:** Click the BPM indicator in the status bar 2–5 times. Tap interval derives BPM. Retriggers all BPM-synced LFOs.
-
----
-
-### Project Files (.imweb)
-
-Full session export: all Banks, tables, warp maps, settings.
-
-| Action | Key | Description |
-|--------|-----|-------------|
-| Export | Cmd+E | Save `.imweb` to disk |
-| Import | Cmd+O | Restore session from `.imweb` |
-
-Also available via buttons in the Program tab.
-
----
-
-### Legacy Import (.imx)
-
-Import Bank files from the original Image/ine format. Best-effort parameter mapping. Button in Program tab.
+**Tap Tempo:** Click the BPM indicator in the status bar 2–5 times. The tap interval derives BPM. All BPM-synced LFOs retrigger.
 
 ---
 
@@ -1113,18 +1188,24 @@ Click the ⊞ button in any section header to detach it as a floating panel. Dra
 | `S` | Solo (bypass all effects) |
 | `X` | Toggle external key |
 
+### Memory
+
+| Key | Action |
+|-----|--------|
+| `0–9` | Recall State at index |
+| `Shift+0` | Neutral State (reset all params, keep controllers) |
+| `Shift+S` | Quick-save State to next empty slot (auto-thumbnail) |
+| `+` / `−` | Next / previous Bank (Numpad) |
+
 ### Global
 
 | Key | Action |
 |-----|--------|
 | `T` | Tap tempo |
 | `H` | Fade to black (toggle) |
-| `0–9` | Recall State 0–9 |
-| `+` / `−` | Next / previous Bank |
-| `Cmd+S` | Quick-save current Bank |
-| `Cmd+E` | Export `.imweb` project |
+| `Cmd+S` | Save project → download `.imweb` |
+| `Cmd+E` | Export `.imweb` (same as Cmd+S) |
 | `Cmd+O` | Import `.imweb` project |
-| `Shift+Esc` | Reset all parameters to defaults |
 
 ### AI & Tools
 
@@ -1146,8 +1227,9 @@ Click the ⊞ button in any section header to detach it as a floating panel. Dra
 | `.stl` | Import | 3D mesh (binary or ASCII) |
 | `.dae` | Import | Collada 3D model |
 | `.cube` | Import | 3D LUT colour grade |
-| `.imweb` | Import/Export | Full ImWeb session |
-| `.imx` | Import | Legacy Image/ine preset |
+| `.imweb` | Import/Export | Full session — all Banks, Tables, Warp Maps, settings |
+| `.imbank` | Import/Export | Single Bank — share a performance patch |
+| `.imstate` | Import/Export | Single State — share one snapshot |
 
 ### Video Format Guide
 
@@ -1240,5 +1322,5 @@ VRAM shown in red when above 800MB.
 
 ---
 
-*ImWeb v0.6.0 — H. Karlsson*
+*ImWeb v0.8.4 — H. Karlsson*
 *Original Image/ine: Tom Demeyer, STEIM Foundation, Amsterdam*

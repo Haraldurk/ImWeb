@@ -6,7 +6,7 @@
 
 Real-time video compositing, 3D scene integration, and a complete parameter/controller mapping system — all in a Progressive Web App.
 
-Current version: **v0.8.4**
+Current version: **v0.8.4** — [Changelog](CHANGELOG.md)
 
 💖 **[Support ImWeb's development on Patreon!](https://www.patreon.com/ImWeb)**
 
@@ -62,11 +62,13 @@ INPUT SOURCES
 | `T` | Tap tempo |
 | `?` | Keyboard help overlay |
 | `/` | Parameter search overlay |
-| `0–9` | Recall States 0–9 |
+| `0–9` | Recall State 0–9 |
+| `Shift+0` | Neutral State (reset all params, keep controllers) |
+| `Shift+S` | Quick-save State to next empty slot (auto-thumbnail) |
 | `Shift+1–8` | Select movie clip 1–8 |
+| `Cmd/Ctrl+S` | Save project → downloads `.imweb` |
 | `Cmd/Ctrl+F` | Fullscreen output |
-| `Cmd/Ctrl+S` | Quick-save current preset |
-| `NumPad +/-` | Next / previous preset |
+| `NumPad +/-` | Next / previous Bank |
 
 **Right-click any parameter** to assign a controller:
 Mouse X/Y · MIDI CC · LFO (4 waveforms) · Sound level · Random · Fixed value · Key · Expression
@@ -106,11 +108,12 @@ src/
     GeometryFactory.js    All procedural geometry generators
 
   state/
-    Preset.js             Presets + Display States, persisted to IndexedDB
+    Preset.js             Banks + States, persisted to IndexedDB
 
   ui/
-    UI.js                 Parameter rows, tabs, state dots, signal path,
-                          context menu, seq cards, buildSeqParams()
+    UI.js                 Parameter rows, tabs, StateBar (bottom-bar state grid),
+                          MemoryPanel (bank list + state list), signal path,
+                          context menus, seq cards
 ```
 
 ---
@@ -187,12 +190,14 @@ src/
 - [x] Non-realtime frame capture — 📷 pauses render loop; Step Frame / Auto-Run exports numbered PNG sequence
 
 ### Project & State Management
-- [x] **Program > Bank > State Hierarchy** — standard live performance mental model
-- [x] **Project Files (.imweb)** — export/import entire gig sessions
-- [x] **Banks** — Switch between groups of 64 states via the bottom right dropdown
-- [x] **States (Snapshots)** — 64 visual states per Bank, saved via right-clicking the bottom dots (auto-thumbnails!)
+- [x] **Project → Bank → State hierarchy** — standard live performance mental model
+- [x] **Project files (.imweb)** — `Cmd+S` or Export button downloads the full session
+- [x] **Banks** — named groups of States; bank list in the Project tab; bank dropdown in the bottom-right corner; ⊞ "Open Banks window" from dropdown detaches the panel
+- [x] **States** — up to 32 fully self-contained snapshots per Bank (parameter values + FX order + controller assignments + media refs); thumbnail grid in the bottom bar; `Shift+S` = quick-save; `0–9` = recall; `Shift+0` = Neutral State; right-click a tile for Save / Import / Export / Clear
+- [x] **Neutral State** — resets all parameter values without touching controller assignments
+- [x] **Bank export/import (.imbank)** — share a single bank
+- [x] **State export/import (.imstate)** — share a single state
 - [x] **AI State Generator** — LLM-driven parameter patching ("make a slow organic ocean")
-- [x] **Factory Banks** — Human-editable `factory-banks.json` defaults
 
 ### UI
 - [x] Signal path display — float or dock
