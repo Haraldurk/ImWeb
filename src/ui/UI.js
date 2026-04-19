@@ -1377,6 +1377,18 @@ export class StateBar {
     this.pm.addEventListener('presetActivated', () => this._refresh());
     this.pm.addEventListener('stateSaved',      () => this._refresh());
     this.pm.addEventListener('stateRecalled',   () => this._refresh());
+    this.pm.addEventListener('morphStarted', e => {
+      this._refresh(); // update active tile first
+      const { fromIndex, toIndex } = e.detail;
+      const fromTile = this.tiles[fromIndex];
+      const toTile   = this.tiles[toIndex];
+      if (fromTile) fromTile.classList.add('state-tile--morphing');
+      if (toTile)   toTile.classList.add('state-tile--morphing');
+    });
+    this.pm.addEventListener('morphEnded', () => {
+      this.tiles.forEach(t => t.classList.remove('state-tile--morphing'));
+      this._refresh();
+    });
   }
 }
 

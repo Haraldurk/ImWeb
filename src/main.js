@@ -343,27 +343,29 @@ async function main() {
     morphParam.onChange(() => syncDisplay());
     syncDisplay();
 
-    // Drag interaction (ns-resize: drag up = increase, down = decrease)
-    let _dragY = null, _dragStart = null;
-    morphCtrl.addEventListener('mousedown', e => {
+    // Drag interaction — pointer capture so drag works outside the element
+    let _dragY = null, _dragStart = null, _dragging = false;
+    morphCtrl.addEventListener('pointerdown', e => {
       if (e.button !== 0) return;
       e.preventDefault();
-      _dragY = e.clientY;
+      _dragY     = e.clientY;
       _dragStart = morphParam.value;
-      window.addEventListener('mousemove', onDrag);
-      window.addEventListener('mouseup', onUp);
+      _dragging  = false;
+      morphCtrl.setPointerCapture(e.pointerId);
     });
-    function onDrag(e) {
-      const delta = (_dragY - e.clientY) * 0.1; // 1px = 0.1s
+    morphCtrl.addEventListener('pointermove', e => {
+      if (_dragY === null) return;
+      const delta = (_dragY - e.clientY) * 0.1; // 1px ≈ 0.1 s
+      if (Math.abs(delta) > 0.05) _dragging = true;
       const v = Math.max(0, Math.min(20, _dragStart + delta));
       ps.set('global.morphspeed', Math.round(v * 10) / 10);
-    }
-    function onUp() {
-      window.removeEventListener('mousemove', onDrag);
-      window.removeEventListener('mouseup', onUp);
-    }
+    });
+    morphCtrl.addEventListener('pointerup', () => {
+      _dragY    = null;
+      _dragStart = null;
+    });
 
-    // Double-click → inline edit
+    // Double-click → inline edit (only when not a drag)
     morphCtrl.addEventListener('dblclick', e => {
       e.preventDefault();
       const input = document.createElement('input');

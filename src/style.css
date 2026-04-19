@@ -1525,7 +1525,8 @@ body.sp-floating #signal-path-docked-space {
 .state-tile--empty { cursor: default; }
 .state-tile--empty:hover { border-color: var(--border); }
 .state-tile--stored { border-color: var(--border-hi); }
-.state-tile--active { border: 2px solid var(--accent) !important; }
+.state-tile--active   { border: 2px solid var(--accent) !important; }
+.state-tile--morphing { border: 2px solid #4a9eff !important; box-shadow: 0 0 5px rgba(74,158,255,0.4); }
 
 .state-tile--neutral {
     width: 36px;

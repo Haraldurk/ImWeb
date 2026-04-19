@@ -325,6 +325,9 @@ export class PresetManager extends EventTarget {
     const speed    = this.ps.get('global.morphspeed')?.value ?? 0;
     const useMorph = speed > 0 && ds.values;
 
+    // Remember previous active state index (for morph highlight event)
+    const prevStateIdx = p.activeState;
+
     // Capture current values BEFORE clearing anything (morph 'from' state)
     const fromValues = useMorph ? this.ps.captureState() : null;
 
@@ -353,17 +356,26 @@ export class PresetManager extends EventTarget {
     }
 
     if (useMorph) {
+      // Restore from-values NOW so Fixed-controller assign() writes (above) don't
+      // corrupt the morph start position. tickMorph skips Fixed-assigned params,
+      // so they'll hold this from-value for the duration and snap at completion.
+      this.ps.restoreState(fromValues);
+
       // Start morph — tickMorph lerps values; restoreState + cleanup happen on completion
       this._morphFrom   = fromValues;
       this._morphTo     = { ...ds.values };
       this._morphT      = 0;
       this._morphActive = true;
       this.ps.set('global.morph', 0);
+      this.dispatchEvent(new CustomEvent('morphStarted',
+        { detail: { fromIndex: prevStateIdx, toIndex: stateIndex } }));
       this._morphOnComplete = () => {
         this._syncFixedControllers();
         this.ctrl.retriggerLFOs();
         if (ds.mediaRefs) this._checkMediaRefs(ds.mediaRefs);
         this.ps.getAll().forEach(param => this.ctrl.sendParamFeedback(param));
+        this.dispatchEvent(new CustomEvent('morphEnded',
+          { detail: { stateIndex } }));
       };
     } else {
       // Snap immediately — restore values AFTER controller setup so this always wins.
