@@ -269,6 +269,7 @@ export class PresetManager extends EventTarget {
     const SKIP_TYPES = new Set(['toggle', 'trigger', 'select']);
     this.ps.getAll().forEach(p => {
       if (SKIP_TYPES.has(p.type)) return;
+      if (p.group === 'global') return; // session-level params (BPM, morphspeed…) never morphed
       if (p.controller) return; // don't override active controllers
       const from = this._morphFrom?.[p.id] ?? p.value;
       const to   = this._morphTo?.[p.id]   ?? p.value;
