@@ -313,21 +313,35 @@ export class PresetManager extends EventTarget {
     // to params and corrupt the restored values on the very next frame.
     this.ctrl.clearAllAssignments();
 
-    // Restore parameter values
-    this.ps.restoreState(ds.values);
-
     // Restore fx chain order
     if (ds.fxOrder && this.pipeline) this.pipeline.setFxOrder(ds.fxOrder);
 
-    // Restore controller assignments
+    // Restore controller assignments first so Fixed controllers are wired up,
+    // then restore values AFTER so the correct saved values always win.
+    // (Fixed controllers write their value once in ctrl.assign — restoring
+    //  values after that overrides the stale normalized value in the config.)
     if (ds.controllers && Object.keys(ds.controllers).length) {
       this.ps.deserializeControllers(ds.controllers);
       Object.entries(ds.controllers).forEach(([paramId, cfg]) => {
         if (cfg.controller) this.ctrl.assign(paramId, cfg.controller);
       });
       this.ctrl.rebuildXControllers();
-      this.ctrl.retriggerLFOs();
     }
+
+    // Restore parameter values — AFTER controller setup so this always wins.
+    this.ps.restoreState(ds.values);
+
+    // Sync Fixed controller configs to the just-restored values so future
+    // saves and re-assigns use the correct normalized value.
+    this.ps.getAll().forEach(param => {
+      if (param.controller?.type === 'fixed' && param.max !== param.min) {
+        const norm = (param._value - param.min) / (param.max - param.min);
+        param.controller = { ...param.controller, value: norm };
+      }
+    });
+
+    // Retrigger LFOs after values are set (LFOs will animate from here)
+    this.ctrl.retriggerLFOs();
 
     // Check media refs — warn if mismatch
     if (ds.mediaRefs) this._checkMediaRefs(ds.mediaRefs);

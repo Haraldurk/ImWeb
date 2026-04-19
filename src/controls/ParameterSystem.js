@@ -366,8 +366,17 @@ export class ParameterSystem extends EventTarget {
         p.xControllers.length ||
         p.ctrlMin !== null ||
         p.ctrlMax !== null
-      )
-        r[id] = p.serialize();
+      ) {
+        const s = p.serialize();
+        // Fixed controllers store a normalized value that can drift out of sync
+        // if the param is later dragged manually. Sync it to the actual value
+        // before saving so recall always restores the correct position.
+        if (s.controller?.type === 'fixed' && p.max !== p.min) {
+          const norm = (p._value - p.min) / (p.max - p.min);
+          s.controller = { ...s.controller, value: norm };
+        }
+        r[id] = s;
+      }
     });
     return r;
   }
