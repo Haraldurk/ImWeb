@@ -315,18 +315,31 @@
           <div id="ai-preset-ui"></div>
         </div>
 
-        <!-- 2. BANKS — Randomize / Import .imx / Automation (appended by main.js) -->
-        <div id="banks-section" class="panel-section">
-          <div class="section-header">Banks</div>
+        <!-- MEMORY — Banks + States (replaces old Banks + States sections) -->
+        <div id="memory-section" class="panel-section">
+          <div class="section-header">Memory</div>
+
+          <!-- Bank controls row -->
+          <div id="memory-bank-row" style="display:flex;gap:4px;flex-wrap:wrap;padding:4px 8px 0;">
+            <button id="btn-new-bank"    class="import-btn">+ New</button>
+            <button id="btn-export-bank" class="import-btn">⬇ Export</button>
+            <button id="btn-import-bank" class="import-btn">⬆ Import</button>
+            <button id="btn-delete-bank" class="import-btn btn-danger">✕ Delete</button>
+          </div>
+
+          <!-- Automation row — kept from old Banks section, moved here -->
+          <div id="memory-auto-row" style="padding:4px 8px 0;"></div>
+
+          <!-- State list for current bank -->
+          <div id="memory-state-list"></div>
+
+          <!-- Import a .imstate file into current bank -->
+          <div style="padding:4px 8px 6px;">
+            <button id="btn-import-state" class="import-btn" style="width:100%">⬆ Import State (.imstate)</button>
+          </div>
         </div>
 
-        <!-- 3. STATES — list of States in current Bank (built by PresetsPanel) -->
-        <div class="panel-section">
-          <div class="section-header">States</div>
-          <div id="states-list"></div>
-        </div>
-
-        <!-- 4. STATE STEP SEQUENCER (controls appended by main.js) -->
+        <!-- STATE STEP SEQUENCER (controls appended by main.js) -->
         <div id="state-seq-section" class="panel-section">
           <div class="section-header">State Step Sequencer</div>
         </div>

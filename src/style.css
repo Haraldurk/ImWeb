@@ -1684,6 +1684,92 @@ body.sp-floating #signal-path-docked-space {
 .state-tile-menu-item:hover { background: var(--bg-4); }
 .state-tile-menu-item.danger { color: #e06060; }
 
+/* ── MEMORY PANEL ────────────────────────────────────────────────────────── */
+
+.memory-empty {
+    padding: 8px;
+    font-size: 11px;
+    color: var(--text-2);
+    font-style: italic;
+}
+
+.memory-state-row {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 8px;
+    border-bottom: 1px solid var(--bg-3);
+    transition: background 0.1s;
+}
+.memory-state-row:hover { background: var(--bg-3); }
+.memory-state-row.active { background: var(--bg-3); border-left: 2px solid var(--accent); }
+
+.memory-state-thumb {
+    width: 40px;
+    height: 28px;
+    flex-shrink: 0;
+    background: var(--bg-4);
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    background-size: cover;
+    background-position: center;
+    cursor: pointer;
+}
+.memory-state-thumb:hover { border-color: var(--border-hi); }
+
+.memory-state-num {
+    font-size: 10px;
+    color: var(--text-2);
+    width: 18px;
+    flex-shrink: 0;
+    text-align: right;
+}
+
+.memory-state-name {
+    flex: 1;
+    font-size: 11px;
+    color: var(--text-1);
+    cursor: pointer;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.memory-state-name:hover { color: var(--accent); }
+
+.memory-state-name-input {
+    flex: 1;
+    font-size: 11px;
+    background: var(--bg-4);
+    border: 1px solid var(--accent-dim);
+    color: var(--text-1);
+    padding: 1px 4px;
+    border-radius: 2px;
+    outline: none;
+}
+
+.memory-state-btn {
+    background: var(--bg-3);
+    border: 1px solid var(--border);
+    color: var(--text-2);
+    font-size: 11px;
+    padding: 2px 6px;
+    border-radius: 2px;
+    cursor: pointer;
+    flex-shrink: 0;
+}
+.memory-state-btn:hover { color: var(--text-1); border-color: var(--border-hi); }
+.memory-state-btn--danger:hover { color: #e06060; border-color: #e06060; }
+
+.btn-danger {
+    color: #c05050 !important;
+    border-color: #6a3030 !important;
+}
+.btn-danger:hover {
+    color: #e06060 !important;
+    border-color: #e06060 !important;
+    background: #2a1a1a !important;
+}
+
 /* ── CONTEXT MENU ────────────────────────────────────────────────────────── */
 
 .context-menu {

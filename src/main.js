@@ -79,7 +79,7 @@ import {
   SignalPath,
   ContextMenu,
   FeedbackOverlay,
-  PresetsPanel,
+  MemoryPanel,
   Profiler,
   DebugOverlay,
   TablesEditor,
@@ -640,7 +640,7 @@ async function main() {
     },
   });
   const feedbackOl = new FeedbackOverlay(ps);
-  const presetsPanel = new PresetsPanel(presetMgr);
+  const memoryPanel = new MemoryPanel(presetMgr);
   const profiler = new Profiler();
   const debugOverlay = new DebugOverlay(ps);
   const tablesEditor = new TablesEditor(tableManager);
@@ -1306,8 +1306,8 @@ async function main() {
     return t.toDataURL("image/jpeg", 0.7);
   }
 
-  // Inject thumbnail capture into PresetsPanel (manual thumb click) and StateBar (auto on save)
-  presetsPanel._captureThumbFn = capturePresetThumb;
+  // Inject thumbnail capture into MemoryPanel (manual thumb click) and StateBar (auto on save)
+  memoryPanel._captureThumbFn = capturePresetThumb;
   stateBar._captureThumbFn     = capturePresetThumb;
 
   // ── OSC bridge ────────────────────────────────────────────────────────────
@@ -1393,7 +1393,7 @@ async function main() {
             setStatus(`✓ Loaded "${name}"`, "var(--green)");
 
             // Refresh UI
-            presetsPanel?._refresh?.();
+            memoryPanel?._refresh?.();
             refreshBufferGrid();
             // Update WarpMap UI if active
             if (document.getElementById("warp-slots-list")) {
@@ -1423,69 +1423,6 @@ async function main() {
   })();
 
   (() => {
-    const presetsSection = document.getElementById('banks-section');
-    if (!presetsSection) return;
-
-    const ioRow = document.createElement("div");
-    ioRow.style.cssText =
-      "display:flex;gap:6px;padding:8px 10px 4px;flex-wrap:wrap;";
-
-    // Random State button — lives in the STATES section, above the list
-    const btnRandomize = document.createElement("button");
-    btnRandomize.className = "import-btn";
-    btnRandomize.textContent = "🎲 Random State";
-    btnRandomize.title = "Randomize all continuous parameters";
-    btnRandomize.addEventListener("click", () => {
-      const SKIP = new Set([
-        "buffer.fs1",
-        "buffer.fs2",
-        "buffer.fs3",
-        "buffer.rate",
-        "buffer.scanrate",
-        "global.bpm",
-        "output.interlace",
-        "movie.pos",
-        "movie.start",
-        "movie.loop",
-      ]);
-      ps.getAll().forEach((p) => {
-        if (p.type !== "continuous") return;
-        if (SKIP.has(p.id)) return;
-        if (p.controller) return; // don't override active controllers
-        p.value = p.min + Math.random() * (p.max - p.min);
-      });
-    });
-    const statesListEl = document.getElementById('states-list');
-    if (statesListEl) {
-      const randRow = document.createElement("div");
-      randRow.style.cssText = "padding:4px 10px 0;";
-      randRow.appendChild(btnRandomize);
-      statesListEl.parentElement.insertBefore(randRow, statesListEl);
-    }
-
-    // ImX import
-    const btnImportImX = document.createElement("button");
-    btnImportImX.className = "import-btn";
-    btnImportImX.textContent = "⬆ Import .imx";
-    btnImportImX.title = "Import ImX preset file (.imx)";
-    btnImportImX.addEventListener("click", () => {
-      const inp = document.createElement("input");
-      inp.type = "file";
-      inp.accept = ".imx";
-      inp.style.display = "none";
-      document.body.appendChild(inp);
-      inp.onchange = async (e) => {
-        const file = e.target.files[0];
-        document.body.removeChild(inp);
-        if (!file) return;
-        _doImportImX(file);
-      };
-      inp.click();
-    });
-
-    ioRow.appendChild(btnImportImX);
-    presetsSection.appendChild(ioRow);
-
     // Automation row
     const autoRow2 = document.createElement("div");
     autoRow2.style.cssText =
@@ -1551,7 +1488,7 @@ async function main() {
     autoRow2.appendChild(btnAutoPlay);
     autoRow2.appendChild(btnAutoClear);
     autoRow2.appendChild(btnAutoInfo);
-    presetsSection.appendChild(autoRow2);
+    document.getElementById('memory-auto-row')?.appendChild(autoRow2);
 
     // ── State Step Sequencer ─────────────────────────────────────────────────
     const stateSeqSection = document.getElementById('state-seq-section');
@@ -1979,7 +1916,7 @@ async function main() {
       const presets = await importImX(buf);
       await presetMgr.importAll(presets);
       await presetMgr.activatePreset(0);
-      presetsPanel._refresh();
+      memoryPanel._refresh();
       alert(`Imported ${presets.length} preset(s) from "${file.name}"`);
     } catch (err) {
       alert(`ImX import failed: ${err.message}`);
@@ -3679,7 +3616,7 @@ void main() {
     ) {
       e.preventDefault();
       presetMgr.saveCurrentPreset(capturePresetThumb()).then(() => {
-        presetsPanel._refresh();
+        memoryPanel._refresh();
         const btn = document.getElementById("btn-save-preset");
         if (btn) {
           const orig = btn.textContent;

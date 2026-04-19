@@ -2039,137 +2039,208 @@ export class FeedbackOverlay {
 
 // ── Project panel (States list + Bank selector) ───────────────────────────────
 
-export class PresetsPanel {
+export class MemoryPanel {
   constructor(presetManager) {
     this.pm = presetManager;
-    this.el = document.getElementById('states-list');
-    this._captureThumbFn = null; // injected from main.js after construction
+    this.listEl = document.getElementById('memory-state-list');
+    this._captureThumbFn = null;
     this._build();
-    this._wireBankSelect();
-    this.pm.addEventListener('presetActivated', () => { this._build(); this._refreshBankSelect(); });
+    this._wireBankControls();
+    this._wireImportState();
+    this.pm.addEventListener('presetActivated', () => this._build());
     this.pm.addEventListener('stateSaved',      () => this._build());
     this.pm.addEventListener('stateRecalled',   () => this._build());
   }
 
   _build() {
-    if (!this.el) return;
-    this.el.innerHTML = '';
-    const bank = this.pm.presets[this.pm.currentIdx];
+    if (!this.listEl) return;
+    this.listEl.innerHTML = '';
+    const bank = this.pm.current;
     if (!bank) return;
-    let hasAny = false;
-    bank.states.forEach((state, i) => {
-      if (!state) return;
-      hasAny = true;
+    const occupied = bank.states
+      .map((s, i) => ({ s, i }))
+      .filter(({ s }) => !!s);
+    if (!occupied.length) {
+      const empty = document.createElement('div');
+      empty.className = 'memory-empty';
+      empty.textContent = 'No states saved in this bank.';
+      this.listEl.appendChild(empty);
+      return;
+    }
+    occupied.forEach(({ s: state, i }) => {
       const row = document.createElement('div');
-      row.className = 'preset-item';
-      row.dataset.idx = i;
+      row.className = 'memory-state-row' + (bank.activeState === i ? ' active' : '');
 
-      // Thumbnail — click to capture
       const thumb = document.createElement('div');
-      thumb.className = 'preset-thumb' + (state.thumbnail ? ' preset-thumb--has' : '');
+      thumb.className = 'memory-state-thumb';
       if (state.thumbnail) thumb.style.backgroundImage = `url(${state.thumbnail})`;
-      thumb.title = 'Click to capture thumbnail for this State';
+      thumb.title = 'Click to capture thumbnail';
       thumb.addEventListener('click', () => this._captureStateThumb(i));
       row.appendChild(thumb);
 
-      // Index number
       const num = document.createElement('span');
-      num.className = 'preset-num';
-      num.textContent = i;
+      num.className = 'memory-state-num';
+      num.textContent = i + 1;
       row.appendChild(num);
 
-      // Name — click to rename inline
-      const nameSpan = document.createElement('span');
-      nameSpan.className = 'preset-name';
-      nameSpan.textContent = state.name || `State ${i}`;
-      nameSpan.title = 'Click to rename';
-      nameSpan.addEventListener('click', () => this._startRename(nameSpan, state, bank));
-      row.appendChild(nameSpan);
+      const name = document.createElement('span');
+      name.className = 'memory-state-name';
+      name.textContent = state.name || `State ${i + 1}`;
+      name.title = 'Click to rename';
+      name.addEventListener('click', () => this._startRename(name, state, bank));
+      row.appendChild(name);
 
-      // Load button
-      const loadBtn = document.createElement('button');
-      loadBtn.className = 'import-btn';
-      loadBtn.textContent = '▶';
-      loadBtn.title = `Load State ${i}`;
-      loadBtn.style.cssText = 'padding:1px 6px;font-size:10px;flex-shrink:0;';
-      loadBtn.addEventListener('click', () => this.pm.recallState(i));
-      row.appendChild(loadBtn);
+      const recallBtn = document.createElement('button');
+      recallBtn.className = 'memory-state-btn';
+      recallBtn.textContent = '▶';
+      recallBtn.title = `Recall State ${i + 1}`;
+      recallBtn.addEventListener('click', () => this.pm.recallState(i));
+      row.appendChild(recallBtn);
 
-      this.el.appendChild(row);
+      const exportBtn = document.createElement('button');
+      exportBtn.className = 'memory-state-btn';
+      exportBtn.textContent = '⬇';
+      exportBtn.title = `Export State ${i + 1} as .imstate`;
+      exportBtn.addEventListener('click', () => {
+        const data = this.pm.exportState(i);
+        if (!data) return;
+        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = (state.name || `State-${i + 1}`) + '.imstate';
+        a.click();
+        URL.revokeObjectURL(a.href);
+      });
+      row.appendChild(exportBtn);
+
+      const clearBtn = document.createElement('button');
+      clearBtn.className = 'memory-state-btn memory-state-btn--danger';
+      clearBtn.textContent = '✕';
+      clearBtn.title = `Delete State ${i + 1}`;
+      clearBtn.addEventListener('click', async () => {
+        bank.removeState(i);
+        await bank.save?.();
+        this.pm.dispatchEvent(new CustomEvent('stateSaved',
+          { detail: { presetIndex: this.pm.currentIdx, stateIndex: i } }));
+      });
+      row.appendChild(clearBtn);
+
+      this.listEl.appendChild(row);
     });
-    if (!hasAny) {
-      const empty = document.createElement('div');
-      empty.style.cssText = 'padding:8px 10px;font-size:11px;color:var(--text-2);';
-      empty.textContent = 'No states saved in this Bank.';
-      this.el.appendChild(empty);
-    }
+  }
+
+  _wireBankControls() {
+    const toast = msg => this.pm.dispatchEvent(new CustomEvent('toast', { detail: { msg } }));
+
+    document.getElementById('btn-new-bank')?.addEventListener('click', async () => {
+      await this.pm.createBank();
+    });
+
+    document.getElementById('btn-export-bank')?.addEventListener('click', () => {
+      const bank = this.pm.current;
+      if (!bank) return;
+      const data = bank.exportBank();
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = (bank.name || 'Bank') + '.imbank';
+      a.click();
+      URL.revokeObjectURL(a.href);
+    });
+
+    document.getElementById('btn-import-bank')?.addEventListener('click', () => {
+      const inp = document.createElement('input');
+      inp.type = 'file'; inp.accept = '.imbank,application/json';
+      inp.addEventListener('change', async () => {
+        const file = inp.files[0]; if (!file) return;
+        try {
+          const data = JSON.parse(await file.text());
+          if (data.__type !== 'imbank') { toast('⚠ Not a valid .imbank file'); return; }
+          const { Preset: P } = await import('../state/Preset.js');
+          const idx = this.pm.presets.length;
+          const bank = P.importBank(data, idx);
+          this.pm.presets[idx] = bank;
+          await bank.save();
+          await this.pm.activatePreset(idx);
+          toast(`✓ Bank "${bank.name}" imported`);
+        } catch (err) { toast('⚠ Import failed: ' + err.message); }
+      });
+      inp.click();
+    });
+
+    document.getElementById('btn-delete-bank')?.addEventListener('click', async () => {
+      const bank = this.pm.current;
+      if (!bank) return;
+      if (this.pm.presets.filter(Boolean).length <= 1) {
+        toast('⚠ Cannot delete the last bank'); return;
+      }
+      if (!confirm(`Delete bank "${bank.name}" and all its states?`)) return;
+      const idx = this.pm.currentIdx;
+      this.pm.presets[idx] = null;
+      const { openDB } = await import('../state/Preset.js');
+      const db = await openDB();
+      await new Promise(res => {
+        const tx = db.transaction('banks', 'readwrite');
+        tx.objectStore('banks').delete(idx);
+        tx.oncomplete = res;
+      });
+      const nextIdx = this.pm.presets.findIndex(Boolean);
+      if (nextIdx >= 0) await this.pm.activatePreset(nextIdx);
+      toast(`✓ Bank deleted`);
+    });
+  }
+
+  _wireImportState() {
+    const toast = msg => this.pm.dispatchEvent(new CustomEvent('toast', { detail: { msg } }));
+    document.getElementById('btn-import-state')?.addEventListener('click', () => {
+      const inp = document.createElement('input');
+      inp.type = 'file'; inp.accept = '.imstate,application/json';
+      inp.addEventListener('change', async () => {
+        const file = inp.files[0]; if (!file) return;
+        try {
+          const data = JSON.parse(await file.text());
+          if (data.__type !== 'imstate') { toast('⚠ Not a valid .imstate file'); return; }
+          const slotIdx = this.pm.importState(data, null);
+          const bank = this.pm.current;
+          await bank?.save();
+          this.pm.dispatchEvent(new CustomEvent('stateSaved',
+            { detail: { presetIndex: this.pm.currentIdx, stateIndex: slotIdx } }));
+          toast(`✓ State imported into slot ${slotIdx + 1}`);
+        } catch (err) { toast('⚠ Import failed: ' + err.message); }
+      });
+      inp.click();
+    });
+  }
+
+  _captureStateThumb(stateIdx) {
+    if (!this._captureThumbFn) return;
+    const bank = this.pm.current;
+    if (!bank?.states[stateIdx]) return;
+    bank.states[stateIdx].thumbnail = this._captureThumbFn();
+    bank.save?.();
+    this._build();
   }
 
   _startRename(span, state, bank) {
-    const origName = state.name || span.textContent;
+    const orig = state.name || span.textContent;
     const inp = document.createElement('input');
-    inp.type = 'text';
-    inp.className = 'preset-name-input';
-    inp.value = origName;
+    inp.className = 'memory-state-name-input';
+    inp.value = orig;
     span.replaceWith(inp);
     inp.focus(); inp.select();
-    let committed = false;
     const commit = () => {
-      if (committed) return;
-      committed = true;
-      state.name = inp.value.trim() || origName;
+      state.name = inp.value.trim() || orig;
       bank.save?.();
       this._build();
     };
     inp.addEventListener('blur', commit);
     inp.addEventListener('keydown', e => {
       if (e.key === 'Enter') { e.preventDefault(); inp.blur(); }
-      if (e.key === 'Escape') {
-        committed = true; // prevent blur commit
-        this._build();
-      }
+      if (e.key === 'Escape') { state.name = orig; inp.blur(); }
     });
   }
 
-  _captureStateThumb(stateIdx) {
-    if (!this._captureThumbFn) return;
-    const thumb = this._captureThumbFn();
-    const bank = this.pm.presets[this.pm.currentIdx];
-    if (bank?.states[stateIdx]) {
-      bank.states[stateIdx].thumbnail = thumb;
-      bank.save?.();
-      this._build();
-    }
-  }
-
-  _wireBankSelect() {
-    const sel = document.getElementById('bank-select');
-    if (!sel) return;
-    // Populate options
-    this.pm.getAll().forEach((p, i) => {
-      const opt = document.createElement('option');
-      opt.value = i;
-      opt.textContent = p.name || `Bank ${i}`;
-      sel.appendChild(opt);
-    });
-    sel.value = String(this.pm.currentIdx);
-    sel.addEventListener('change', () => {
-      this.pm.activatePreset(parseInt(sel.value));
-    });
-  }
-
-  _refreshBankSelect() {
-    const sel = document.getElementById('bank-select');
-    if (!sel) return;
-    // Update option labels (names may have changed) and current selection
-    this.pm.getAll().forEach((p, i) => {
-      if (sel.options[i]) sel.options[i].textContent = p.name || `Bank ${i}`;
-    });
-    sel.value = String(this.pm.currentIdx);
-  }
-
-  // Kept for compatibility with main.js callsites that call _refresh()
-  _refresh() { this._build(); this._refreshBankSelect(); }
+  _refresh() { this._build(); }
 }
 
 // ── Tables editor ────────────────────────────────────────────────────────────
