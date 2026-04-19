@@ -1261,6 +1261,8 @@ export class StateBar {
       m.appendChild(btn);
     };
 
+    const toast = msg => this.pm.dispatchEvent(new CustomEvent('toast', { detail: { msg } }));
+
     addItem('Save here', '', () => {
       this.pm.saveCurrentState(idx).then(stateIdx => {
         if (this._captureThumbFn && bank?.states[idx]) {
@@ -1272,6 +1274,31 @@ export class StateBar {
         this._flashTile(idx);
         this._refresh();
       });
+    });
+
+    addItem('Import .imstate', '', () => {
+      const inp = document.createElement('input');
+      inp.type = 'file'; inp.accept = '.imstate,application/json';
+      inp.addEventListener('change', async () => {
+        const file = inp.files[0]; if (!file) return;
+        try {
+          const data = JSON.parse(await file.text());
+          if (data.__type !== 'imstate') { toast('⚠ Not a valid .imstate file'); return; }
+          const slotIdx = this.pm.importState(data, idx);
+          if (this._captureThumbFn && bank?.states[slotIdx] && !bank.states[slotIdx].thumbnail) {
+            bank.states[slotIdx].thumbnail = this._captureThumbFn();
+          }
+          await bank.save?.();
+          this.pm.dispatchEvent(new CustomEvent('stateSaved',
+            { detail: { presetIndex: this.pm.currentIdx, stateIndex: slotIdx } }));
+          this._flashTile(slotIdx);
+          this._refresh();
+          toast(`✓ State imported into slot ${slotIdx + 1}`);
+        } catch (err) {
+          toast('⚠ Could not import state: ' + err.message);
+        }
+      });
+      inp.click();
     });
 
     if (hasState) {
