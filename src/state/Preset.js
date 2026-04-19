@@ -230,7 +230,8 @@ export class PresetManager extends EventTarget {
     }
 
     // Update UI
-    document.getElementById('status-preset').textContent = p.name;
+    const _statusBank = document.getElementById('status-bank');
+    if (_statusBank) _statusBank.textContent = p.name;
     const _bankSel = document.getElementById('bank-select');
     if (_bankSel) _bankSel.value = String(index);
 
@@ -315,7 +316,8 @@ export class PresetManager extends EventTarget {
     // Send MIDI feedback to motorized faders
     this.ps.getAll().forEach(p => this.ctrl.sendParamFeedback(p));
 
-    document.getElementById('status-state').textContent = ds.name || `State ${stateIndex}`;
+    const _statusState = document.getElementById('status-state');
+    if (_statusState) _statusState.textContent = ds.name || `State ${stateIndex}`;
     this.dispatchEvent(new CustomEvent('stateRecalled',
       { detail: { presetIndex: this.currentIdx, stateIndex, state: ds } }));
   }
