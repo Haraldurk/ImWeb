@@ -7,6 +7,7 @@
 import { PARAM_TYPE } from '../controls/ParameterSystem.js';
 import { DEFAULT_FX_ORDER } from '../core/Pipeline.js';
 import { PROVIDERS } from '../ai/AIFeatures.js';
+import { ResponseCurve } from '../state/TableManager.js';
 const DEFAULT_FX_ORDER_SP = DEFAULT_FX_ORDER;
 
 // ── Tab switching ──────────────────────────────────────────────────────────────
@@ -2317,22 +2318,55 @@ export class MemoryPanel {
 
 // ── Tables editor ────────────────────────────────────────────────────────────
 
+// ── Bézier curve presets (normalized 0-1 anchor coordinates) ─────────────────
+// Each entry: [{x,y,rx?,ry?,lx?,ly?,smooth}, ...]
+// First anchor: rx/ry = outgoing handle. Last: lx/ly = incoming handle.
+const _BEZIER_PRESETS = {
+  'Linear':   [ {x:0,y:0,rx:1/3,ry:1/3,smooth:true}, {x:1,y:1,lx:2/3,ly:2/3,smooth:true} ],
+  'Ease In':  [ {x:0,y:0,rx:0.42,ry:0,  smooth:true}, {x:1,y:1,lx:0.75,ly:0.5,smooth:true} ],
+  'Ease Out': [ {x:0,y:0,rx:0.25,ry:0.5,smooth:true}, {x:1,y:1,lx:0.58,ly:1,  smooth:true} ],
+  'S-Curve':  [ {x:0,y:0,rx:0.42,ry:0,  smooth:true}, {x:1,y:1,lx:0.58,ly:1,  smooth:true} ],
+  'Exp':      [ {x:0,y:0,rx:0.55,ry:0,  smooth:true}, {x:1,y:1,lx:0.9, ly:0.35,smooth:true} ],
+  'Log':      [ {x:0,y:0,rx:0.1, ry:0.65,smooth:true},{x:1,y:1,lx:0.45,ly:1,  smooth:true} ],
+  'Invert':   [ {x:0,y:1,rx:1/3,ry:2/3,smooth:true}, {x:1,y:0,lx:2/3,ly:1/3,smooth:true} ],
+  'Step': [
+    {x:0,    y:0, rx:0.495, ry:0,  smooth:false},
+    {x:0.497,y:0, lx:0.492,ly:0,  rx:0.498,ry:0,  smooth:false},
+    {x:0.503,y:1, lx:0.502,ly:1,  rx:0.508,ry:1,  smooth:false},
+    {x:1,    y:1, lx:0.505,ly:1,  smooth:false},
+  ],
+};
+
 export class TablesEditor {
   constructor(tableManager) {
-    this.tm       = tableManager;
-    this.canvas   = document.getElementById('table-editor');
-    this.listEl   = document.getElementById('tables-list');
-    this._current = null;  // currently selected table name
-    this._drawing = false;
+    this.tm      = tableManager;
+    this.canvas  = document.getElementById('table-editor');
+    this.listEl  = document.getElementById('tables-list');
+    this._current = null;
+    this._anchors = [];           // current Bézier anchors (for user tables)
+    this._drag    = null;         // active drag: {type,idx,origAnchors}
+    this._HIT_R   = 8;            // anchor hit radius (canvas px)
+    this._HDL_R   = 6;            // handle hit radius (canvas px)
 
     if (!this.canvas) return;
     this.ctx = this.canvas.getContext('2d');
+
     this._buildList();
+    this._buildPresets();
     this._wireCanvas();
     this.tm.addEventListener('change', () => this._buildList());
   }
 
-  // ── List of tables ──────────────────────────────────────────────────────
+  // ── Coord helpers ────────────────────────────────────────────────────────
+
+  get _W() { return this.canvas.width;  }
+  get _H() { return this.canvas.height; }
+  _nx(cx) { return cx / this._W; }
+  _ny(cy) { return 1 - cy / this._H; }
+  _cx(nx) { return nx * this._W; }
+  _cy(ny) { return (1 - ny) * this._H; }
+
+  // ── List ─────────────────────────────────────────────────────────────────
 
   _buildList() {
     if (!this.listEl) return;
@@ -2341,12 +2375,10 @@ export class TablesEditor {
     this.tm.getNames().forEach(name => {
       const row = document.createElement('div');
       row.className = 'table-list-row' + (name === this._current ? ' active' : '');
-
       const lbl = document.createElement('span');
       lbl.textContent = name;
       lbl.style.cssText = 'flex:1;font-size:11px;cursor:pointer;';
       lbl.addEventListener('click', () => this._select(name));
-
       row.appendChild(lbl);
 
       if (!this.tm.isBuiltin(name)) {
@@ -2356,129 +2388,330 @@ export class TablesEditor {
         del.title = 'Delete table';
         del.addEventListener('click', e => {
           e.stopPropagation();
-          if (this._current === name) this._current = null;
+          if (this._current === name) { this._current = null; this._anchors = []; this._draw(); }
           this.tm.delete(name);
         });
         row.appendChild(del);
       }
-
       this.listEl.appendChild(row);
     });
 
-    // "New table" button
     const newBtn = document.createElement('button');
     newBtn.className = 'import-btn';
     newBtn.textContent = '+ New Table';
     newBtn.style.cssText = 'margin:6px 0;width:100%;';
     newBtn.addEventListener('click', () => {
-      const name = prompt('Table name:', `user-${Date.now().toString(36)}`);
+      const name = prompt('Table name:', `curve-${Date.now().toString(36).slice(-4)}`);
       if (!name) return;
-      // Start with linear curve
-      const pts = Array.from({ length: 256 }, (_, i) => i / 255);
-      this.tm.set(name, pts);
+      const curve = ResponseCurve.fromBezier(ResponseCurve.linearAnchors());
+      this.tm.set(name, curve);
       this._select(name);
     });
     this.listEl.appendChild(newBtn);
 
-    // Re-select current
-    if (this._current) this._drawCurve(this._current);
+    if (this._current) this._draw();
   }
+
+  // ── Preset strip ─────────────────────────────────────────────────────────
+
+  _buildPresets() {
+    const strip = document.createElement('div');
+    strip.id = 'table-preset-strip';
+    Object.entries(_BEZIER_PRESETS).forEach(([label, anchors]) => {
+      const btn = document.createElement('button');
+      btn.className = 'table-preset-btn';
+      btn.textContent = label;
+      btn.addEventListener('click', () => {
+        if (!this._current || this.tm.isBuiltin(this._current)) return;
+        this._anchors = JSON.parse(JSON.stringify(anchors));
+        this._bakeAndSave();
+        this._draw();
+      });
+      strip.appendChild(btn);
+    });
+    this.canvas?.parentElement?.insertBefore(strip, this.canvas);
+    this._presetStrip = strip;
+    this._syncPresetStrip();
+  }
+
+  _syncPresetStrip() {
+    if (!this._presetStrip) return;
+    const editable = !!(this._current && !this.tm.isBuiltin(this._current));
+    this._presetStrip.querySelectorAll('.table-preset-btn').forEach(b => {
+      b.disabled = !editable;
+    });
+  }
+
+  // ── Select ────────────────────────────────────────────────────────────────
 
   _select(name) {
     this._current = name;
+    this._drag    = null;
+    const curve   = this.tm.get(name);
+
+    if (!this.tm.isBuiltin(name)) {
+      // User table: use saved control points or default to linear
+      this._anchors = curve?.controlPoints
+        ? JSON.parse(JSON.stringify(curve.controlPoints))
+        : ResponseCurve.linearAnchors();
+    } else {
+      this._anchors = []; // built-in: display only, no editing
+    }
+
     this._buildList();
-    this._drawCurve(name);
+    this._syncPresetStrip();
+    this._draw();
   }
 
-  // ── Canvas drawing ───────────────────────────────────────────────────────
+  // ── Draw ──────────────────────────────────────────────────────────────────
 
-  _drawCurve(name) {
+  _draw() {
     if (!this.ctx) return;
-    const W = this.canvas.width;
-    const H = this.canvas.height;
-    const curve = this.tm.get(name);
-
-    this.ctx.clearRect(0, 0, W, H);
+    const ctx = this.ctx, W = this._W, H = this._H;
 
     // Background
-    this.ctx.fillStyle = '#0d0d14';
-    this.ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = '#0d0d14';
+    ctx.fillRect(0, 0, W, H);
 
     // Grid
-    this.ctx.strokeStyle = '#1e1e2e';
-    this.ctx.lineWidth = 1;
+    ctx.strokeStyle = '#1e1e2e';
+    ctx.lineWidth = 1;
     for (let i = 1; i < 4; i++) {
-      const x = Math.round(W * i / 4) + 0.5;
-      const y = Math.round(H * i / 4) + 0.5;
-      this.ctx.beginPath(); this.ctx.moveTo(x, 0); this.ctx.lineTo(x, H); this.ctx.stroke();
-      this.ctx.beginPath(); this.ctx.moveTo(0, y); this.ctx.lineTo(W, y); this.ctx.stroke();
+      const x = Math.round(W * i / 4) + 0.5, y = Math.round(H * i / 4) + 0.5;
+      ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
     }
 
-    // Diagonal reference (linear)
-    this.ctx.strokeStyle = '#282838';
-    this.ctx.lineWidth = 1;
-    this.ctx.beginPath(); this.ctx.moveTo(0, H); this.ctx.lineTo(W, 0); this.ctx.stroke();
+    // Linear reference diagonal
+    ctx.strokeStyle = '#262636';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([4, 4]);
+    ctx.beginPath(); ctx.moveTo(0, H); ctx.lineTo(W, 0); ctx.stroke();
+    ctx.setLineDash([]);
 
-    if (!curve) return;
+    if (!this._current) return;
+    const isBuiltin = this.tm.isBuiltin(this._current);
 
-    // Curve
-    this.ctx.strokeStyle = '#e8c840';
-    this.ctx.lineWidth = 1.5;
-    this.ctx.beginPath();
-    for (let i = 0; i < 256; i++) {
-      const x = (i / 255) * W;
-      const y = (1 - curve.points[i]) * H;
-      i === 0 ? this.ctx.moveTo(x, y) : this.ctx.lineTo(x, y);
+    if (this._anchors.length >= 2 && !isBuiltin) {
+      this._drawBezierPath();
+      this._drawHandles();
+      this._drawAnchors();
+    } else if (isBuiltin) {
+      this._drawLUT();
     }
-    this.ctx.stroke();
   }
 
-  _wireCanvas() {
-    const W = this.canvas.width;
-    const H = this.canvas.height;
+  _drawBezierPath() {
+    const ctx = this.ctx, a = this._anchors;
+    ctx.strokeStyle = '#e8c840';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(this._cx(a[0].x), this._cy(a[0].y));
+    for (let i = 0; i < a.length - 1; i++) {
+      const a0 = a[i], a1 = a[i + 1];
+      const span = a1.x - a0.x;
+      const p1x = a0.rx ?? (a0.x + span / 3), p1y = a0.ry ?? a0.y;
+      const p2x = a1.lx ?? (a1.x - span / 3), p2y = a1.ly ?? a1.y;
+      ctx.bezierCurveTo(
+        this._cx(p1x), this._cy(p1y),
+        this._cx(p2x), this._cy(p2y),
+        this._cx(a1.x), this._cy(a1.y),
+      );
+    }
+    ctx.stroke();
+  }
 
-    const paint = e => {
-      if (!this._current || this.tm.isBuiltin(this._current)) return;
-      const r  = this.canvas.getBoundingClientRect();
-      const nx = (e.clientX - r.left) / r.width;
-      const ny = 1 - (e.clientY - r.top)  / r.height;
-      const ix = Math.round(nx * 255);
-      const iy = Math.max(0, Math.min(1, ny));
-      if (ix < 0 || ix > 255) return;
-
-      const curve = this.tm.get(this._current);
-      if (!curve) return;
-
-      // Smooth fill between last painted index and current (avoid gaps on fast drag)
-      if (this._lastPaintIdx !== null) {
-        const from = Math.min(this._lastPaintIdx, ix);
-        const to   = Math.max(this._lastPaintIdx, ix);
-        for (let i = from; i <= to; i++) {
-          const t = to === from ? 1 : (i - from) / (to - from);
-          curve.points[i] = this._lastPaintVal + t * (iy - this._lastPaintVal);
-        }
-      } else {
-        curve.points[ix] = iy;
+  _drawHandles() {
+    const ctx = this.ctx, a = this._anchors;
+    ctx.strokeStyle = 'rgba(150,150,180,0.45)';
+    ctx.fillStyle   = 'rgba(160,160,200,0.85)';
+    ctx.lineWidth   = 1;
+    for (let i = 0; i < a.length; i++) {
+      const ax = this._cx(a[i].x), ay = this._cy(a[i].y);
+      if (i > 0 && a[i].lx != null) {
+        const hx = this._cx(a[i].lx), hy = this._cy(a[i].ly);
+        ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(hx, hy); ctx.stroke();
+        ctx.beginPath(); ctx.arc(hx, hy, 3.5, 0, Math.PI * 2); ctx.fill();
       }
-      this._lastPaintIdx = ix;
-      this._lastPaintVal = iy;
+      if (i < a.length - 1 && a[i].rx != null) {
+        const hx = this._cx(a[i].rx), hy = this._cy(a[i].ry);
+        ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(hx, hy); ctx.stroke();
+        ctx.beginPath(); ctx.arc(hx, hy, 3.5, 0, Math.PI * 2); ctx.fill();
+      }
+    }
+  }
 
-      this.tm.set(this._current, curve); // triggers 'change' → persist
-      this._drawCurve(this._current);
-    };
+  _drawAnchors() {
+    const ctx = this.ctx, a = this._anchors;
+    for (let i = 0; i < a.length; i++) {
+      const ax = this._cx(a[i].x), ay = this._cy(a[i].y);
+      ctx.beginPath();
+      ctx.arc(ax, ay, 5, 0, Math.PI * 2);
+      ctx.fillStyle   = (i === 0 || i === a.length - 1) ? '#e8c840' : '#ffffff';
+      ctx.strokeStyle = '#0d0d14';
+      ctx.lineWidth   = 1.5;
+      ctx.fill(); ctx.stroke();
+    }
+  }
 
-    this.canvas.addEventListener('mousedown', e => {
-      this._drawing = true;
-      this._lastPaintIdx = null;
-      this._lastPaintVal = null;
-      paint(e);
+  _drawLUT() {
+    const ctx = this.ctx, W = this._W, H = this._H;
+    const curve = this.tm.get(this._current);
+    if (!curve) return;
+    ctx.strokeStyle = '#e8c840';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    const steps = 256;
+    for (let i = 0; i < steps; i++) {
+      const x = i / (steps - 1);
+      const y = curve.apply(x);
+      i === 0 ? ctx.moveTo(x * W, (1 - y) * H) : ctx.lineTo(x * W, (1 - y) * H);
+    }
+    ctx.stroke();
+    ctx.fillStyle = 'rgba(136,136,160,0.55)';
+    ctx.font = '10px monospace';
+    ctx.fillText('built-in (read-only)', 6, H - 6);
+  }
+
+  // ── Canvas interaction ────────────────────────────────────────────────────
+
+  _wireCanvas() {
+    const canvas = this.canvas;
+
+    canvas.addEventListener('pointerdown', e => {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      canvas.setPointerCapture(e.pointerId);
+      if (!this._current || this.tm.isBuiltin(this._current)) return;
+
+      const [cx, cy] = this._toCvs(e);
+      const hit = this._hitTest(cx, cy);
+      if (hit) {
+        this._drag = { ...hit, origAnchors: JSON.parse(JSON.stringify(this._anchors)) };
+      } else {
+        const nx = Math.max(0.01, Math.min(0.99, this._nx(cx)));
+        const ny = Math.max(0,    Math.min(1,    this._ny(cy)));
+        this._addAnchor(nx, ny);
+        this._bakeAndSave();
+        this._draw();
+      }
     });
-    this.canvas.addEventListener('mousemove', e => { if (this._drawing) paint(e); });
-    window.addEventListener('mouseup', () => {
-      this._drawing = false;
-      this._lastPaintIdx = null;
+
+    canvas.addEventListener('pointermove', e => {
+      if (!this._drag) return;
+      const [cx, cy] = this._toCvs(e);
+      this._applyDrag(this._nx(cx), this._ny(cy));
+      this._draw();
     });
-    this.canvas.addEventListener('contextmenu', e => e.preventDefault());
+
+    canvas.addEventListener('pointerup', () => {
+      if (this._drag) { this._drag = null; this._bakeAndSave(); }
+    });
+
+    // Right-click anchor → delete (not first/last)
+    canvas.addEventListener('contextmenu', e => {
+      e.preventDefault();
+      if (!this._current || this.tm.isBuiltin(this._current)) return;
+      const [cx, cy] = this._toCvs(e);
+      const hit = this._hitTest(cx, cy);
+      if (hit?.type === 'anchor' && hit.idx > 0 && hit.idx < this._anchors.length - 1) {
+        this._anchors.splice(hit.idx, 1);
+        this._bakeAndSave();
+        this._draw();
+      }
+    });
+
+    // Double-click anchor → toggle smooth/corner
+    canvas.addEventListener('dblclick', e => {
+      if (!this._current || this.tm.isBuiltin(this._current)) return;
+      const [cx, cy] = this._toCvs(e);
+      const hit = this._hitTest(cx, cy);
+      if (hit?.type === 'anchor') {
+        this._anchors[hit.idx].smooth = !this._anchors[hit.idx].smooth;
+        this._draw();
+      }
+    });
+  }
+
+  // Convert pointer event to canvas pixel coords (accounting for CSS scaling)
+  _toCvs(e) {
+    const r = this.canvas.getBoundingClientRect();
+    return [
+      (e.clientX - r.left) * (this._W / r.width),
+      (e.clientY - r.top)  * (this._H / r.height),
+    ];
+  }
+
+  _hitTest(cx, cy) {
+    const a = this._anchors;
+    for (let i = 0; i < a.length; i++) {
+      if (Math.hypot(cx - this._cx(a[i].x), cy - this._cy(a[i].y)) <= this._HIT_R)
+        return { type: 'anchor', idx: i };
+    }
+    for (let i = 0; i < a.length; i++) {
+      if (i > 0 && a[i].lx != null) {
+        if (Math.hypot(cx - this._cx(a[i].lx), cy - this._cy(a[i].ly)) <= this._HDL_R)
+          return { type: 'lh', idx: i };
+      }
+      if (i < a.length - 1 && a[i].rx != null) {
+        if (Math.hypot(cx - this._cx(a[i].rx), cy - this._cy(a[i].ry)) <= this._HDL_R)
+          return { type: 'rh', idx: i };
+      }
+    }
+    return null;
+  }
+
+  _applyDrag(nx, ny) {
+    const { type, idx, origAnchors } = this._drag;
+    const a = this._anchors, orig = origAnchors[idx];
+
+    if (type === 'anchor') {
+      let newX;
+      if (idx === 0)                 newX = 0;
+      else if (idx === a.length - 1) newX = 1;
+      else newX = Math.max(a[idx-1].x + 0.01, Math.min(a[idx+1].x - 0.01, nx));
+
+      const newY = Math.max(0, Math.min(1, ny));
+      const dx = newX - orig.x, dy = newY - orig.y;
+      a[idx].x = newX; a[idx].y = newY;
+      if (orig.lx != null) { a[idx].lx = orig.lx + dx; a[idx].ly = orig.ly + dy; }
+      if (orig.rx != null) { a[idx].rx = orig.rx + dx; a[idx].ry = orig.ry + dy; }
+
+    } else if (type === 'lh') {
+      a[idx].lx = nx; a[idx].ly = ny;
+      if (a[idx].smooth && a[idx].rx != null) {
+        a[idx].rx = 2 * a[idx].x - nx;
+        a[idx].ry = 2 * a[idx].y - ny;
+      }
+    } else if (type === 'rh') {
+      a[idx].rx = nx; a[idx].ry = ny;
+      if (a[idx].smooth && a[idx].lx != null) {
+        a[idx].lx = 2 * a[idx].x - nx;
+        a[idx].ly = 2 * a[idx].y - ny;
+      }
+    }
+  }
+
+  _addAnchor(nx, ny) {
+    // Reject if too close to existing anchor
+    if (this._anchors.some(a => Math.abs(a.x - nx) < 0.03)) return;
+    const insertIdx = this._anchors.findIndex(a => a.x > nx);
+    const idx = insertIdx === -1 ? this._anchors.length - 1 : insertIdx;
+    const prev = this._anchors[idx - 1] ?? this._anchors[0];
+    const next = this._anchors[idx]     ?? this._anchors[this._anchors.length - 1];
+    const hspan = (next.x - prev.x) / 4;
+    this._anchors.splice(idx, 0, {
+      x: nx, y: ny,
+      lx: nx - hspan, ly: ny,
+      rx: nx + hspan, ry: ny,
+      smooth: true,
+    });
+  }
+
+  _bakeAndSave() {
+    if (!this._current || this.tm.isBuiltin(this._current)) return;
+    if (this._anchors.length < 2) return;
+    this.tm.set(this._current, ResponseCurve.fromBezier(this._anchors));
   }
 }
 
