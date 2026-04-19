@@ -2047,7 +2047,9 @@ export class MemoryPanel {
     this._build();
     this._wireBankControls();
     this._wireImportState();
-    this.pm.addEventListener('presetActivated', () => { this._build(); this._updateBankName(); });
+    this._wireSaveButtons();
+    this._buildBankList();
+    this.pm.addEventListener('presetActivated', () => { this._build(); this._updateBankName(); this._buildBankList(); });
     this.pm.addEventListener('stateSaved',      () => this._build());
     this.pm.addEventListener('stateRecalled',   () => this._build());
     this._updateBankName();
@@ -2133,6 +2135,38 @@ export class MemoryPanel {
       row.appendChild(clearBtn);
 
       this.listEl.appendChild(row);
+    });
+  }
+
+  _wireSaveButtons() {
+    const toast = msg => this.pm.dispatchEvent(new CustomEvent('toast', { detail: { msg } }));
+
+    document.getElementById('btn-save-bank')?.addEventListener('click', async () => {
+      await this.pm.saveCurrentBank();
+      toast(`✓ "${this.pm.current?.name}" saved`);
+    });
+
+    document.getElementById('btn-saveas-bank')?.addEventListener('click', async () => {
+      const src = this.pm.current;
+      if (!src) return;
+      const newName = prompt('Name for new bank:', src.name + ' copy');
+      if (newName === null) return;
+      await this.pm.saveAsBank(newName.trim() || src.name + ' copy');
+      toast(`✓ Bank saved as "${newName}"`);
+    });
+  }
+
+  _buildBankList() {
+    const el = document.getElementById('bank-list');
+    if (!el) return;
+    el.innerHTML = '';
+    this.pm.presets.forEach((bank, i) => {
+      if (!bank) return;
+      const row = document.createElement('button');
+      row.className = 'bank-list-item' + (i === this.pm.currentIdx ? ' active' : '');
+      row.textContent = bank.name || `Bank ${i + 1}`;
+      row.addEventListener('click', () => this.pm.activatePreset(i));
+      el.appendChild(row);
     });
   }
 

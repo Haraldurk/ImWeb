@@ -1775,6 +1775,32 @@ body.sp-floating #signal-path-docked-space {
     background: #2a1a1a !important;
 }
 
+/* ── BANK LIST ───────────────────────────────────────────────────────────── */
+
+#bank-list {
+    padding: 4px 0;
+    border-bottom: 1px solid var(--bg-3);
+}
+.bank-list-item {
+    display: block;
+    width: 100%;
+    padding: 5px 12px;
+    font-size: 11px;
+    color: var(--text-1);
+    background: none;
+    border: none;
+    border-left: 2px solid transparent;
+    cursor: pointer;
+    text-align: left;
+    transition: background 0.1s;
+}
+.bank-list-item:hover { background: var(--bg-3); }
+.bank-list-item.active {
+    color: var(--accent);
+    border-left-color: var(--accent);
+    background: var(--bg-3);
+}
+
 /* ── CONTEXT MENU ────────────────────────────────────────────────────────── */
 
 .context-menu {

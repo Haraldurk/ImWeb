@@ -326,11 +326,15 @@
             Banks — <span id="current-bank-name">Bank 1</span>
           </div>
           <div id="memory-bank-row" style="display:flex;gap:4px;flex-wrap:wrap;padding:4px 8px 0;">
-            <button id="btn-new-bank"    class="import-btn">+ New</button>
-            <button id="btn-export-bank" class="import-btn">⬇ Export</button>
-            <button id="btn-import-bank" class="import-btn">⬆ Import</button>
-            <button id="btn-delete-bank" class="import-btn btn-danger">✕ Delete</button>
+            <button id="btn-save-bank"    class="import-btn">💾 Save</button>
+            <button id="btn-saveas-bank"  class="import-btn">💾 Save As</button>
+            <button id="btn-new-bank"     class="import-btn">+ New</button>
+            <button id="btn-export-bank"  class="import-btn">⬇ Export</button>
+            <button id="btn-import-bank"  class="import-btn">⬆ Import</button>
+            <button id="btn-delete-bank"  class="import-btn btn-danger">✕ Delete</button>
           </div>
+          <!-- Bank list: all banks in this project, click to switch -->
+          <div id="bank-list"></div>
           <div id="memory-auto-row" style="padding:4px 8px 0;"></div>
         </div>
 

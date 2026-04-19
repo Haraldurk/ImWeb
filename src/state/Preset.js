@@ -365,6 +365,28 @@ export class PresetManager extends EventTarget {
     await p.save();
   }
 
+  async saveCurrentBank() {
+    const p = this.current;
+    if (!p) return;
+    p.controllers = this.ps.serializeControllers();
+    await p.save();
+  }
+
+  async saveAsBank(newName) {
+    const src = this.current;
+    if (!src) return;
+    const idx = this.presets.length;
+    const copy = new Preset(idx);
+    copy.name = newName || src.name + ' copy';
+    copy.controllers = JSON.parse(JSON.stringify(src.controllers));
+    copy.states = src.states.map(s => s ? JSON.parse(JSON.stringify(s)) : null);
+    copy.activeState = src.activeState;
+    this.presets[idx] = copy;
+    await copy.save();
+    await this.activatePreset(idx);
+    return copy;
+  }
+
   getAll() { return this.presets; }
 
   async createBank() {
