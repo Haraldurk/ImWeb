@@ -1206,6 +1206,23 @@ export class StateBar {
       inp.click();
     });
     this.bankDropdown.appendChild(importBtn);
+
+    const divider2 = document.createElement('div');
+    divider2.className = 'bank-dropdown-divider';
+    this.bankDropdown.appendChild(divider2);
+
+    const openWinBtn = document.createElement('button');
+    openWinBtn.className = 'bank-dropdown-item new-bank';
+    openWinBtn.textContent = '⊞ Open Banks window';
+    openWinBtn.addEventListener('click', e => {
+      e.stopPropagation();
+      this.bankDropdown.classList.add('hidden');
+      // Find and trigger the detach button on the Banks panel section
+      const banksSection = document.getElementById('banks-section');
+      const detachBtn = banksSection?.querySelector('.section-header-btns button');
+      if (detachBtn) detachBtn.click();
+    });
+    this.bankDropdown.appendChild(openWinBtn);
   }
 
   _startBankRename() {

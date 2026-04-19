@@ -1342,7 +1342,7 @@ async function main() {
                      color:var(--text-0);font-family:var(--mono);font-size:11px;padding:4px 7px;outline:none;" />
           </div>
           <div style="display:flex;gap:5px;">
-            <button id="btn-export-project" class="import-btn" style="flex:1" title="Cmd+E">⇩ Export .imweb</button>
+            <button id="btn-export-project" class="import-btn" style="flex:1" title="Cmd+S / Cmd+E">⇩ Export .imweb</button>
             <button id="btn-import-project" class="import-btn" style="flex:1" title="Cmd+O">⇧ Import .imweb</button>
           </div>
           <div id="project-file-status" style="font-family:var(--mono);font-size:10px;color:var(--text-2);min-height:14px;"></div>
@@ -1410,6 +1410,10 @@ async function main() {
       window.addEventListener("keydown", (e) => {
         if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA")
           return;
+        if ((e.metaKey || e.ctrlKey) && e.key === "s") {
+          e.preventDefault();
+          document.getElementById("btn-export-project")?.click();
+        }
         if ((e.metaKey || e.ctrlKey) && e.key === "e" && !e.shiftKey) {
           e.preventDefault();
           document.getElementById("btn-export-project")?.click();
