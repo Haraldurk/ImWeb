@@ -1178,6 +1178,34 @@ export class StateBar {
       this.bankDropdown.classList.add('hidden');
     });
     this.bankDropdown.appendChild(newBtn);
+    const importBtn = document.createElement('button');
+    importBtn.className = 'bank-dropdown-item new-bank';
+    importBtn.textContent = '⬆ Import Bank…';
+    importBtn.addEventListener('click', e => {
+      e.stopPropagation();
+      this.bankDropdown.classList.add('hidden');
+      const inp = document.createElement('input');
+      inp.type = 'file'; inp.accept = '.imbank,application/json';
+      inp.addEventListener('change', async () => {
+        const file = inp.files[0]; if (!file) return;
+        try {
+          const data = JSON.parse(await file.text());
+          const toast = msg => this.pm.dispatchEvent(new CustomEvent('toast', { detail: { msg } }));
+          if (data.__type !== 'imbank') { toast('⚠ Not a valid .imbank file'); return; }
+          const idx = this.pm.presets.length;
+          const { Preset: P } = await import('../state/Preset.js');
+          const bank = P.importBank(data, idx);
+          this.pm.presets[idx] = bank;
+          await bank.save();
+          await this.pm.activatePreset(idx);
+          toast(`✓ Bank "${bank.name}" imported`);
+        } catch (err) {
+          this.pm.dispatchEvent(new CustomEvent('toast', { detail: { msg: '⚠ Could not import bank: ' + err.message } }));
+        }
+      });
+      inp.click();
+    });
+    this.bankDropdown.appendChild(importBtn);
   }
 
   _startBankRename() {

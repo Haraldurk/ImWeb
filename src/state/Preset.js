@@ -183,10 +183,8 @@ export class PresetManager extends EventTarget {
     } else {
       saved.forEach(p => { this.presets[p.index] = p; });
     }
-    // Ensure at least 8 preset slots exist
-    for (let i = 0; i < 8; i++) {
-      if (!this.presets[i]) this.presets[i] = new Preset(i);
-    }
+    // Ensure at least slot 0 exists (other banks are created on demand)
+    if (!this.presets[0]) this.presets[0] = new Preset(0);
     await this.activatePreset(0, { fade: false });
   }
 
