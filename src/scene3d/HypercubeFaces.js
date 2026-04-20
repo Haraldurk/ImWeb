@@ -19,7 +19,7 @@ export class HypercubeFaces {
     }
     this._maxFaces = faceCount(MAX_DIM);
     this._visible  = true;
-    this._opacity  = 0.4;
+    this._opacity  = 0.25;
 
     this._build();
   }
@@ -30,7 +30,7 @@ export class HypercubeFaces {
       side:        THREE.DoubleSide,
       transparent: true,
       depthWrite:  false,
-      blending:    THREE.AdditiveBlending,
+      blending:    THREE.NormalBlending,
       uniforms: {
         uFaceTexture: { value: null },
         uOpacity:     { value: this._opacity },

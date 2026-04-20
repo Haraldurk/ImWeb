@@ -146,6 +146,10 @@ async function main() {
   ps.register({ id:'hypercube.edgeWidth',     type:'continuous', value:1.5,  min:0.5,  max:8.0,  step:0.1,   label:'Edge Width',   group:'hypercube' });
   ps.register({ id:'hypercube.faces.active',  type:'toggle',     value:1,                                    label:'Faces',        group:'hypercube' });
   ps.register({ id:'hypercube.faces.opacity', type:'continuous', value:0.15, min:0.0,  max:1.0,  step:0.01,  label:'Face opacity', group:'hypercube' });
+  ps.register({ id:'hypercube.inst.active',   type:'toggle',     value:0,                                    label:'Instancer',    group:'hypercube' });
+  ps.register({ id:'hypercube.inst.geo',      type:'select',     options:['sphere','box','cone','torus','octahedron'], value:0, label:'Inst Geo', group:'hypercube' });
+  ps.register({ id:'hypercube.inst.scale',    type:'continuous', value:0.08, min:0.01, max:2.0,  step:0.01,  label:'Inst Scale',   group:'hypercube' });
+  ps.register({ id:'hypercube.inst.opacity',  type:'continuous', value:1.0,  min:0.0,  max:1.0,  step:0.01,  label:'Inst Opacity', group:'hypercube' });
 
   // ── 3. Controllers ────────────────────────────────────────────────────────
 
@@ -189,6 +193,7 @@ async function main() {
 
   // Wire all hypercube ps params → HypercubeObject setters.
   // These fire during restoreState so saved values are pushed into the object on recall/startup.
+  const _GEO_TYPES = ['sphere','box','cone','torus','octahedron'];
   ps.get('hypercube.dim')?.onChange(v => scene3d.getHypercube()?.morphTo(Math.round(v), { durationMs: 0 }));
   ps.get('hypercube.wDistance')?.onChange(v => scene3d.getHypercube()?.setWDistance(v));
   ps.get('hypercube.scale')?.onChange(v => scene3d.getHypercube()?.setScale(v));
@@ -200,6 +205,11 @@ async function main() {
   ps.get('hypercube.rot.xz')?.onChange(v => scene3d.getHypercube()?.setRotationSpeed(1, v));
   ps.get('hypercube.rot.yz')?.onChange(v => scene3d.getHypercube()?.setRotationSpeed(2, v));
   ps.get('hypercube.rot.xw')?.onChange(v => scene3d.getHypercube()?.setRotationSpeed(3, v));
+  // Instancer
+  ps.get('hypercube.inst.active')?.onChange(v  => scene3d.getHypercube()?.setInstancerVisible(!!v));
+  ps.get('hypercube.inst.geo')?.onChange(idx   => scene3d.getHypercube()?.setInstancerGeoType(_GEO_TYPES[idx] ?? 'sphere'));
+  ps.get('hypercube.inst.scale')?.onChange(v   => scene3d.getHypercube()?.setInstancerScale(v));
+  ps.get('hypercube.inst.opacity')?.onChange(v => scene3d.getHypercube()?.setInstancerOpacity(v));
 
   // Helper to manage sequence buffers for profiler/VRAM estimation
   const sequencerManager = {
@@ -317,6 +327,32 @@ async function main() {
 
   const presetMgr = new PresetManager(ps, ctrl, pipeline);
   presetMgr.addEventListener('toast', e => showToast(e.detail.msg));
+
+  // Re-sync hypercube object after any state recall (onChange only fires on change,
+  // so params that restored to the same value as the object's current state need this explicit push).
+  presetMgr.addEventListener('stateRecalled', () => {
+    const hc = scene3d.getHypercube();
+    if (!hc) return;
+    const g = (id, def) => ps.get(id)?.value ?? def;
+    const newDim = Math.round(g('hypercube.dim', 4));
+    if (hc.dim !== newDim) hc.morphTo(newDim, { durationMs: 0 });
+    hc.setWDistance  (g('hypercube.wDistance',   3.0));
+    hc.setScale      (g('hypercube.scale',        1.0));
+    hc.setEdgeOpacity(g('hypercube.edgeOpacity',  1.0));
+    hc.setPointSize  (g('hypercube.pointSize',    3.0));
+    hc.setEdgeWidth  (g('hypercube.edgeWidth',    1.5));
+    hc.setRotationSpeed(0, g('hypercube.rot.xy',  0.30));
+    hc.setRotationSpeed(1, g('hypercube.rot.xz',  0.20));
+    hc.setRotationSpeed(2, g('hypercube.rot.yz',  0.15));
+    hc.setRotationSpeed(3, g('hypercube.rot.xw',  0.40));
+    hc.setFacesVisible  (!!(g('hypercube.faces.active',  1)));
+    hc.setFaceOpacity   (g('hypercube.faces.opacity', 0.15));
+    hc.setInstancerVisible(!!(g('hypercube.inst.active', 0)));
+    hc.setInstancerGeoType(_GEO_TYPES[g('hypercube.inst.geo', 0)] ?? 'sphere');
+    hc.setInstancerScale   (g('hypercube.inst.scale',   0.08));
+    hc.setInstancerOpacity (g('hypercube.inst.opacity', 1.0));
+  });
+
   presetMgr.addEventListener('neutralState', () => {
     ps.getAll().forEach(p => p.reset());
     ps.set('layer.fg', 0);
@@ -324,6 +360,33 @@ async function main() {
     ps.set('layer.ds', 0);
   });
   await presetMgr.init();
+
+  // Force-push all hypercube ps values into the HypercubeObject unconditionally.
+  // onChange only fires when a value changes — if the saved value matches the ps default
+  // (which happens for states saved before the ps wiring existed) the object never gets updated.
+  // This explicit sync guarantees the object matches ps after every startup/bank load.
+  (function syncHypercubeFromPs() {
+    const hc = scene3d.getHypercube();
+    if (!hc) return;
+    const g = (id, def) => ps.get(id)?.value ?? def;
+    hc.morphTo(Math.round(g('hypercube.dim', 4)),   { durationMs: 0 });
+    hc.setWDistance  (g('hypercube.wDistance',   3.0));
+    hc.setScale      (g('hypercube.scale',        1.0));
+    hc.setEdgeOpacity(g('hypercube.edgeOpacity',  1.0));
+    hc.setPointSize  (g('hypercube.pointSize',    3.0));
+    hc.setEdgeWidth  (g('hypercube.edgeWidth',    1.5));
+    hc.setRotationSpeed(0, g('hypercube.rot.xy',  0.30));
+    hc.setRotationSpeed(1, g('hypercube.rot.xz',  0.20));
+    hc.setRotationSpeed(2, g('hypercube.rot.yz',  0.15));
+    hc.setRotationSpeed(3, g('hypercube.rot.xw',  0.40));
+    hc.setFacesVisible  (!!(g('hypercube.faces.active',  1)));
+    hc.setFaceOpacity   (g('hypercube.faces.opacity', 0.15));
+    hc.setInstancerVisible(!!(g('hypercube.inst.active', 0)));
+    hc.setInstancerGeoType(_GEO_TYPES[g('hypercube.inst.geo', 0)] ?? 'sphere');
+    hc.setInstancerScale   (g('hypercube.inst.scale',   0.08));
+    hc.setInstancerOpacity (g('hypercube.inst.opacity', 1.0));
+  })();
+
   ps.set("movie.active", 0); // always start with movie off regardless of saved preset state
   const stepSequencer = new StepSequencer(presetMgr);
 

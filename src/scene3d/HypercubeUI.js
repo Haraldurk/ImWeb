@@ -149,10 +149,21 @@ export function buildHypercubePanel(container, hypercube, ps) {
     0.5, 8.0, 0.1, v => { hypercube.setEdgeWidth(v);     ps?.set('hypercube.edgeWidth', v); });
   _selectRow(renderSec, 'Faces', ['off', 'on'], hypercube._hFaces?._visible ? 1 : 0, idx => hypercube.setFacesVisible(idx === 1));
   _paramRow(renderSec, 'Face opacity', hypercube._hFaces?._opacity ?? 0.15, 0.0, 1.0, 0.01, v => hypercube.setFaceOpacity(v));
-  _selectRow(renderSec, 'Instancer', ['off', 'on'], 0, idx => hypercube.setInstancerVisible(idx === 1));
-  _selectRow(renderSec, 'Inst geo', ['sphere', 'box', 'cone', 'torus', 'octahedron'], 0, idx => hypercube.setInstancerGeoType(['sphere', 'box', 'cone', 'torus', 'octahedron'][idx]));
-  _paramRow(renderSec, 'Inst scale', 0.08, 0.01, 2.0, 0.01, v => hypercube.setInstancerScale(v));
-  _paramRow(renderSec, 'Inst opacity', 1.0, 0.0, 1.0, 0.01, v => hypercube.setInstancerOpacity(v));
+  const _GEO_LABELS = ['sphere', 'box', 'cone', 'torus', 'octahedron'];
+  _selectRow(renderSec, 'Instancer', ['off', 'on'],
+    ps?.get('hypercube.inst.active')?.value ? 1 : 0,
+    idx => { hypercube.setInstancerVisible(idx === 1); ps?.set('hypercube.inst.active', idx === 1 ? 1 : 0); });
+  _selectRow(renderSec, 'Inst geo', _GEO_LABELS,
+    ps?.get('hypercube.inst.geo')?.value ?? 0,
+    idx => { hypercube.setInstancerGeoType(_GEO_LABELS[idx]); ps?.set('hypercube.inst.geo', idx); });
+  _paramRow(renderSec, 'Inst scale',
+    ps?.get('hypercube.inst.scale')?.value ?? 0.08,
+    0.01, 2.0, 0.01,
+    v => { hypercube.setInstancerScale(v);   ps?.set('hypercube.inst.scale', v); });
+  _paramRow(renderSec, 'Inst opacity',
+    ps?.get('hypercube.inst.opacity')?.value ?? 1.0,
+    0.0, 1.0, 0.01,
+    v => { hypercube.setInstancerOpacity(v); ps?.set('hypercube.inst.opacity', v); });
 
   // ── Stats ────────────────────────────────────────────────────────────────
   const statsDiv = document.createElement('div');
