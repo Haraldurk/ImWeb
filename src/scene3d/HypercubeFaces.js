@@ -37,6 +37,10 @@ export class HypercubeFaces {
         uOpacity:     { value: this._opacity },
         uHasTexture:  { value: 0.0 },
         uColor:       { value: new THREE.Color(1, 1, 1) },
+        uMaskTexture: { value: null },
+        uHasMask:     { value: 0.0 },
+        uMaskInvert:  { value: 0.0 },
+        uMaskLevel:   { value: 1.0 },
       },
       vertexShader: `
         varying vec2 vUv;
@@ -53,15 +57,28 @@ export class HypercubeFaces {
       `,
       fragmentShader: `
         uniform sampler2D uFaceTexture;
-        uniform float uOpacity;
-        uniform float uHasTexture;
-        uniform vec3  uColor;
+        uniform float     uOpacity;
+        uniform float     uHasTexture;
+        uniform vec3      uColor;
+        uniform sampler2D uMaskTexture;
+        uniform float     uHasMask;
+        uniform float     uMaskInvert;
+        uniform float     uMaskLevel;
         varying vec2 vUv;
         void main() {
           vec4 col = uHasTexture > 0.5
             ? texture2D(uFaceTexture, vUv)
             : vec4(1.0);
-          gl_FragColor = vec4(col.rgb * uColor, col.a * uOpacity);
+          float alpha = col.a * uOpacity;
+          if (uHasMask > 0.5) {
+            // Luminance of mask texture drives alpha
+            vec3 m3 = texture2D(uMaskTexture, vUv).rgb;
+            float lum = dot(m3, vec3(0.299, 0.587, 0.114));
+            lum = clamp(lum * uMaskLevel, 0.0, 1.0);
+            if (uMaskInvert > 0.5) lum = 1.0 - lum;
+            alpha *= lum;
+          }
+          gl_FragColor = vec4(col.rgb * uColor, alpha);
         }
       `,
     });
@@ -172,6 +189,19 @@ export class HypercubeFaces {
   setFaceTexture(tex) {
     this._mat.uniforms.uFaceTexture.value = tex;
     this._mat.uniforms.uHasTexture.value  = tex ? 1.0 : 0.0;
+  }
+
+  setMaskTexture(tex) {
+    this._mat.uniforms.uMaskTexture.value = tex;
+    this._mat.uniforms.uHasMask.value     = tex ? 1.0 : 0.0;
+  }
+
+  setMaskInvert(v) {
+    this._mat.uniforms.uMaskInvert.value = v ? 1.0 : 0.0;
+  }
+
+  setMaskLevel(v) {
+    this._mat.uniforms.uMaskLevel.value = v;
   }
 
   dispose() {

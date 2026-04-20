@@ -178,6 +178,16 @@ export function buildHypercubePanel(container, hypercube, ps) {
   _selectRow(renderSec, 'Face tex', _TEX_SRC_LABELS,
     ps?.get('hypercube.faces.texsrc')?.value ?? 0,
     idx => { ps?.set('hypercube.faces.texsrc', idx); });
+  _selectRow(renderSec, 'Face mask', _TEX_SRC_LABELS,
+    ps?.get('hypercube.faces.masksrc')?.value ?? 0,
+    idx => { ps?.set('hypercube.faces.masksrc', idx); });
+  _selectRow(renderSec, 'Mask inv', ['off', 'on'],
+    ps?.get('hypercube.faces.maskinv')?.value ? 1 : 0,
+    idx => { hypercube.setFaceMaskInvert(idx === 1); ps?.set('hypercube.faces.maskinv', idx === 1 ? 1 : 0); });
+  _paramRow(renderSec, 'Mask level',
+    ps?.get('hypercube.faces.masklvl')?.value ?? 1.0,
+    0.0, 4.0, 0.01,
+    v => { hypercube.setFaceMaskLevel(v); ps?.set('hypercube.faces.masklvl', v); });
 
   const _GEO_LABELS = ['Sphere','Torus','Cube','Plane','Cylinder','Capsule','TorusKnot','Cone','Dodecahedron','Icosahedron','Octahedron','Tetrahedron','Ring'];
   _selectRow(renderSec, 'Instancer', ['off', 'on'],

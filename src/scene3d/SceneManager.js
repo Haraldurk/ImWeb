@@ -55,6 +55,13 @@ export class SceneManager {
       format:    THREE.RGBAFormat,
       depthBuffer: false,
     });
+    // Copy target for face mask texture — same isolation pattern
+    this._faceMaskCopy = new THREE.WebGLRenderTarget(width, height, {
+      minFilter: THREE.LinearFilter,
+      magFilter: THREE.LinearFilter,
+      format:    THREE.RGBAFormat,
+      depthBuffer: false,
+    });
     this._copyMat    = new THREE.MeshBasicMaterial({ depthTest: false, depthWrite: false });
     this._copyQuad   = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), this._copyMat);
     this._copyScene  = new THREE.Scene();
@@ -1028,6 +1035,22 @@ export class SceneManager {
     } else {
       this._hypercube?.setFaceTexture(null);
     }
+
+    // Face mask — same source map, same isolation pattern
+    const faceMaskIdx = params.get('hypercube.faces.masksrc')?.value ?? 0;
+    const faceMask    = _texSrcMap[faceMaskIdx] ?? null;
+    if (faceMask && this._hypercube) {
+      this._copyMat.map = faceMask;
+      this._copyMat.needsUpdate = true;
+      const _maskPrev = this.renderer.getRenderTarget();
+      this.renderer.setRenderTarget(this._faceMaskCopy);
+      this.renderer.render(this._copyScene, this._copyCamera);
+      this.renderer.setRenderTarget(_maskPrev);
+      this._hypercube.setFaceMaskTexture(this._faceMaskCopy.texture);
+    } else {
+      this._hypercube?.setFaceMaskTexture(null);
+    }
+
     const prev = this.renderer.getRenderTarget();
 
     // Color pass
@@ -1055,6 +1078,7 @@ export class SceneManager {
     this.target.setSize(w, h);
     this.depthTarget.setSize(w, h);
     this._faceTexCopy.setSize(w, h);
+    this._faceMaskCopy.setSize(w, h);
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
   }

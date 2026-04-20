@@ -151,7 +151,10 @@ async function main() {
   ps.register({ id:'hypercube.faces.blend',   type:'select',     options:['Normal','Additive','Multiply','Subtract'], value:0, label:'Face blend', group:'hypercube' });
   ps.register({ id:'hypercube.faces.hue',     type:'continuous', value:0,    min:0,    max:360,  step:1,     label:'Face hue',     group:'hypercube' });
   ps.register({ id:'hypercube.faces.sat',     type:'continuous', value:0,    min:0,    max:100,  step:1,     label:'Face sat',     group:'hypercube' });
-  ps.register({ id:'hypercube.faces.texsrc',  type:'select',     options:['None','Camera','Movie','Screen','Draw','Buffer','Noise'], value:0, label:'Face tex', group:'hypercube' });
+  ps.register({ id:'hypercube.faces.texsrc',  type:'select',     options:['None','Camera','Movie','Screen','Draw','Buffer','Noise'], value:0, label:'Face tex',   group:'hypercube' });
+  ps.register({ id:'hypercube.faces.masksrc', type:'select',     options:['None','Camera','Movie','Screen','Draw','Buffer','Noise'], value:0, label:'Face mask',  group:'hypercube' });
+  ps.register({ id:'hypercube.faces.maskinv', type:'toggle',     value:0,                                    label:'Mask invert', group:'hypercube' });
+  ps.register({ id:'hypercube.faces.masklvl', type:'continuous', value:1.0,  min:0.0,  max:4.0,  step:0.01,  label:'Mask level',  group:'hypercube' });
   ps.register({ id:'hypercube.inst.active',   type:'toggle',     value:0,                                    label:'Instancer',    group:'hypercube' });
   ps.register({ id:'hypercube.inst.geo',      type:'select',     options:['Sphere','Torus','Cube','Plane','Cylinder','Capsule','TorusKnot','Cone','Dodecahedron','Icosahedron','Octahedron','Tetrahedron','Ring'], value:0, label:'Inst Geo', group:'hypercube' });
   ps.register({ id:'hypercube.inst.scale',    type:'continuous', value:0.08, min:0.01, max:2.0,  step:0.01,  label:'Inst Scale',   group:'hypercube' });
@@ -207,6 +210,12 @@ async function main() {
   ps.get('hypercube.faces.sat').onChange(v => {
     const h = ps.get('hypercube.faces.hue').value;
     scene3d.getHypercube()?.setFaceHue(h, v);
+  });
+  ps.get('hypercube.faces.maskinv').onChange(v => {
+    scene3d.getHypercube()?.setFaceMaskInvert(!!v);
+  });
+  ps.get('hypercube.faces.masklvl').onChange(v => {
+    scene3d.getHypercube()?.setFaceMaskLevel(v);
   });
 
   // Wire all hypercube ps params → HypercubeObject setters.
@@ -377,6 +386,8 @@ async function main() {
     hc.setFaceOpacity    (g('hypercube.faces.opacity', 0.5));
     hc.setFaceBlending   (g('hypercube.faces.blend',   0));
     hc.setFaceHue        (g('hypercube.faces.hue', 0), g('hypercube.faces.sat', 0));
+    hc.setFaceMaskInvert (!!(g('hypercube.faces.maskinv', 0)));
+    hc.setFaceMaskLevel  (g('hypercube.faces.masklvl', 1.0));
     hc.setInstancerVisible(!!(g('hypercube.inst.active', 0)));
     hc.setInstancerGeoType(_GEO_TYPES[g('hypercube.inst.geo', 0)] ?? 'Sphere');
     hc.setInstancerScale   (g('hypercube.inst.scale',   0.08));
@@ -417,6 +428,8 @@ async function main() {
     hc.setFaceOpacity    (g('hypercube.faces.opacity', 0.5));
     hc.setFaceBlending   (g('hypercube.faces.blend',   0));
     hc.setFaceHue        (g('hypercube.faces.hue', 0), g('hypercube.faces.sat', 0));
+    hc.setFaceMaskInvert (!!(g('hypercube.faces.maskinv', 0)));
+    hc.setFaceMaskLevel  (g('hypercube.faces.masklvl', 1.0));
     hc.setInstancerVisible(!!(g('hypercube.inst.active', 0)));
     hc.setInstancerGeoType(_GEO_TYPES[g('hypercube.inst.geo', 0)] ?? 'Sphere');
     hc.setInstancerScale   (g('hypercube.inst.scale',   0.08));

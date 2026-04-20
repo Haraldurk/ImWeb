@@ -614,6 +614,9 @@ export class HypercubeObject {
   setFaceOpacity(v)         { this._hFaces?.setOpacity(v); }
   setFacesVisible(v)        { this._hFaces?.setVisible(v); }
   setFaceBlending(idx)      { this._hFaces?.setBlending(idx); }
+  setFaceMaskTexture(tex)   { this._hFaces?.setMaskTexture(tex); }
+  setFaceMaskInvert(v)      { this._hFaces?.setMaskInvert(v); }
+  setFaceMaskLevel(v)       { this._hFaces?.setMaskLevel(v); }
   setFaceHue(hue360, sat100) {
     const h = hue360 / 360;
     const s = sat100 / 100;
