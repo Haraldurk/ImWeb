@@ -334,6 +334,10 @@ async function main() {
   const presetMgr = new PresetManager(ps, ctrl, pipeline);
   presetMgr.addEventListener('toast', e => showToast(e.detail.msg));
 
+  // Populated by the hypercube panel build block (below). Calling it clears and
+  // rebuilds the panel DOM so that select/range widgets reflect restored ps values.
+  let _hcPanelRebuild = null;
+
   // Re-sync hypercube object after any state recall (onChange only fires on change,
   // so params that restored to the same value as the object's current state need this explicit push).
   presetMgr.addEventListener('stateRecalled', () => {
@@ -359,6 +363,8 @@ async function main() {
     hc.setInstancerGeoType(_GEO_TYPES[g('hypercube.inst.geo', 0)] ?? 'Sphere');
     hc.setInstancerScale   (g('hypercube.inst.scale',   0.08));
     hc.setInstancerOpacity (g('hypercube.inst.opacity', 1.0));
+    // Rebuild hypercube UI panel so all select/range widgets reflect restored ps values
+    _hcPanelRebuild?.();
   });
 
   presetMgr.addEventListener('neutralState', () => {
@@ -572,6 +578,12 @@ async function main() {
       if (hc) {
         import('./scene3d/HypercubeUI.js').then(({ buildHypercubePanel }) => {
           buildHypercubePanel(hcContainer, hc, ps);
+          // Rebuild function: clear container and re-run buildHypercubePanel so that
+          // all select/range widgets pick up restored ps values after a state recall.
+          _hcPanelRebuild = () => {
+            hcContainer.innerHTML = '';
+            buildHypercubePanel(hcContainer, hc, ps);
+          };
         });
       }
     }

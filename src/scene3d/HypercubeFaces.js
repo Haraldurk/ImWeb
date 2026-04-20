@@ -40,7 +40,13 @@ export class HypercubeFaces {
         varying vec2 vUv;
         void main() {
           vUv = uv;
-          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+          // Apply per-instance transform (world-space face quad placement).
+          // instanceMatrix is injected by Three.js for InstancedMesh.
+          #ifdef USE_INSTANCING
+            gl_Position = projectionMatrix * modelViewMatrix * instanceMatrix * vec4(position, 1.0);
+          #else
+            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+          #endif
         }
       `,
       fragmentShader: `

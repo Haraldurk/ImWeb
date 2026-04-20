@@ -300,19 +300,27 @@ export class HypercubeObject {
   }
 
   _updateVisibility() {
-    if (this._lines)  this._lines.visible  = this._renderMode !== 'points'     && this._renderMode !== 'none';
-    if (this._points) this._points.visible = this._renderMode !== 'wireframe'  && this._renderMode !== 'none';
+    const show = this._renderMode !== 'none';
+    if (this._lines)  this._lines.visible  = show && this._renderMode !== 'points';
+    if (this._points) this._points.visible = show && this._renderMode !== 'wireframe';
+    // When entering 'none' mode, immediately hide faces and instancer too.
+    // update() is skipped for 'none' mode, so this is the only place that hides them.
+    if (!show) {
+      if (this._hFaces?._mesh)     this._hFaces._mesh.visible     = false;
+      if (this._hInstancer?._mesh) this._hInstancer._mesh.visible = false;
+    }
   }
 
   // ── Update ────────────────────────────────────────────────────────────────
 
   update(deltaMs) {
-    // Skip all CPU work if not visible — avoids 12D projection
-    // cost when hypercube is not the active scene source
-    if (this._renderMode !== 'none' &&
-        this._lines && !this._lines.visible &&
-        this._points && !this._points.visible &&
-        !this._hInstancer?._visible) return;
+    // Skip all CPU work when nothing is visible.
+    // renderMode='none' hides lines/points; faces/instancer are gated separately.
+    const linesOn     = this._lines?.visible;
+    const pointsOn    = this._points?.visible;
+    const facesOn     = this._hFaces?._visible;
+    const instancerOn = this._hInstancer?._visible;
+    if (!linesOn && !pointsOn && !facesOn && !instancerOn) return;
     const dt = deltaMs / 1000;
 
     // Advance morph
@@ -345,8 +353,12 @@ export class HypercubeObject {
 
     this._updateBuffers();
     this._notifySubscribers();
-    this._hFaces.update(this._projBuf, this._dim, this._scale);
-    this._hInstancer.update(this._projBuf, this._dim, this._scale);
+    // Only update faces/instancer when renderMode is not 'none'.
+    // _updateVisibility() already hid the meshes; skip the CPU/GPU work too.
+    if (this._renderMode !== 'none') {
+      this._hFaces.update(this._projBuf, this._dim, this._scale);
+      this._hInstancer.update(this._projBuf, this._dim, this._scale);
+    }
   }
 
   _projectMorphInterp() {
