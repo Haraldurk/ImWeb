@@ -18,8 +18,8 @@ export class HypercubeFaces {
       this._vertsByDim[d] = generateVertices(d);
     }
     this._maxFaces = faceCount(MAX_DIM);
-    this._visible  = true;
-    this._opacity  = 0.25;
+    this._visible  = false; // hidden until explicitly enabled
+    this._opacity  = 0.5;   // matches ps default hypercube.faces.opacity
 
     this._build();
   }
@@ -30,6 +30,7 @@ export class HypercubeFaces {
       side:        THREE.DoubleSide,
       transparent: true,
       depthWrite:  false,
+      depthTest:   false,   // faces are transparent overlays — never occlude/get occluded by 3D geometry
       blending:    THREE.NormalBlending,
       uniforms: {
         uFaceTexture: { value: null },
