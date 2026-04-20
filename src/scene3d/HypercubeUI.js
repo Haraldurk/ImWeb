@@ -86,10 +86,6 @@ export function buildHypercubePanel(container, hypercube, ps) {
     hypercube.setScale(v);
     ps?.set('hypercube.scale', v);
   });
-  _selectRow(projSec, 'Mode', ['perspective', 'orthographic'], 0, idx => {
-    hypercube.setProjectionMode(idx === 0 ? 'perspective' : 'orthographic');
-  });
-
   // ── Rotation planes ─────────────────────────────────────────────────────
   const rotSec = _section(panel, 'ROTATION PLANES');
 
@@ -133,11 +129,18 @@ export function buildHypercubePanel(container, hypercube, ps) {
   }
   rebuildRotationRows();
 
+  // ── Projection mode ─────────────────────────────────────────────────────
+  const _PROJ = ['perspective', 'orthographic'];
+  _selectRow(projSec, 'Proj', _PROJ,
+    ps?.get('hypercube.projMode')?.value ?? 0,
+    idx => { hypercube.setProjectionMode(_PROJ[idx]); ps?.set('hypercube.projMode', idx); });
+
   // ── Render ──────────────────────────────────────────────────────────────
   const renderSec = _section(panel, 'RENDER');
-  _selectRow(renderSec, 'Mode', ['wireframe', 'points', 'both', 'none'], 0, idx => {
-    hypercube.setRenderMode(['wireframe', 'points', 'both', 'none'][idx]);
-  });
+  const _RMODES = ['wireframe', 'points', 'both', 'none'];
+  _selectRow(renderSec, 'Mode', _RMODES,
+    ps?.get('hypercube.renderMode')?.value ?? 0,
+    idx => { hypercube.setRenderMode(_RMODES[idx]); ps?.set('hypercube.renderMode', idx); });
   _paramRow(renderSec, 'Pt size',
     ps?.get('hypercube.pointSize')?.value ?? hypercube._pointSize ?? 3.0,
     0.5, 20, 0.5, v => { hypercube.setPointSize(v);      ps?.set('hypercube.pointSize', v); });
@@ -148,8 +151,11 @@ export function buildHypercubePanel(container, hypercube, ps) {
     ps?.get('hypercube.edgeWidth')?.value ?? hypercube._edgeWidth ?? 1.5,
     0.5, 8.0, 0.1, v => { hypercube.setEdgeWidth(v);     ps?.set('hypercube.edgeWidth', v); });
   _selectRow(renderSec, 'Faces', ['off', 'on'], hypercube._hFaces?._visible ? 1 : 0, idx => hypercube.setFacesVisible(idx === 1));
-  _paramRow(renderSec, 'Face opacity', hypercube._hFaces?._opacity ?? 0.15, 0.0, 1.0, 0.01, v => hypercube.setFaceOpacity(v));
-  const _GEO_LABELS = ['sphere', 'box', 'cone', 'torus', 'octahedron'];
+  _paramRow(renderSec, 'Face opacity',
+    ps?.get('hypercube.faces.opacity')?.value ?? hypercube._hFaces?._opacity ?? 0.5,
+    0.0, 1.0, 0.01,
+    v => { hypercube.setFaceOpacity(v); ps?.set('hypercube.faces.opacity', v); });
+  const _GEO_LABELS = ['Sphere','Torus','Cube','Plane','Cylinder','Capsule','TorusKnot','Cone','Dodecahedron','Icosahedron','Octahedron','Tetrahedron','Ring'];
   _selectRow(renderSec, 'Instancer', ['off', 'on'],
     ps?.get('hypercube.inst.active')?.value ? 1 : 0,
     idx => { hypercube.setInstancerVisible(idx === 1); ps?.set('hypercube.inst.active', idx === 1 ? 1 : 0); });

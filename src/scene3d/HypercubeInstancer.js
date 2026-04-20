@@ -1,7 +1,13 @@
 import * as THREE from 'three';
 import { vertexCount, MAX_DIM } from './HypercubeGeometry.js';
+import { GeometryFactory } from './GeometryFactory.js';
 
 const MAX_INSTANCES = 4096; // matches MAX_DIM vertex ceiling
+const _geoFactory   = new GeometryFactory();
+
+// Shared instancer geometry params — smaller than the main scene mesh
+const _GEO_PARAMS = { radius: 0.5, size: 1.0, w: 1.0, h: 1.0, rt: 0.5, rb: 0.5, height: 1.0,
+                      radius1: 0.5, length: 1.0, outerR: 0.5, innerR: 0.15 };
 
 export class HypercubeInstancer {
   constructor(scene) {
@@ -13,7 +19,7 @@ export class HypercubeInstancer {
     this._instScale = 0.08;
     this._visible  = false;
     this._opacity  = 0.8;
-    this._geoType  = 'sphere';
+    this._geoType  = 'Sphere';
 
     this._build(this._geoType);
   }
@@ -25,14 +31,8 @@ export class HypercubeInstancer {
       this._mesh = null;
     }
 
-    let geo;
-    switch (geoType) {
-      case 'box':         geo = new THREE.BoxGeometry(1, 1, 1);             break;
-      case 'cone':        geo = new THREE.ConeGeometry(0.5, 1, 16);         break;
-      case 'torus':       geo = new THREE.TorusGeometry(0.4, 0.18, 16, 32); break;
-      case 'octahedron':  geo = new THREE.OctahedronGeometry(0.5, 1);       break;
-      default:            geo = new THREE.SphereGeometry(0.5, 24, 16);      break;
-    }
+    // Use the shared GeometryFactory — same geometries as the 3D Scene section
+    const geo = _geoFactory.create(geoType, _GEO_PARAMS);
 
     if (!this._mat) {
       this._mat = new THREE.MeshStandardMaterial({
@@ -110,16 +110,10 @@ export class HypercubeInstancer {
 
   setVisible(v) {
     this._visible = v;
-    this._visible = v;
     if (this._mesh) this._mesh.visible = v;
   }
 
   getMesh() { return this._mesh; }
-
-  _dead() {
-    this._visible = v;
-    if (this._mesh) this._mesh.visible = v;
-  }
 
   setInstanceScale(v) { this._instScale = v; }
 

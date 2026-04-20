@@ -144,10 +144,12 @@ async function main() {
   ps.register({ id:'hypercube.rot.yz',        type:'continuous', value:0.15, min:-2.0, max:2.0,  step:0.01,  group:'hypercube' });
   ps.register({ id:'hypercube.rot.xw',        type:'continuous', value:0.40, min:-2.0, max:2.0,  step:0.01,  group:'hypercube' });
   ps.register({ id:'hypercube.edgeWidth',     type:'continuous', value:1.5,  min:0.5,  max:8.0,  step:0.1,   label:'Edge Width',   group:'hypercube' });
+  ps.register({ id:'hypercube.renderMode',    type:'select',     options:['wireframe','points','both','none'], value:0, label:'Render Mode', group:'hypercube' });
+  ps.register({ id:'hypercube.projMode',      type:'select',     options:['perspective','orthographic'],      value:0, label:'Proj Mode',    group:'hypercube' });
   ps.register({ id:'hypercube.faces.active',  type:'toggle',     value:1,                                    label:'Faces',        group:'hypercube' });
-  ps.register({ id:'hypercube.faces.opacity', type:'continuous', value:0.15, min:0.0,  max:1.0,  step:0.01,  label:'Face opacity', group:'hypercube' });
+  ps.register({ id:'hypercube.faces.opacity', type:'continuous', value:0.5,  min:0.0,  max:1.0,  step:0.01,  label:'Face opacity', group:'hypercube' });
   ps.register({ id:'hypercube.inst.active',   type:'toggle',     value:0,                                    label:'Instancer',    group:'hypercube' });
-  ps.register({ id:'hypercube.inst.geo',      type:'select',     options:['sphere','box','cone','torus','octahedron'], value:0, label:'Inst Geo', group:'hypercube' });
+  ps.register({ id:'hypercube.inst.geo',      type:'select',     options:['Sphere','Torus','Cube','Plane','Cylinder','Capsule','TorusKnot','Cone','Dodecahedron','Icosahedron','Octahedron','Tetrahedron','Ring'], value:0, label:'Inst Geo', group:'hypercube' });
   ps.register({ id:'hypercube.inst.scale',    type:'continuous', value:0.08, min:0.01, max:2.0,  step:0.01,  label:'Inst Scale',   group:'hypercube' });
   ps.register({ id:'hypercube.inst.opacity',  type:'continuous', value:1.0,  min:0.0,  max:1.0,  step:0.01,  label:'Inst Opacity', group:'hypercube' });
 
@@ -193,13 +195,17 @@ async function main() {
 
   // Wire all hypercube ps params → HypercubeObject setters.
   // These fire during restoreState so saved values are pushed into the object on recall/startup.
-  const _GEO_TYPES = ['sphere','box','cone','torus','octahedron'];
-  ps.get('hypercube.dim')?.onChange(v => scene3d.getHypercube()?.morphTo(Math.round(v), { durationMs: 0 }));
-  ps.get('hypercube.wDistance')?.onChange(v => scene3d.getHypercube()?.setWDistance(v));
-  ps.get('hypercube.scale')?.onChange(v => scene3d.getHypercube()?.setScale(v));
+  const _RENDER_MODES = ['wireframe','points','both','none'];
+  const _PROJ_MODES   = ['perspective','orthographic'];
+  const _GEO_TYPES    = ['Sphere','Torus','Cube','Plane','Cylinder','Capsule','TorusKnot','Cone','Dodecahedron','Icosahedron','Octahedron','Tetrahedron','Ring'];
+  ps.get('hypercube.dim')?.onChange(v    => scene3d.getHypercube()?.morphTo(Math.round(v), { durationMs: 0 }));
+  ps.get('hypercube.renderMode')?.onChange(i => scene3d.getHypercube()?.setRenderMode(_RENDER_MODES[i] ?? 'wireframe'));
+  ps.get('hypercube.projMode')?.onChange(i   => scene3d.getHypercube()?.setProjectionMode(_PROJ_MODES[i] ?? 'perspective'));
+  ps.get('hypercube.wDistance')?.onChange(v  => scene3d.getHypercube()?.setWDistance(v));
+  ps.get('hypercube.scale')?.onChange(v      => scene3d.getHypercube()?.setScale(v));
   ps.get('hypercube.edgeOpacity')?.onChange(v => scene3d.getHypercube()?.setEdgeOpacity(v));
-  ps.get('hypercube.pointSize')?.onChange(v => scene3d.getHypercube()?.setPointSize(v));
-  ps.get('hypercube.edgeWidth')?.onChange(v => scene3d.getHypercube()?.setEdgeWidth(v));
+  ps.get('hypercube.pointSize')?.onChange(v  => scene3d.getHypercube()?.setPointSize(v));
+  ps.get('hypercube.edgeWidth')?.onChange(v  => scene3d.getHypercube()?.setEdgeWidth(v));
   // Rotation plane indices: 0=xy, 1=xz, 2=yz, 3=xw (matches HypercubeGeometry iteration order)
   ps.get('hypercube.rot.xy')?.onChange(v => scene3d.getHypercube()?.setRotationSpeed(0, v));
   ps.get('hypercube.rot.xz')?.onChange(v => scene3d.getHypercube()?.setRotationSpeed(1, v));
@@ -207,7 +213,7 @@ async function main() {
   ps.get('hypercube.rot.xw')?.onChange(v => scene3d.getHypercube()?.setRotationSpeed(3, v));
   // Instancer
   ps.get('hypercube.inst.active')?.onChange(v  => scene3d.getHypercube()?.setInstancerVisible(!!v));
-  ps.get('hypercube.inst.geo')?.onChange(idx   => scene3d.getHypercube()?.setInstancerGeoType(_GEO_TYPES[idx] ?? 'sphere'));
+  ps.get('hypercube.inst.geo')?.onChange(idx   => scene3d.getHypercube()?.setInstancerGeoType(_GEO_TYPES[idx] ?? 'Sphere'));
   ps.get('hypercube.inst.scale')?.onChange(v   => scene3d.getHypercube()?.setInstancerScale(v));
   ps.get('hypercube.inst.opacity')?.onChange(v => scene3d.getHypercube()?.setInstancerOpacity(v));
 
@@ -345,10 +351,12 @@ async function main() {
     hc.setRotationSpeed(1, g('hypercube.rot.xz',  0.20));
     hc.setRotationSpeed(2, g('hypercube.rot.yz',  0.15));
     hc.setRotationSpeed(3, g('hypercube.rot.xw',  0.40));
-    hc.setFacesVisible  (!!(g('hypercube.faces.active',  1)));
-    hc.setFaceOpacity   (g('hypercube.faces.opacity', 0.15));
+    hc.setRenderMode     (_RENDER_MODES[g('hypercube.renderMode', 0)] ?? 'wireframe');
+    hc.setProjectionMode (_PROJ_MODES[g('hypercube.projMode', 0)]    ?? 'perspective');
+    hc.setFacesVisible   (!!(g('hypercube.faces.active',  1)));
+    hc.setFaceOpacity    (g('hypercube.faces.opacity', 0.5));
     hc.setInstancerVisible(!!(g('hypercube.inst.active', 0)));
-    hc.setInstancerGeoType(_GEO_TYPES[g('hypercube.inst.geo', 0)] ?? 'sphere');
+    hc.setInstancerGeoType(_GEO_TYPES[g('hypercube.inst.geo', 0)] ?? 'Sphere');
     hc.setInstancerScale   (g('hypercube.inst.scale',   0.08));
     hc.setInstancerOpacity (g('hypercube.inst.opacity', 1.0));
   });
@@ -379,10 +387,12 @@ async function main() {
     hc.setRotationSpeed(1, g('hypercube.rot.xz',  0.20));
     hc.setRotationSpeed(2, g('hypercube.rot.yz',  0.15));
     hc.setRotationSpeed(3, g('hypercube.rot.xw',  0.40));
-    hc.setFacesVisible  (!!(g('hypercube.faces.active',  1)));
-    hc.setFaceOpacity   (g('hypercube.faces.opacity', 0.15));
+    hc.setRenderMode     (_RENDER_MODES[g('hypercube.renderMode', 0)] ?? 'wireframe');
+    hc.setProjectionMode (_PROJ_MODES[g('hypercube.projMode', 0)]    ?? 'perspective');
+    hc.setFacesVisible   (!!(g('hypercube.faces.active',  1)));
+    hc.setFaceOpacity    (g('hypercube.faces.opacity', 0.5));
     hc.setInstancerVisible(!!(g('hypercube.inst.active', 0)));
-    hc.setInstancerGeoType(_GEO_TYPES[g('hypercube.inst.geo', 0)] ?? 'sphere');
+    hc.setInstancerGeoType(_GEO_TYPES[g('hypercube.inst.geo', 0)] ?? 'Sphere');
     hc.setInstancerScale   (g('hypercube.inst.scale',   0.08));
     hc.setInstancerOpacity (g('hypercube.inst.opacity', 1.0));
   })();
