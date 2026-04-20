@@ -36,6 +36,7 @@ export class HypercubeFaces {
         uFaceTexture: { value: null },
         uOpacity:     { value: this._opacity },
         uHasTexture:  { value: 0.0 },
+        uColor:       { value: new THREE.Color(1, 1, 1) },
       },
       vertexShader: `
         varying vec2 vUv;
@@ -54,12 +55,13 @@ export class HypercubeFaces {
         uniform sampler2D uFaceTexture;
         uniform float uOpacity;
         uniform float uHasTexture;
+        uniform vec3  uColor;
         varying vec2 vUv;
         void main() {
           vec4 col = uHasTexture > 0.5
             ? texture2D(uFaceTexture, vUv)
             : vec4(1.0);
-          gl_FragColor = vec4(col.rgb, col.a * uOpacity);
+          gl_FragColor = vec4(col.rgb * uColor, col.a * uOpacity);
         }
       `,
     });
@@ -149,6 +151,22 @@ export class HypercubeFaces {
   setOpacity(v) {
     this._opacity = v;
     this._mat.uniforms.uOpacity.value = v;
+  }
+
+  // idx: 0=Normal 1=Additive 2=Multiply 3=Subtract
+  setBlending(idx) {
+    const modes = [
+      THREE.NormalBlending,
+      THREE.AdditiveBlending,
+      THREE.MultiplyBlending,
+      THREE.SubtractiveBlending,
+    ];
+    this._mat.blending = modes[idx] ?? THREE.NormalBlending;
+    this._mat.needsUpdate = true;
+  }
+
+  setColor(r, g, b) {
+    this._mat.uniforms.uColor.value.setRGB(r, g, b);
   }
 
   setFaceTexture(tex) {

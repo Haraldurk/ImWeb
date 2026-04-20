@@ -979,15 +979,19 @@ export class SceneManager {
     const _hi = this._hypercube?._hInstancer;
     const wantInstancer = _hi?._visible === true;
     const hasInstancer = this._adoptedMesh != null;
-    if (wantInstancer !== hasInstancer)
-      console.log('[adopt]', { wantInstancer, hasInstancer,
-        _visible: _hi?._visible,
-        _hypercube: !!this._hypercube,
-        _hInstancer: !!_hi });
     if (wantInstancer && !hasInstancer)
       this._adoptMesh(this._hypercube._hInstancer.getMesh());
     if (!wantInstancer && hasInstancer)
       this._adoptMesh(null);
+
+    // Instancer texture source — 0=None 1=Camera 2=Movie 3=Screen 4=Draw 5=Buffer 6=Noise
+    if (this._hypercube) {
+      const instTexIdx = p.get('hypercube.inst.texsrc')?.value ?? 0;
+      const instTexMap = [null, inputs.camera, inputs.movie, inputs.screen, inputs.draw, inputs.buffer, inputs.noise];
+      const instTex    = instTexMap[instTexIdx] ?? null;
+      const useInstTex = (instTex && instTex === this.target.texture) ? null : instTex;
+      this._hypercube.setInstancerTexture(useInstTex);
+    }
   }
 
   // ── Render ────────────────────────────────────────────────────────────────
@@ -1006,9 +1010,15 @@ export class SceneManager {
   render(params, dt = 0, inputs = {}) {
     this.update(dt * 1000);
     this.applyParams(params, dt, inputs);
-    // Blit face texture into isolated copy target — avoids WebGL feedback loop
-    if (inputs.faceTex && this._hypercube) {
-      this._copyMat.map = inputs.faceTex;
+    // Select face texture from hypercube.faces.texsrc param
+    // 0=None 1=Camera 2=Movie 3=Screen 4=Draw 5=Buffer 6=Noise
+    const _texSrcMap = [null, inputs.camera, inputs.movie, inputs.screen, inputs.draw, inputs.buffer, inputs.noise];
+    const faceTexIdx = params.get('hypercube.faces.texsrc')?.value ?? 0;
+    const faceTex    = _texSrcMap[faceTexIdx] ?? null;
+
+    if (faceTex && this._hypercube) {
+      // Blit into isolated copy target to avoid WebGL feedback loop
+      this._copyMat.map = faceTex;
       this._copyMat.needsUpdate = true;
       const _copyPrev = this.renderer.getRenderTarget();
       this.renderer.setRenderTarget(this._faceTexCopy);

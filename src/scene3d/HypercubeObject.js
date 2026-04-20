@@ -610,9 +610,16 @@ export class HypercubeObject {
     this._edgeWidth = Math.max(0.5, Math.min(8.0, w));
   }
 
-  setFaceTexture(tex) { this._hFaces?.setFaceTexture(tex); }
-  setFaceOpacity(v)   { this._hFaces?.setOpacity(v); }
-  setFacesVisible(v)  { this._hFaces?.setVisible(v); }
+  setFaceTexture(tex)       { this._hFaces?.setFaceTexture(tex); }
+  setFaceOpacity(v)         { this._hFaces?.setOpacity(v); }
+  setFacesVisible(v)        { this._hFaces?.setVisible(v); }
+  setFaceBlending(idx)      { this._hFaces?.setBlending(idx); }
+  setFaceHue(hue360, sat100) {
+    const h = hue360 / 360;
+    const s = sat100 / 100;
+    const c = new THREE.Color().setHSL(h, s, s > 0 ? 0.5 : 1.0);
+    this._hFaces?.setColor(c.r, c.g, c.b);
+  }
 
   setInstancerVisible(v)   { this._hInstancer?.setVisible(v); }
   setInstancerOpacity(v)   { this._hInstancer?.setOpacity(v); }

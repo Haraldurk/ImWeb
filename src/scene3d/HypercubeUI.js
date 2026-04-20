@@ -150,11 +150,35 @@ export function buildHypercubePanel(container, hypercube, ps) {
   _paramRow(renderSec, 'Edge width',
     ps?.get('hypercube.edgeWidth')?.value ?? hypercube._edgeWidth ?? 1.5,
     0.5, 8.0, 0.1, v => { hypercube.setEdgeWidth(v);     ps?.set('hypercube.edgeWidth', v); });
-  _selectRow(renderSec, 'Faces', ['off', 'on'], hypercube._hFaces?._visible ? 1 : 0, idx => hypercube.setFacesVisible(idx === 1));
+  const _TEX_SRC_LABELS = ['None', 'Camera', 'Movie', 'Screen', 'Draw', 'Buffer', 'Noise'];
+  const _BLEND_LABELS   = ['Normal', 'Additive', 'Multiply', 'Subtract'];
+
+  _selectRow(renderSec, 'Faces', ['off', 'on'],
+    ps?.get('hypercube.faces.active')?.value ? 1 : 0,
+    idx => { hypercube.setFacesVisible(idx === 1); ps?.set('hypercube.faces.active', idx === 1 ? 1 : 0); });
   _paramRow(renderSec, 'Face opacity',
-    ps?.get('hypercube.faces.opacity')?.value ?? hypercube._hFaces?._opacity ?? 0.5,
+    ps?.get('hypercube.faces.opacity')?.value ?? 0.5,
     0.0, 1.0, 0.01,
     v => { hypercube.setFaceOpacity(v); ps?.set('hypercube.faces.opacity', v); });
+  _selectRow(renderSec, 'Face blend', _BLEND_LABELS,
+    ps?.get('hypercube.faces.blend')?.value ?? 0,
+    idx => { hypercube.setFaceBlending(idx); ps?.set('hypercube.faces.blend', idx); });
+  _paramRow(renderSec, 'Face hue',
+    ps?.get('hypercube.faces.hue')?.value ?? 0,
+    0, 360, 1, v => {
+      hypercube.setFaceHue(v, ps?.get('hypercube.faces.sat')?.value ?? 0);
+      ps?.set('hypercube.faces.hue', v);
+    });
+  _paramRow(renderSec, 'Face sat',
+    ps?.get('hypercube.faces.sat')?.value ?? 0,
+    0, 100, 1, v => {
+      hypercube.setFaceHue(ps?.get('hypercube.faces.hue')?.value ?? 0, v);
+      ps?.set('hypercube.faces.sat', v);
+    });
+  _selectRow(renderSec, 'Face tex', _TEX_SRC_LABELS,
+    ps?.get('hypercube.faces.texsrc')?.value ?? 0,
+    idx => { ps?.set('hypercube.faces.texsrc', idx); });
+
   const _GEO_LABELS = ['Sphere','Torus','Cube','Plane','Cylinder','Capsule','TorusKnot','Cone','Dodecahedron','Icosahedron','Octahedron','Tetrahedron','Ring'];
   _selectRow(renderSec, 'Instancer', ['off', 'on'],
     ps?.get('hypercube.inst.active')?.value ? 1 : 0,
@@ -170,6 +194,9 @@ export function buildHypercubePanel(container, hypercube, ps) {
     ps?.get('hypercube.inst.opacity')?.value ?? 1.0,
     0.0, 1.0, 0.01,
     v => { hypercube.setInstancerOpacity(v); ps?.set('hypercube.inst.opacity', v); });
+  _selectRow(renderSec, 'Inst tex', _TEX_SRC_LABELS,
+    ps?.get('hypercube.inst.texsrc')?.value ?? 0,
+    idx => { ps?.set('hypercube.inst.texsrc', idx); });
 
   // ── Stats ────────────────────────────────────────────────────────────────
   const statsDiv = document.createElement('div');

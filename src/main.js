@@ -146,12 +146,17 @@ async function main() {
   ps.register({ id:'hypercube.edgeWidth',     type:'continuous', value:1.5,  min:0.5,  max:8.0,  step:0.1,   label:'Edge Width',   group:'hypercube' });
   ps.register({ id:'hypercube.renderMode',    type:'select',     options:['wireframe','points','both','none'], value:0, label:'Render Mode', group:'hypercube' });
   ps.register({ id:'hypercube.projMode',      type:'select',     options:['perspective','orthographic'],      value:0, label:'Proj Mode',    group:'hypercube' });
-  ps.register({ id:'hypercube.faces.active',  type:'toggle',     value:1,                                    label:'Faces',        group:'hypercube' });
+  ps.register({ id:'hypercube.faces.active',  type:'toggle',     value:0,                                    label:'Faces',        group:'hypercube' });
   ps.register({ id:'hypercube.faces.opacity', type:'continuous', value:0.5,  min:0.0,  max:1.0,  step:0.01,  label:'Face opacity', group:'hypercube' });
+  ps.register({ id:'hypercube.faces.blend',   type:'select',     options:['Normal','Additive','Multiply','Subtract'], value:0, label:'Face blend', group:'hypercube' });
+  ps.register({ id:'hypercube.faces.hue',     type:'continuous', value:0,    min:0,    max:360,  step:1,     label:'Face hue',     group:'hypercube' });
+  ps.register({ id:'hypercube.faces.sat',     type:'continuous', value:0,    min:0,    max:100,  step:1,     label:'Face sat',     group:'hypercube' });
+  ps.register({ id:'hypercube.faces.texsrc',  type:'select',     options:['None','Camera','Movie','Screen','Draw','Buffer','Noise'], value:0, label:'Face tex', group:'hypercube' });
   ps.register({ id:'hypercube.inst.active',   type:'toggle',     value:0,                                    label:'Instancer',    group:'hypercube' });
   ps.register({ id:'hypercube.inst.geo',      type:'select',     options:['Sphere','Torus','Cube','Plane','Cylinder','Capsule','TorusKnot','Cone','Dodecahedron','Icosahedron','Octahedron','Tetrahedron','Ring'], value:0, label:'Inst Geo', group:'hypercube' });
   ps.register({ id:'hypercube.inst.scale',    type:'continuous', value:0.08, min:0.01, max:2.0,  step:0.01,  label:'Inst Scale',   group:'hypercube' });
   ps.register({ id:'hypercube.inst.opacity',  type:'continuous', value:1.0,  min:0.0,  max:1.0,  step:0.01,  label:'Inst Opacity', group:'hypercube' });
+  ps.register({ id:'hypercube.inst.texsrc',   type:'select',     options:['None','Camera','Movie','Screen','Draw','Buffer','Noise'], value:0, label:'Inst tex', group:'hypercube' });
 
   // ── 3. Controllers ────────────────────────────────────────────────────────
 
@@ -191,6 +196,17 @@ async function main() {
   });
   ps.get('hypercube.faces.opacity').onChange(v => {
     scene3d.getHypercube()?.setFaceOpacity(v);
+  });
+  ps.get('hypercube.faces.blend').onChange(idx => {
+    scene3d.getHypercube()?.setFaceBlending(idx);
+  });
+  ps.get('hypercube.faces.hue').onChange(v => {
+    const s = ps.get('hypercube.faces.sat').value;
+    scene3d.getHypercube()?.setFaceHue(v, s);
+  });
+  ps.get('hypercube.faces.sat').onChange(v => {
+    const h = ps.get('hypercube.faces.hue').value;
+    scene3d.getHypercube()?.setFaceHue(h, v);
   });
 
   // Wire all hypercube ps params → HypercubeObject setters.
@@ -357,8 +373,10 @@ async function main() {
     hc.setRotationSpeed(3, g('hypercube.rot.xw',  0.40));
     hc.setRenderMode     (_RENDER_MODES[g('hypercube.renderMode', 0)] ?? 'wireframe');
     hc.setProjectionMode (_PROJ_MODES[g('hypercube.projMode', 0)]    ?? 'perspective');
-    hc.setFacesVisible   (!!(g('hypercube.faces.active',  1)));
+    hc.setFacesVisible   (!!(g('hypercube.faces.active',  0)));
     hc.setFaceOpacity    (g('hypercube.faces.opacity', 0.5));
+    hc.setFaceBlending   (g('hypercube.faces.blend',   0));
+    hc.setFaceHue        (g('hypercube.faces.hue', 0), g('hypercube.faces.sat', 0));
     hc.setInstancerVisible(!!(g('hypercube.inst.active', 0)));
     hc.setInstancerGeoType(_GEO_TYPES[g('hypercube.inst.geo', 0)] ?? 'Sphere');
     hc.setInstancerScale   (g('hypercube.inst.scale',   0.08));
@@ -395,8 +413,10 @@ async function main() {
     hc.setRotationSpeed(3, g('hypercube.rot.xw',  0.40));
     hc.setRenderMode     (_RENDER_MODES[g('hypercube.renderMode', 0)] ?? 'wireframe');
     hc.setProjectionMode (_PROJ_MODES[g('hypercube.projMode', 0)]    ?? 'perspective');
-    hc.setFacesVisible   (!!(g('hypercube.faces.active',  1)));
+    hc.setFacesVisible   (!!(g('hypercube.faces.active',  0)));
     hc.setFaceOpacity    (g('hypercube.faces.opacity', 0.5));
+    hc.setFaceBlending   (g('hypercube.faces.blend',   0));
+    hc.setFaceHue        (g('hypercube.faces.hue', 0), g('hypercube.faces.sat', 0));
     hc.setInstancerVisible(!!(g('hypercube.inst.active', 0)));
     hc.setInstancerGeoType(_GEO_TYPES[g('hypercube.inst.geo', 0)] ?? 'Sphere');
     hc.setInstancerScale   (g('hypercube.inst.scale',   0.08));
@@ -4347,7 +4367,6 @@ void main() {
       scene3d.render(ps, dt, {
         camera: camera3d.active ? camera3d.currentTexture : null,
         movie: movieInput.active ? movieInput.currentTexture : null,
-        faceTex: drawLayer.texture,
         screen: pipeline.prev.texture,
         draw: drawLayer.texture,
         buffer: stillsBuffer.texture,
