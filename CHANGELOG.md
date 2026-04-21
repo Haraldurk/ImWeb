@@ -6,6 +6,56 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
 
 ---
 
+## [0.8.6] — 2026-04-21
+
+### Added
+
+**Hypercube Face Masks**
+- Luminance-based alpha masking on face quads — route any pipeline source (Camera, Movie, Screen, Draw, Buffer, Noise) as a mask; bright areas reveal the face, dark areas cut it
+- Mask invert toggle and Mask level gain (0–4×) for fine control
+- Mask texture goes through the same isolated copy-blit path as the face texture — no WebGL feedback loop
+
+**Hypercube Face & Instancer Material Controls**
+- Blend mode dropdown per face layer: Normal / Additive / Multiply / Subtract
+- Hue and Saturation controls for face tint (white by default = no tint)
+- Texture source dropdown for both Faces and Instancer — route Camera / Movie / Screen / Draw / Buffer / Noise directly onto face quads or instancer geometry
+
+**Hypercube Instancer**
+- InstancedMesh at each hypercube vertex position; 13 geometry types via GeometryFactory (Sphere, Torus, Cube, Plane, Cylinder, Capsule, TorusKnot, Cone, Dodecahedron, Icosahedron, Octahedron, Tetrahedron, Ring)
+- Scale, opacity, and texture source controls; all parameters MIDI/LFO-assignable
+- Render mode `none` hides wireframe and points for instancer-only view
+- SceneManager adopts instancer mesh — unified material pipeline; receives lights and material params from the existing Material panel
+
+### Fixed
+- Faces invisible in 3D Scene (visible only in 3D Depth): missing `instanceMatrix` application in ShaderMaterial vertex shader
+- `depthTest: true` caused faces to occlude/be occluded by 3D geometry — set to `false` (faces are transparent overlays)
+- Black plane visible in scene when renderMode=`none`: `_updateVisibility()` now explicitly hides faces and instancer mesh
+- State save/restore: all hypercube parameters now correctly save and restore including instancer, faces, blend, hue, tex source
+- Hypercube UI selects showing defaults after state recall: deferred panel rebuild via `_hcPanelRebuild` callback
+- WebGL feedback loop when pipeline output routed to face/mask texture: isolated copy-blit render target
+
+---
+
+## [0.8.5] — 2026-04-16
+
+### Added
+- HypercubeInstancer — InstancedMesh at hypercube vertex positions, 13 geometry types, scale, opacity controls
+- Instancer texture — pipeline output wired to instancer material each frame
+- Render mode `none` — hides wireframe and points for instancer-only view
+- SceneManager adopts HypercubeInstancer mesh — unified material pipeline
+
+### Fixed
+- Unbind blend uPrev before copyToPrev — eliminates WebGL feedback loop
+- zeroMatrix was identity — caused ghost planes at origin
+- hFaces.update moved after projection — was reading stale projBuf
+- Use emissiveMap on instancer — texture now renders without scene light dependency
+- setVisible() now updates `_visible` flag — was only setting mesh.visible
+- Removed per-frame setInstancerTexture() call from main.js — SceneManager now owns instancer texture via _adoptMesh
+- Emissive forced white when texture active on adopted mesh
+- Feedback loop guard bypassed for adopted instancer mesh
+
+---
+
 ## [0.8.4] — 2026-04-16
 
 ### Added
