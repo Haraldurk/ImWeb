@@ -119,7 +119,7 @@ async function main() {
     powerPreference: "high-performance",
     preserveDrawingBuffer: true, // needed for canvas.toBlob() capture
   });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.setPixelRatio(1); // Performance: render at logical CSS pixels, not Retina 2×. On a Retina display, DPR=2 silently doubles every dimension (e.g. 905×963 → 1810×1926), quadrupling fill cost across 35+ shader passes with no perceptible quality gain on moving video. DPR=1 aligns the canvas buffer with Pipeline render targets and enables 60fps on display-size canvas.
   renderer.autoClear = false;
 
   // Initial size
@@ -1815,64 +1815,184 @@ async function main() {
     stepSequencer.onStep = () => refreshSeqGrid();
   })();
 
-  // ── Camera controls ───────────────────────────────────────────────────────
+  // ── I / O section ────────────────────────────────────────────────────────
 
-  const cameraRow = document.createElement("div");
-  cameraRow.style.cssText =
-    "display:flex;align-items:center;gap:6px;padding:8px 10px;";
+  // Row builder: label + flex native controls
+  function _ioRow(labelText, ...controls) {
+    const row = document.createElement("div");
+    row.style.cssText = "display:flex;align-items:center;gap:5px;padding:3px 10px;";
+    const lbl = document.createElement("span");
+    lbl.style.cssText = "font:10px/1.6 var(--mono);color:var(--text-2);min-width:60px;flex-shrink:0;letter-spacing:.05em;text-transform:uppercase;";
+    lbl.textContent = labelText;
+    row.appendChild(lbl);
+    controls.forEach(c => c && row.appendChild(c));
+    return row;
+  }
 
+  // Native <select> factory — color-scheme:dark keeps the OS picker dark on Chrome/Brave
+  function _ioSel(flexGrow = true) {
+    const s = document.createElement("select");
+    s.className = "param-select";
+    if (flexGrow) s.style.cssText = "flex:1;min-width:0;";
+    return s;
+  }
+
+  const ioBlock = document.createElement("div");
+  ioBlock.style.cssText = "padding:6px 0 8px;border-bottom:1px solid var(--border);";
+
+  const ioHdr = document.createElement("div");
+  ioHdr.style.cssText = "font:10px/1 var(--mono);color:var(--text-2);letter-spacing:.1em;text-transform:uppercase;padding:4px 10px 6px;opacity:.7;";
+  ioHdr.textContent = "I / O";
+  ioBlock.appendChild(ioHdr);
+
+  // ── Camera ──
   const btnCameraOn = document.createElement("button");
   btnCameraOn.id = "btn-camera-on";
   btnCameraOn.className = "import-btn";
+  btnCameraOn.style.cssText = "flex-shrink:0;";
   btnCameraOn.textContent = "▶ Camera";
 
-  const camDeviceSel = document.createElement("select");
-  camDeviceSel.className = "param-select";
-  camDeviceSel.style.cssText = "flex:1;font-size:11px;";
+  const camDeviceSel = _ioSel();
   camDeviceSel.innerHTML = '<option value="">default</option>';
+  ioBlock.appendChild(_ioRow("Camera", btnCameraOn, camDeviceSel));
 
-  cameraRow.appendChild(btnCameraOn);
-  cameraRow.appendChild(camDeviceSel);
+  // ── Audio In ──
+  const btnAudioIn = document.createElement("button");
+  btnAudioIn.className = "import-btn";
+  btnAudioIn.style.cssText = "flex-shrink:0;";
+  btnAudioIn.textContent = "▶ Audio";
+  btnAudioIn.title = "Enable audio input / vectorscope";
 
-  // Vectorscope — auto-connect to ctrl.sound when audio is ready
+  const audioDeviceSel = _ioSel();
+  audioDeviceSel.innerHTML = '<option value="">—</option>';
+  ioBlock.appendChild(_ioRow("Audio In", btnAudioIn, audioDeviceSel));
+
+  // Enumerate all media devices on startup — shows labels immediately if permission
+  // already granted from a previous session; falls back to generic names otherwise.
+  navigator.mediaDevices.enumerateDevices().then(devices => {
+    const cams = devices.filter(d => d.kind === "videoinput");
+    const mics = devices.filter(d => d.kind === "audioinput");
+    if (cams.length) {
+      camDeviceSel.innerHTML = "";
+      cams.forEach((d, i) => {
+        const o = document.createElement("option");
+        o.value = d.deviceId;
+        o.textContent = d.label || `Camera ${i + 1}`;
+        camDeviceSel.appendChild(o);
+      });
+    }
+    if (mics.length) {
+      audioDeviceSel.innerHTML = "";
+      mics.forEach((d, i) => {
+        const o = document.createElement("option");
+        o.value = d.deviceId;
+        o.textContent = d.label || `Mic ${i + 1}`;
+        audioDeviceSel.appendChild(o);
+      });
+    }
+  }).catch(() => {});
+
+  // Auto-connect vectorscope when ControllerManager sound is already active
   ctrl.onSoundReady = (sourceNode, audioCtx) => {
     vectorscope.connectSource(sourceNode, audioCtx);
-    btnScope.textContent = "⌖ Scope ✓";
-    btnScope.classList.add("active");
+    btnAudioIn.textContent = "■ Audio";
+    btnAudioIn.classList.add("active");
   };
 
-  // Manual scope button — also enables sound (which triggers onSoundReady above)
-  const btnScope = document.createElement("button");
-  btnScope.className = "import-btn";
-  btnScope.textContent = "⌖ Scope";
-  btnScope.title = "Enable vectorscope (uses microphone or shared sound input)";
-  btnScope.addEventListener("click", async () => {
-    if (ctrl.sound) {
-      // Sound already running — just connect scope directly
-      vectorscope.connectSource(
-        ctrl.sound.ctx.createMediaStreamSource
-          ? (vectorscope._source ?? ctrl.sound.analyser) // fallback
-          : ctrl.sound.analyser,
-        ctrl.sound.ctx,
-      );
-    } else {
-      const ok = await vectorscope.initMic();
-      if (ok) {
-        btnScope.textContent = "⌖ Scope ✓";
-        btnScope.classList.add("active");
+  btnAudioIn.addEventListener("click", async () => {
+    if (btnAudioIn.classList.contains("active")) {
+      if (ctrl.sound) {
+        vectorscope.connectSource(
+          ctrl.sound.ctx.createMediaStreamSource
+            ? (vectorscope._source ?? ctrl.sound.analyser)
+            : ctrl.sound.analyser,
+          ctrl.sound.ctx,
+        );
+      } else {
+        vectorscope.stop();
       }
+      btnAudioIn.textContent = "▶ Audio";
+      btnAudioIn.classList.remove("active");
+      return;
+    }
+    const deviceId = audioDeviceSel.options[audioDeviceSel.selectedIndex]?.value || undefined;
+    const ok = await vectorscope.initMic(deviceId);
+    if (ok) {
+      // Re-enumerate with full labels now that permission is granted
+      navigator.mediaDevices.enumerateDevices().then(devices => {
+        const mics = devices.filter(d => d.kind === "audioinput");
+        if (!mics.length) return;
+        const prev = audioDeviceSel.value;
+        audioDeviceSel.innerHTML = "";
+        mics.forEach((d, i) => {
+          const o = document.createElement("option");
+          o.value = d.deviceId;
+          o.textContent = d.label || `Mic ${i + 1}`;
+          audioDeviceSel.appendChild(o);
+        });
+        if (prev) audioDeviceSel.value = prev;
+      }).catch(() => {});
+      btnAudioIn.textContent = "■ Audio";
+      btnAudioIn.classList.add("active");
     }
   });
-  cameraRow.appendChild(btnScope);
 
-  document.getElementById("tab-mapping")?.prepend(cameraRow);
+  // Device switch while audio is active
+  audioDeviceSel.addEventListener("change", async () => {
+    if (!btnAudioIn.classList.contains("active")) return;
+    const deviceId = audioDeviceSel.value || undefined;
+    await vectorscope.initMic(deviceId); // stop() + restart in new initMic
+  });
+
+  // ── Display resolution ──
+  const dispSel = _ioSel();
+  [["Disp",0],["720p",1],["1080p",2],["540p",3],["¼",4]].forEach(([label, val]) => {
+    const o = document.createElement("option");
+    o.value = val; o.textContent = label;
+    dispSel.appendChild(o);
+  });
+  dispSel.value = ps.get("output.resolution").value;
+  dispSel.addEventListener("change", () => ps.set("output.resolution", +dispSel.value));
+  ps.get("output.resolution").onChange(v => { dispSel.value = v; recSel.value = v; });
+  ioBlock.appendChild(_ioRow("Display", dispSel));
+
+  // ── Record resolution (linked to Display until independent REC target is built) ──
+  const recSel = _ioSel();
+  [["Disp",0],["720p",1],["1080p",2],["540p",3],["¼",4]].forEach(([label, val]) => {
+    const o = document.createElement("option");
+    o.value = val; o.textContent = label;
+    recSel.appendChild(o);
+  });
+  recSel.value = ps.get("output.resolution").value;
+  recSel.addEventListener("change", () => ps.set("output.resolution", +recSel.value));
+  ioBlock.appendChild(_ioRow("Record", recSel));
+
+  // ── 2Display resolution — controls second screen bitmap resize pre-postMessage ──
+  const _outWinResOpts = [
+    { label: "Same",  dims: null },
+    { label: "1080p", dims: [1920, 1080] },
+    { label: "720p",  dims: [1280, 720] },
+    { label: "540p",  dims: [960, 540] },
+  ];
+  let _outWinResIdx = 1; // default 1080p — fast for projection, lower transfer cost
+  const outWinSel = _ioSel();
+  _outWinResOpts.forEach((opt, i) => {
+    const o = document.createElement("option");
+    o.value = i; o.textContent = opt.label;
+    outWinSel.appendChild(o);
+  });
+  outWinSel.value = _outWinResIdx;
+  outWinSel.addEventListener("change", () => { _outWinResIdx = +outWinSel.value; });
+  ioBlock.appendChild(_ioRow("2Display", outWinSel));
+
+  document.getElementById("tab-mapping")?.prepend(ioBlock);
 
   async function populateCameraDevices() {
-    const devices = camera3d.getDeviceList();
-    // Re-enumerate after permission grant (labels now available)
+    // Re-enumerate after permission grant so labels are fully resolved
     await camera3d.init();
     const list = camera3d.getDeviceList();
     if (!list.length) return;
+    const prev = camDeviceSel.value;
     camDeviceSel.innerHTML = "";
     list.forEach((d, i) => {
       const o = document.createElement("option");
@@ -1880,6 +2000,7 @@ async function main() {
       o.textContent = d.label || `Camera ${i + 1}`;
       camDeviceSel.appendChild(o);
     });
+    if (prev) camDeviceSel.value = prev; // restore selection if possible
   }
 
   camDeviceSel.addEventListener("change", async () => {
@@ -4310,7 +4431,9 @@ void main() {
       _resolveLayerTex(ps.get("layer.bg").value), // 7 BG Src
       _resolveLayerTex(ps.get("layer.ds")?.value ?? 0), // 8 DS Src
     ];
-    particles.tick(ps, dt, _pmSrcMap[ps.get("particle.masksrc").value] ?? null);
+    const PARTICLE_IDX = 16;
+    const _particlesUsed = ps.get("layer.fg").value === PARTICLE_IDX || ps.get("layer.bg").value === PARTICLE_IDX || (ps.get("layer.ds")?.value ?? 0) === PARTICLE_IDX;
+    if (_particlesUsed) particles.tick(ps, dt, _pmSrcMap[ps.get("particle.masksrc").value] ?? null);
     // SDF dedicated texture source routing (decouples from layer.fg / layer.bg).
     // SELECT index 0 = follow the pipeline FG/BG layer (default, preserves old behaviour).
     // Indices 1–7 map to _resolveLayerTex's internal keys: Camera=0,Movie=1,Buffer=2,Color=3,Noise=4,3D=5,Draw=6
@@ -4330,7 +4453,9 @@ void main() {
         : _sdfSrcToLayerIdx[_sdfRefIdx] != null
           ? _resolveLayerTex(_sdfSrcToLayerIdx[_sdfRefIdx])
           : null;
-    sdfGen.tick(ps, dt, _sdfTex, _sdfRef);
+    const SDF_IDX = 21;
+    const _sdfUsed = ps.get("layer.fg").value === SDF_IDX || ps.get("layer.bg").value === SDF_IDX || (ps.get("layer.ds")?.value ?? 0) === SDF_IDX;
+    if (_sdfUsed) sdfGen.tick(ps, dt, _sdfTex, _sdfRef);
 
     // Animate Color2 gradient when speed is non-zero
     const _c2speed = ps.get("color2.speed")?.value ?? 0;
@@ -4339,8 +4464,10 @@ void main() {
       updateColor2Texture();
     }
 
-    // Generate BFG noise every frame (dedicated 512×512 target, always live)
-    noiseTexture = pipeline.generateNoise({
+    // Generate noise only when a layer is using it as a source (512×512 dedicated target)
+    const NOISE_IDX = 4;
+    const _noiseUsed = ps.get("layer.fg").value === NOISE_IDX || ps.get("layer.bg").value === NOISE_IDX || (ps.get("layer.ds")?.value ?? 0) === NOISE_IDX;
+    if (_noiseUsed) noiseTexture = pipeline.generateNoise({
       time: lastTime / 1000,
       type: ps.get("noise.type").value,
       scale: ps.get("noise.scale").value,
@@ -4476,7 +4603,12 @@ void main() {
     const outWinDue = outWinOpen && ++_outFrameTick % 2 === 0;
 
     if (spyVisible || outWinDue) {
-      createImageBitmap(canvas).then((bitmap) => {
+      // 2Display: resize bitmap before postMessage to reduce transfer cost
+      const _owDims = _outWinResOpts[_outWinResIdx]?.dims;
+      const _bitmapOpts = _owDims
+        ? { resizeWidth: _owDims[0], resizeHeight: _owDims[1], resizeQuality: "medium" }
+        : {};
+      createImageBitmap(canvas, _bitmapOpts).then((bitmap) => {
         if (spyVisible) _spyCtx.drawImage(bitmap, 0, 0, 160, 90);
         if (outWinDue && !_outWin?.closed) {
           const _pmActive = ps.get("projmap.active").value;

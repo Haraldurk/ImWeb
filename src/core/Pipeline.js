@@ -383,12 +383,7 @@ export class Pipeline {
         uRawKey:      p.get('keyer.rawkey')?.value ?? 0,
       });
     } else {
-      // No keyer — pass FG through
-      keyed = this._pass(this.m.keyer, {
-        uFG: displaced, uBG: bgTexFinal, uEK: dsTex, uFGRaw: fgTex,
-        uKeyWhite: 1, uKeyBlack: 0, uKeySoftness: 0,
-        uKeyActive: 0, uAlpha: 0, uAlphaInvert: 0, uExtKey: 0, uRawKey: 0,
-      });
+      keyed = displaced; // true skip — no GPU pass when keyer inactive
     }
 
     // ── Chroma Key (runs after luma keyer) ───────────────────────────────
