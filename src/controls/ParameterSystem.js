@@ -3714,7 +3714,11 @@ export function registerCoreParameters(ps) {
     label: "VScope Mode",
     group: "vectorscope",
     type: PARAM_TYPE.SELECT,
-    options: ["Lissajous", "Waveform", "FFT"],
+    options: [
+      "Lissajous", "Waveform", "Goniometer", "Polar",
+      "FFT", "Radial FFT", "Spectrogram", "Scatter Cloud",
+      "Phase Space", "3D Waterfall", "Warp Starfield", "Oscilloscope",
+    ],
     value: 0,
   });
   ps.register({
@@ -3728,7 +3732,7 @@ export function registerCoreParameters(ps) {
   });
   ps.register({
     id: "vectorscope.decay",
-    label: "VScope Decay",
+    label: "VScope Trail",
     group: "vectorscope",
     min: 0,
     max: 99,
@@ -3736,11 +3740,30 @@ export function registerCoreParameters(ps) {
     unit: "%",
   });
   ps.register({
+    id: "vectorscope.linewidth",
+    label: "VScope Width",
+    group: "vectorscope",
+    min: 0.5,
+    max: 15,
+    step: 0.5,
+    value: 1.5,
+    unit: "px",
+  });
+  ps.register({
+    id: "vectorscope.glow",
+    label: "VScope Glow",
+    group: "vectorscope",
+    min: 0,
+    max: 50,
+    value: 8,
+    unit: "px",
+  });
+  ps.register({
     id: "vectorscope.color",
     label: "VScope Color",
     group: "vectorscope",
     type: PARAM_TYPE.SELECT,
-    options: ["Green", "Cyan", "Red", "Gold"],
+    options: ["Green", "Cyan", "Orange", "Gold", "Violet", "Hot Pink", "White", "Aqua"],
     value: 0,
   });
 
