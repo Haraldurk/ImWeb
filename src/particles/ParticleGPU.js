@@ -69,13 +69,16 @@ void main() {
 }
 `;
 
-// Pass B — damping + bounce reflect
+// Pass B — damping + force field + bounce reflect
 const PASS_B_FRAG = /* glsl */`
 precision highp float;
 uniform sampler2D uPosAgeTex;
 uniform sampler2D uVelTex;
+uniform sampler2D uForceFieldTex;
 uniform float uDt;
 uniform int   uBoundaryMode;
+uniform float uFieldStrength;
+uniform float uInertia;
 varying vec2 vUv;
 
 void main() {
@@ -89,6 +92,11 @@ void main() {
   }
 
   vec2 v = vel.rg * 0.995;
+
+  // sample force field at particle world position
+  vec4 field = texture2D(uForceFieldTex, pa.rg);
+  vec2 force = field.rg * field.b * uFieldStrength;
+  v = mix(force * uDt, v, uInertia);
 
   if (uBoundaryMode == 1) {
     vec2 pos  = pa.rg;
@@ -166,14 +174,21 @@ export class ParticleGPU {
       },
     });
 
+    const ffb = new Float32Array([0, 0, 0, 0]);
+    this._fallbackForce = new THREE.DataTexture(ffb, 1, 1, THREE.RGBAFormat, THREE.FloatType);
+    this._fallbackForce.needsUpdate = true;
+
     this._matB = new THREE.RawShaderMaterial({
       vertexShader:   SIM_VERT,
       fragmentShader: PASS_B_FRAG,
       uniforms: {
-        uPosAgeTex:    { value: null },
-        uVelTex:       { value: null },
-        uDt:           { value: 0.016 },
-        uBoundaryMode: { value: 0 },
+        uPosAgeTex:     { value: null },
+        uVelTex:        { value: null },
+        uForceFieldTex: { value: null },
+        uDt:            { value: 0.016 },
+        uBoundaryMode:  { value: 0 },
+        uFieldStrength: { value: 1.0 },
+        uInertia:       { value: 0.3 },
       },
     });
 
@@ -214,7 +229,7 @@ export class ParticleGPU {
   get velTex()    { return this._velRT[this._cur].texture; }
 
   // writes next slot; swap() advances _cur
-  update(dt) {
+  update(dt, forceFieldTex = null) {
     const next = 1 - this._cur;
 
     const uA = this._matA.uniforms;
@@ -228,10 +243,11 @@ export class ParticleGPU {
 
     // Pass B reads the freshly-written posAge from [next]
     const uB = this._matB.uniforms;
-    uB.uPosAgeTex.value = this._posAgeRT[next].texture;
-    uB.uVelTex.value    = this._velRT[this._cur].texture;
-    uB.uDt.value        = dt;
-    this._quad.material = this._matB;
+    uB.uPosAgeTex.value     = this._posAgeRT[next].texture;
+    uB.uVelTex.value        = this._velRT[this._cur].texture;
+    uB.uForceFieldTex.value = forceFieldTex ?? this._fallbackForce;
+    uB.uDt.value            = dt;
+    this._quad.material     = this._matB;
     this._renderer.setRenderTarget(this._velRT[next]);
     this._renderer.render(this._scene, this._camera);
 
@@ -266,5 +282,6 @@ export class ParticleGPU {
     this._matB.dispose();
     this._blitMat.dispose();
     this._quad.geometry.dispose();
+    this._fallbackForce.dispose();
   }
 }
