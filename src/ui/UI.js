@@ -721,7 +721,7 @@ export function buildMappingPanels(ps, contextMenu) {
     'color-params':    ps.getGroup('color'),
     'noise-params-top': ps.getGroup('noise').slice(0, 1),
     'noise-params':     ps.getGroup('noise').slice(1),
-    'output-params':   ps.getGroup('output'),
+    'output-params':   ps.getGroup('output').filter(p => p.id !== 'output.resolution' && p.id !== 'output.interp'),
     'buffer-controls': ps.getGroup('buffer'),
     'clip-params':     ps.getGroup('movie'),
     'transform-params': ps.getGroup('scene3d').filter(p => p.id.includes('rot') || p.id.includes('pos') || p.id.includes('scale') || p.id.includes('spin')),
@@ -734,7 +734,8 @@ export function buildMappingPanels(ps, contextMenu) {
     'bg-params':       ps.getGroup('bg'),
     'effect-params':   ps.getGroup('effect'),
     'global-params':       ps.getGroup('global'),
-    'particle-params':     ps.getGroup('particle'),
+    // particle-params rendered separately below (legacy + v2 split)
+    // 'particle-params': ps.getGroup('particle'),
     'sdf-params':          ps.getGroup('sdf'),
     'delay-params':        ps.getGroup('delay'),
     // VasulkaWarp — hidden, experimental, architecture unresolved. See dev notes.
@@ -754,6 +755,38 @@ export function buildMappingPanels(ps, contextMenu) {
     el.innerHTML = '';
     params.forEach(p => el.appendChild(buildParamRow(p, contextMenu)));
   });
+
+  // ── Particle panel: legacy params + GPU Engine v2 sub-section ─────────────
+  const particleEl = document.getElementById('particle-params');
+  if (particleEl) {
+    particleEl.innerHTML = '';
+    const allP = ps.getGroup('particle');
+
+    // IDs introduced by ParticleEngine.registerParams() (Phase E)
+    const _v2Ids = new Set([
+      'particle.w.gradient','particle.w.flow','particle.w.nbody','particle.w.ghost',
+      'particle.trailDecay','particle.colorMode','particle.fieldStrength',
+      'particle.inertia','particle.lifeDecay','particle.boundaryMode',
+      'particle.flowFormula',
+      'particle.lorenz.rho','particle.lorenz.sigma','particle.lorenz.beta',
+      'particle.nbody.radius','particle.nbody.falloff','particle.nbody.mode',
+      'particle.ghost.strength','particle.ghost.mode',
+      'particle.respawn','particle.freeze',
+    ]);
+    const legacy = allP.filter(p => !_v2Ids.has(p.id));
+    const v2     = allP.filter(p =>  _v2Ids.has(p.id));
+
+    legacy.forEach(p => particleEl.appendChild(buildParamRow(p, contextMenu)));
+
+    if (v2.length) {
+      const hdr = document.createElement('div');
+      hdr.style.cssText = 'font-size:10px;letter-spacing:.09em;text-transform:uppercase;' +
+        'color:var(--accent);margin:8px 0 6px;padding-bottom:6px;border-bottom:1px solid var(--border)';
+      hdr.textContent = 'GPU Engine';
+      particleEl.appendChild(hdr);
+      v2.forEach(p => particleEl.appendChild(buildParamRow(p, contextMenu)));
+    }
+  }
 }
 
 // ── Sequence params panel ─────────────────────────────────────────────────────
