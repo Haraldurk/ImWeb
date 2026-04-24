@@ -33,12 +33,24 @@ uniform float uDt;
 uniform float uLifeDecay;
 uniform int   uBoundaryMode;
 uniform float uRespawnSeed;
+uniform float uEmitter;
+uniform float uEmitX;
+uniform float uEmitY;
+uniform float uSpread;
 varying vec2 vUv;
 
 vec2 spawnPos(vec2 uv, float seed) {
-  float h  = fract(sin(dot(uv + seed,       vec2(127.1, 311.7))) * 43758.5);
-  float h2 = fract(sin(dot(uv + seed + 0.1, vec2(269.5, 183.3))) * 43758.5);
-  return vec2(h, h2);
+  float h     = fract(sin(dot(uv + seed,       vec2(127.1, 311.7))) * 43758.5);
+  float h2    = fract(sin(dot(uv + seed + 0.1, vec2(269.5, 183.3))) * 43758.5);
+  float angle = h * 6.2832;
+  float cx    = uEmitX, cy = uEmitY;
+  vec2 p;
+  if      (uEmitter < 0.5) p = vec2(cx + (h  - 0.5) * uSpread,      cy + (h2 - 0.5) * uSpread);
+  else if (uEmitter < 1.5) p = vec2(cx + cos(angle)  * uSpread * 0.4, cy + sin(angle) * uSpread * 0.4);
+  else if (uEmitter < 2.5) p = vec2(cx + (h  - 0.5) * uSpread,      cy);
+  else if (uEmitter < 3.5) p = vec2(cx,                              cy + (h2 - 0.5) * uSpread);
+  else                     p = vec2(cx + (h  - 0.5) * 0.005,        cy + (h2 - 0.5) * 0.005);
+  return clamp(p, 0.001, 0.999);
 }
 
 void main() {
@@ -185,6 +197,10 @@ export class ParticleGPU {
         uLifeDecay:    { value: 0.005 },
         uBoundaryMode: { value: 0 },
         uRespawnSeed:  { value: 0.0 },
+        uEmitter:      { value: 0 },
+        uEmitX:        { value: 0.5 },
+        uEmitY:        { value: 0.5 },
+        uSpread:       { value: 0.5 },
       },
     });
 

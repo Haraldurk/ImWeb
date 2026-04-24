@@ -119,6 +119,10 @@ export class ParticleEngine {
     const uB = this.gpu._matB.uniforms;
     uA.uLifeDecay.value      = get('particle.lifeDecay',      0.005);
     uA.uBoundaryMode.value   = get('particle.boundaryMode',   1);
+    uA.uEmitter.value        = get('particle.emitter',        0);
+    uA.uEmitX.value          = get('particle.emitx',          50) / 100;
+    uA.uEmitY.value          = 1.0 - get('particle.emity',   50) / 100; // flip Y: UI 0=top, GL 0=bottom
+    uA.uSpread.value         = get('particle.spread',         10) / 100;
     uB.uBoundaryMode.value   = uA.uBoundaryMode.value;
     uB.uFieldStrength.value  = get('particle.fieldStrength',  1.0);
     uB.uInertia.value        = get('particle.inertia',        0.3);
