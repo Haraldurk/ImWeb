@@ -69,15 +69,17 @@ void main() {
 }
 `;
 
-// Pass B — damping + force field + bounce reflect
+// Pass B — damping + force field + ghost SDF + bounce reflect
 const PASS_B_FRAG = /* glsl */`
 precision highp float;
 uniform sampler2D uPosAgeTex;
 uniform sampler2D uVelTex;
 uniform sampler2D uForceFieldTex;
+uniform sampler2D uGhostSDFTex;
 uniform float uDt;
 uniform int   uBoundaryMode;
 uniform float uFieldStrength;
+uniform float uGhostStrength;
 uniform float uInertia;
 varying vec2 vUv;
 
@@ -91,15 +93,27 @@ void main() {
     return;
   }
 
-  vec2 v = vel.rg * 0.995;
+  vec2 pos = pa.rg;
+  vec2 v   = vel.rg * 0.995;
 
-  // sample force field at particle world position
-  vec4 field = texture2D(uForceFieldTex, pa.rg);
+  // force field contribution
+  vec4 field = texture2D(uForceFieldTex, pos);
   vec2 force = field.rg * field.b * uFieldStrength;
+
+  // ghost SDF contribution
+  vec4  ghost = texture2D(uGhostSDFTex, pos);
+  float dist  = ghost.r;
+  vec2  gGrad = ghost.gb * 2.0 - 1.0;
+  float gMode = ghost.a;
+  float gF    = uGhostStrength / (dist * dist + 0.01);
+  if      (gMode < 0.2) force += gGrad * gF;             // attract
+  else if (gMode < 0.5) force -= gGrad * gF;             // repel
+  else if (gMode < 0.8) force += vec2(-gGrad.y, gGrad.x) * gF; // vortex
+  else                  force  = vec2(0.0);              // freeze
+
   v = mix(force * uDt, v, uInertia);
 
   if (uBoundaryMode == 1) {
-    vec2 pos  = pa.rg;
     vec2 next = pos + v * uDt;
     if (next.x < 0.0 || next.x > 1.0) v.x *= -0.8;
     if (next.y < 0.0 || next.y > 1.0) v.y *= -0.8;
@@ -178,6 +192,10 @@ export class ParticleGPU {
     this._fallbackForce = new THREE.DataTexture(ffb, 1, 1, THREE.RGBAFormat, THREE.FloatType);
     this._fallbackForce.needsUpdate = true;
 
+    const gfb = new Float32Array([0, 0, 0, 0]);
+    this._fallbackGhost = new THREE.DataTexture(gfb, 1, 1, THREE.RGBAFormat, THREE.FloatType);
+    this._fallbackGhost.needsUpdate = true;
+
     this._matB = new THREE.RawShaderMaterial({
       vertexShader:   SIM_VERT,
       fragmentShader: PASS_B_FRAG,
@@ -185,9 +203,11 @@ export class ParticleGPU {
         uPosAgeTex:     { value: null },
         uVelTex:        { value: null },
         uForceFieldTex: { value: null },
+        uGhostSDFTex:   { value: null },
         uDt:            { value: 0.016 },
         uBoundaryMode:  { value: 0 },
         uFieldStrength: { value: 1.0 },
+        uGhostStrength: { value: 1.0 },
         uInertia:       { value: 0.3 },
       },
     });
@@ -229,7 +249,7 @@ export class ParticleGPU {
   get velTex()    { return this._velRT[this._cur].texture; }
 
   // writes next slot; swap() advances _cur
-  update(dt, forceFieldTex = null) {
+  update(dt, forceFieldTex = null, ghostSDFTex = null) {
     const next = 1 - this._cur;
 
     const uA = this._matA.uniforms;
@@ -246,6 +266,7 @@ export class ParticleGPU {
     uB.uPosAgeTex.value     = this._posAgeRT[next].texture;
     uB.uVelTex.value        = this._velRT[this._cur].texture;
     uB.uForceFieldTex.value = forceFieldTex ?? this._fallbackForce;
+    uB.uGhostSDFTex.value   = ghostSDFTex   ?? this._fallbackGhost;
     uB.uDt.value            = dt;
     this._quad.material     = this._matB;
     this._renderer.setRenderTarget(this._velRT[next]);
@@ -283,5 +304,6 @@ export class ParticleGPU {
     this._blitMat.dispose();
     this._quad.geometry.dispose();
     this._fallbackForce.dispose();
+    this._fallbackGhost.dispose();
   }
 }

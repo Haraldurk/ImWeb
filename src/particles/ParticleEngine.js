@@ -4,6 +4,8 @@ import { ParticleRender } from './ParticleRender.js';
 import { ForceField }     from './ForceField.js';
 import { ForceFormulas }  from './ForceFormulas.js';
 import { VideoAnalysis }  from './VideoAnalysis.js';
+import { GhostNodes }     from './GhostNodes.js';
+import { PointerPerf }    from './PointerPerf.js';
 
 export class ParticleEngine {
   constructor(renderer, paramSystem) {
@@ -16,6 +18,8 @@ export class ParticleEngine {
     );
     this.videoAnalysis = new VideoAnalysis();
     this.forceField    = new ForceField(renderer);
+    this.ghostNodes    = new GhostNodes(renderer);
+    this.pointerPerf   = new PointerPerf(this.ghostNodes, renderer.domElement);
     this._time         = 0;
 
     const fb = new Float32Array([1, 1, 1, 1]);
@@ -27,12 +31,18 @@ export class ParticleEngine {
 
   tick(ps, dt, maskTex) {
     this._time += dt;
+
+    this.ghostNodes.tick(performance.now());
+    this.videoAnalysis.update(null); // videoElement wired in a later phase
+    this.ghostNodes.updateFromVideo(this.videoAnalysis.brightPeaks);
+
     const sourceTex  = maskTex ?? this._fallback1x1Tex;
     const sourceDims = {
       w: this._renderer.domElement.width,
       h: this._renderer.domElement.height,
     };
-    const forceRT = this.forceField.composite({
+    const ghostSDFRT = this.ghostNodes.buildSDFTexture(this._renderer);
+    const forceRT    = this.forceField.composite({
       sourceTex,
       sourceDims,
       posAgeTex: this.gpu.posAgeTex,
@@ -40,7 +50,7 @@ export class ParticleEngine {
       weights:   { gradient: 0.6, flow: 0.4 },
       time:      this._time,
     });
-    this.gpu.update(dt, forceRT.texture);
+    this.gpu.update(dt, forceRT.texture, ghostSDFRT.texture);
     this.gpu.swap();
     this.render.draw(this.gpu.posAgeTex, this.gpu.velTex);
   }
@@ -53,6 +63,8 @@ export class ParticleEngine {
     this.gpu.dispose();
     this.render.dispose();
     this.forceField.dispose();
+    this.ghostNodes.dispose();
+    this.pointerPerf.dispose();
     this._fallback1x1Tex.dispose();
   }
 }
