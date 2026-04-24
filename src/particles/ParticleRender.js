@@ -29,16 +29,21 @@ precision highp float;
 attribute float aIndex;
 uniform sampler2D uPosAgeTex;
 uniform sampler2D uVelTex;
+uniform sampler2D uForceFieldTex;
 uniform float uDim;
 uniform float uPointSize;
 varying float vAge;
 varying vec2  vVel;
+varying vec2  vPos;
+varying vec2  vFieldDir;
 void main() {
-  vec2 texUV = vec2(mod(aIndex, uDim), floor(aIndex / uDim)) / uDim;
-  vec4 pa    = texture2D(uPosAgeTex, texUV);
-  vec4 vel   = texture2D(uVelTex,    texUV);
-  vAge = pa.b;
-  vVel = vel.rg;
+  vec2 texUV  = vec2(mod(aIndex, uDim), floor(aIndex / uDim)) / uDim;
+  vec4 pa     = texture2D(uPosAgeTex, texUV);
+  vec4 vel    = texture2D(uVelTex,    texUV);
+  vAge      = pa.b;
+  vVel      = vel.rg;
+  vPos      = pa.rg;
+  vFieldDir = texture2D(uForceFieldTex, pa.rg).rg;
   if (vAge >= 1.0) {
     gl_Position  = vec4(-99.0, -99.0, 0.0, 1.0);
     gl_PointSize = 0.0;
@@ -51,13 +56,33 @@ void main() {
 
 const POINTS_FRAG = /* glsl */`
 precision highp float;
+uniform int       uColorMode;
+uniform sampler2D uSourceTex;
 varying float vAge;
 varying vec2  vVel;
+varying vec2  vPos;
+varying vec2  vFieldDir;
 void main() {
   vec2 pc = gl_PointCoord - 0.5;
   if (length(pc) > 0.5) discard;
-  float speed = length(vVel);
-  vec3  col   = mix(vec3(0.1, 0.2, 0.8), vec3(1.0, 0.3, 0.1), clamp(speed / 3.0, 0.0, 1.0));
+  vec3 col;
+  if (uColorMode == 0) {
+    // Velocity — cool→warm
+    float speed = length(vVel);
+    col = mix(vec3(0.1, 0.2, 0.8), vec3(1.0, 0.3, 0.1), clamp(speed / 3.0, 0.0, 1.0));
+  } else if (uColorMode == 1) {
+    // Age — bright when new, dark when old
+    col = mix(vec3(1.0, 0.9, 0.7), vec3(0.1, 0.1, 0.3), vAge);
+  } else if (uColorMode == 2) {
+    // Field alignment — blue↔yellow by how well vel tracks the force field direction
+    vec2 v = normalize(vVel      + vec2(0.0001));
+    vec2 f = normalize(vFieldDir + vec2(0.0001));
+    float align = dot(v, f) * 0.5 + 0.5;
+    col = mix(vec3(0.0, 0.5, 1.0), vec3(1.0, 0.8, 0.0), align);
+  } else {
+    // Video sample at particle position
+    col = texture2D(uSourceTex, vPos).rgb;
+  }
   gl_FragColor = vec4(col, 1.0 - vAge * 0.5);
 }
 `;
@@ -108,10 +133,13 @@ export class ParticleRender {
       vertexShader:   POINTS_VERT,
       fragmentShader: POINTS_FRAG,
       uniforms: {
-        uPosAgeTex: { value: null },
-        uVelTex:    { value: null },
-        uDim:       { value: DIM },
-        uPointSize: { value: 2.0 },
+        uPosAgeTex:     { value: null },
+        uVelTex:        { value: null },
+        uForceFieldTex: { value: null },
+        uSourceTex:     { value: null },
+        uDim:           { value: DIM },
+        uPointSize:     { value: 2.0 },
+        uColorMode:     { value: 0 },
       },
       blending:    THREE.AdditiveBlending,
       depthTest:   false,
@@ -125,7 +153,7 @@ export class ParticleRender {
     this.texture = this._trailRT[0].texture;
   }
 
-  draw(posAgeTex, velTex) {
+  draw(posAgeTex, velTex, colorMode = 0, sourceTex = null, forceFieldTex = null) {
     const prevAutoClear = this._renderer.autoClear;
     this._renderer.autoClear = false;
 
@@ -137,8 +165,11 @@ export class ParticleRender {
     this._renderer.render(this._fadeScene, this._camera);
 
     // point pass: additive on top of faded trail
-    this._pointsMat.uniforms.uPosAgeTex.value = posAgeTex;
-    this._pointsMat.uniforms.uVelTex.value    = velTex;
+    this._pointsMat.uniforms.uPosAgeTex.value     = posAgeTex;
+    this._pointsMat.uniforms.uVelTex.value        = velTex;
+    this._pointsMat.uniforms.uForceFieldTex.value = forceFieldTex;
+    this._pointsMat.uniforms.uSourceTex.value     = sourceTex;
+    this._pointsMat.uniforms.uColorMode.value     = colorMode;
     this._renderer.setRenderTarget(this._trailRT[next]);
     this._renderer.render(this._pointsScene, this._camera);
 

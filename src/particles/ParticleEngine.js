@@ -106,7 +106,7 @@ export class ParticleEngine {
       sourceDims,
       posAgeTex:   this.gpu.posAgeTex,
       velTex:      this.gpu.velTex,
-      weights:     { gradient: get('particle.w.gradient', 0.4), flow: get('particle.w.flow', 0.3), nbody: get('particle.w.nbody', 0.3) },
+      weights:     { gradient: get('particle.w.gradient', 0.4), flow: get('particle.w.flow', 0.3), nbody: get('particle.w.nbody', 0.1), ghost: get('particle.w.ghost', 0.2) },
       time:        this._time,
       flowFormula: get('particle.flowFormula', 0),
       lorenz:      { rho: get('particle.lorenz.rho', 28), sigma: get('particle.lorenz.sigma', 10), beta: get('particle.lorenz.beta', 2.67) },
@@ -128,7 +128,7 @@ export class ParticleEngine {
 
     this.gpu.update(dt, forceRT.texture, ghostSDFRT.texture);
     this.gpu.swap();
-    this.render.draw(this.gpu.posAgeTex, this.gpu.velTex);
+    this.render.draw(this.gpu.posAgeTex, this.gpu.velTex, get('particle.colorMode', 0), sourceTex, forceRT.texture);
   }
 
   resize(w, h) {
