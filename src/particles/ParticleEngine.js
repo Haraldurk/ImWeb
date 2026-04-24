@@ -45,10 +45,14 @@ export class ParticleEngine {
     const forceRT    = this.forceField.composite({
       sourceTex,
       sourceDims,
-      posAgeTex: this.gpu.posAgeTex,
-      velTex:    this.gpu.velTex,
-      weights:   { gradient: 0.6, flow: 0.4 },
-      time:      this._time,
+      posAgeTex:   this.gpu.posAgeTex,
+      velTex:      this.gpu.velTex,
+      weights:     { gradient: 0.4, flow: 0.3, nbody: 0.3 },
+      time:        this._time,
+      flowFormula: 0,  // 0=curl, 1=lorenz, 2=magnetic (Phase E wires to param)
+      lorenz:      { rho: 28, sigma: 10, beta: 2.67 },
+      poles:       this.videoAnalysis.brightPeaks,
+      nbody:       { attractRadius: 0.1, falloffExp: 2, mode: 0 },
     });
     this.gpu.update(dt, forceRT.texture, ghostSDFRT.texture);
     this.gpu.swap();
