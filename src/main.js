@@ -42,7 +42,7 @@ import { VideoDelayLine } from "./inputs/VideoDelayLine.js";
 import { VectorscopeInput } from "./inputs/VectorscopeInput.js";
 import { SlitScanBuffer } from "./inputs/SlitScanBuffer.js";
 import { VasulkaWarp } from "./inputs/VasulkaWarp.js";
-import { ParticleSystem } from "./inputs/ParticleSystem.js";
+import { ParticleEngine } from "./particles/ParticleEngine.js";
 import { SDFGenerator } from "./inputs/SDFGenerator.js";
 import { DrawLayer } from "./inputs/DrawLayer.js";
 import { TextLayer } from "./inputs/TextLayer.js";
@@ -183,7 +183,7 @@ async function main() {
   const vectorscope = new VectorscopeInput();
   const slitScan = new SlitScanBuffer(W, H);
   const vasulkaWarp = new VasulkaWarp(renderer, W, H, 960);
-  const particles = new ParticleSystem(renderer, W, H);
+  const particles = new ParticleEngine(renderer, ps);
   const sdfGen = new SDFGenerator(renderer, W, H);
   const warpMaps = buildWarpMaps(); // 8 procedural warp map textures (map1–map8)
   const warpEditor = new WarpMapEditor(); // interactive editor → warpMaps[8] (Custom)
