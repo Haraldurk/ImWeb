@@ -46,7 +46,14 @@ export class PointerPerf {
   _onPointerDown(e) {
     e.preventDefault();
     const { x, y } = this._normalize(e.clientX, e.clientY);
-    const ghostId   = this._ghostNodes.add(x, y, { ...this._ghostOptions(), source: 'pointer' });
+
+    // Option / Alt + click → permanent pin; not tracked, never faded
+    if (e.altKey) {
+      this._ghostNodes.add(x, y, { ...this._ghostOptions(), source: 'pinned' });
+      return;
+    }
+
+    const ghostId = this._ghostNodes.add(x, y, { ...this._ghostOptions(), source: 'pointer' });
     this._activePointers.set(e.pointerId, ghostId);
     if (this.mode === 'vortex') this._vortexT0.set(e.pointerId, performance.now());
   }
