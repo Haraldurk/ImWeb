@@ -11,11 +11,15 @@ void main() {
 }
 `;
 
-// Outputs: R=minDist (signed float), G/B=grad packed 0-1, A=nearMode
+// Outputs accumulated force from ALL ghosts (additive — every ghost contributes):
+//   R/G = summed force vector (raw float, unbounded)
+//   B   = accumulated freeze weight
+//   A   = unused
+// uGhostA[i].w encodes mode: 0.0=attract  0.33=repel  0.66=vortex  1.0=freeze
 const GHOST_SDF_FRAG = /* glsl */`
 precision highp float;
-uniform vec4  uGhostA[16];   // .xy=pos, .z=radius, .w=mode
-uniform vec4  uGhostB[16];   // .x=strength, .y=shape (0=sphere,1=box)
+uniform vec4  uGhostA[16];   // .xy=pos, .z=radius, .w=mode (0=attract,0.33=repel,0.66=vortex,1.0=freeze)
+uniform vec4  uGhostB[16];   // .x=strength (signed, signed-squared from CPU), .y=shape (0=sphere,1=box)
 uniform int   uGhostCount;
 varying vec2  vUv;
 
@@ -28,27 +32,38 @@ float sdBox(vec2 p, vec2 c, float r) {
 }
 
 void main() {
-  float minDist  = 9999.0;
-  vec2  nearPos  = vec2(0.5);
-  float nearMode = 0.0;
+  vec2  acc     = vec2(0.0);
+  float freezeW = 0.0;
 
   for (int i = 0; i < 16; i++) {
     if (i < uGhostCount) {
-      vec2  c = uGhostA[i].xy;
-      float r = uGhostA[i].z;
-      float d = uGhostB[i].y > 0.5 ? sdBox(vUv, c, r) : sdSphere(vUv, c, r);
-      if (d < minDist) {
-        minDist  = d;
-        nearPos  = c;
-        nearMode = uGhostA[i].w;
+      vec2  c    = uGhostA[i].xy;
+      float r    = uGhostA[i].z;
+      float mode = uGhostA[i].w;   // 0.0=attract 0.33=repel 0.66=vortex 1.0=freeze
+      float str  = uGhostB[i].x;   // signed (already signed-squared from CPU)
+
+      float d    = uGhostB[i].y > 0.5 ? sdBox(vUv, c, r) : sdSphere(vUv, c, r);
+      float dSoft = max(abs(d), 0.001);
+      float gF   = abs(str) / (dSoft * dSoft + 0.01);
+
+      vec2 diff  = vUv - c;
+      vec2 grad  = length(diff) > 0.0001 ? normalize(diff) : vec2(0.0, 1.0); // outward from ghost
+
+      float s    = str >= 0.0 ? 1.0 : -1.0;
+
+      if (mode < 0.2) {
+        acc -= grad * gF * s;                     // attract: pull toward ghost
+      } else if (mode < 0.5) {
+        acc += grad * gF * s;                     // repel: push away from ghost
+      } else if (mode < 0.8) {
+        acc += vec2(-grad.y, grad.x) * gF * s;   // vortex: tangential spin
+      } else {
+        freezeW += gF;                            // freeze: accumulate damping weight
       }
     }
   }
 
-  vec2 diff = vUv - nearPos;
-  // outward gradient: approximate, known limitation near non-circular shapes
-  vec2 grad = length(diff) > 0.0001 ? normalize(diff) : vec2(0.0, 1.0);
-  gl_FragColor = vec4(minDist, grad * 0.5 + 0.5, nearMode);
+  gl_FragColor = vec4(acc.x, acc.y, freezeW, 0.0);
 }
 `;
 

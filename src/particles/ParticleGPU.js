@@ -112,16 +112,12 @@ void main() {
   vec4 field = texture2D(uForceFieldTex, pos);
   vec2 force = field.rg * field.b * uFieldStrength;
 
-  // ghost SDF contribution
-  vec4  ghost = texture2D(uGhostSDFTex, pos);
-  float dist  = ghost.r;
-  vec2  gGrad = ghost.gb * 2.0 - 1.0;
-  float gMode = ghost.a;
-  float gF    = uGhostStrength / (dist * dist + 0.01);
-  if      (gMode < 0.2) force += gGrad * gF;             // attract
-  else if (gMode < 0.5) force -= gGrad * gF;             // repel
-  else if (gMode < 0.8) force += vec2(-gGrad.y, gGrad.x) * gF; // vortex
-  else                  force  = vec2(0.0);              // freeze
+  // ghost field — accumulated force from ALL ghost nodes (GhostNodes SDF pass sums every ghost)
+  vec4  ghostField = texture2D(uGhostSDFTex, pos);
+  force += ghostField.rg * uGhostStrength;
+  // freeze channel: damp velocity proportional to accumulated freeze weight
+  float freezeW = ghostField.b * uGhostStrength;
+  if (freezeW > 0.001) v *= max(0.0, 1.0 - freezeW * uDt * 8.0);
 
   v = mix(force * uDt, v, uInertia);
 
