@@ -453,6 +453,7 @@ export function registerCoreParameters(ps) {
     "3D Depth", // 20
     "SDF",      // 21
     "VWarp",    // 22
+    "Analog",   // 23
   ];
 
   ps.register({

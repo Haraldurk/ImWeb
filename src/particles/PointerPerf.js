@@ -33,17 +33,15 @@ export class PointerPerf {
   // Map UI pointer mode → ghost node options (correct physics per mode)
   _ghostOptions() {
     const r = this._pointerRadius;
-    const s = this._pointerStrength;
-    // Per-ghost strength is always 1.0 — the global particle.ghost.strength param
-    // (→ uGhostStrength in PASS_B) is the single sensitivity lever. Using _pointerStrength
-    // here too would cause quadratic scaling (strength² effect).
+    const s = this._pointerStrength; // baked into each node at creation time; uGhostStrength is 1.0 constant
     const map = {
-      flow:       { mode: 'flow',        strength: 1.0,  radius: r       },
-      source:     { mode: 'repel',       strength: 1.0,  radius: r       },
-      sink:       { mode: 'attract',     strength: 1.0,  radius: r       },
-      vortex:     { mode: 'vortex',      strength: 0.0,  radius: r * 1.5 }, // ramps with hold
-      turbulence: { mode: 'turbulence',  strength: 1.0,  radius: r * 1.2 },
-      freeze:     { mode: 'freeze',      strength: 1.0,  radius: r       },
+      none:       null,
+      flow:       { mode: 'flow',        strength: s,          radius: r       },
+      source:     { mode: 'repel',       strength: s,          radius: r       },
+      sink:       { mode: 'attract',     strength: s,          radius: r       },
+      vortex:     { mode: 'vortex',      strength: Math.max(0.5 * s, 0.1),  radius: r * 1.5 }, // ramps; baked relative to current strength
+      turbulence: { mode: 'turbulence',  strength: s,          radius: r * 1.2 },
+      freeze:     { mode: 'freeze',      strength: s,          radius: r       },
     };
     return map[this.mode] ?? map.flow;
   }
@@ -63,9 +61,13 @@ export class PointerPerf {
 
     // Option / Alt + click → permanent pin; not tracked, never faded
     if (e.altKey) {
-      this._ghostNodes.add(x, y, { ...this._ghostOptions(), source: 'pinned' });
+      const opts = this._ghostOptions();
+      if (opts) this._ghostNodes.add(x, y, { ...opts, source: 'pinned' });
       return;
     }
+
+    // 'none' mode — pointer disabled, pins still work via alt+click
+    if (this.mode === 'none') return;
 
     const ghostId = this._ghostNodes.add(x, y, { ...this._ghostOptions(), source: 'pointer' });
     this._activePointers.set(e.pointerId, ghostId);
@@ -96,10 +98,12 @@ export class PointerPerf {
     }
 
     if (this.mode === 'vortex') {
-      // Vortex: spin strength ramps up with hold time (feels like stirring)
+      // Vortex: spin strength ramps up with hold time (feels like stirring).
+      // Floored at 0.5 so there's immediate visible effect from first touch.
       const t0   = this._vortexT0.get(e.pointerId) ?? performance.now();
       const hold = (performance.now() - t0) / 1000;
-      this._ghostNodes.update(ghostId, { pos: [x, y], strength: Math.min(hold * 2, this._pointerStrength * 4) });
+      const s = this._pointerStrength;
+      this._ghostNodes.update(ghostId, { pos: [x, y], strength: Math.max(s * 0.5, 0.05, Math.min(hold * 2 * s, s * 4)) });
     } else {
       this._ghostNodes.update(ghostId, { pos: [x, y] });
     }

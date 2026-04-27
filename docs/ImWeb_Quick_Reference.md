@@ -1,6 +1,6 @@
 # ImWeb — Quick Reference
 
-> Browser-based real-time video synthesis instrument · v0.8.4
+> Browser-based real-time video synthesis instrument · v0.8.5
 
 ---
 
@@ -22,6 +22,7 @@ FX Chain is **reorderable** by dragging nodes in the Signal Path display.
 |--------|-------|
 | **Camera** | WebRTC, auto-starts on load (`V` to toggle) |
 | **Movie** | Up to 8 clips; drag `.mp4/.webm/.mov` onto canvas; `Shift+1–8` to select |
+| **Analog TV** | Self-contained 720x480 analog signal simulator. Currently supports 4:3 cropping and base signal color grading (hue, saturation, brightness, contrast). Routes as a standard layer source. |
 | **Stills Buffer** | 4–32 captured frames; `C` to capture; scan/blend between slots |
 | **Color** | Solid or gradient (H/V/radial); HSV + animated hue |
 | **Noise** | GPU fractal (Perlin/Voronoi/Worley/Simplex); 512×512; resolution-independent |
@@ -255,4 +256,4 @@ Requires: **Node.js** + **FFmpeg** (`brew install ffmpeg` / `apt install ffmpeg`
 
 ---
 
-*ImWeb v0.8.4 · H. Karlsson · [Full manual →](ImWeb_Full_Manual.md)*
+*ImWeb v0.8.5 · H. Karlsson · [Full manual →](ImWeb_Full_Manual.md)*

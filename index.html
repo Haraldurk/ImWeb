@@ -80,6 +80,7 @@
       <div id="tab-bar">
         <button class="tab active" data-tab="mapping">Mapping</button>
         <button class="tab" data-tab="buffer">Buffer</button>
+        <button class="tab" data-tab="analog">Analog</button>
         <button class="tab" data-tab="draw">Draw</button>
         <button class="tab" data-tab="text">Text</button>
         <button class="tab" data-tab="scene3d">3D</button>
@@ -408,6 +409,19 @@ void main() {
           <div id="glsl-uniforms" style="padding:4px 8px 6px;font-family:monospace;font-size:10px;color:var(--text-2);"></div>
         </div>
       </div>
+
+      <!-- ANALOG TAB -->
+      <div id="tab-analog" class="tab-content">
+        <div class="panel-section">
+          <div class="section-header">Source &amp; Crop</div>
+          <div id="analog-source-params"></div>
+        </div>
+        <div class="panel-section">
+          <div class="section-header">Signal</div>
+          <div id="analog-signal-params"></div>
+        </div>
+      </div>
+
     </div>
 
   </div><!-- /app -->

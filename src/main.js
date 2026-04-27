@@ -44,6 +44,8 @@ import { SlitScanBuffer } from "./inputs/SlitScanBuffer.js";
 import { VasulkaWarp } from "./inputs/VasulkaWarp.js";
 import { ParticleEngine } from "./particles/ParticleEngine.js";
 import { SDFGenerator } from "./inputs/SDFGenerator.js";
+import { AnalogTV } from "./inputs/AnalogTV.js";
+import { registerAnalogParams } from "./inputs/AnalogParams.js";
 import { DrawLayer } from "./inputs/DrawLayer.js";
 import { TextLayer } from "./inputs/TextLayer.js";
 import { buildWarpMaps } from "./inputs/WarpMaps.js";
@@ -132,6 +134,7 @@ async function main() {
 
   const ps = new ParameterSystem();
   registerCoreParameters(ps);
+  registerAnalogParams(ps);
 
   // ── Hypercube parameters ───────────────────────────────────────────────────
   ps.register({ id:'hypercube.dim',           type:'continuous', value:4,    min:4,    max:12,   step:1,     label:'Dimension',    group:'hypercube' });
@@ -186,6 +189,7 @@ async function main() {
   const vasulkaWarp = new VasulkaWarp(renderer, W, H, 960);
   const particles = new ParticleEngine(renderer, ps);
   const sdfGen = new SDFGenerator(renderer, W, H);
+  const analogTV = new AnalogTV(renderer);
   const warpMaps = buildWarpMaps(); // 8 procedural warp map textures (map1–map8)
   const warpEditor = new WarpMapEditor(); // interactive editor → warpMaps[8] (Custom)
   warpMaps.push(warpEditor.texture); // index 9 in SELECT = warpMaps[8]
@@ -2524,6 +2528,7 @@ async function main() {
       "depth3d",  // 20
       "sdf",      // 21
       "vwarp",    // 22
+      "analog",   // 23
     ];
     const key = keys[idx];
     if (key === "camera")
@@ -2538,6 +2543,7 @@ async function main() {
     if (key === "seq1") return seq1.texture;
     if (key === "seq2") return seq2.texture;
     if (key === "seq3") return seq3.texture;
+    if (key === "analog") return analogTV.texture;
     return pipeline.prev.texture;
   }
 
@@ -4568,6 +4574,16 @@ void main() {
     const _sdfUsed = ps.get("layer.fg").value === SDF_IDX || ps.get("layer.bg").value === SDF_IDX || (ps.get("layer.ds")?.value ?? 0) === SDF_IDX;
     if (_sdfUsed) sdfGen.tick(ps, dt, _sdfTex, _sdfRef);
 
+    // Analog TV — on-demand rendering (source index 23)
+    const ANALOG_IDX = 23;
+    const _analogUsed = ps.get("layer.fg").value === ANALOG_IDX || ps.get("layer.bg").value === ANALOG_IDX || (ps.get("layer.ds")?.value ?? 0) === ANALOG_IDX;
+    if (_analogUsed) {
+      const _analogSrcIdx = ps.get("analog.sourceType").value;
+      const _analogSrc = _analogSrcIdx === 0 ? (camera3d.active ? camera3d.currentTexture : null)
+        : _resolveLayerTex(_analogSrcIdx);
+      analogTV.tick(ps, dt, _analogSrc);
+    }
+
     // Animate Color2 gradient when speed is non-zero
     const _c2speed = ps.get("color2.speed")?.value ?? 0;
     if (_c2speed !== 0) {
@@ -4648,6 +4664,7 @@ void main() {
       vwarp: vasulkaWarp.outputRT.texture,
       particles: particles.texture,
       sdf: sdfGen.texture,
+      analog: analogTV.texture,
       seq1: seq1.texture,
       seq2: seq2.texture,
       seq3: seq3.texture,

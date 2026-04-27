@@ -82,11 +82,12 @@ export class ParticleEngine {
     // ── Ghost / pointer ───────────────────────────────────────────────────────
     // particle.ghost.strength → uGhostStrength in PASS_B (global multiplier for all ghost forces).
     // Do NOT also feed it to per-ghost strength — that would apply the value twice (quadratic).
-    cs({ id: 'particle.ghost.strength', label: 'Pointer strength', min: 0, max: 4, value: 0.4 }, 0.05);
+    const strP = cs({ id: 'particle.ghost.strength', label: 'Pointer strength', min: 0, max: 4, value: 0.4 }, 0.05);
+    strP.onChange(v => this.pointerPerf.setStrength(v));
     const modeP = c({ id: 'particle.ghost.mode', label: 'Pointer mode', type: PARAM_TYPE.SELECT,
-         min: 0, max: 5, value: 0, step: 1,
-         options: ['Flow','Source','Sink','Vortex','Turb','Freeze'] });
-    const _pointerModes = ['flow','source','sink','vortex','turbulence','freeze'];
+         min: 0, max: 6, value: 0, step: 1,
+         options: ['Flow','Source','Sink','Vortex','Turb','Freeze','Off'] });
+    const _pointerModes = ['flow','source','sink','vortex','turbulence','freeze','none'];
     modeP.onChange(v => this.pointerPerf.setMode(_pointerModes[v] ?? 'flow'));
     const radP = cs({ id: 'particle.ghost.radius', label: 'Pointer radius', min: 0.01, max: 0.5, value: 0.08 }, 0.03);
     radP.onChange(v => this.pointerPerf.setRadius(v));
@@ -177,7 +178,7 @@ export class ParticleEngine {
     uB.uBoundaryMode.value   = uA.uBoundaryMode.value;
     uB.uFieldStrength.value  = get('particle.fieldStrength',  1.0);
     uB.uInertia.value        = get('particle.inertia',        0.3);
-    uB.uGhostStrength.value  = get('particle.ghost.strength', 0.4);
+    uB.uGhostStrength.value  = 1.0; // per-node strength is now the primary control; global multiplier is constant
     this.render._fadeMat.uniforms.uTrailDecay.value  = get('particle.trailDecay', 0.93);
     this.render._pointsMat.uniforms.uPointSize.value = get('particle.size',       2.0);
 

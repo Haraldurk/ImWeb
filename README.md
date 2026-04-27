@@ -6,7 +6,7 @@
 
 Real-time video compositing, 3D scene integration, and a complete parameter/controller mapping system — all in a Progressive Web App.
 
-Current version: **v0.8.4** — [Changelog](CHANGELOG.md)
+Current version: **v0.8.5** — [Changelog](CHANGELOG.md)
 
 💖 **[Support ImWeb's development on Patreon!](https://www.patreon.com/ImWeb)**
 
@@ -118,11 +118,12 @@ src/
 
 ---
 
-## Features (v0.8.4)
+## Features (v0.8.5)
 
 ### Input sources
 - [x] Camera (WebRTC, auto-start on load)
 - [x] Movie clips — up to 8; auto-loaded from `_imweb_ready/` on startup; speed, loop range, position scrub, BPM sync, mirror, mute; thumbnails in UI
+- [x] Analog TV — Phase 1 signal simulator (720x480); 4:3 cropping; hue/sat/bright/contrast grading; routes as layer source
 - [x] Stills buffer — capture up to 16 frames, FrameSelect 1/2/3
 - [x] Color source (HSV solid)
 - [x] Noise source (pixel)

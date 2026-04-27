@@ -3,7 +3,7 @@
  * Cache-first strategy for app shell; network-first for anything else.
  */
 
-const CACHE = 'imweb-v0.4';
+const CACHE = 'imweb-v0.5';
 
 const APP_SHELL = [
   '/',
@@ -38,11 +38,14 @@ self.addEventListener('fetch', e => {
   e.respondWith(
     caches.match(e.request).then(cached => {
       const network = fetch(e.request).then(res => {
-        if (res.ok) {
+        if (res.status === 200) {
           const clone = res.clone();
           caches.open(CACHE).then(c => c.put(e.request, clone));
         }
         return res;
+      }).catch(err => {
+        console.warn('[SW] fetch failed for', e.request.url, err);
+        return new Response('', { status: 504, statusText: 'Gateway Timeout' });
       });
       return cached || network;
     })

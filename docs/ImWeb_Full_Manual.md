@@ -1,6 +1,6 @@
 # ImWeb — Full Operation Manual
 
-> **Version:** 0.8.4
+> **Version:** 0.8.5
 > **Platform:** Browser (Chrome 113+ recommended)
 > **Original concept:** Image/ine — Tom Demeyer, STEIM Amsterdam 1997/2008
 > **ImWeb:** H. Karlsson
@@ -104,6 +104,7 @@ Open Chrome at `localhost:5173`. On first load:
 |-----|----------|
 | **Mapping** | All parameter rows, organised by section |
 | **Buffer** | Stills buffer capture grid and controls |
+| **Analog** | Analog signal simulator and CRT formatting |
 | **Draw** | Freehand canvas and brush controls |
 | **Text** | Text layer content and formatting |
 | **3D** | 3D scene, geometry, import, material, camera |
@@ -445,6 +446,21 @@ Real-time audio visualisation as a source texture.
 
 ---
 
+### 4.13 Analog TV
+
+Self-contained 720x480 analog signal simulator.
+
+| Parameter | Type | Range | Description |
+|-----------|------|-------|-------------|
+| `analog.sourceType` | SELECT | — | Base input source for the analog pipeline. |
+| `analog.crop43` | TOGGLE | — | Applies hard 4:3 letterboxing to the signal. |
+| `analog.brightness` | SLIDER | -100–100% | Base signal brightness lift. |
+| `analog.contrast` | SLIDER | 0–200% | Signal contrast multiplier. |
+| `analog.saturation` | SLIDER | 0–200% | Color burst saturation. |
+| `analog.hueOffset` | SLIDER | -180–180° | Signal phase/hue shift. |
+
+---
+
 ## 5. Signal Path & Effects
 
 ### 5.1 Signal Path Order
@@ -491,7 +507,7 @@ Three routing layers feed the pipeline:
 | **BG** | `layer.bg` | Background source |
 | **DS** | `layer.ds` | Displacement source (grayscale) |
 
-Source options for each layer: Camera / Movie / Screen / Draw / Noise / Color / Buffer / 3D / SlitScan / Particles / Sequencer 1–3 / Text / Vectorscope
+Source options for each layer: Camera / Movie / Screen / Draw / Noise / Color / Buffer / 3D / SlitScan / Particles / Sequencer 1–3 / Text / Vectorscope / Analog
 
 ### 5.3 Per-Layer Colour Correction
 

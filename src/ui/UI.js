@@ -51,8 +51,8 @@ function _mkSelect(opts, initVal, onChangeVal, extraClass = '') {
       const item = document.createElement('div');
       item.className = 'imw-sel-item' + (i === state.v ? ' sel' : '');
       item.textContent = opt;
-      item.addEventListener('mousedown', e => {
-        e.preventDefault();
+      item.addEventListener('click', e => {
+        e.stopPropagation();
         _close();
         state.v = i;
         lbl.textContent = opts[i] ?? '';
@@ -74,12 +74,14 @@ function _mkSelect(opts, initVal, onChangeVal, extraClass = '') {
     // Scroll selected item into view
     const items = menu.querySelectorAll('.imw-sel-item');
     items[state.v]?.scrollIntoView({ block: 'nearest' });
-    setTimeout(() => document.addEventListener('mousedown', _outside, true), 0);
+    // Use click (bubble, fires after pointerup) — never interferes with canvas
+    // pointerdown or altKey-click pin placement.
+    setTimeout(() => document.addEventListener('click', _outside), 0);
   }
 
   function _close() {
     if (menu) menu.style.display = 'none';
-    document.removeEventListener('mousedown', _outside, true);
+    document.removeEventListener('click', _outside);
   }
 
   function _outside(e) {
@@ -88,8 +90,8 @@ function _mkSelect(opts, initVal, onChangeVal, extraClass = '') {
     }
   }
 
-  trigger.addEventListener('mousedown', e => {
-    e.preventDefault();
+  trigger.addEventListener('click', e => {
+    e.stopPropagation(); // prevent _outside from immediately closing
     if (menu && menu.style.display !== 'none') { _close(); } else { _open(); }
   });
 
@@ -823,12 +825,18 @@ export function buildMappingPanels(ps, contextMenu) {
     // 'seq-params' is built by buildSeqParams() — skip here
     // 'layer-params' is owned by buildLayerButtons() — do not render here
     'lut-params':          ps.getGroup('lut'),
+    'analog-source-params': ps.getGroup('analog').filter(p => p.id.includes('source') || p.id.includes('crop')),
+    'analog-signal-params': ps.getGroup('analog').filter(p => p.id.includes('brightness') || p.id.includes('contrast') || p.id.includes('saturation') || p.id.includes('hue')),
   };
 
   Object.entries(sections).forEach(([elId, params]) => {
     const el = document.getElementById(elId);
-    if (!el || !params.length) return;
+    if (!el || !params.length) {
+      if (elId.startsWith('analog-')) console.warn('[AnalogUI] section not populated:', elId, 'el:', !!el, 'params:', params.length);
+      return;
+    }
     el.innerHTML = '';
+    if (elId.startsWith('analog-')) console.log('[AnalogUI] populating', elId, 'with', params.length, 'params');
     params.forEach(p => el.appendChild(buildParamRow(p, contextMenu)));
   });
 

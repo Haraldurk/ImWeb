@@ -39,6 +39,7 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
 ## [0.8.5] — 2026-04-16
 
 ### Added
+- **Analog TV & CRT Simulation (Phase 1)** — Dedicated 720x480 internal render target for stable performance; includes 4:3 cropping and base signal color grading (hue, saturation, brightness, contrast); routed as a standard Layer Source.
 - HypercubeInstancer — InstancedMesh at hypercube vertex positions, 13 geometry types, scale, opacity controls
 - Instancer texture — pipeline output wired to instancer material each frame
 - Render mode `none` — hides wireframe and points for instancer-only view
