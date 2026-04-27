@@ -52,11 +52,11 @@ void main() {
       float d     = uGhostB[i].y > 0.5 ? sdBox(vUv, c, r) : sdSphere(vUv, c, r);
       float dSoft = max(abs(d), 0.001);
 
-      // inside: 1 at centre, linear fall to 0 at radius edge, 0 beyond.
-      // Multiplying gF by inside gives every mode a hard radius boundary
-      // with peak force at centre — matching the described physical behaviour.
+      // inside: 1 at centre → 0 at edge (linear).
+      // Squaring it gives a quadratic hot-spot: centre is dominant,
+      // edges feel almost nothing (0.5 halfway → 0.25 force, 0.1 at edge → 0.01 force).
       float inside = max(0.0, -d / r);
-      float gF     = abs(str) / (dSoft * dSoft + 0.05) * inside;
+      float gF     = abs(str) / (dSoft * dSoft + 0.05) * (inside * inside);
 
       vec2 diff = vUv - c;
       vec2 grad = length(diff) > 0.0001 ? normalize(diff) : vec2(0.0, 1.0);
