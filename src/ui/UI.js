@@ -759,32 +759,82 @@ export function buildMappingPanels(ps, contextMenu) {
     params.forEach(p => el.appendChild(buildParamRow(p, contextMenu)));
   });
 
-  // ── Particle panel: legacy v1 params only ──────────────────────────────────
-  const _v2Ids = new Set([
-    'particle.w.gradient','particle.w.flow','particle.w.nbody','particle.w.ghost',
-    'particle.trailDecay','particle.colorMode','particle.fieldStrength',
-    'particle.inertia','particle.lifeDecay','particle.boundaryMode',
-    'particle.flowFormula',
-    'particle.lorenz.rho','particle.lorenz.sigma','particle.lorenz.beta',
-    'particle.nbody.radius','particle.nbody.falloff','particle.nbody.mode',
-    'particle.ghost.strength','particle.ghost.mode','particle.ghost.radius','particle.ghost.fadetime',
-    'particle.ng1.on','particle.ng1.x','particle.ng1.y','particle.ng1.mode','particle.ng1.strength','particle.ng1.radius',
-    'particle.ng2.on','particle.ng2.x','particle.ng2.y','particle.ng2.mode','particle.ng2.strength','particle.ng2.radius',
-    'particle.ng3.on','particle.ng3.x','particle.ng3.y','particle.ng3.mode','particle.ng3.strength','particle.ng3.radius',
-    'particle.respawn','particle.freeze','particle.clearPins',
-  ]);
+  // ── Particle panel: grouped by function ──────────────────────────────────────
   const allParticleP = ps.getGroup('particle');
+  const _pById = Object.fromEntries(allParticleP.map(p => [p.id, p]));
 
-  // ── Unified particle panel: legacy v1 first, then GPU Engine v2 params ──────
   const particleEl = document.getElementById('particle-params');
   if (particleEl) {
     particleEl.innerHTML = '';
-    // Legacy params first (PCount, PSpread, PSize, etc.)
-    allParticleP.filter(p => !_v2Ids.has(p.id))
-      .forEach(p => particleEl.appendChild(buildParamRow(p, contextMenu)));
-    // GPU Engine v2 params appended in same panel
-    allParticleP.filter(p => _v2Ids.has(p.id))
-      .forEach(p => particleEl.appendChild(buildParamRow(p, contextMenu)));
+
+    const _sub = (label) => {
+      const d = document.createElement('div');
+      d.className = 'cp-sub-header';
+      d.textContent = label;
+      particleEl.appendChild(d);
+    };
+    const _row = (id) => {
+      const p = _pById[id];
+      if (p) particleEl.appendChild(buildParamRow(p, contextMenu));
+    };
+
+    // ── DISPLAY ──────────────────────────────────────────────────────────────
+    _sub('DISPLAY');
+    _row('particle.count');
+    _row('particle.size');
+    _row('particle.trailDecay');
+    _row('particle.colorMode');
+
+    // ── EMISSION ─────────────────────────────────────────────────────────────
+    _sub('EMISSION');
+    _row('particle.spread');
+    _row('particle.emitter');
+    _row('particle.emitx');
+    _row('particle.emity');
+    _row('particle.boundaryMode');
+
+    // ── MASK SOURCE ───────────────────────────────────────────────────────────
+    _sub('MASK SOURCE');
+    _row('particle.masksrc');
+
+    // ── SIMULATION ───────────────────────────────────────────────────────────
+    _sub('SIMULATION');
+    _row('particle.w.gradient');
+    _row('particle.w.flow');
+    _row('particle.w.nbody');
+    _row('particle.w.ghost');
+    _row('particle.fieldStrength');
+    _row('particle.inertia');
+    _row('particle.lifeDecay');
+
+    // ── FLOW FORMULA ──────────────────────────────────────────────────────────
+    _sub('FLOW FORMULA');
+    _row('particle.flowFormula');
+    _row('particle.lorenz.rho');
+    _row('particle.lorenz.sigma');
+    _row('particle.lorenz.beta');
+    _row('particle.nbody.radius');
+    _row('particle.nbody.falloff');
+    _row('particle.nbody.mode');
+
+    // ── POINTER ───────────────────────────────────────────────────────────────
+    _sub('POINTER');
+    _row('particle.ghost.strength');
+    _row('particle.ghost.mode');
+    _row('particle.ghost.radius');
+    _row('particle.ghost.fadetime');
+
+    // ── GHOST NODES ───────────────────────────────────────────────────────────
+    _sub('GHOST NODES');
+    for (let i = 1; i <= 3; i++) {
+      ['on','x','y','mode','strength','radius'].forEach(k => _row(`particle.ng${i}.${k}`));
+    }
+
+    // ── ACTIONS ───────────────────────────────────────────────────────────────
+    _sub('ACTIONS');
+    _row('particle.respawn');
+    _row('particle.freeze');
+    _row('particle.clearPins');
   }
 }
 

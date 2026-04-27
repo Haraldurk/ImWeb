@@ -436,6 +436,19 @@ button {
     border-color: var(--accent-dim);
 }
 
+/* ── PARAM GROUP SUB-HEADER ──────────────────────────────────────────────── */
+.cp-sub-header {
+    font-family: var(--mono);
+    font-size: 9px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-2);
+    padding: 6px 10px 2px;
+    border-top: 1px solid var(--border);
+    margin-top: 2px;
+    opacity: 0.75;
+}
+
 /* ── DETACHED PANEL ──────────────────────────────────────────────────────── */
 .detached-panel {
     position: fixed;
