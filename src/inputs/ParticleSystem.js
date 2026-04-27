@@ -202,6 +202,7 @@ const RENDER_VERT = /* glsl */ `
   attribute float aIndex;  // 0..N-1 / texSize
   varying float vLife;
   varying float vIdx;
+  varying vec2  vPos;  // normalised particle position 0-1
 
   void main() {
     // Decode UV from aIndex (texSize x texSize texture)
@@ -211,6 +212,7 @@ const RENDER_VERT = /* glsl */ `
     vec4 p = texture2D(uPos, uv);
     vLife = p.z;
     vIdx  = aIndex;
+    vPos  = p.xy;
     vec2 pos = p.xy * 2.0 - 1.0;
     gl_Position = vec4(pos, 0.0, 1.0);
     float sz = uSize;
@@ -223,9 +225,21 @@ const RENDER_VERT = /* glsl */ `
 `;
 
 const RENDER_FRAG = /* glsl */ `
-  uniform float uColorMode; // 0=white, 1=rainbow, 2=mono, 3=fire
+  uniform float uColorMode; // legacy: 0=white, 1=rainbow, 2=mono, 3=fire
+  uniform vec3  uColor1;    // Col1 (swatch colour)
+  uniform vec3  uColor2;    // Col2 (swatch colour)
+  uniform float uCol2Mode;  // 0=Solid, 1=Grad H, 2=Grad V, 3=Grad R
+  uniform float uCol2Phase; // animated phase offset (0-1)
   varying float vLife;
   varying float vIdx;
+  varying vec2  vPos;
+
+  // HSV → RGB (h 0-1, s 0-1, v 0-1)
+  vec3 hsv2rgb(float h, float s, float v) {
+    vec4 K = vec4(1.0, 2.0/3.0, 1.0/3.0, 3.0);
+    vec3 p = abs(fract(vec3(h) + K.xyz) * 6.0 - K.www);
+    return v * mix(K.xxx, clamp(p - K.xxx, 0.0, 1.0), s);
+  }
 
   void main() {
     // Circular point
@@ -234,20 +248,23 @@ const RENDER_FRAG = /* glsl */ `
     if(d > 0.5) discard;
     float alpha = (1.0 - d * 2.0) * vLife;
 
-    vec3 col = vec3(1.0);
-    if(uColorMode < 0.5) {
-      col = vec3(1.0);
-    } else if(uColorMode < 1.5) {
-      // Rainbow by index
-      float h = fract(vIdx * 0.0037);
-      float r=abs(h*6.0-3.0)-1.0, g=2.0-abs(h*6.0-2.0), b=2.0-abs(h*6.0-4.0);
-      col = clamp(vec3(r,g,b),0.0,1.0);
-    } else if(uColorMode < 2.5) {
-      // Monochrome (life-based grey)
-      col = vec3(vLife);
+    vec3 col;
+    // Two-colour modes (used when uColor1/uColor2 are active)
+    if(uCol2Mode < 0.5) {
+      // Solid — Col1 only
+      col = uColor1;
+    } else if(uCol2Mode < 1.5) {
+      // Grad H — horizontal gradient col1→col2 by particle x position
+      float t = fract(vPos.x + uCol2Phase);
+      col = mix(uColor1, uColor2, t);
+    } else if(uCol2Mode < 2.5) {
+      // Grad V — vertical gradient col1→col2 by particle y position
+      float t = fract(vPos.y + uCol2Phase);
+      col = mix(uColor1, uColor2, t);
     } else {
-      // Fire: yellow-orange-red by life
-      col = mix(vec3(1.0,0.1,0.0), vec3(1.0,0.9,0.0), vLife);
+      // Grad R — radial gradient col1 centre → col2 edge
+      float t = fract(length(vPos - 0.5) * 2.0 + uCol2Phase);
+      col = mix(uColor1, uColor2, t);
     }
 
     gl_FragColor = vec4(col * alpha, alpha);
@@ -412,6 +429,10 @@ export class ParticleSystem {
         uResW:      { value: this._count },
         uColorMode: { value: 0 },
         uScaleBy:   { value: 0 },
+        uColor1:    { value: new THREE.Vector3(1, 1, 1) },
+        uColor2:    { value: new THREE.Vector3(0.2, 0.5, 1.0) },
+        uCol2Mode:  { value: 0 },
+        uCol2Phase: { value: 0 },
       },
       vertexShader:   RENDER_VERT,
       fragmentShader: RENDER_FRAG,
@@ -479,7 +500,7 @@ export class ParticleSystem {
 
   // ── Tick ──────────────────────────────────────────────────────────────────
 
-  tick(ps, dt, maskTex = null) {
+  tick(ps, dt, maskTex = null, colors = null) {
     const countIdx  = ps.get('particle.count').value;
     if (COUNTS[countIdx] !== this._count) this._init(countIdx);
 
@@ -572,6 +593,12 @@ export class ParticleSystem {
     this._pointsMat.uniforms.uPos.value       = this._posBuffers[nxtPos].texture;
     this._pointsMat.uniforms.uSize.value      = ptSize;
     this._pointsMat.uniforms.uColorMode.value = col;
+    if (colors) {
+      this._pointsMat.uniforms.uColor1.value    = colors.c1;
+      this._pointsMat.uniforms.uColor2.value    = colors.c2;
+      this._pointsMat.uniforms.uCol2Mode.value  = colors.mode;
+      this._pointsMat.uniforms.uCol2Phase.value = colors.phase;
+    }
     this.renderer.setRenderTarget(this._outputRT);
     this.renderer.setClearColor(0x000000, 1);
     this.renderer.clear();

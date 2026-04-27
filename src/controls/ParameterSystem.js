@@ -430,31 +430,29 @@ export function registerCoreParameters(ps) {
   _ps = ps;  // make ps accessible to setTableManager for global.tableSlot sync
   // ── Layer source selection ────────────────────────────────────────────────
   const SOURCES = [
-    "Camera",
-    "Movie",
-    "Buffer",
-    "Color",
-    "Noise",
-    "3D Scene",
-    "Draw",
-    "Output",
-    "BG1",
-    "BG2",
-    "Color2",
-    "Text",
-    "Sound",
-    "Delay",
-    "Scope",
-    "SlitScan",
-    "Particles",
-    "Seq1",
-    "Seq2",
-    "Seq3",
-    "3D Depth",
-    "SDF",
-    "VWarp",
-    "FG Palette",
-    "BG Palette",
+    "Camera",   // 0
+    "Movie",    // 1
+    "Buffer",   // 2
+    "Color",    // 3
+    "Color2",   // 4
+    "Noise",    // 5
+    "3D Scene", // 6
+    "Draw",     // 7
+    "Output",   // 8
+    "BG1",      // 9
+    "BG2",      // 10
+    "Text",     // 11
+    "Sound",    // 12
+    "Delay",    // 13
+    "Scope",    // 14
+    "SlitScan", // 15
+    "Particles",// 16
+    "Seq1",     // 17
+    "Seq2",     // 18
+    "Seq3",     // 19
+    "3D Depth", // 20
+    "SDF",      // 21
+    "VWarp",    // 22
   ];
 
   ps.register({
@@ -3239,6 +3237,17 @@ export function registerCoreParameters(ps) {
   });
   // PScaleBy, Attr1/Attr2 removed — belonged to legacy ParticleSystem.js (never instantiated).
   // Attractors replaced by Ghost 1/2/3 in the GPU Engine section.
+
+  // ── Particle colors ───────────────────────────────────────────────────────
+  ps.register({ id: "particle.col1.hue", label: "P Col1 H", group: "particle", min: 0, max: 360, step: 1, value: 0,   unit: "°" });
+  ps.register({ id: "particle.col1.sat", label: "P Col1 S", group: "particle", min: 0, max: 100, step: 1, value: 0,   unit: "%" });
+  ps.register({ id: "particle.col1.val", label: "P Col1 V", group: "particle", min: 0, max: 100, step: 1, value: 100, unit: "%" });
+  ps.register({ id: "particle.col2.hue", label: "P Col2 H", group: "particle", min: 0, max: 360, step: 1, value: 200, unit: "°" });
+  ps.register({ id: "particle.col2.sat", label: "P Col2 S", group: "particle", min: 0, max: 100, step: 1, value: 80,  unit: "%" });
+  ps.register({ id: "particle.col2.val", label: "P Col2 V", group: "particle", min: 0, max: 100, step: 1, value: 100, unit: "%" });
+  ps.register({ id: "particle.col2.type", label: "P Col Type", group: "particle", type: PARAM_TYPE.SELECT,
+    options: ["Solid", "Grad H", "Grad V", "Grad R"], value: 0 });
+  ps.register({ id: "particle.col2.speed", label: "P Col Speed", group: "particle", min: -200, max: 200, step: 1, value: 0, unit: "%" });
 
   // ── Slit Scan ─────────────────────────────────────────────────────────────
   // ── Vasulka Warp ──────────────────────────────────────────────────────────

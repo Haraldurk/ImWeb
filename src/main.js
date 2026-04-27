@@ -267,44 +267,6 @@ async function main() {
   );
   updateColorTexture();
 
-  // FG Palette texture — solid color from palette.fg.* params (source index 23)
-  const fgPaletteCanvas = document.createElement("canvas");
-  fgPaletteCanvas.width = fgPaletteCanvas.height = 4;
-  const fgPaletteCtx = fgPaletteCanvas.getContext("2d");
-  const fgPaletteTexture = new THREE.CanvasTexture(fgPaletteCanvas);
-
-  function updateFgPaletteTexture() {
-    const h = ps.get("palette.fg.hue").value / 360;
-    const s = ps.get("palette.fg.sat").value / 100;
-    const v = ps.get("palette.fg.val").value / 100;
-    fgPaletteCtx.fillStyle = hsvToHex(h, s, v);
-    fgPaletteCtx.fillRect(0, 0, 4, 4);
-    fgPaletteTexture.needsUpdate = true;
-  }
-  ["palette.fg.hue", "palette.fg.sat", "palette.fg.val"].forEach((id) =>
-    ps.get(id).onChange(updateFgPaletteTexture),
-  );
-  updateFgPaletteTexture();
-
-  // BG Palette texture — solid color from palette.bg.* params (source index 24)
-  const bgPaletteCanvas = document.createElement("canvas");
-  bgPaletteCanvas.width = bgPaletteCanvas.height = 4;
-  const bgPaletteCtx = bgPaletteCanvas.getContext("2d");
-  const bgPaletteTexture = new THREE.CanvasTexture(bgPaletteCanvas);
-
-  function updateBgPaletteTexture() {
-    const h = ps.get("palette.bg.hue").value / 360;
-    const s = ps.get("palette.bg.sat").value / 100;
-    const v = ps.get("palette.bg.val").value / 100;
-    bgPaletteCtx.fillStyle = hsvToHex(h, s, v);
-    bgPaletteCtx.fillRect(0, 0, 4, 4);
-    bgPaletteTexture.needsUpdate = true;
-  }
-  ["palette.bg.hue", "palette.bg.sat", "palette.bg.val"].forEach((id) =>
-    ps.get(id).onChange(updateBgPaletteTexture),
-  );
-  updateBgPaletteTexture();
-
   // Color2 input — solid or gradient source (between color1 and color2)
   const color2Canvas = document.createElement("canvas");
   color2Canvas.width = color2Canvas.height = 256;
@@ -2478,7 +2440,7 @@ async function main() {
     const fg = ps.get("layer.fg").value;
     const bg = ps.get("layer.bg").value;
     const ds = ps.get("layer.ds").value;
-    const SCENE3D_IDX = 5;
+    const SCENE3D_IDX = 6;
     const DEPTH3D_IDX = 20;
     const needs3D =
       fg === SCENE3D_IDX ||
@@ -2513,29 +2475,29 @@ async function main() {
   /** Resolve a raw layer-source index to its current texture (matches Pipeline._resolveSource). */
   function _resolveLayerTex(idx) {
     const keys = [
-      "camera",
-      "movie",
-      "buffer",
-      "color",
-      "noise",
-      "scene3d",
-      "draw",
-      "output",
-      "bg1",
-      "bg2",
-      "color2",
-      "text",
-      "sound",
-      "delay",
-      "scope",
-      "slitscan",
-      "particles",
-      "seq1",
-      "seq2",
-      "seq3",
-      "depth3d",
-      "sdf",
-      "vwarp",
+      "camera",   // 0
+      "movie",    // 1
+      "buffer",   // 2
+      "color",    // 3
+      "color2",   // 4
+      "noise",    // 5
+      "scene3d",  // 6
+      "draw",     // 7
+      "output",   // 8
+      "bg1",      // 9
+      "bg2",      // 10
+      "text",     // 11
+      "sound",    // 12
+      "delay",    // 13
+      "scope",    // 14
+      "slitscan", // 15
+      "particles",// 16
+      "seq1",     // 17
+      "seq2",     // 18
+      "seq3",     // 19
+      "depth3d",  // 20
+      "sdf",      // 21
+      "vwarp",    // 22
     ];
     const key = keys[idx];
     if (key === "camera")
@@ -4092,6 +4054,11 @@ void main() {
   let _noiseColor1 = new THREE.Vector3(1, 1, 1);
   let _noiseColor2 = new THREE.Vector3(0, 0, 0);
 
+  // Particle two-color system
+  let _particleColor1 = new THREE.Vector3(1, 1, 1);
+  let _particleColor2 = new THREE.Vector3(0.2, 0.5, 1.0);
+  let _particleCol2Phase = 0;
+
   function _hexToVec3(hex) {
     const r = parseInt(hex.slice(1, 3), 16) / 255;
     const g = parseInt(hex.slice(3, 5), 16) / 255;
@@ -4108,6 +4075,17 @@ void main() {
     .getElementById("noise-color2-picker")
     ?.addEventListener("input", (e) => {
       _noiseColor2 = _hexToVec3(e.target.value);
+    });
+
+  document
+    .getElementById("particle-col1-picker")
+    ?.addEventListener("input", (e) => {
+      _particleColor1 = _hexToVec3(e.target.value);
+    });
+  document
+    .getElementById("particle-col2-picker")
+    ?.addEventListener("input", (e) => {
+      _particleColor2 = _hexToVec3(e.target.value);
     });
 
   const HASH_ONLY_NOISE = new Set([0, 9, 10, 11, 12, 13, 14, 24, 25]); // 0=WhiteNoise; 9-14=hash-only types; 24-25=point-pattern types
@@ -4518,7 +4496,16 @@ void main() {
     ];
     const PARTICLE_IDX = 16;
     const _particlesUsed = ps.get("layer.fg").value === PARTICLE_IDX || ps.get("layer.bg").value === PARTICLE_IDX || (ps.get("layer.ds")?.value ?? 0) === PARTICLE_IDX;
-    if (_particlesUsed) particles.tick(ps, dt, _pmSrcMap[ps.get("particle.masksrc").value] ?? null);
+    if (_particlesUsed) {
+      const _pc2speed = ps.get("particle.col2.speed")?.value ?? 0;
+      if (_pc2speed !== 0) _particleCol2Phase += dt * _pc2speed * 0.005;
+      particles.tick(ps, dt, _pmSrcMap[ps.get("particle.masksrc").value] ?? null, {
+        c1: _particleColor1,
+        c2: _particleColor2,
+        mode: ps.get("particle.col2.type")?.value ?? 0,
+        phase: _particleCol2Phase,
+      });
+    }
     // SDF dedicated texture source routing (decouples from layer.fg / layer.bg).
     // SELECT index 0 = follow the pipeline FG/BG layer (default, preserves old behaviour).
     // Indices 1–7 map to _resolveLayerTex's internal keys: Camera=0,Movie=1,Buffer=2,Color=3,Noise=4,3D=5,Draw=6
@@ -4550,7 +4537,7 @@ void main() {
     }
 
     // Generate noise only when a layer is using it as a source (512×512 dedicated target)
-    const NOISE_IDX = 4;
+    const NOISE_IDX = 5;
     const _noiseUsed = ps.get("layer.fg").value === NOISE_IDX || ps.get("layer.bg").value === NOISE_IDX || (ps.get("layer.ds")?.value ?? 0) === NOISE_IDX;
     if (_noiseUsed) noiseTexture = pipeline.generateNoise({
       time: lastTime / 1000,
@@ -4571,7 +4558,7 @@ void main() {
     });
 
     // Render 3D scene if active OR used as a layer source
-    const SCENE3D_IDX = 5; // index in SOURCES array
+    const SCENE3D_IDX = 6; // index in SOURCES array
     const DEPTH3D_IDX = 20; // index in SOURCES array
     const depthUsed =
       ps.get("layer.fg").value === DEPTH3D_IDX ||
@@ -4612,8 +4599,6 @@ void main() {
       depth3d: depthUsed ? scene3d.depthTexture : null,
       color: colorTexture,
       color2: color2Texture,
-      fgpalette: fgPaletteTexture,
-      bgpalette: bgPaletteTexture,
       sound: soundTexture,
       noise: noiseTexture,
       draw: drawLayer.texture,

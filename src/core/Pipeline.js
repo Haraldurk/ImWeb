@@ -692,7 +692,7 @@ export class Pipeline {
   }
 
   _resolveSource(inputs, sourceIdx) {
-    const SOURCES = ['camera', 'movie', 'buffer', 'color', 'noise', 'scene3d', 'draw', 'output', 'bg1', 'bg2', 'color2', 'text', 'sound', 'delay', 'scope', 'slitscan', 'particles', 'seq1', 'seq2', 'seq3', 'depth3d', 'sdf', 'vwarp', 'fgpalette', 'bgpalette'];
+    const SOURCES = ['camera', 'movie', 'buffer', 'color', 'color2', 'noise', 'scene3d', 'draw', 'output', 'bg1', 'bg2', 'text', 'sound', 'delay', 'scope', 'slitscan', 'particles', 'seq1', 'seq2', 'seq3', 'depth3d', 'sdf', 'vwarp'];
     const key = SOURCES[sourceIdx] ?? 'color';
 
     if (key === 'camera'  && inputs.camera)  return inputs.camera;
@@ -717,8 +717,6 @@ export class Pipeline {
     if (key === 'depth3d'   && inputs.depth3d)   return inputs.depth3d;
     if (key === 'sdf'       && inputs.sdf)       return inputs.sdf;
     if (key === 'vwarp'     && inputs.vwarp)     return inputs.vwarp;
-    if (key === 'fgpalette' && inputs.fgpalette) return inputs.fgpalette;
-    if (key === 'bgpalette' && inputs.bgpalette) return inputs.bgpalette;
     return inputs.color ?? this._getFallbackTexture();
   }
 

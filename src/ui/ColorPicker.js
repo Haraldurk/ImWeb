@@ -21,6 +21,10 @@ export class ColorPicker {
     this._v = Math.max(0, Math.min(100, +v || 0));
     this._cb = onChange;
     this._dragging = null; // 'sv' | 'hue' | null
+    this._dirty = false;
+    this._loopRunning = false;
+    this._svRect = null;
+    this._hueRect = null;
     this._build(container);
     // Two-frame defer: one frame for the browser to attach the element,
     // a second frame to ensure CSS layout has run and offsetWidth is valid.
@@ -32,6 +36,7 @@ export class ColorPicker {
     this._h = Math.max(0, Math.min(360, +h || 0));
     this._s = Math.max(0, Math.min(100, +s || 0));
     this._v = Math.max(0, Math.min(100, +v || 0));
+    this._dirty = false;
     this._syncInputs();
     this._render();
   }
@@ -61,44 +66,44 @@ export class ColorPicker {
 
     // ── SV box interaction ────────────────────────────────────────────────────
     const svDrag = (e) => {
-      const r = this._svCv.getBoundingClientRect();
-      if (!r.width || !r.height) return;
+      const r = this._svRect;
+      if (!r || !r.width || !r.height) return;
       this._s = Math.max(0, Math.min(100, ((e.clientX - r.left) / r.width)  * 100));
       this._v = Math.max(0, Math.min(100, (1 - (e.clientY - r.top) / r.height) * 100));
-      this._render();
-      this._syncInputs();
-      this._emit();
+      this._dirty = true;
+      this._startRenderLoop();
     };
     this._svCv.addEventListener('pointerdown', e => {
       this._dragging = 'sv';
       this._svCv.setPointerCapture(e.pointerId);
+      this._svRect = this._svCv.getBoundingClientRect();
       svDrag(e);
     });
     this._svCv.addEventListener('pointermove', e => {
       if (this._dragging === 'sv') svDrag(e);
     });
-    this._svCv.addEventListener('pointerup', () => { this._dragging = null; });
-    this._svCv.addEventListener('pointercancel', () => { this._dragging = null; });
+    this._svCv.addEventListener('pointerup', () => { this._dragging = null; this._svRect = null; });
+    this._svCv.addEventListener('pointercancel', () => { this._dragging = null; this._svRect = null; });
 
     // ── Hue bar interaction ────────────────────────────────────────────────────
     const hueDrag = (e) => {
-      const r = this._hueCv.getBoundingClientRect();
-      if (!r.width) return;
+      const r = this._hueRect;
+      if (!r || !r.width) return;
       this._h = Math.max(0, Math.min(360, ((e.clientX - r.left) / r.width) * 360));
-      this._render();
-      this._syncInputs();
-      this._emit();
+      this._dirty = true;
+      this._startRenderLoop();
     };
     this._hueCv.addEventListener('pointerdown', e => {
       this._dragging = 'hue';
       this._hueCv.setPointerCapture(e.pointerId);
+      this._hueRect = this._hueCv.getBoundingClientRect();
       hueDrag(e);
     });
     this._hueCv.addEventListener('pointermove', e => {
       if (this._dragging === 'hue') hueDrag(e);
     });
-    this._hueCv.addEventListener('pointerup', () => { this._dragging = null; });
-    this._hueCv.addEventListener('pointercancel', () => { this._dragging = null; });
+    this._hueCv.addEventListener('pointerup', () => { this._dragging = null; this._hueRect = null; });
+    this._hueCv.addEventListener('pointercancel', () => { this._dragging = null; this._hueRect = null; });
 
     // Re-render when the container resizes (panel open/close, window resize)
     const ro = new ResizeObserver(() => this._render());
@@ -121,9 +126,8 @@ export class ColorPicker {
       if (isNaN(n)) { inp.value = Math.round(get()); return; }
       n = Math.max(min, Math.min(max, n));
       set(n);
-      this._render();
-      this._syncInputs();
-      this._emit();
+      this._dirty = true;
+      this._startRenderLoop();
     });
     g.append(l, inp);
     row.appendChild(g);
@@ -142,9 +146,26 @@ export class ColorPicker {
     if (this._cb) this._cb(this._h, this._s, this._v);
   }
 
+  // ── rAF-throttled render loop (per-pointermove + per-input-change) ──────────
+
+  _startRenderLoop() {
+    if (this._loopRunning) return;
+    this._loopRunning = true;
+    const loop = () => {
+      if (!this._dirty) { this._loopRunning = false; return; }
+      this._dirty = false;
+      this._render();
+      this._syncInputs();
+      this._emit();
+      requestAnimationFrame(loop);
+    };
+    requestAnimationFrame(loop);
+  }
+
   // ── Rendering ──────────────────────────────────────────────────────────────
 
   _render() {
+    if (this._svCv.offsetParent === null) return; // hidden element
     this._drawSV();
     this._drawHue();
   }
@@ -152,9 +173,8 @@ export class ColorPicker {
   _drawSV() {
     const cv = this._svCv;
     const W = cv.offsetWidth;
-    if (!W) { requestAnimationFrame(() => this._render()); return; }
+    if (!W) return;
     const H = cv.offsetHeight || 128;
-    // Only resize buffer when dimensions change (avoids flicker)
     if (cv.width !== W) cv.width = W;
     if (cv.height !== H) cv.height = H;
     const ctx = cv.getContext('2d');
@@ -181,14 +201,12 @@ export class ColorPicker {
     const cx = (this._s / 100) * W;
     const cy = (1 - this._v / 100) * H;
 
-    // Outer dark ring
     ctx.beginPath();
     ctx.arc(cx, cy, 7, 0, Math.PI * 2);
     ctx.strokeStyle = 'rgba(0,0,0,0.65)';
     ctx.lineWidth = 2.5;
     ctx.stroke();
 
-    // Inner white ring
     ctx.beginPath();
     ctx.arc(cx, cy, 5.5, 0, Math.PI * 2);
     ctx.strokeStyle = 'rgba(255,255,255,0.9)';
@@ -199,19 +217,17 @@ export class ColorPicker {
   _drawHue() {
     const cv = this._hueCv;
     const W = cv.offsetWidth;
-    if (!W) { requestAnimationFrame(() => this._render()); return; }
+    if (!W) return;
     const H = cv.offsetHeight || 14;
     if (cv.width !== W) cv.width = W;
     if (cv.height !== H) cv.height = H;
     const ctx = cv.getContext('2d');
 
-    // Full-spectrum rainbow
     const grad = ctx.createLinearGradient(0, 0, W, 0);
     for (let i = 0; i <= 6; i++) grad.addColorStop(i / 6, `hsl(${i * 60},100%,50%)`);
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, W, H);
 
-    // Indicator: shadow line + white line
     const x = Math.round((this._h / 360) * W);
     ctx.strokeStyle = 'rgba(0,0,0,0.55)';
     ctx.lineWidth = 3;
