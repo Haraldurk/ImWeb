@@ -76,8 +76,9 @@ export class ParticleEngine {
     cs({ id: 'particle.nbody.mode',    label: 'N-body mode',    min: 0, max: 1,   value: 0   }, 0.05);
 
     // ── Ghost / pointer ───────────────────────────────────────────────────────
-    const strP = cs({ id: 'particle.ghost.strength', label: 'Pointer strength', min: 0, max: 4, value: 1.0 }, 0.05);
-    strP.onChange(v => this.pointerPerf.setStrength(v));
+    // particle.ghost.strength → uGhostStrength in PASS_B (global multiplier for all ghost forces).
+    // Do NOT also feed it to per-ghost strength — that would apply the value twice (quadratic).
+    cs({ id: 'particle.ghost.strength', label: 'Pointer strength', min: 0, max: 4, value: 1.0 }, 0.05);
     const modeP = c({ id: 'particle.ghost.mode', label: 'Pointer mode', type: PARAM_TYPE.SELECT,
          min: 0, max: 5, value: 0, step: 1,
          options: ['Flow','Source','Sink','Vortex','Turb','Freeze'] });

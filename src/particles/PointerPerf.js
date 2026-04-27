@@ -34,19 +34,16 @@ export class PointerPerf {
   _ghostOptions() {
     const r = this._pointerRadius;
     const s = this._pointerStrength;
+    // Per-ghost strength is always 1.0 — the global particle.ghost.strength param
+    // (→ uGhostStrength in PASS_B) is the single sensitivity lever. Using _pointerStrength
+    // here too would cause quadratic scaling (strength² effect).
     const map = {
-      // Flow: directional sweep — strength/radius set normally; velocity injected via setFlowVec
-      flow:       { mode: 'flow',        strength: s,       radius: r       },
-      // Source: radial repel — explosion outward from cursor centre
-      source:     { mode: 'repel',       strength: s,       radius: r       },
-      // Sink: radial attract — particles drain toward cursor
-      sink:       { mode: 'attract',     strength: s,       radius: r       },
-      // Vortex: tangential spin — strength ramps with hold time in _onPointerMove
-      vortex:     { mode: 'vortex',      strength: 0.0,     radius: r * 1.5 },
-      // Turbulence: noise-driven chaos within radius
-      turbulence: { mode: 'turbulence',  strength: s,       radius: r * 1.2 },
-      // Freeze: velocity damping — particles lock in place
-      freeze:     { mode: 'freeze',      strength: s,       radius: r       },
+      flow:       { mode: 'flow',        strength: 1.0,  radius: r       },
+      source:     { mode: 'repel',       strength: 1.0,  radius: r       },
+      sink:       { mode: 'attract',     strength: 1.0,  radius: r       },
+      vortex:     { mode: 'vortex',      strength: 0.0,  radius: r * 1.5 }, // ramps with hold
+      turbulence: { mode: 'turbulence',  strength: 1.0,  radius: r * 1.2 },
+      freeze:     { mode: 'freeze',      strength: 1.0,  radius: r       },
     };
     return map[this.mode] ?? map.flow;
   }
@@ -120,8 +117,8 @@ export class PointerPerf {
       : this._fadeSec * 1000;
     this._ghostNodes.scheduleFade(ghostId, fadeMs);
 
-    // Decay flow vector to zero so residual force doesn't linger on next pointer down
-    if (this.mode === 'flow') this._ghostNodes.setFlowVec(0, 0);
+    // Note: uFlowVec is NOT zeroed here — the ghost strength fades to 0, so
+    // flow force naturally dies off. Zeroing immediately kills the fade effect.
 
     this._activePointers.delete(e.pointerId);
     this._vortexT0.delete(e.pointerId);
