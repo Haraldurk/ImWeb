@@ -51,40 +51,41 @@ void main() {
 
       float d     = uGhostB[i].y > 0.5 ? sdBox(vUv, c, r) : sdSphere(vUv, c, r);
       float dSoft = max(abs(d), 0.001);
-      // Softer singularity (0.05 vs 0.01) keeps source/sink usable at high strength
-      float gF    = abs(str) / (dSoft * dSoft + 0.05);
+
+      // inside: 1 at centre, linear fall to 0 at radius edge, 0 beyond.
+      // Multiplying gF by inside gives every mode a hard radius boundary
+      // with peak force at centre — matching the described physical behaviour.
+      float inside = max(0.0, -d / r);
+      float gF     = abs(str) / (dSoft * dSoft + 0.05) * inside;
 
       vec2 diff = vUv - c;
       vec2 grad = length(diff) > 0.0001 ? normalize(diff) : vec2(0.0, 1.0);
       float s   = str >= 0.0 ? 1.0 : -1.0;
 
       if (mode < 0.1) {
-        // ATTRACT / SINK — gravitational pull toward centre
+        // ATTRACT / SINK — gravitational pull toward centre, strongest at centre
         acc -= grad * gF * s;
 
       } else if (mode < 0.3) {
-        // REPEL / SOURCE — radial explosion outward
+        // REPEL / SOURCE — radial push outward, clears a circle of exactly radius size
         acc += grad * gF * s;
 
       } else if (mode < 0.5) {
-        // FLOW — directional sweep in pointer velocity direction, same gF scale as attract/repel
+        // FLOW — directional sweep; slow drag ∝ speed, fast swipe = full gF
         float spd = length(uFlowVec);
-        if (spd > 0.0001) {
-          // saturate: slow pointer = proportional force, fast pointer = full gF
-          acc += (uFlowVec / spd) * gF * clamp(spd * 6.0, 0.0, 1.0);
-        }
+        if (spd > 0.0001) acc += (uFlowVec / spd) * gF * clamp(spd * 6.0, 0.0, 1.0);
 
       } else if (mode < 0.7) {
-        // VORTEX — tangential spin; 1/d² makes inner particles spin faster (whirlpool)
+        // VORTEX — tangential spin; inner particles spin faster (1/d² inside radius)
         acc += vec2(-grad.y, grad.x) * gF * s;
 
       } else if (mode < 0.9) {
-        // TURBULENCE — random noise direction × same gF scale as attract/repel
-        vec2 noiseCoord = vUv * 18.0 + vec2(uTime * 0.6, -uTime * 0.4);
-        acc += hash2(noiseCoord) * gF;
+        // TURBULENCE — noise direction × gF, contained within radius
+        vec2 nc = vUv * 18.0 + vec2(uTime * 0.6, -uTime * 0.4);
+        acc += hash2(nc) * gF;
 
       } else {
-        // FREEZE — accumulate velocity-damping weight
+        // FREEZE — damping weight, zero outside radius
         freezeW += gF;
       }
     }
