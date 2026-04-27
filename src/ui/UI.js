@@ -499,16 +499,18 @@ export function buildParamRow(param, contextMenu) {
     }
 
   } else if (param.type === PARAM_TYPE.TRIGGER) {
-    const btn = document.createElement('button');
-    btn.className = 'param-label';
-    btn.textContent = '▶ Trigger';
-    btn.style.cssText = 'font-size:11px;padding:2px 8px;background:var(--bg-4);border:1px solid var(--border);border-radius:3px;color:var(--text-1);cursor:pointer;';
-    btn.addEventListener('click', () => param.trigger());
-    row.appendChild(label);
-    row.appendChild(ctrlEl);
-    valueEl.appendChild(btn);
+    valueEl.textContent = '▶';
+    valueEl.style.cssText = 'cursor:pointer;text-align:right;color:var(--text-2);font-size:13px;';
+    row.style.cursor = 'pointer';
+    row.addEventListener('click', e => {
+      if (e.target === ctrlEl || ctrlEl.contains(e.target)) return; // badge click handled separately
+      param.trigger();
+      // brief flash to confirm
+      valueEl.style.color = 'var(--accent)';
+      setTimeout(() => { valueEl.style.color = 'var(--text-2)'; }, 120);
+    });
     row.appendChild(valueEl);
-    return row;
+    // fall through — context menu + touch long-press added below
   }
 
   // Right-click → context menu
@@ -756,36 +758,35 @@ export function buildMappingPanels(ps, contextMenu) {
     params.forEach(p => el.appendChild(buildParamRow(p, contextMenu)));
   });
 
-  // ── Particle panel: legacy params + GPU Engine v2 sub-section ─────────────
+  // ── Particle panel: legacy v1 params only ──────────────────────────────────
+  const _v2Ids = new Set([
+    'particle.w.gradient','particle.w.flow','particle.w.nbody','particle.w.ghost',
+    'particle.trailDecay','particle.colorMode','particle.fieldStrength',
+    'particle.inertia','particle.lifeDecay','particle.boundaryMode',
+    'particle.flowFormula',
+    'particle.lorenz.rho','particle.lorenz.sigma','particle.lorenz.beta',
+    'particle.nbody.radius','particle.nbody.falloff','particle.nbody.mode',
+    'particle.ghost.strength','particle.ghost.mode','particle.ghost.fadetime',
+    'particle.ng1.on','particle.ng1.x','particle.ng1.y','particle.ng1.mode','particle.ng1.strength','particle.ng1.radius',
+    'particle.ng2.on','particle.ng2.x','particle.ng2.y','particle.ng2.mode','particle.ng2.strength','particle.ng2.radius',
+    'particle.ng3.on','particle.ng3.x','particle.ng3.y','particle.ng3.mode','particle.ng3.strength','particle.ng3.radius',
+    'particle.respawn','particle.freeze','particle.clearPins',
+  ]);
+  const allParticleP = ps.getGroup('particle');
+
   const particleEl = document.getElementById('particle-params');
   if (particleEl) {
     particleEl.innerHTML = '';
-    const allP = ps.getGroup('particle');
+    allParticleP.filter(p => !_v2Ids.has(p.id))
+      .forEach(p => particleEl.appendChild(buildParamRow(p, contextMenu)));
+  }
 
-    // IDs introduced by ParticleEngine.registerParams() (Phase E)
-    const _v2Ids = new Set([
-      'particle.w.gradient','particle.w.flow','particle.w.nbody','particle.w.ghost',
-      'particle.trailDecay','particle.colorMode','particle.fieldStrength',
-      'particle.inertia','particle.lifeDecay','particle.boundaryMode',
-      'particle.flowFormula',
-      'particle.lorenz.rho','particle.lorenz.sigma','particle.lorenz.beta',
-      'particle.nbody.radius','particle.nbody.falloff','particle.nbody.mode',
-      'particle.ghost.strength','particle.ghost.mode',
-      'particle.respawn','particle.freeze',
-    ]);
-    const legacy = allP.filter(p => !_v2Ids.has(p.id));
-    const v2     = allP.filter(p =>  _v2Ids.has(p.id));
-
-    legacy.forEach(p => particleEl.appendChild(buildParamRow(p, contextMenu)));
-
-    if (v2.length) {
-      const hdr = document.createElement('div');
-      hdr.style.cssText = 'font-size:10px;letter-spacing:.09em;text-transform:uppercase;' +
-        'color:var(--accent);margin:8px 0 6px;padding-bottom:6px;border-bottom:1px solid var(--border)';
-      hdr.textContent = 'GPU Engine';
-      particleEl.appendChild(hdr);
-      v2.forEach(p => particleEl.appendChild(buildParamRow(p, contextMenu)));
-    }
+  // ── GPU Engine panel: v2 params in their own section ────────────────────────
+  const gpuEl = document.getElementById('gpu-engine-params');
+  if (gpuEl) {
+    gpuEl.innerHTML = '';
+    allParticleP.filter(p => _v2Ids.has(p.id))
+      .forEach(p => gpuEl.appendChild(buildParamRow(p, contextMenu)));
   }
 }
 

@@ -3,6 +3,7 @@ export class PointerPerf {
     this._ghostNodes     = ghostNodes;
     this._canvas         = canvas;
     this.mode            = 'flow';
+    this._fadeSec        = 0.8;       // default, overridden by particle.ghost.fadetime param
     this._activePointers = new Map(); // pointerId → ghostId
     this._vortexT0       = new Map(); // pointerId → start timestamp
 
@@ -19,7 +20,8 @@ export class PointerPerf {
     canvas.addEventListener('pointercancel', this._onCancel);
   }
 
-  setMode(mode) { this.mode = mode; }
+  setMode(mode)       { this.mode = mode; }
+  setFadeTime(secs)   { this._fadeSec = secs; }
 
   // Mode → initial ghost options
   _ghostOptions() {
@@ -75,7 +77,7 @@ export class PointerPerf {
   _onPointerUp(e) {
     const ghostId = this._activePointers.get(e.pointerId);
     if (ghostId === undefined) return;
-    const fadeMs = this.mode === 'vortex' ? 3000 : 800;
+    const fadeMs = this.mode === 'vortex' ? Math.max(this._fadeSec * 4000, 2000) : this._fadeSec * 1000;
     this._ghostNodes.scheduleFade(ghostId, fadeMs);
     this._activePointers.delete(e.pointerId);
     this._vortexT0.delete(e.pointerId);
