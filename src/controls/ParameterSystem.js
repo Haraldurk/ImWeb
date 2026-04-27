@@ -1059,6 +1059,23 @@ export function registerCoreParameters(ps) {
     value: 0,
     step: 0.5,
   });
+  // ── Noise color backing params (for state save/restore) ──────────────────
+  // Stored as linear-light R/G/B in [0,1]. Not shown in param rows — driven
+  // exclusively by the native <input type="color"> pickers + onChange wiring.
+  for (const [id, label, def] of [
+    ['noise.col1.r','NC1R',1],['noise.col1.g','NC1G',1],['noise.col1.b','NC1B',1],
+    ['noise.col2.r','NC2R',0],['noise.col2.g','NC2G',0],['noise.col2.b','NC2B',0],
+  ]) {
+    ps.register({ id, label, group:'noise', min:0, max:1, value:def, step:0.001 });
+  }
+  // ── Particle color backing params ─────────────────────────────────────────
+  for (const [id, label, def] of [
+    ['particle.col1.r','PC1R',0.102],['particle.col1.g','PC1G',0.2],['particle.col1.b','PC1B',0.8],
+    ['particle.col2.r','PC2R',1.0  ],['particle.col2.g','PC2G',0.3],['particle.col2.b','PC2B',0.102],
+  ]) {
+    ps.register({ id, label, group:'particle', min:0, max:1, value:def, step:0.001 });
+  }
+
   // ── Mirror ────────────────────────────────────────────────────────────────
   ps.register({
     id: "mirror.camera",

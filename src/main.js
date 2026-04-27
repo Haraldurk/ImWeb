@@ -1883,12 +1883,32 @@ async function main() {
   }
 
   const ioBlock = document.createElement("div");
-  ioBlock.style.cssText = "padding:6px 0 8px;border-bottom:1px solid var(--border);";
+  ioBlock.className = "panel-section";
 
   const ioHdr = document.createElement("div");
-  ioHdr.style.cssText = "font:10px/1 var(--mono);color:var(--text-2);letter-spacing:.1em;text-transform:uppercase;padding:4px 10px 6px;opacity:.7;";
+  ioHdr.className = "section-header";
   ioHdr.textContent = "I / O";
   ioBlock.appendChild(ioHdr);
+
+  ioHdr.addEventListener("click", (e) => {
+    if (e.target.tagName === "BUTTON") return;
+    ioBlock.classList.toggle("collapsed");
+    ioHdr.classList.toggle("collapsed");
+  });
+
+  const ioBtns = document.createElement("div");
+  ioBtns.className = "section-header-btns";
+
+  const ioDetach = document.createElement("button");
+  ioDetach.textContent = "⊞";
+  ioDetach.title = "Detach panel";
+  ioDetach.addEventListener("click", (e) => {
+    e.stopPropagation();
+    _detachSection(ioBlock);
+  });
+
+  ioBtns.appendChild(ioDetach);
+  ioHdr.appendChild(ioBtns);
 
   // ── Camera ──
   const btnCameraOn = document.createElement("button");
@@ -4054,7 +4074,6 @@ void main() {
   let _noiseColor1 = new THREE.Vector3(1, 1, 1);
   let _noiseColor2 = new THREE.Vector3(0, 0, 0);
 
-
   function _hexToVec3(hex) {
     const r = parseInt(hex.slice(1, 3), 16) / 255;
     const g = parseInt(hex.slice(3, 5), 16) / 255;
@@ -4062,27 +4081,52 @@ void main() {
     return new THREE.Vector3(r, g, b);
   }
 
-  document
-    .getElementById("noise-color1-picker")
-    ?.addEventListener("input", (e) => {
-      _noiseColor1 = _hexToVec3(e.target.value);
-    });
-  document
-    .getElementById("noise-color2-picker")
-    ?.addEventListener("input", (e) => {
-      _noiseColor2 = _hexToVec3(e.target.value);
-    });
+  function _vec3ToHex(r, g, b) {
+    const clamp = (v) => Math.max(0, Math.min(1, v));
+    const toHex = (v) => Math.round(clamp(v) * 255).toString(16).padStart(2, '0');
+    return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
+  }
 
-  document
-    .getElementById("particle-col1-picker")
-    ?.addEventListener("input", (e) => {
-      particles.color1 = _hexToVec3(e.target.value);
+  // ── Color picker ↔ ParameterSystem bidirectional wiring ──────────────────
+  // Each native <input type="color"> also writes to backing r/g/b params so
+  // states save and restore the colors correctly.
+
+  function _wireColorPicker(pickerId, rId, gId, bId, onApply) {
+    const el = document.getElementById(pickerId);
+    // DOM → params + Vec3
+    el?.addEventListener('input', (e) => {
+      const v = _hexToVec3(e.target.value);
+      ps.set(rId, v.x); ps.set(gId, v.y); ps.set(bId, v.z);
+      onApply(v.x, v.y, v.z);
     });
-  document
-    .getElementById("particle-col2-picker")
-    ?.addEventListener("input", (e) => {
-      particles.color2 = _hexToVec3(e.target.value);
-    });
+    // params → Vec3 + DOM (fires on restoreState)
+    const sync = () => {
+      const r = ps.get(rId)?.value ?? 0;
+      const g = ps.get(gId)?.value ?? 0;
+      const b = ps.get(bId)?.value ?? 0;
+      onApply(r, g, b);
+      if (el) el.value = _vec3ToHex(r, g, b);
+    };
+    ps.get(rId)?.onChange(sync);
+    ps.get(gId)?.onChange(sync);
+    ps.get(bId)?.onChange(sync);
+  }
+
+  _wireColorPicker('noise-color1-picker',
+    'noise.col1.r','noise.col1.g','noise.col1.b',
+    (r,g,b) => { _noiseColor1.set(r,g,b); });
+
+  _wireColorPicker('noise-color2-picker',
+    'noise.col2.r','noise.col2.g','noise.col2.b',
+    (r,g,b) => { _noiseColor2.set(r,g,b); });
+
+  _wireColorPicker('particle-col1-picker',
+    'particle.col1.r','particle.col1.g','particle.col1.b',
+    (r,g,b) => { particles.color1.set(r,g,b); });
+
+  _wireColorPicker('particle-col2-picker',
+    'particle.col2.r','particle.col2.g','particle.col2.b',
+    (r,g,b) => { particles.color2.set(r,g,b); });
 
   const HASH_ONLY_NOISE = new Set([0, 9, 10, 11, 12, 13, 14, 24, 25]); // 0=WhiteNoise; 9-14=hash-only types; 24-25=point-pattern types
   function _syncNoiseParamVisibility(typeIndex) {
