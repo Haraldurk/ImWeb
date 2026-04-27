@@ -223,15 +223,14 @@ export class GhostNodes {
 
   // Returns cached RT; accepts time for flow/turbulence modes which need per-frame re-render.
   buildSDFTexture(renderer, time = 0) {
-    // Flow and turbulence change every frame (velocity / noise animation)
-    const nodes = Array.from(this._nodes.values());
-    const hasTimeDep = nodes.some(n => n.mode >= 0.35 && n.mode < 0.85);
-    if (hasTimeDep) this._dirty = true;
+    // Flow and turbulence change every frame (velocity / noise animation) — always rebuild
+    const allNodes = Array.from(this._nodes.values());
+    if (allNodes.some(n => n.mode >= 0.35 && n.mode < 0.85)) this._dirty = true;
 
     if (!this._dirty) return this._sdfRT;
     this._sdfMat.uniforms.uTime.value = time;
 
-    const nodes = Array.from(this._nodes.values()).slice(0, GhostNodes.MAX);
+    const nodes = allNodes.slice(0, GhostNodes.MAX);
 
     this._ghostA.fill(0);
     this._ghostB.fill(0);
