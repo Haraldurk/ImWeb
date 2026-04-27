@@ -22,8 +22,9 @@ export class ColorPicker {
     this._cb = onChange;
     this._dragging = null; // 'sv' | 'hue' | null
     this._build(container);
-    // Defer first render so CSS layout has run and offsetWidth is valid
-    requestAnimationFrame(() => this._render());
+    // Two-frame defer: one frame for the browser to attach the element,
+    // a second frame to ensure CSS layout has run and offsetWidth is valid.
+    requestAnimationFrame(() => requestAnimationFrame(() => this._render()));
   }
 
   /** Update picker state without firing onChange (used by external sync). */
@@ -150,7 +151,8 @@ export class ColorPicker {
 
   _drawSV() {
     const cv = this._svCv;
-    const W = cv.offsetWidth  || 192;
+    const W = cv.offsetWidth;
+    if (!W) { requestAnimationFrame(() => this._render()); return; }
     const H = cv.offsetHeight || 128;
     // Only resize buffer when dimensions change (avoids flicker)
     if (cv.width !== W) cv.width = W;
@@ -196,7 +198,8 @@ export class ColorPicker {
 
   _drawHue() {
     const cv = this._hueCv;
-    const W = cv.offsetWidth  || 192;
+    const W = cv.offsetWidth;
+    if (!W) { requestAnimationFrame(() => this._render()); return; }
     const H = cv.offsetHeight || 14;
     if (cv.width !== W) cv.width = W;
     if (cv.height !== H) cv.height = H;
