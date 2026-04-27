@@ -1,11 +1,16 @@
 export class PointerPerf {
   constructor(ghostNodes, canvas) {
-    this._ghostNodes     = ghostNodes;
-    this._canvas         = canvas;
-    this.mode            = 'flow';
-    this._fadeSec        = 0.8;       // default, overridden by particle.ghost.fadetime param
-    this._activePointers = new Map(); // pointerId → ghostId
-    this._vortexT0       = new Map(); // pointerId → start timestamp
+    this._ghostNodes      = ghostNodes;
+    this._canvas          = canvas;
+    this.mode             = 'flow';
+    this._fadeSec         = 0.8;    // overridden by particle.ghost.fadetime
+    this._pointerRadius   = 0.08;   // overridden by particle.ghost.radius
+    this._pointerStrength = 1.0;    // overridden by particle.ghost.strength (pointer part)
+
+    this._activePointers  = new Map(); // pointerId → ghostId
+    this._vortexT0        = new Map(); // pointerId → start timestamp (for vortex ramp)
+    this._lastPos         = new Map(); // pointerId → {x, y} for velocity tracking
+    this._lastTime        = new Map(); // pointerId → timestamp
 
     this._onDown   = this._onPointerDown.bind(this);
     this._onMove   = this._onPointerMove.bind(this);
@@ -20,18 +25,28 @@ export class PointerPerf {
     canvas.addEventListener('pointercancel', this._onCancel);
   }
 
-  setMode(mode)       { this.mode = mode; }
-  setFadeTime(secs)   { this._fadeSec = secs; }
+  setMode(mode)         { this.mode = mode; }
+  setFadeTime(secs)     { this._fadeSec = secs; }
+  setRadius(r)          { this._pointerRadius = r; }
+  setStrength(s)        { this._pointerStrength = s; }
 
-  // Mode → initial ghost options
+  // Map UI pointer mode → ghost node options (correct physics per mode)
   _ghostOptions() {
+    const r = this._pointerRadius;
+    const s = this._pointerStrength;
     const map = {
-      flow:       { mode: 'vortex',  strength: 0.3, radius: 0.05 },
-      sink:       { mode: 'attract', strength: 2.0, radius: 0.08 },
-      vortex:     { mode: 'vortex',  strength: 0.0, radius: 0.08 },
-      turbulence: { mode: 'vortex',  strength: 0.5, radius: 0.1  },
-      freeze:     { mode: 'freeze',  strength: 1.0, radius: 0.06 },
-      source:     { mode: 'repel',   strength: 1.0, radius: 0.06 },
+      // Flow: directional sweep — strength/radius set normally; velocity injected via setFlowVec
+      flow:       { mode: 'flow',        strength: s,       radius: r       },
+      // Source: radial repel — explosion outward from cursor centre
+      source:     { mode: 'repel',       strength: s,       radius: r       },
+      // Sink: radial attract — particles drain toward cursor
+      sink:       { mode: 'attract',     strength: s,       radius: r       },
+      // Vortex: tangential spin — strength ramps with hold time in _onPointerMove
+      vortex:     { mode: 'vortex',      strength: 0.0,     radius: r * 1.5 },
+      // Turbulence: noise-driven chaos within radius
+      turbulence: { mode: 'turbulence',  strength: s,       radius: r * 1.2 },
+      // Freeze: velocity damping — particles lock in place
+      freeze:     { mode: 'freeze',      strength: s,       radius: r       },
     };
     return map[this.mode] ?? map.flow;
   }
@@ -40,7 +55,7 @@ export class PointerPerf {
   _normalize(clientX, clientY) {
     const rect = this._canvas.getBoundingClientRect();
     return {
-      x:  (clientX - rect.left) / rect.width,
+      x:  (clientX - rect.left)  / rect.width,
       y: 1.0 - (clientY - rect.top) / rect.height,
     };
   }
@@ -58,29 +73,60 @@ export class PointerPerf {
     const ghostId = this._ghostNodes.add(x, y, { ...this._ghostOptions(), source: 'pointer' });
     this._activePointers.set(e.pointerId, ghostId);
     if (this.mode === 'vortex') this._vortexT0.set(e.pointerId, performance.now());
+
+    // Seed position for velocity on first move
+    this._lastPos.set(e.pointerId, { x, y });
+    this._lastTime.set(e.pointerId, e.timeStamp);
   }
 
   _onPointerMove(e) {
     const ghostId = this._activePointers.get(e.pointerId);
     if (ghostId === undefined) return;
-    const { x, y } = this._normalize(e.clientX, e.clientY);
+
+    const { x, y }  = this._normalize(e.clientX, e.clientY);
+    const prev      = this._lastPos.get(e.pointerId);
+    const prevT     = this._lastTime.get(e.pointerId) ?? e.timeStamp;
+    const dt        = Math.max((e.timeStamp - prevT) / 1000, 0.001);
+
+    if (this.mode === 'flow' && prev) {
+      // Flow: compute pointer velocity, cap it, and push it into the SDF uniform
+      const vx   = (x - prev.x) / dt;
+      const vy   = (y - prev.y) / dt;
+      const spd  = Math.sqrt(vx * vx + vy * vy);
+      const maxS = 3.0; // max normalised units/sec
+      const sc   = spd > maxS ? maxS / spd : 1.0;
+      this._ghostNodes.setFlowVec(vx * sc, vy * sc);
+    }
 
     if (this.mode === 'vortex') {
+      // Vortex: spin strength ramps up with hold time (feels like stirring)
       const t0   = this._vortexT0.get(e.pointerId) ?? performance.now();
       const hold = (performance.now() - t0) / 1000;
-      this._ghostNodes.update(ghostId, { pos: [x, y], strength: Math.min(hold * 2, 4) });
+      this._ghostNodes.update(ghostId, { pos: [x, y], strength: Math.min(hold * 2, this._pointerStrength * 4) });
     } else {
       this._ghostNodes.update(ghostId, { pos: [x, y] });
     }
+
+    this._lastPos.set(e.pointerId, { x, y });
+    this._lastTime.set(e.pointerId, e.timeStamp);
   }
 
   _onPointerUp(e) {
     const ghostId = this._activePointers.get(e.pointerId);
     if (ghostId === undefined) return;
-    const fadeMs = this.mode === 'vortex' ? Math.max(this._fadeSec * 4000, 2000) : this._fadeSec * 1000;
+
+    const fadeMs = this.mode === 'vortex'
+      ? Math.max(this._fadeSec * 4000, 2000)
+      : this._fadeSec * 1000;
     this._ghostNodes.scheduleFade(ghostId, fadeMs);
+
+    // Decay flow vector to zero so residual force doesn't linger on next pointer down
+    if (this.mode === 'flow') this._ghostNodes.setFlowVec(0, 0);
+
     this._activePointers.delete(e.pointerId);
     this._vortexT0.delete(e.pointerId);
+    this._lastPos.delete(e.pointerId);
+    this._lastTime.delete(e.pointerId);
   }
 
   dispose() {

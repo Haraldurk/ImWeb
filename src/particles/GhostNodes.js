@@ -15,20 +15,27 @@ void main() {
 //   R/G = summed force vector (raw float, unbounded)
 //   B   = accumulated freeze weight
 //   A   = unused
-// uGhostA[i].w encodes mode: 0.0=attract  0.33=repel  0.66=vortex  1.0=freeze
+//
+// Six modes encoded in uGhostA[i].w:
+//   0.0 attract  0.2 repel  0.4 flow  0.6 vortex  0.8 turbulence  1.0 freeze
 const GHOST_SDF_FRAG = /* glsl */`
 precision highp float;
-uniform vec4  uGhostA[16];   // .xy=pos, .z=radius, .w=mode (0=attract,0.33=repel,0.66=vortex,1.0=freeze)
+uniform vec4  uGhostA[16];   // .xy=pos, .z=radius, .w=mode
 uniform vec4  uGhostB[16];   // .x=strength (signed, signed-squared from CPU), .y=shape (0=sphere,1=box)
 uniform int   uGhostCount;
+uniform vec2  uFlowVec;      // current pointer velocity (for flow mode)
+uniform float uTime;         // elapsed seconds (for turbulence animation)
 varying vec2  vUv;
 
-float sdSphere(vec2 p, vec2 c, float r) {
-  return length(p - c) - r;
-}
+float sdSphere(vec2 p, vec2 c, float r) { return length(p - c) - r; }
 float sdBox(vec2 p, vec2 c, float r) {
   vec2 d = abs(p - c) - vec2(r);
   return length(max(d, 0.0)) + min(max(d.x, d.y), 0.0);
+}
+// Cheap 2D hash for turbulence
+vec2 hash2(vec2 p) {
+  p = vec2(dot(p, vec2(127.1, 311.7)), dot(p, vec2(269.5, 183.3)));
+  return -1.0 + 2.0 * fract(sin(p) * 43758.5453);
 }
 
 void main() {
@@ -38,27 +45,45 @@ void main() {
   for (int i = 0; i < 16; i++) {
     if (i < uGhostCount) {
       vec2  c    = uGhostA[i].xy;
-      float r    = uGhostA[i].z;
-      float mode = uGhostA[i].w;   // 0.0=attract 0.33=repel 0.66=vortex 1.0=freeze
-      float str  = uGhostB[i].x;   // signed (already signed-squared from CPU)
+      float r    = max(uGhostA[i].z, 0.001);
+      float mode = uGhostA[i].w;
+      float str  = uGhostB[i].x;   // signed (signed-squared from CPU)
 
-      float d    = uGhostB[i].y > 0.5 ? sdBox(vUv, c, r) : sdSphere(vUv, c, r);
+      float d     = uGhostB[i].y > 0.5 ? sdBox(vUv, c, r) : sdSphere(vUv, c, r);
       float dSoft = max(abs(d), 0.001);
-      float gF   = abs(str) / (dSoft * dSoft + 0.01);
+      float gF    = abs(str) / (dSoft * dSoft + 0.01);  // 1/d² falloff, strong near centre
 
-      vec2 diff  = vUv - c;
-      vec2 grad  = length(diff) > 0.0001 ? normalize(diff) : vec2(0.0, 1.0); // outward from ghost
+      // inside: 1 at centre → 0 at edge → 0 outside (for radius-bounded modes)
+      float inside = max(0.0, -d / r);
 
-      float s    = str >= 0.0 ? 1.0 : -1.0;
+      vec2 diff = vUv - c;
+      vec2 grad = length(diff) > 0.0001 ? normalize(diff) : vec2(0.0, 1.0);
+      float s   = str >= 0.0 ? 1.0 : -1.0;
 
-      if (mode < 0.2) {
-        acc -= grad * gF * s;                     // attract: pull toward ghost
+      if (mode < 0.1) {
+        // ATTRACT — gravitational pull toward centre
+        acc -= grad * gF * s;
+
+      } else if (mode < 0.3) {
+        // REPEL / SOURCE — radial explosion outward
+        acc += grad * gF * s;
+
       } else if (mode < 0.5) {
-        acc += grad * gF * s;                     // repel: push away from ghost
-      } else if (mode < 0.8) {
-        acc += vec2(-grad.y, grad.x) * gF * s;   // vortex: tangential spin
+        // FLOW — directional sweep matching pointer velocity within radius
+        acc += uFlowVec * abs(str) * inside;
+
+      } else if (mode < 0.7) {
+        // VORTEX — tangential spin; 1/d² makes inner particles spin faster
+        acc += vec2(-grad.y, grad.x) * gF * s;
+
+      } else if (mode < 0.9) {
+        // TURBULENCE — spatially-varying noise within radius, animated over time
+        vec2 noiseCoord = vUv * 18.0 + vec2(uTime * 0.6, -uTime * 0.4);
+        acc += hash2(noiseCoord) * abs(str) * inside;
+
       } else {
-        freezeW += gF;                            // freeze: accumulate damping weight
+        // FREEZE — accumulate velocity-damping weight
+        freezeW += gF;
       }
     }
   }
@@ -67,7 +92,8 @@ void main() {
 }
 `;
 
-const MODE_MAP = { attract: 0.0, repel: 0.33, vortex: 0.66, freeze: 1.0 };
+// Six pointer modes — values must match shader thresholds above
+const MODE_MAP = { attract: 0.0, repel: 0.2, flow: 0.4, vortex: 0.6, turbulence: 0.8, freeze: 1.0 };
 
 export class GhostNodes {
   static MAX = 16;
@@ -103,6 +129,8 @@ export class GhostNodes {
         uGhostA:     { value: this._ghostA },
         uGhostB:     { value: this._ghostB },
         uGhostCount: { value: 0 },
+        uFlowVec:    { value: new THREE.Vector2(0, 0) },
+        uTime:       { value: 0 },
       },
     });
     const quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), this._sdfMat);
@@ -161,8 +189,10 @@ export class GhostNodes {
     if (changed) this._dirty = true;
   }
 
-  setMode(mode) { this._defaultMode = mode; }
-  setStrength(s) { this._defaultStrength = s; }
+  setMode(mode)        { this._defaultMode = mode; }
+  setStrength(s)       { this._defaultStrength = s; }
+  // Called by PointerPerf each move event when in flow mode
+  setFlowVec(x, y)     { this._sdfMat.uniforms.uFlowVec.value.set(x, y); this._dirty = true; }
 
   updateFromVideo(brightPeaks) {
     this.clear('video');
@@ -191,9 +221,15 @@ export class GhostNodes {
     if (changed) this._dirty = true;
   }
 
-  // Returns cached RT; only re-renders when nodes changed (_dirty).
-  buildSDFTexture(renderer) {
+  // Returns cached RT; accepts time for flow/turbulence modes which need per-frame re-render.
+  buildSDFTexture(renderer, time = 0) {
+    // Flow and turbulence change every frame (velocity / noise animation)
+    const nodes = Array.from(this._nodes.values());
+    const hasTimeDep = nodes.some(n => n.mode >= 0.35 && n.mode < 0.85);
+    if (hasTimeDep) this._dirty = true;
+
     if (!this._dirty) return this._sdfRT;
+    this._sdfMat.uniforms.uTime.value = time;
 
     const nodes = Array.from(this._nodes.values()).slice(0, GhostNodes.MAX);
 

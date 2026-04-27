@@ -76,13 +76,16 @@ export class ParticleEngine {
     cs({ id: 'particle.nbody.mode',    label: 'N-body mode',    min: 0, max: 1,   value: 0   }, 0.05);
 
     // ── Ghost / pointer ───────────────────────────────────────────────────────
-    cs({ id: 'particle.ghost.strength', label: 'Ghost strength', min: 0, max: 4, value: 0.4 }, 0.05);
+    const strP = cs({ id: 'particle.ghost.strength', label: 'Pointer strength', min: 0, max: 4, value: 1.0 }, 0.05);
+    strP.onChange(v => this.pointerPerf.setStrength(v));
     const modeP = c({ id: 'particle.ghost.mode', label: 'Pointer mode', type: PARAM_TYPE.SELECT,
          min: 0, max: 5, value: 0, step: 1,
          options: ['Flow','Source','Sink','Vortex','Turb','Freeze'] });
     const _pointerModes = ['flow','source','sink','vortex','turbulence','freeze'];
     modeP.onChange(v => this.pointerPerf.setMode(_pointerModes[v] ?? 'flow'));
-    const fadeP = cs({ id: 'particle.ghost.fadetime', label: 'Pointer fade', min: 0.05, max: 5.0, value: 0.8, step: 0.05 }, 0.05);
+    const radP = cs({ id: 'particle.ghost.radius', label: 'Pointer radius', min: 0.01, max: 0.5, value: 0.08 }, 0.03);
+    radP.onChange(v => this.pointerPerf.setRadius(v));
+    const fadeP = cs({ id: 'particle.ghost.fadetime', label: 'Pointer fade', min: 0.05, max: 60.0, value: 0.8, step: 0.05 }, 0.05);
     fadeP.onChange(v => this.pointerPerf.setFadeTime(v));
 
     // ── Named ghost slots (controller-driven) ─────────────────────────────────
@@ -143,7 +146,7 @@ export class ParticleEngine {
       w: this._renderer.domElement.width,
       h: this._renderer.domElement.height,
     };
-    const ghostSDFRT = this.ghostNodes.buildSDFTexture(this._renderer);
+    const ghostSDFRT = this.ghostNodes.buildSDFTexture(this._renderer, this._time);
     const forceRT    = this.forceField.composite({
       sourceTex,
       sourceDims,

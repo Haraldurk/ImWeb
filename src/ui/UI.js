@@ -766,7 +766,7 @@ export function buildMappingPanels(ps, contextMenu) {
     'particle.flowFormula',
     'particle.lorenz.rho','particle.lorenz.sigma','particle.lorenz.beta',
     'particle.nbody.radius','particle.nbody.falloff','particle.nbody.mode',
-    'particle.ghost.strength','particle.ghost.mode','particle.ghost.fadetime',
+    'particle.ghost.strength','particle.ghost.mode','particle.ghost.radius','particle.ghost.fadetime',
     'particle.ng1.on','particle.ng1.x','particle.ng1.y','particle.ng1.mode','particle.ng1.strength','particle.ng1.radius',
     'particle.ng2.on','particle.ng2.x','particle.ng2.y','particle.ng2.mode','particle.ng2.strength','particle.ng2.radius',
     'particle.ng3.on','particle.ng3.x','particle.ng3.y','particle.ng3.mode','particle.ng3.strength','particle.ng3.radius',
