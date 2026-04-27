@@ -368,8 +368,12 @@ export class PresetManager extends EventTarget {
       this.ctrl.rebuildXControllers();
     }
 
-    // Pins snap immediately regardless of morph (can't lerp positions)
-    if (ds.pins && this._restorePins) this._restorePins(ds.pins);
+    // Pins snap immediately regardless of morph (can't lerp positions).
+    // Only restore when the state actually contains pins — never wipe existing
+    // pins just because a state was saved while none were present.
+    if (Array.isArray(ds.pins) && ds.pins.length > 0 && this._restorePins) {
+      this._restorePins(ds.pins);
+    }
 
     if (useMorph) {
       // Restore from-values NOW so Fixed-controller assign() writes (above) don't

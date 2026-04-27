@@ -11,6 +11,101 @@ import { ResponseCurve } from '../state/TableManager.js';
 import { ColorPicker } from './ColorPicker.js';
 const DEFAULT_FX_ORDER_SP = DEFAULT_FX_ORDER;
 
+// ── Custom dark dropdown (replaces native <select> whose popup ignores CSS) ───
+//
+// Uses the existing .imw-sel / .imw-sel-trigger / .imw-sel-menu / .imw-sel-item
+// CSS already in style.css.
+//
+// Returns a div element with:
+//   .value        — get/set current index (keeps label in sync)
+//   .addEventListener — works as a normal DOM element
+//
+function _mkSelect(opts, initVal, onChangeVal, extraClass = '') {
+  const state = { v: Math.round(initVal) };
+
+  const wrap = document.createElement('div');
+  wrap.className = `imw-sel ${extraClass}`;
+
+  const trigger = document.createElement('div');
+  trigger.className = 'imw-sel-trigger';
+
+  const lbl = document.createElement('span');
+  lbl.textContent = opts[state.v] ?? '';
+
+  const chev = document.createElement('span');
+  chev.className = 'imw-sel-chev';
+  chev.textContent = '▾';
+
+  trigger.appendChild(lbl);
+  trigger.appendChild(chev);
+  wrap.appendChild(trigger);
+
+  // Menu — created lazily, appended to document.body for correct stacking
+  let menu = null;
+
+  function _buildMenu() {
+    menu = document.createElement('div');
+    menu.className = 'imw-sel-menu';
+    menu.style.cssText = 'position:fixed;z-index:9999;display:none;overflow-y:auto;max-height:60vh;';
+    opts.forEach((opt, i) => {
+      const item = document.createElement('div');
+      item.className = 'imw-sel-item' + (i === state.v ? ' sel' : '');
+      item.textContent = opt;
+      item.addEventListener('mousedown', e => {
+        e.preventDefault();
+        _close();
+        state.v = i;
+        lbl.textContent = opts[i] ?? '';
+        menu.querySelectorAll('.imw-sel-item').forEach((el, j) => el.classList.toggle('sel', j === i));
+        onChangeVal(i);
+      });
+      menu.appendChild(item);
+    });
+    document.body.appendChild(menu);
+  }
+
+  function _open() {
+    if (!menu) _buildMenu();
+    const rect = trigger.getBoundingClientRect();
+    menu.style.display = 'block';
+    menu.style.left  = rect.left + 'px';
+    menu.style.top   = (rect.bottom + 2) + 'px';
+    menu.style.minWidth = rect.width + 'px';
+    // Scroll selected item into view
+    const items = menu.querySelectorAll('.imw-sel-item');
+    items[state.v]?.scrollIntoView({ block: 'nearest' });
+    setTimeout(() => document.addEventListener('mousedown', _outside, true), 0);
+  }
+
+  function _close() {
+    if (menu) menu.style.display = 'none';
+    document.removeEventListener('mousedown', _outside, true);
+  }
+
+  function _outside(e) {
+    if (!wrap.contains(e.target) && e.target !== menu && !menu?.contains(e.target)) {
+      _close();
+    }
+  }
+
+  trigger.addEventListener('mousedown', e => {
+    e.preventDefault();
+    if (menu && menu.style.display !== 'none') { _close(); } else { _open(); }
+  });
+
+  Object.defineProperty(wrap, 'value', {
+    get: () => state.v,
+    set: v => {
+      const i = Math.round(v);
+      state.v = i;
+      lbl.textContent = opts[i] ?? opts[0] ?? '';
+      menu?.querySelectorAll('.imw-sel-item').forEach((el, j) => el.classList.toggle('sel', j === i));
+    },
+  });
+
+  return wrap;
+}
+
 // ── Tab switching ──────────────────────────────────────────────────────────────
 
 export function initTabs() {
@@ -482,19 +577,8 @@ export function buildParamRow(param, contextMenu) {
       param.onChange(() => btns.forEach((b, j) => b.classList.toggle('active', j === param.value)));
       valueEl.appendChild(group);
     } else {
-      // Fallback: native select for large option sets
-      const sel = document.createElement('select');
-      sel.className = 'param-select';
-      opts.forEach((opt, i) => {
-        const o = document.createElement('option');
-        o.value = i; o.textContent = opt;
-        sel.appendChild(o);
-      });
-      sel.value = param.value;
-      sel.addEventListener('change', e => {
-        param.value = parseInt(e.target.value);
-        updateDisplay();
-      });
+      // Custom dark dropdown for large option sets
+      const sel = _mkSelect(opts, param.value, i => { param.value = i; updateDisplay(); }, 'param-select');
       param.onChange(() => { sel.value = param.value; });
       valueEl.appendChild(sel);
     }
@@ -669,38 +753,27 @@ export function buildLayerButtons(ps, contextMenu) {
     });
     row.appendChild(lbl);
 
-    const sel = document.createElement('select');
-    sel.className = 'source-select';
-    (param.options ?? []).forEach((opt, i) => {
-      const option = document.createElement('option');
-      option.value = i;
-      option.textContent = opt;
-      if (i === param.value) option.selected = true;
-      sel.appendChild(option);
-    });
-    sel.addEventListener('change', () => { param.value = parseInt(sel.value); });
+    const sel = _mkSelect(
+      param.options ?? [],
+      param.value,
+      i => { param.value = i; },
+      'source-select'
+    );
     sel.addEventListener('contextmenu', e => {
       e.preventDefault();
       contextMenu?.show(param, e.clientX, e.clientY);
     });
-
-    // Keep in sync with controller changes (MIDI, LFO, etc.)
     param.onChange(v => { sel.value = Math.round(v); });
-
     row.appendChild(sel);
 
     // Blend mode select for this layer
     if (blendParam) {
-      const bsel = document.createElement('select');
-      bsel.className = 'blend-select';
-      (blendParam.options ?? []).forEach((opt, i) => {
-        const option = document.createElement('option');
-        option.value = i;
-        option.textContent = opt;
-        if (i === Math.round(blendParam.value)) option.selected = true;
-        bsel.appendChild(option);
-      });
-      bsel.addEventListener('change', () => ps.set(blendParam.id, +bsel.value));
+      const bsel = _mkSelect(
+        blendParam.options ?? [],
+        Math.round(blendParam.value),
+        i => { ps.set(blendParam.id, i); },
+        'blend-select'
+      );
       bsel.addEventListener('contextmenu', e => {
         e.preventDefault();
         contextMenu?.show(blendParam, e.clientX, e.clientY);
