@@ -28,6 +28,10 @@ export class ParticleEngine {
       this.ghostNodes.add(-10, -10, { mode: 'attract', source: 'named', strength: 0 })
     );
 
+    // Two user-selectable colors (wired to native color pickers in main.js)
+    this.color1 = new THREE.Vector3(0.1, 0.2, 0.8); // default: cool blue
+    this.color2 = new THREE.Vector3(1.0, 0.3, 0.1); // default: warm red
+
     const fb = new Float32Array([1, 1, 1, 1]);
     this._fallback1x1Tex = new THREE.DataTexture(fb, 1, 1, THREE.RGBAFormat, THREE.FloatType);
     this._fallback1x1Tex.needsUpdate = true;
@@ -176,6 +180,9 @@ export class ParticleEngine {
     uB.uGhostStrength.value  = get('particle.ghost.strength', 0.4);
     this.render._fadeMat.uniforms.uTrailDecay.value  = get('particle.trailDecay', 0.93);
     this.render._pointsMat.uniforms.uPointSize.value = get('particle.size',       2.0);
+
+    this.render._pointsMat.uniforms.uColor1.value = this.color1;
+    this.render._pointsMat.uniforms.uColor2.value = this.color2;
 
     this.gpu.update(dt, forceRT.texture, ghostSDFRT.texture);
     this.gpu.swap();

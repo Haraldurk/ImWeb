@@ -775,19 +775,16 @@ export function buildMappingPanels(ps, contextMenu) {
   ]);
   const allParticleP = ps.getGroup('particle');
 
+  // ── Unified particle panel: legacy v1 first, then GPU Engine v2 params ──────
   const particleEl = document.getElementById('particle-params');
   if (particleEl) {
     particleEl.innerHTML = '';
+    // Legacy params first (PCount, PSpread, PSize, etc.)
     allParticleP.filter(p => !_v2Ids.has(p.id))
       .forEach(p => particleEl.appendChild(buildParamRow(p, contextMenu)));
-  }
-
-  // ── GPU Engine panel: v2 params in their own section ────────────────────────
-  const gpuEl = document.getElementById('gpu-engine-params');
-  if (gpuEl) {
-    gpuEl.innerHTML = '';
+    // GPU Engine v2 params appended in same panel
     allParticleP.filter(p => _v2Ids.has(p.id))
-      .forEach(p => gpuEl.appendChild(buildParamRow(p, contextMenu)));
+      .forEach(p => particleEl.appendChild(buildParamRow(p, contextMenu)));
   }
 }
 
@@ -3664,30 +3661,36 @@ export function buildPaletteSection(container, ps, contextMenu, opts = {}) {
   fgWrap.className = 'cp-picker-wrap';
   fgPanel.appendChild(fgWrap);
 
+  let _fgBusy = false;
   const fgPicker = new ColorPicker(fgWrap, {
     h: ps.get('palette.fg.hue').value,
     s: ps.get('palette.fg.sat').value,
     v: ps.get('palette.fg.val').value,
     onChange: (h, s, v) => {
+      _fgBusy = true;
       ps.set('palette.fg.hue', h);
       ps.set('palette.fg.sat', s);
       ps.set('palette.fg.val', v);
+      _fgBusy = false;
     },
   });
 
   // ps → picker (MIDI/LFO → visual sync)
-  const fgSync = () => fgPicker.setHSV(
-    ps.get('palette.fg.hue').value,
-    ps.get('palette.fg.sat').value,
-    ps.get('palette.fg.val').value,
-  );
+  const fgSync = () => {
+    if (_fgBusy) return;
+    fgPicker.setHSV(
+      ps.get('palette.fg.hue').value,
+      ps.get('palette.fg.sat').value,
+      ps.get('palette.fg.val').value,
+    );
+  };
   ['palette.fg.hue', 'palette.fg.sat', 'palette.fg.val'].forEach(id =>
     ps.get(id).onChange(fgSync));
 
   // Param rows — controller badge access (MIDI / LFO assignment)
   const fgRows = document.createElement('div');
   fgRows.className = 'cp-param-rows';
-  ps.getGroup('palettefg').forEach(p => buildParamRow(fgRows, p, contextMenu));
+  ps.getGroup('palettefg').forEach(p => { const row = buildParamRow(p, contextMenu); fgRows.appendChild(row); });
   fgPanel.appendChild(fgRows);
 
   // ── Build BG picker ────────────────────────────────────────────────────────
@@ -3695,28 +3698,34 @@ export function buildPaletteSection(container, ps, contextMenu, opts = {}) {
   bgWrap.className = 'cp-picker-wrap';
   bgPanel.appendChild(bgWrap);
 
+  let _bgBusy = false;
   const bgPicker = new ColorPicker(bgWrap, {
     h: ps.get('palette.bg.hue').value,
     s: ps.get('palette.bg.sat').value,
     v: ps.get('palette.bg.val').value,
     onChange: (h, s, v) => {
+      _bgBusy = true;
       ps.set('palette.bg.hue', h);
       ps.set('palette.bg.sat', s);
       ps.set('palette.bg.val', v);
+      _bgBusy = false;
     },
   });
 
-  const bgSync = () => bgPicker.setHSV(
-    ps.get('palette.bg.hue').value,
-    ps.get('palette.bg.sat').value,
-    ps.get('palette.bg.val').value,
-  );
+  const bgSync = () => {
+    if (_bgBusy) return;
+    bgPicker.setHSV(
+      ps.get('palette.bg.hue').value,
+      ps.get('palette.bg.sat').value,
+      ps.get('palette.bg.val').value,
+    );
+  };
   ['palette.bg.hue', 'palette.bg.sat', 'palette.bg.val'].forEach(id =>
     ps.get(id).onChange(bgSync));
 
   const bgRows = document.createElement('div');
   bgRows.className = 'cp-param-rows';
-  ps.getGroup('palettebg').forEach(p => buildParamRow(bgRows, p, contextMenu));
+  ps.getGroup('palettebg').forEach(p => { const row = buildParamRow(p, contextMenu); bgRows.appendChild(row); });
   bgPanel.appendChild(bgRows);
 
   // ── Tab switching ──────────────────────────────────────────────────────────

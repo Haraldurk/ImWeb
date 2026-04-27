@@ -4054,10 +4054,6 @@ void main() {
   let _noiseColor1 = new THREE.Vector3(1, 1, 1);
   let _noiseColor2 = new THREE.Vector3(0, 0, 0);
 
-  // Particle two-color system
-  let _particleColor1 = new THREE.Vector3(1, 1, 1);
-  let _particleColor2 = new THREE.Vector3(0.2, 0.5, 1.0);
-  let _particleCol2Phase = 0;
 
   function _hexToVec3(hex) {
     const r = parseInt(hex.slice(1, 3), 16) / 255;
@@ -4080,12 +4076,12 @@ void main() {
   document
     .getElementById("particle-col1-picker")
     ?.addEventListener("input", (e) => {
-      _particleColor1 = _hexToVec3(e.target.value);
+      particles.color1 = _hexToVec3(e.target.value);
     });
   document
     .getElementById("particle-col2-picker")
     ?.addEventListener("input", (e) => {
-      _particleColor2 = _hexToVec3(e.target.value);
+      particles.color2 = _hexToVec3(e.target.value);
     });
 
   const HASH_ONLY_NOISE = new Set([0, 9, 10, 11, 12, 13, 14, 24, 25]); // 0=WhiteNoise; 9-14=hash-only types; 24-25=point-pattern types
@@ -4497,14 +4493,7 @@ void main() {
     const PARTICLE_IDX = 16;
     const _particlesUsed = ps.get("layer.fg").value === PARTICLE_IDX || ps.get("layer.bg").value === PARTICLE_IDX || (ps.get("layer.ds")?.value ?? 0) === PARTICLE_IDX;
     if (_particlesUsed) {
-      const _pc2speed = ps.get("particle.col2.speed")?.value ?? 0;
-      if (_pc2speed !== 0) _particleCol2Phase += dt * _pc2speed * 0.005;
-      particles.tick(ps, dt, _pmSrcMap[ps.get("particle.masksrc").value] ?? null, {
-        c1: _particleColor1,
-        c2: _particleColor2,
-        mode: ps.get("particle.col2.type")?.value ?? 0,
-        phase: _particleCol2Phase,
-      });
+      particles.tick(ps, dt, _pmSrcMap[ps.get("particle.masksrc").value] ?? null);
     }
     // SDF dedicated texture source routing (decouples from layer.fg / layer.bg).
     // SELECT index 0 = follow the pipeline FG/BG layer (default, preserves old behaviour).

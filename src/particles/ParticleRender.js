@@ -57,6 +57,8 @@ void main() {
 const POINTS_FRAG = /* glsl */`
 precision highp float;
 uniform int       uColorMode;
+uniform vec3      uColor1;      // user Col 1 swatch
+uniform vec3      uColor2;      // user Col 2 swatch
 uniform sampler2D uSourceTex;
 varying float vAge;
 varying vec2  vVel;
@@ -67,18 +69,18 @@ void main() {
   if (length(pc) > 0.5) discard;
   vec3 col;
   if (uColorMode == 0) {
-    // Velocity — cool→warm
+    // Velocity — Col1 (slow) → Col2 (fast)
     float speed = length(vVel);
-    col = mix(vec3(0.1, 0.2, 0.8), vec3(1.0, 0.3, 0.1), clamp(speed / 3.0, 0.0, 1.0));
+    col = mix(uColor1, uColor2, clamp(speed / 3.0, 0.0, 1.0));
   } else if (uColorMode == 1) {
-    // Age — bright when new, dark when old
-    col = mix(vec3(1.0, 0.9, 0.7), vec3(0.1, 0.1, 0.3), vAge);
+    // Age — Col1 (new) → Col2 (old)
+    col = mix(uColor1, uColor2, vAge);
   } else if (uColorMode == 2) {
-    // Field alignment — blue↔yellow by how well vel tracks the force field direction
+    // Field alignment — Col1 (aligned) ↔ Col2 (anti-aligned)
     vec2 v = normalize(vVel      + vec2(0.0001));
     vec2 f = normalize(vFieldDir + vec2(0.0001));
     float align = dot(v, f) * 0.5 + 0.5;
-    col = mix(vec3(0.0, 0.5, 1.0), vec3(1.0, 0.8, 0.0), align);
+    col = mix(uColor1, uColor2, align);
   } else {
     // Video sample at particle position
     col = texture2D(uSourceTex, vPos).rgb;
@@ -140,6 +142,8 @@ export class ParticleRender {
         uDim:           { value: DIM },
         uPointSize:     { value: 2.0 },
         uColorMode:     { value: 0 },
+        uColor1:        { value: new THREE.Vector3(0.1, 0.2, 0.8) },
+        uColor2:        { value: new THREE.Vector3(1.0, 0.3, 0.1) },
       },
       blending:    THREE.AdditiveBlending,
       depthTest:   false,

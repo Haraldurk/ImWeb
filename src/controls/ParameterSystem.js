@@ -3238,17 +3238,6 @@ export function registerCoreParameters(ps) {
   // PScaleBy, Attr1/Attr2 removed — belonged to legacy ParticleSystem.js (never instantiated).
   // Attractors replaced by Ghost 1/2/3 in the GPU Engine section.
 
-  // ── Particle colors ───────────────────────────────────────────────────────
-  ps.register({ id: "particle.col1.hue", label: "P Col1 H", group: "particle", min: 0, max: 360, step: 1, value: 0,   unit: "°" });
-  ps.register({ id: "particle.col1.sat", label: "P Col1 S", group: "particle", min: 0, max: 100, step: 1, value: 0,   unit: "%" });
-  ps.register({ id: "particle.col1.val", label: "P Col1 V", group: "particle", min: 0, max: 100, step: 1, value: 100, unit: "%" });
-  ps.register({ id: "particle.col2.hue", label: "P Col2 H", group: "particle", min: 0, max: 360, step: 1, value: 200, unit: "°" });
-  ps.register({ id: "particle.col2.sat", label: "P Col2 S", group: "particle", min: 0, max: 100, step: 1, value: 80,  unit: "%" });
-  ps.register({ id: "particle.col2.val", label: "P Col2 V", group: "particle", min: 0, max: 100, step: 1, value: 100, unit: "%" });
-  ps.register({ id: "particle.col2.type", label: "P Col Type", group: "particle", type: PARAM_TYPE.SELECT,
-    options: ["Solid", "Grad H", "Grad V", "Grad R"], value: 0 });
-  ps.register({ id: "particle.col2.speed", label: "P Col Speed", group: "particle", min: -200, max: 200, step: 1, value: 0, unit: "%" });
-
   // ── Slit Scan ─────────────────────────────────────────────────────────────
   // ── Vasulka Warp ──────────────────────────────────────────────────────────
   ps.register({
