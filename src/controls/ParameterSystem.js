@@ -97,6 +97,8 @@ export class Parameter {
 
     const changed = clamped !== this._value;
     this._value = clamped;
+    // Keep _target in sync so slew doesn't fight manual UI / direct .value writes
+    if (this.type === PARAM_TYPE.CONTINUOUS) this._target = clamped;
 
     if (changed || this.type === PARAM_TYPE.TRIGGER) {
       this._listeners.forEach((fn) => fn(clamped, this));
@@ -141,9 +143,15 @@ export class Parameter {
   tickSlew(dt) {
     if (this.slew <= 0 || this.type !== PARAM_TYPE.CONTINUOUS) return;
     if (this._target === this._value) return;
-    // Exponential lag: approach target at rate 1/slew per second
+    // Exponential lag: approach target at rate 1/slew per second.
+    // Bypass the value setter so _target is preserved during lerp.
     const alpha = Math.min(1, dt / Math.max(0.001, this.slew));
-    this.value = this._value + (this._target - this._value) * alpha;
+    const next = this._value + (this._target - this._value) * alpha;
+    const clamped = Math.max(this.min, Math.min(this.max, next));
+    if (clamped !== this._value) {
+      this._value = clamped;
+      this._listeners.forEach((fn) => fn(clamped, this));
+    }
   }
 
   toggle() {
@@ -3151,44 +3159,8 @@ export function registerCoreParameters(ps) {
     label: "PCount",
     group: "particle",
     type: PARAM_TYPE.SELECT,
-    options: ["1k", "4k", "16k", "64k"],
-    value: 0,
-  });
-  ps.register({
-    id: "particle.speed",
-    label: "PSpeed",
-    group: "particle",
-    min: 0,
-    max: 100,
-    value: 40,
-    unit: "%",
-  });
-  ps.register({
-    id: "particle.life",
-    label: "PLife",
-    group: "particle",
-    min: 1,
-    max: 100,
-    value: 30,
-    unit: "%",
-  });
-  ps.register({
-    id: "particle.gravity",
-    label: "PGravity",
-    group: "particle",
-    min: 0,
-    max: 100,
-    value: 20,
-    unit: "%",
-  });
-  ps.register({
-    id: "particle.wind",
-    label: "PWind",
-    group: "particle",
-    min: 0,
-    max: 100,
-    value: 50,
-    unit: "%",
+    options: ["1k", "4k", "16k", "64k", "262k"],
+    value: 4, // default 262k — GPU engine full resolution
   });
   ps.register({
     id: "particle.spread",
@@ -3196,7 +3168,7 @@ export function registerCoreParameters(ps) {
     group: "particle",
     min: 0,
     max: 100,
-    value: 10,
+    value: 90,
     unit: "%",
   });
   ps.register({
@@ -3205,16 +3177,8 @@ export function registerCoreParameters(ps) {
     group: "particle",
     min: 1,
     max: 32,
-    value: 4,
+    value: 1,
     unit: "px",
-  });
-  ps.register({
-    id: "particle.color",
-    label: "PColor",
-    group: "particle",
-    type: PARAM_TYPE.SELECT,
-    options: ["White", "Rainbow", "Mono", "Fire"],
-    value: 0,
   });
   ps.register({
     id: "particle.masksrc",
@@ -3232,32 +3196,8 @@ export function registerCoreParameters(ps) {
       "FG Src",
       "BG Src",
       "DS Src",
+      "Noise",
     ],
-  });
-  ps.register({
-    id: "particle.maskamt",
-    label: "PMaskAmt",
-    group: "particle",
-    min: 0,
-    max: 100,
-    value: 0,
-    unit: "%",
-  });
-  ps.register({
-    id: "particle.motion",
-    label: "PMotion",
-    group: "particle",
-    type: PARAM_TYPE.TOGGLE,
-    value: 0,
-  });
-  ps.register({
-    id: "particle.mthresh",
-    label: "PMThresh",
-    group: "particle",
-    min: 0,
-    max: 100,
-    value: 15,
-    unit: "%",
   });
   ps.register({
     id: "particle.emitter",
@@ -3285,66 +3225,8 @@ export function registerCoreParameters(ps) {
     value: 50,
     unit: "%",
   });
-  ps.register({
-    id: "particle.scaleby",
-    label: "PScaleBy",
-    group: "particle",
-    type: PARAM_TYPE.SELECT,
-    options: ["Uniform", "By Life", "By Speed"],
-    value: 0,
-  });
-  ps.register({
-    id: "particle.attr1x",
-    label: "Attr1 X",
-    group: "particle",
-    min: 0,
-    max: 100,
-    value: 50,
-    unit: "%",
-  });
-  ps.register({
-    id: "particle.attr1y",
-    label: "Attr1 Y",
-    group: "particle",
-    min: 0,
-    max: 100,
-    value: 50,
-    unit: "%",
-  });
-  ps.register({
-    id: "particle.attr1str",
-    label: "Attr1 Str",
-    group: "particle",
-    min: -100,
-    max: 100,
-    value: 0,
-  });
-  ps.register({
-    id: "particle.attr2x",
-    label: "Attr2 X",
-    group: "particle",
-    min: 0,
-    max: 100,
-    value: 50,
-    unit: "%",
-  });
-  ps.register({
-    id: "particle.attr2y",
-    label: "Attr2 Y",
-    group: "particle",
-    min: 0,
-    max: 100,
-    value: 50,
-    unit: "%",
-  });
-  ps.register({
-    id: "particle.attr2str",
-    label: "Attr2 Str",
-    group: "particle",
-    min: -100,
-    max: 100,
-    value: 0,
-  });
+  // PScaleBy, Attr1/Attr2 removed — belonged to legacy ParticleSystem.js (never instantiated).
+  // Attractors replaced by Ghost 1/2/3 in the GPU Engine section.
 
   // ── Slit Scan ─────────────────────────────────────────────────────────────
   // ── Vasulka Warp ──────────────────────────────────────────────────────────

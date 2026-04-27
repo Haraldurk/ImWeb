@@ -23,6 +23,11 @@ export class ParticleEngine {
     this.pointerPerf   = new PointerPerf(this.ghostNodes, renderer.domElement);
     this._time         = 0;
 
+    // Named ghost slots — persistent nodes, parked offscreen until turned on via params
+    this._namedGhosts = [1, 2, 3].map(() =>
+      this.ghostNodes.add(-10, -10, { mode: 'attract', source: 'named', strength: 0 })
+    );
+
     const fb = new Float32Array([1, 1, 1, 1]);
     this._fallback1x1Tex = new THREE.DataTexture(fb, 1, 1, THREE.RGBAFormat, THREE.FloatType);
     this._fallback1x1Tex.needsUpdate = true;
@@ -78,12 +83,29 @@ export class ParticleEngine {
     const _pointerModes = ['flow','source','sink','vortex','turbulence','freeze'];
     modeP.onChange(v => this.pointerPerf.setMode(_pointerModes[v] ?? 'flow'));
 
+    // ── Named ghost slots (controller-driven) ─────────────────────────────────
+    for (let i = 1; i <= 3; i++) {
+      c ({ id: `particle.ng${i}.on`,       label: `Ghost ${i} on`,       type: PARAM_TYPE.TOGGLE, value: 0 });
+      cs({ id: `particle.ng${i}.x`,        label: `Ghost ${i} X`,        min: 0,    max: 100,  value: 50  }, 0.02);
+      cs({ id: `particle.ng${i}.y`,        label: `Ghost ${i} Y`,        min: 0,    max: 100,  value: 50  }, 0.02);
+      c ({ id: `particle.ng${i}.mode`,     label: `Ghost ${i} mode`,     type: PARAM_TYPE.SELECT,
+           min: 0, max: 3, value: 0, step: 1, options: ['Attract','Repel','Vortex','Freeze'] });
+      cs({ id: `particle.ng${i}.strength`, label: `Ghost ${i} strength`, min: -2,   max: 2,    value: 1.0 }, 0.03);
+      cs({ id: `particle.ng${i}.radius`,   label: `Ghost ${i} radius`,   min: 0.01, max: 0.5,  value: 0.1 }, 0.03);
+    }
+
+    // ── Wire legacy PCount to GPU engine resize ───────────────────────────────
+    const _countVals = [1024, 4096, 16384, 65536, 262144];
+    ps.get('particle.count')?.onChange(v => this.gpu.setCount(_countVals[Math.round(v)] ?? 262144));
+
     // ── Triggers ──────────────────────────────────────────────────────────────
     let p;
-    p = ps.register({ id: 'particle.respawn', group: G, type: PARAM_TYPE.TRIGGER, label: 'Respawn' });
+    p = ps.register({ id: 'particle.respawn',   group: G, type: PARAM_TYPE.TRIGGER, label: 'Respawn' });
     p.onTrigger(() => this.gpu.respawn('random'));
-    p = ps.register({ id: 'particle.freeze', group: G, type: PARAM_TYPE.TRIGGER, label: 'Freeze' });
+    p = ps.register({ id: 'particle.freeze',    group: G, type: PARAM_TYPE.TRIGGER, label: 'Freeze mode' });
     p.onTrigger(() => this.pointerPerf.setMode('freeze'));
+    p = ps.register({ id: 'particle.clearPins', group: G, type: PARAM_TYPE.TRIGGER, label: 'Clear pins' });
+    p.onTrigger(() => this.ghostNodes.clear('pinned'));
   }
 
   tick(ps, dt, maskTex) {
@@ -94,6 +116,25 @@ export class ParticleEngine {
     this.ghostNodes.updateFromVideo(this.videoAnalysis.brightPeaks);
 
     const get = (id, def) => ps?.get(id)?.value ?? def;
+
+    // Update named ghost slots from controller params.
+    // When off: park at (-10,-10) — always loses SDF min-dist check, never influences field.
+    const _ngModes = ['attract','repel','vortex','freeze'];
+    this._namedGhosts.forEach((ghostId, i) => {
+      const n  = i + 1;
+      const on = get(`particle.ng${n}.on`, 0) > 0.5;
+      if (on) {
+        this.ghostNodes.update(ghostId, {
+          pos:      [get(`particle.ng${n}.x`,        50)  / 100,
+                     1.0 - get(`particle.ng${n}.y`,  50)  / 100], // flip Y
+          mode:     _ngModes[Math.round(get(`particle.ng${n}.mode`, 0))] ?? 'attract',
+          strength: (() => { const v = get(`particle.ng${n}.strength`, 1.0); return v * Math.abs(v); })(), // signed-square: v²·sign(v), gives log-like resolution at small values
+          radius:   get(`particle.ng${n}.radius`,   0.1), // per-ghost impact zone
+        });
+      } else {
+        this.ghostNodes.update(ghostId, { pos: [-10, -10], strength: 0 });
+      }
+    });
 
     const sourceTex  = maskTex ?? this._fallback1x1Tex;
     const sourceDims = {
@@ -122,7 +163,7 @@ export class ParticleEngine {
     uA.uEmitter.value        = get('particle.emitter',        0);
     uA.uEmitX.value          = get('particle.emitx',          50) / 100;
     uA.uEmitY.value          = 1.0 - get('particle.emity',   50) / 100; // flip Y: UI 0=top, GL 0=bottom
-    uA.uSpread.value         = get('particle.spread',         10) / 100;
+    uA.uSpread.value         = get('particle.spread',         90) / 100;
     uB.uBoundaryMode.value   = uA.uBoundaryMode.value;
     uB.uFieldStrength.value  = get('particle.fieldStrength',  1.0);
     uB.uInertia.value        = get('particle.inertia',        0.3);

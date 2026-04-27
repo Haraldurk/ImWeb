@@ -4430,6 +4430,7 @@ void main() {
       _resolveLayerTex(ps.get("layer.fg").value), // 6 FG Src
       _resolveLayerTex(ps.get("layer.bg").value), // 7 BG Src
       _resolveLayerTex(ps.get("layer.ds")?.value ?? 0), // 8 DS Src
+      noiseTexture, // 9 Noise
     ];
     const PARTICLE_IDX = 16;
     const _particlesUsed = ps.get("layer.fg").value === PARTICLE_IDX || ps.get("layer.bg").value === PARTICLE_IDX || (ps.get("layer.ds")?.value ?? 0) === PARTICLE_IDX;
