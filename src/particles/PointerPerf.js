@@ -75,7 +75,7 @@ export class PointerPerf {
   _onPointerUp(e) {
     const ghostId = this._activePointers.get(e.pointerId);
     if (ghostId === undefined) return;
-    const fadeMs = this.mode === 'vortex' ? 3000 : 300;
+    const fadeMs = this.mode === 'vortex' ? 3000 : 800;
     this._ghostNodes.scheduleFade(ghostId, fadeMs);
     this._activePointers.delete(e.pointerId);
     this._vortexT0.delete(e.pointerId);

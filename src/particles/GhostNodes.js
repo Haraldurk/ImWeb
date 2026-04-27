@@ -146,7 +146,11 @@ export class GhostNodes {
 
   scheduleFade(id, ms) {
     const node = this._nodes.get(id);
-    if (node) node._fadeEnd = performance.now() + ms;
+    if (!node) return;
+    const now = performance.now();
+    node._fadeStart    = now;
+    node._fadeEnd      = now + ms;
+    node._fadeStrength = node.strength; // snapshot strength at lift so we interpolate from here
   }
 
   clear(source) {
@@ -171,9 +175,17 @@ export class GhostNodes {
   tick(now) {
     let changed = false;
     for (const [id, node] of this._nodes) {
-      if (node._fadeEnd !== null && now >= node._fadeEnd) {
+      if (node._fadeEnd === null) continue;
+      if (now >= node._fadeEnd) {
         this._nodes.delete(id);
         changed = true;
+      } else if (node._fadeStart !== undefined) {
+        // Interpolate strength → 0 over the fade window so only particle forces taper,
+        // not the frame trail. Use ease-out cubic so the tail lingers naturally.
+        const t = (now - node._fadeStart) / (node._fadeEnd - node._fadeStart); // 0→1
+        const ease = 1 - t * t * t; // cubic ease-out
+        node.strength = node._fadeStrength * ease;
+        changed = true; // rebuild SDF every tick while fading
       }
     }
     if (changed) this._dirty = true;
