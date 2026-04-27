@@ -360,6 +360,12 @@ async function main() {
   const presetMgr = new PresetManager(ps, ctrl, pipeline);
   presetMgr.addEventListener('toast', e => showToast(e.detail.msg));
 
+  // Wire pinned ghost node save/restore into the state system
+  presetMgr.setPinsCallbacks(
+    ()     => particles.ghostNodes.getPins(),
+    (pins) => particles.ghostNodes.restorePins(pins),
+  );
+
   // Populated by the hypercube panel build block (below). Calling it clears and
   // rebuilds the panel DOM so that select/range widgets reflect restored ps values.
   let _hcPanelRebuild = null;

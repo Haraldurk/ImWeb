@@ -192,6 +192,25 @@ export class GhostNodes {
     if (changed) this._dirty = true;
   }
 
+  // Returns a plain-object snapshot of all pinned nodes (for state save).
+  getPins() {
+    const pins = [];
+    for (const node of this._nodes.values()) {
+      if (node.source !== 'pinned') continue;
+      pins.push({ pos: [...node.pos], radius: node.radius, mode: node.mode, strength: node.strength, shape: node.shape });
+    }
+    return pins;
+  }
+
+  // Replaces all pinned nodes from a saved snapshot (for state restore).
+  restorePins(pins) {
+    this.clear('pinned');
+    if (!Array.isArray(pins)) return;
+    for (const p of pins) {
+      this.add(p.pos[0], p.pos[1], { mode: p.mode, radius: p.radius, strength: p.strength, shape: p.shape ?? 0, source: 'pinned' });
+    }
+  }
+
   setMode(mode)        { this._defaultMode = mode; }
   setStrength(s)       { this._defaultStrength = s; }
   // Called by PointerPerf each move event when in flow mode

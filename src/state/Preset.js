@@ -73,12 +73,13 @@ export class Preset {
     this.thumbnail    = null;
   }
 
-  addState(values, index = null, fxOrder = null, controllers = {}, mediaRefs = {}) {
+  addState(values, index = null, fxOrder = null, controllers = {}, mediaRefs = {}, pins = null) {
     const ds = {
       values:      { ...values },
       fxOrder:     fxOrder ? [...fxOrder] : null,
       controllers: { ...controllers },
       mediaRefs:   { movie: null, scene3d: null, text: null, buffer: null, ...mediaRefs },
+      pins:        pins ? [...pins] : null,
       name:        null,
       thumbnail:   null,
       created:     Date.now(),
@@ -164,9 +165,19 @@ export class PresetManager extends EventTarget {
     this._morphT         = 0;
     this._morphActive    = false;
     this._morphOnComplete = null;
+
+    // Optional callbacks for pinned ghost nodes serialisation
+    this._getPins    = null; // () => pins[]
+    this._restorePins = null; // (pins[]) => void
   }
 
   setMediaRef(key, filename) { this._mediaRefs[key] = filename; }
+
+  // Register pin serialisation callbacks (called from main.js after particles init)
+  setPinsCallbacks(getter, setter) {
+    this._getPins    = getter;
+    this._restorePins = setter;
+  }
 
   async init() {
     const saved = await Preset.loadAll();
@@ -309,7 +320,8 @@ export class PresetManager extends EventTarget {
     const fxOrder     = this.pipeline ? [...this.pipeline.fxOrder] : null;
     const controllers = this.ps.serializeControllers();
     const mediaRefs   = { ...this._mediaRefs };
-    const idx = p.addState(values, stateIndex, fxOrder, controllers, mediaRefs);
+    const pins        = this._getPins ? this._getPins() : null;
+    const idx = p.addState(values, stateIndex, fxOrder, controllers, mediaRefs, pins);
     await p.save();
     this.dispatchEvent(new CustomEvent('stateSaved',
       { detail: { presetIndex: this.currentIdx, stateIndex: idx } }));
@@ -355,6 +367,9 @@ export class PresetManager extends EventTarget {
       });
       this.ctrl.rebuildXControllers();
     }
+
+    // Pins snap immediately regardless of morph (can't lerp positions)
+    if (ds.pins && this._restorePins) this._restorePins(ds.pins);
 
     if (useMorph) {
       // Restore from-values NOW so Fixed-controller assign() writes (above) don't
@@ -420,8 +435,8 @@ export class PresetManager extends EventTarget {
   }
 
   importState(data, targetSlot = null) {
-    const { values, fxOrder, controllers, mediaRefs, name, thumbnail } = data;
-    const idx = this.current?.addState(values, targetSlot, fxOrder, controllers, mediaRefs);
+    const { values, fxOrder, controllers, mediaRefs, pins, name, thumbnail } = data;
+    const idx = this.current?.addState(values, targetSlot, fxOrder, controllers, mediaRefs, pins ?? null);
     if (idx !== null && name)      this.current.states[idx].name = name;
     if (idx !== null && thumbnail) this.current.states[idx].thumbnail = thumbnail;
     return idx;
