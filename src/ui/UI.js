@@ -8,6 +8,7 @@ import { PARAM_TYPE } from '../controls/ParameterSystem.js';
 import { DEFAULT_FX_ORDER } from '../core/Pipeline.js';
 import { PROVIDERS } from '../ai/AIFeatures.js';
 import { ResponseCurve } from '../state/TableManager.js';
+import { ColorPicker } from './ColorPicker.js';
 const DEFAULT_FX_ORDER_SP = DEFAULT_FX_ORDER;
 
 // ── Tab switching ──────────────────────────────────────────────────────────────
@@ -3617,4 +3618,201 @@ export function buildClipLibrary(ps, clipLibrary, movieInput, contextMenu) {
   refreshClipGrid(); // async, non-blocking
 
   return { refreshClipGrid, setRecording };
+}
+
+// ── Palette section (FG/BG HSV pickers + named presets) ──────────────────────
+//
+// opts:
+//   presets  Array<{name, fgH,fgS,fgV, bgH,bgS,bgV}>  initial preset list
+//   onSave   (name) => void
+//   onDelete (index) => void
+//   onLoad   (preset) => void
+//
+// Returns: { fgPicker, bgPicker, refreshPresets(presets) }
+
+export function buildPaletteSection(container, ps, contextMenu, opts = {}) {
+  const { presets = [], onSave, onDelete, onLoad } = opts;
+
+  // ── FG / BG tab switcher ───────────────────────────────────────────────────
+  const tabRow = document.createElement('div');
+  tabRow.className = 'cp-tab-row';
+
+  const mkTab = (label, active) => {
+    const b = document.createElement('button');
+    b.className = 'cp-tab' + (active ? ' cp-tab-active' : '');
+    b.textContent = label;
+    tabRow.appendChild(b);
+    return b;
+  };
+  const fgBtn = mkTab('FG', true);
+  const bgBtn = mkTab('BG', false);
+  container.appendChild(tabRow);
+
+  // ── Panels ─────────────────────────────────────────────────────────────────
+  const mkPanel = (visible) => {
+    const p = document.createElement('div');
+    p.className = 'cp-panel';
+    if (!visible) p.style.display = 'none';
+    container.appendChild(p);
+    return p;
+  };
+  const fgPanel = mkPanel(true);
+  const bgPanel = mkPanel(false);
+
+  // ── Build FG picker ────────────────────────────────────────────────────────
+  const fgWrap = document.createElement('div');
+  fgWrap.className = 'cp-picker-wrap';
+  fgPanel.appendChild(fgWrap);
+
+  const fgPicker = new ColorPicker(fgWrap, {
+    h: ps.get('palette.fg.hue').value,
+    s: ps.get('palette.fg.sat').value,
+    v: ps.get('palette.fg.val').value,
+    onChange: (h, s, v) => {
+      ps.set('palette.fg.hue', h);
+      ps.set('palette.fg.sat', s);
+      ps.set('palette.fg.val', v);
+    },
+  });
+
+  // ps → picker (MIDI/LFO → visual sync)
+  const fgSync = () => fgPicker.setHSV(
+    ps.get('palette.fg.hue').value,
+    ps.get('palette.fg.sat').value,
+    ps.get('palette.fg.val').value,
+  );
+  ['palette.fg.hue', 'palette.fg.sat', 'palette.fg.val'].forEach(id =>
+    ps.get(id).onChange(fgSync));
+
+  // Param rows — controller badge access (MIDI / LFO assignment)
+  const fgRows = document.createElement('div');
+  fgRows.className = 'cp-param-rows';
+  ps.getGroup('palettefg').forEach(p => buildParamRow(fgRows, p, contextMenu));
+  fgPanel.appendChild(fgRows);
+
+  // ── Build BG picker ────────────────────────────────────────────────────────
+  const bgWrap = document.createElement('div');
+  bgWrap.className = 'cp-picker-wrap';
+  bgPanel.appendChild(bgWrap);
+
+  const bgPicker = new ColorPicker(bgWrap, {
+    h: ps.get('palette.bg.hue').value,
+    s: ps.get('palette.bg.sat').value,
+    v: ps.get('palette.bg.val').value,
+    onChange: (h, s, v) => {
+      ps.set('palette.bg.hue', h);
+      ps.set('palette.bg.sat', s);
+      ps.set('palette.bg.val', v);
+    },
+  });
+
+  const bgSync = () => bgPicker.setHSV(
+    ps.get('palette.bg.hue').value,
+    ps.get('palette.bg.sat').value,
+    ps.get('palette.bg.val').value,
+  );
+  ['palette.bg.hue', 'palette.bg.sat', 'palette.bg.val'].forEach(id =>
+    ps.get(id).onChange(bgSync));
+
+  const bgRows = document.createElement('div');
+  bgRows.className = 'cp-param-rows';
+  ps.getGroup('palettebg').forEach(p => buildParamRow(bgRows, p, contextMenu));
+  bgPanel.appendChild(bgRows);
+
+  // ── Tab switching ──────────────────────────────────────────────────────────
+  fgBtn.addEventListener('click', () => {
+    fgBtn.classList.add('cp-tab-active');
+    bgBtn.classList.remove('cp-tab-active');
+    fgPanel.style.display = '';
+    bgPanel.style.display = 'none';
+    // Force re-render after panel becomes visible
+    requestAnimationFrame(() => fgPicker._render());
+  });
+  bgBtn.addEventListener('click', () => {
+    bgBtn.classList.add('cp-tab-active');
+    fgBtn.classList.remove('cp-tab-active');
+    bgPanel.style.display = '';
+    fgPanel.style.display = 'none';
+    requestAnimationFrame(() => bgPicker._render());
+  });
+
+  // ── Preset area ────────────────────────────────────────────────────────────
+  const presetArea = document.createElement('div');
+  presetArea.className = 'cp-preset-area';
+  container.appendChild(presetArea);
+
+  const presetHeader = document.createElement('div');
+  presetHeader.className = 'cp-preset-header';
+  presetHeader.textContent = 'Saved Palettes';
+  presetArea.appendChild(presetHeader);
+
+  const saveRow = document.createElement('div');
+  saveRow.className = 'cp-preset-save-row';
+
+  const nameInp = document.createElement('input');
+  nameInp.className = 'cp-preset-name-inp';
+  nameInp.type = 'text';
+  nameInp.placeholder = 'name…';
+  nameInp.maxLength = 32;
+
+  const saveBtn = document.createElement('button');
+  saveBtn.className = 'cp-preset-save-btn';
+  saveBtn.textContent = 'Save';
+  saveBtn.addEventListener('click', () => {
+    const name = nameInp.value.trim();
+    if (!name) { nameInp.focus(); return; }
+    if (onSave) onSave(name);
+    nameInp.value = '';
+  });
+  // Enter key in name field also saves
+  nameInp.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); saveBtn.click(); }
+  });
+
+  saveRow.append(nameInp, saveBtn);
+  presetArea.appendChild(saveRow);
+
+  const list = document.createElement('div');
+  list.className = 'cp-preset-list';
+  presetArea.appendChild(list);
+
+  let _activeIdx = -1;
+
+  function refreshPresets(prs) {
+    list.innerHTML = '';
+    if (!prs.length) {
+      const hint = document.createElement('div');
+      hint.className = 'cp-preset-empty';
+      hint.textContent = 'No saved palettes';
+      list.appendChild(hint);
+      return;
+    }
+    prs.forEach((pr, i) => {
+      const chip = document.createElement('button');
+      chip.className = 'cp-preset-chip' + (i === _activeIdx ? ' active' : '');
+      chip.textContent = pr.name;
+      chip.title = `FG  H${Math.round(pr.fgH)}° S${Math.round(pr.fgS)}% V${Math.round(pr.fgV)}%\nBG  H${Math.round(pr.bgH)}° S${Math.round(pr.bgS)}% V${Math.round(pr.bgV)}%\nRight-click to delete`;
+
+      chip.addEventListener('click', () => {
+        _activeIdx = i;
+        if (onLoad) onLoad(pr);
+        list.querySelectorAll('.cp-preset-chip').forEach((c, j) =>
+          c.classList.toggle('active', j === i));
+      });
+
+      chip.addEventListener('contextmenu', e => {
+        e.preventDefault();
+        if (confirm(`Delete palette "${pr.name}"?`)) {
+          if (i === _activeIdx) _activeIdx = -1;
+          if (onDelete) onDelete(i);
+        }
+      });
+
+      list.appendChild(chip);
+    });
+  }
+
+  refreshPresets(presets);
+
+  return { fgPicker, bgPicker, refreshPresets };
 }

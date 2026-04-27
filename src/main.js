@@ -84,6 +84,7 @@ import {
   DebugOverlay,
   TablesEditor,
   buildClipLibrary,
+  buildPaletteSection,
 } from "./ui/UI.js";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -265,6 +266,44 @@ async function main() {
     ps.get(id).onChange(updateColorTexture),
   );
   updateColorTexture();
+
+  // FG Palette texture — solid color from palette.fg.* params (source index 23)
+  const fgPaletteCanvas = document.createElement("canvas");
+  fgPaletteCanvas.width = fgPaletteCanvas.height = 4;
+  const fgPaletteCtx = fgPaletteCanvas.getContext("2d");
+  const fgPaletteTexture = new THREE.CanvasTexture(fgPaletteCanvas);
+
+  function updateFgPaletteTexture() {
+    const h = ps.get("palette.fg.hue").value / 360;
+    const s = ps.get("palette.fg.sat").value / 100;
+    const v = ps.get("palette.fg.val").value / 100;
+    fgPaletteCtx.fillStyle = hsvToHex(h, s, v);
+    fgPaletteCtx.fillRect(0, 0, 4, 4);
+    fgPaletteTexture.needsUpdate = true;
+  }
+  ["palette.fg.hue", "palette.fg.sat", "palette.fg.val"].forEach((id) =>
+    ps.get(id).onChange(updateFgPaletteTexture),
+  );
+  updateFgPaletteTexture();
+
+  // BG Palette texture — solid color from palette.bg.* params (source index 24)
+  const bgPaletteCanvas = document.createElement("canvas");
+  bgPaletteCanvas.width = bgPaletteCanvas.height = 4;
+  const bgPaletteCtx = bgPaletteCanvas.getContext("2d");
+  const bgPaletteTexture = new THREE.CanvasTexture(bgPaletteCanvas);
+
+  function updateBgPaletteTexture() {
+    const h = ps.get("palette.bg.hue").value / 360;
+    const s = ps.get("palette.bg.sat").value / 100;
+    const v = ps.get("palette.bg.val").value / 100;
+    bgPaletteCtx.fillStyle = hsvToHex(h, s, v);
+    bgPaletteCtx.fillRect(0, 0, 4, 4);
+    bgPaletteTexture.needsUpdate = true;
+  }
+  ["palette.bg.hue", "palette.bg.sat", "palette.bg.val"].forEach((id) =>
+    ps.get(id).onChange(updateBgPaletteTexture),
+  );
+  updateBgPaletteTexture();
 
   // Color2 input — solid or gradient source (between color1 and color2)
   const color2Canvas = document.createElement("canvas");
@@ -589,6 +628,50 @@ async function main() {
   const contextMenu = new ContextMenu(ps, ctrl, presetMgr, tableManager);
   buildLayerButtons(ps, contextMenu);
   buildMappingPanels(ps, contextMenu);
+
+  // ── Palette section (FG/BG HSV pickers + named presets) ───────────────────
+  {
+    const palContainer = document.getElementById("palette-params");
+    if (palContainer) {
+      const PALETTE_PRESET_KEY = "imweb-palette-presets";
+      let _palettePresets = [];
+      try { _palettePresets = JSON.parse(localStorage.getItem(PALETTE_PRESET_KEY) ?? "[]"); }
+      catch { _palettePresets = []; }
+
+      const { refreshPresets } = buildPaletteSection(palContainer, ps, contextMenu, {
+        presets: _palettePresets,
+        onSave: (name) => {
+          _palettePresets.push({
+            name,
+            fgH: ps.get("palette.fg.hue").value,
+            fgS: ps.get("palette.fg.sat").value,
+            fgV: ps.get("palette.fg.val").value,
+            bgH: ps.get("palette.bg.hue").value,
+            bgS: ps.get("palette.bg.sat").value,
+            bgV: ps.get("palette.bg.val").value,
+          });
+          try { localStorage.setItem(PALETTE_PRESET_KEY, JSON.stringify(_palettePresets)); }
+          catch { /* storage full */ }
+          refreshPresets(_palettePresets);
+        },
+        onDelete: (idx) => {
+          _palettePresets.splice(idx, 1);
+          try { localStorage.setItem(PALETTE_PRESET_KEY, JSON.stringify(_palettePresets)); }
+          catch { /* storage full */ }
+          refreshPresets(_palettePresets);
+        },
+        onLoad: (pr) => {
+          ps.set("palette.fg.hue", pr.fgH);
+          ps.set("palette.fg.sat", pr.fgS);
+          ps.set("palette.fg.val", pr.fgV);
+          ps.set("palette.bg.hue", pr.bgH);
+          ps.set("palette.bg.sat", pr.bgS);
+          ps.set("palette.bg.val", pr.bgV);
+        },
+      });
+    }
+  }
+
   _patchNoiseTypeOptgroups();
   buildSeqParams(ps, contextMenu);
   buildGeometryButtons(ps, scene3d, contextMenu);
@@ -4431,6 +4514,7 @@ void main() {
       _resolveLayerTex(ps.get("layer.bg").value), // 7 BG Src
       _resolveLayerTex(ps.get("layer.ds")?.value ?? 0), // 8 DS Src
       noiseTexture, // 9 Noise
+      vectorscope.texture, // 10 Vectorscope
     ];
     const PARTICLE_IDX = 16;
     const _particlesUsed = ps.get("layer.fg").value === PARTICLE_IDX || ps.get("layer.bg").value === PARTICLE_IDX || (ps.get("layer.ds")?.value ?? 0) === PARTICLE_IDX;
@@ -4528,6 +4612,8 @@ void main() {
       depth3d: depthUsed ? scene3d.depthTexture : null,
       color: colorTexture,
       color2: color2Texture,
+      fgpalette: fgPaletteTexture,
+      bgpalette: bgPaletteTexture,
       sound: soundTexture,
       noise: noiseTexture,
       draw: drawLayer.texture,

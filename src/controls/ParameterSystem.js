@@ -453,6 +453,8 @@ export function registerCoreParameters(ps) {
     "3D Depth",
     "SDF",
     "VWarp",
+    "FG Palette",
+    "BG Palette",
   ];
 
   ps.register({
@@ -903,6 +905,15 @@ export function registerCoreParameters(ps) {
     value: 0,
     unit: "%",
   });
+
+  // ── Palette FG / BG (selectable pipeline sources, index 23/24) ────────────
+  ps.register({ id: 'palette.fg.hue', label: 'FG Hue', group: 'palettefg', min: 0, max: 360, step: 1, value: 0,   unit: '°', feedbackVisible: true });
+  ps.register({ id: 'palette.fg.sat', label: 'FG Sat', group: 'palettefg', min: 0, max: 100, step: 1, value: 100, unit: '%' });
+  ps.register({ id: 'palette.fg.val', label: 'FG Val', group: 'palettefg', min: 0, max: 100, step: 1, value: 100, unit: '%' });
+
+  ps.register({ id: 'palette.bg.hue', label: 'BG Hue', group: 'palettebg', min: 0, max: 360, step: 1, value: 240, unit: '°', feedbackVisible: true });
+  ps.register({ id: 'palette.bg.sat', label: 'BG Sat', group: 'palettebg', min: 0, max: 100, step: 1, value: 80,  unit: '%' });
+  ps.register({ id: 'palette.bg.val', label: 'BG Val', group: 'palettebg', min: 0, max: 100, step: 1, value: 60,  unit: '%' });
 
   // ── Noise BFG (Basis Function Generator) ─────────────────────────────────
   ps.register({
@@ -3197,6 +3208,7 @@ export function registerCoreParameters(ps) {
       "BG Src",
       "DS Src",
       "Noise",
+      "Vectorscope",
     ],
   });
   ps.register({
