@@ -392,6 +392,10 @@ export class TeletextSource {
     this._movieInput = movieInput;
   }
 
+  get pageId() {
+    return PAGE_IDS[this._pageIdx] ?? 'P100';
+  }
+
   dispose() {
     clearInterval(this._clockTimer);
     if (this._subPageTimer) clearInterval(this._subPageTimer);
