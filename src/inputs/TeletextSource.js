@@ -212,7 +212,7 @@ export class TeletextSource {
     this._fetchInFlight.rss = true;
     try {
       const proxyUrl = 'https://api.rss2json.com/v1/api.json?rss_url='
-        + encodeURIComponent(url);
+        + encodeURIComponent(url) + '&count=50';
       const res = await fetch(proxyUrl);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const json = await res.json();
@@ -222,7 +222,7 @@ export class TeletextSource {
         data: { items, feedTitle: json.feed?.title ?? '', fetchedAt: Date.now() },
         fetchedAt: Date.now(),
       };
-      this.setSubPageCount(Math.ceil(items.length / 12));
+      this.setSubPageCount(Math.ceil(items.length / 5));
       this._dirty = true;
     } catch (e) {
       console.warn('[TeletextSource] RSS fetch failed:', e.message);
