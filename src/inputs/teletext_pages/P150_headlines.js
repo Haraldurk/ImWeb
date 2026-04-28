@@ -1,5 +1,5 @@
 // P150 — RSS Headlines
-// Fetches via rss2json.com CORS proxy, renders 12 headlines per sub-page.
+// Fetches RSS/Atom XML via corsproxy.io + DOMParser.
 
 import { CANVAS_W, drawHeader, ttRow, ttCentered, ttRule } from '../teletext_draw.js';
 

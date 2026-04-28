@@ -106,7 +106,7 @@ export function buildTeletextUI(container, ps, teletextSource) {
     { label: 'Reuters',       url: 'https://feeds.reuters.com/reuters/topNews' },
     { label: 'Al Jazeera',    url: 'https://www.aljazeera.com/xml/rss/all.xml' },
     { label: 'NASA',          url: 'https://www.nasa.gov/rss/dyn/breaking_news.rss' },
-    { label: 'Hacker News',   url: 'https://hnrss.org/frontpage' },
+    { label: 'Hacker News',   url: 'https://news.ycombinator.com/rss' },
     { label: 'The Verge',     url: 'https://www.theverge.com/rss/index.xml' },
   ];
 

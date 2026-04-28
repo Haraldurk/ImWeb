@@ -207,19 +207,32 @@ export class TeletextSource {
     }
   }
 
-  async _fetchRSS() {
-    const url = localStorage.getItem('imweb-teletext-rssUrl') ?? 'https://feeds.bbci.co.uk/news/rss.xml';
+  async _fetchRSS(ps) {
     this._fetchInFlight.rss = true;
     try {
-      const proxyUrl = 'https://api.rss2json.com/v1/api.json?rss_url='
-        + encodeURIComponent(url) + '&count=50';
-      const res = await fetch(proxyUrl);
+      const url = localStorage.getItem('imweb-teletext-rssUrl')
+                ?? 'https://feeds.bbci.co.uk/news/rss.xml';
+      const proxy = 'https://corsproxy.io/?' + encodeURIComponent(url);
+      const res = await fetch(proxy);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const json = await res.json();
-      if (json.status !== 'ok') throw new Error('RSS status: ' + (json.status || 'unknown'));
-      const items = json.items || [];
+      const xml = await res.text();
+
+      const doc = new DOMParser().parseFromString(xml, 'text/xml');
+
+      // Support RSS 2.0 (<item>) and Atom (<entry>)
+      const itemEls = [...doc.querySelectorAll('item, entry')];
+      const items = itemEls.map(el => ({
+        title: el.querySelector('title')?.textContent?.trim() ?? '',
+        link:  (el.querySelector('link')?.textContent?.trim()
+            || el.querySelector('link')?.getAttribute('href')) ?? '',
+      })).filter(i => i.title);
+
+      // Feed title: RSS 2.0 channel > title, or Atom feed > title
+      const feedTitle = doc.querySelector('channel > title, feed > title')
+                          ?.textContent?.trim() ?? 'RSS FEED';
+
       this._cachedData.rss = {
-        data: { items, feedTitle: json.feed?.title ?? '', fetchedAt: Date.now() },
+        data: { items, feedTitle, fetchedAt: Date.now() },
         fetchedAt: Date.now(),
       };
       this.setSubPageCount(Math.ceil(items.length / 5));
