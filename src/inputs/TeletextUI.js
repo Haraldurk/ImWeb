@@ -53,6 +53,12 @@ export function buildTeletextUI(container, ps, teletextSource, contextMenu) {
   // ── Sub-page trigger rows (MIDI/LFO assignable) ────────────────────────
   container.appendChild(buildParamRow(ps.get('teletext.subPagePrev'), contextMenu));
   container.appendChild(buildParamRow(ps.get('teletext.subPageNext'), contextMenu));
+  container.appendChild(buildParamRow(ps.get('teletext.cursorUp'),     contextMenu));
+  container.appendChild(buildParamRow(ps.get('teletext.cursorDown'),   contextMenu));
+  container.appendChild(buildParamRow(ps.get('teletext.openItem'),     contextMenu));
+  for (let i = 1; i <= 8; i++) {
+    container.appendChild(buildParamRow(ps.get(`teletext.openItem${i}`), contextMenu));
+  }
 
   // ── Sub-page navigation ───────────────────────────────────────────────
   const spDiv = document.createElement('div');

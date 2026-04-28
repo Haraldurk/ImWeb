@@ -41,4 +41,14 @@ export function registerTeletextParams(ps) {
     id: 'teletext.subPagePrev', group: G, type: PARAM_TYPE.TRIGGER,
     label: 'Sub-page ◀'
   });
+
+  // Cursor navigation
+  ps.register({ id: 'teletext.cursorUp',   group: G, type: PARAM_TYPE.TRIGGER, label: 'Cursor ▲' });
+  ps.register({ id: 'teletext.cursorDown', group: G, type: PARAM_TYPE.TRIGGER, label: 'Cursor ▼' });
+  ps.register({ id: 'teletext.openItem',   group: G, type: PARAM_TYPE.TRIGGER, label: 'Open item' });
+
+  // Direct item open — slots 1–8
+  for (let i = 1; i <= 8; i++) {
+    ps.register({ id: `teletext.openItem${i}`, group: G, type: PARAM_TYPE.TRIGGER, label: `Open item ${i}` });
+  }
 }

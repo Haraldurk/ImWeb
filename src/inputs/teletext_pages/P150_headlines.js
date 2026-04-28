@@ -7,8 +7,9 @@ import { CANVAS_W, CH, COLS, XSCALE, drawHeader, ttRow, ttCentered, ttRule } fro
  * @param {CanvasRenderingContext2D} ctx
  * @param {object|undefined} data    { items, feedTitle, fetchedAt }
  * @param {number} subPageIdx
+ * @param {number} [cursorIdx]
  */
-export function renderP150(ctx, data, subPageIdx) {
+export function renderP150(ctx, data, subPageIdx, cursorIdx = 0) {
   drawHeader(ctx, '150', 'HEADLINES');
 
   if (!data || !data.items || !data.items.length) {
@@ -37,11 +38,16 @@ export function renderP150(ctx, data, subPageIdx) {
   const slice = items.slice(start, start + perPage);
 
   slice.forEach((item, i) => {
+    const r = 2 + i;
+    if (i === cursorIdx) {
+      ctx.fillStyle = '#004400';
+      ctx.fillRect(0, r * CH, CANVAS_W, CH);
+    }
     const title = item.title || '';
     const titleTrunc = title.length > 35 ? title.slice(0, 34).trimEnd() + '\u2026' : title;
     const color = (i % 2 === 0) ? '#ffffff' : '#aaaaaa';
     const num = (i + 1).toString().padStart(2, ' ');
-    ttRow(ctx, ` ${num}. ${titleTrunc}`, 2 + i, color);
+    ttRow(ctx, ` ${num}. ${titleTrunc}`, r, color);
   });
 
   // Page indicator

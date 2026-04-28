@@ -691,6 +691,13 @@ async function main() {
     // Teletext sub-page triggers — MIDI/LFO/key assignable
     ps.get('teletext.subPageNext')?.onTrigger?.(() => teletextSource.nextSubPage());
     ps.get('teletext.subPagePrev')?.onTrigger?.(() => teletextSource.prevSubPage());
+    ps.get('teletext.cursorUp')?.onTrigger?.(() => teletextSource.moveCursor(-1));
+    ps.get('teletext.cursorDown')?.onTrigger?.(() => teletextSource.moveCursor(1));
+    ps.get('teletext.openItem')?.onTrigger?.(() => teletextSource.openSelected());
+    for (let i = 1; i <= 8; i++) {
+      const idx = i - 1;
+      ps.get(`teletext.openItem${i}`)?.onTrigger?.(() => teletextSource.openItem(idx));
+    }
 
     // Show teletext section only when sourceType === 'Teletext' (index 14)
     const ttSection = document.getElementById('teletext-section');
@@ -3926,6 +3933,11 @@ void main() {
     if (ps.get('analog.sourceType')?.value === 14) {
       if (e.key === 'ArrowLeft')  { teletextSource.prevSubPage(); e.preventDefault(); return; }
       if (e.key === 'ArrowRight') { teletextSource.nextSubPage(); e.preventDefault(); return; }
+      if (teletextSource.pageId === 'P150') {
+        if (e.key === 'ArrowUp')   { ps.set('teletext.cursorUp',   1); e.preventDefault(); return; }
+        if (e.key === 'ArrowDown') { ps.set('teletext.cursorDown', 1); e.preventDefault(); return; }
+        if (e.key === 'Enter')     { ps.set('teletext.openItem',   1); e.preventDefault(); return; }
+      }
     }
 
     if (

@@ -65,7 +65,7 @@ export class TeletextSource {
 
     this._subPageIdx   = 0;
     this._subPageCount = 1;
-
+    this._cursorIdx    = 0;
     this._subPageTimer   = null;
     this._uiRefreshTimer = null;
 
@@ -89,6 +89,7 @@ export class TeletextSource {
       this._pageIdx    = pageIdx;
       this._subPageIdx = 0;
       this._subPageCount = 1;
+      this._cursorIdx  = 0;
       this._dirty      = true;
     }
 
@@ -139,7 +140,7 @@ export class TeletextSource {
     if (render) {
       const dk = DATA_KEYS[pageId];
       const cached = this._cachedData[dk];
-      const count = render(ctx, cached?.data, this._subPageIdx);
+      const count = render(ctx, cached?.data, this._subPageIdx, this._cursorIdx);
       this.setSubPageCount(count ?? 1);
     } else {
       // Placeholder for pages not yet implemented
@@ -155,17 +156,39 @@ export class TeletextSource {
 
   nextSubPage() {
     this._subPageIdx = (this._subPageIdx + 1) % this._subPageCount;
+    this._cursorIdx = 0;
     this._dirty = true;
   }
 
   prevSubPage() {
     this._subPageIdx = (this._subPageIdx - 1 + this._subPageCount) % this._subPageCount;
+    this._cursorIdx = 0;
     this._dirty = true;
   }
 
   setSubPageCount(n) {
     this._subPageCount = Math.max(1, n | 0);
     if (this._subPageIdx >= this._subPageCount) this._subPageIdx = 0;
+  }
+
+  moveCursor(delta) {
+    const items    = this._cachedData.rss?.data?.items ?? [];
+    const perPage  = 12;
+    const pageItems = Math.min(perPage, items.length - this._subPageIdx * perPage);
+    this._cursorIdx = Math.max(0, Math.min(pageItems - 1, this._cursorIdx + delta));
+    this._dirty = true;
+  }
+
+  openItem(localIdx) {
+    const items = this._cachedData.rss?.data?.items ?? [];
+    const item  = items[this._subPageIdx * 12 + localIdx];
+    if (item?.link) window.open(item.link, '_blank', 'noopener');
+  }
+
+  openSelected() { this.openItem(this._cursorIdx); }
+
+  get pageId() {
+    return PAGE_IDS[this._pageIdx] ?? 'P100';
   }
 
   _dispatchFetch(dataKey, ps) {
