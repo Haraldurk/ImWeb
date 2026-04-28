@@ -173,7 +173,7 @@ export class TeletextSource {
 
   moveCursor(delta) {
     const items    = this._cachedData.rss?.data?.items ?? [];
-    const perPage  = 12;
+    const perPage  = 8;
     const pageItems = Math.min(perPage, items.length - this._subPageIdx * perPage);
     this._cursorIdx = Math.max(0, Math.min(pageItems - 1, this._cursorIdx + delta));
     this._dirty = true;
@@ -181,7 +181,7 @@ export class TeletextSource {
 
   openItem(localIdx) {
     const items = this._cachedData.rss?.data?.items ?? [];
-    const item  = items[this._subPageIdx * 12 + localIdx];
+    const item  = items[this._subPageIdx * 8 + localIdx];
     if (item?.link) window.open(item.link, '_blank', 'noopener');
   }
 
@@ -258,7 +258,7 @@ export class TeletextSource {
         data: { items, feedTitle, fetchedAt: Date.now() },
         fetchedAt: Date.now(),
       };
-      this.setSubPageCount(Math.ceil(items.length / 12));
+      this.setSubPageCount(Math.ceil(items.length / 8));
       this._dirty = true;
     } catch (e) {
       console.warn('[TeletextSource] RSS fetch failed:', e.message);

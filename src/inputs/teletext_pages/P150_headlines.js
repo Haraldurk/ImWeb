@@ -32,33 +32,52 @@ export function renderP150(ctx, data, subPageIdx, cursorIdx = 0) {
   ctx.restore();
   ctx.textAlign = 'left';
 
-  // 12 headlines per sub-page, rows 2–13
-  const perPage = 12;
+  // 8 items per sub-page; wrapped items take 2 rows
+  const perPage = 8;
   const start = subPageIdx * perPage;
   const slice = items.slice(start, start + perPage);
+  const maxW = COLS - 5; // 35 chars for title after 5-char prefix
 
+  let row = 2;
   slice.forEach((item, i) => {
-    const r = 2 + i;
+    const title = item.title || '';
+    const num = (start + i + 1).toString().padStart(2, ' ');
+    const prefix = ` ${num}. `;
+
+    const wraps = title.length > maxW;
+    const lines = 1 + (wraps ? 1 : 0);
+
+    // Cursor highlight — one or two rows
     if (i === cursorIdx) {
       ctx.fillStyle = '#004400';
-      ctx.fillRect(0, r * CH, CANVAS_W, CH);
+      ctx.fillRect(0, row * CH, CANVAS_W, lines * CH);
     }
-    const title = item.title || '';
-    const titleTrunc = title.length > 35 ? title.slice(0, 34).trimEnd() + '\u2026' : title;
+
     const color = (i % 2 === 0) ? '#ffffff' : '#aaaaaa';
-    const num = (i + 1).toString().padStart(2, ' ');
-    ttRow(ctx, ` ${num}. ${titleTrunc}`, r, color);
+
+    if (!wraps) {
+      ttRow(ctx, prefix + title, row, color);
+    } else {
+      const bp = title.lastIndexOf(' ', maxW);
+      const cut = bp > 0 ? bp : maxW;
+      const part1 = title.slice(0, cut);
+      const part2 = title.slice(cut + 1).slice(0, COLS - prefix.length); // indent
+      ttRow(ctx, prefix + part1, row, color);
+      ttRow(ctx, ' '.repeat(prefix.length) + part2, row + 1, color);
+    }
+
+    row += lines;
   });
 
-  // Page indicator
+  // Page indicator — draw after all content rows
   const totalPages = Math.ceil(items.length / perPage);
-  ttCentered(ctx, `PAGE ${subPageIdx + 1} OF ${totalPages}`, 15, '#888888');
+  ttCentered(ctx, `PAGE ${subPageIdx + 1} OF ${totalPages}`, row + 1, '#888888');
 
   // Timestamp
   const ts = data.fetchedAt ? new Date(data.fetchedAt) : null;
   if (ts) {
     const hhmm = [ts.getHours(), ts.getMinutes()].map(n => String(n).padStart(2, '0')).join(':');
-    ttCentered(ctx, `LAST UPDATE: ${hhmm}`, 22, '#444444');
+    ttCentered(ctx, `LAST UPDATE: ${hhmm}`, row + 3, '#444444');
   }
 
   return totalPages;

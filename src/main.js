@@ -3934,9 +3934,9 @@ void main() {
       if (e.key === 'ArrowLeft')  { teletextSource.prevSubPage(); e.preventDefault(); return; }
       if (e.key === 'ArrowRight') { teletextSource.nextSubPage(); e.preventDefault(); return; }
       if (teletextSource.pageId === 'P150') {
-        if (e.key === 'ArrowUp')   { ps.set('teletext.cursorUp',   1); e.preventDefault(); return; }
-        if (e.key === 'ArrowDown') { ps.set('teletext.cursorDown', 1); e.preventDefault(); return; }
-        if (e.key === 'Enter')     { ps.set('teletext.openItem',   1); e.preventDefault(); return; }
+        if (e.key === 'ArrowUp')   { teletextSource.moveCursor(-1); e.preventDefault(); return; }
+        if (e.key === 'ArrowDown') { teletextSource.moveCursor(1);  e.preventDefault(); return; }
+        if (e.key === 'Enter')     { teletextSource.openSelected(); e.preventDefault(); return; }
       }
     }
 
