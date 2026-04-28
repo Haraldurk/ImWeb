@@ -12,6 +12,7 @@ import { renderP401 } from './teletext_pages/P401_forecast.js';
 import { renderP150 } from './teletext_pages/P150_headlines.js';
 import { renderP500, parseICal } from './teletext_pages/P500_calendar.js';
 import { renderP700 } from './teletext_pages/P700_nowplaying.js';
+import { renderArticle } from './teletext_pages/P150_article.js';
 
 // ── Page registry ─────────────────────────────────────────────────────────────
 // Render functions are added here as each build step lands.
@@ -73,6 +74,10 @@ export class TeletextSource {
     this._fetchInFlight = {};
 
     this._movieInput = null; // set via setMovieInput() from main.js
+
+    this._readerMode    = false;
+    this._readerItem    = null;   // { title, link, description }
+    this._readerSubPage = 0;
 
     // 1-second interval keeps the live clock (and later P900) ticking.
     // Cheap: sets a boolean only; actual canvas work happens in tick().
@@ -137,6 +142,11 @@ export class TeletextSource {
     ctx.fillStyle = '#000000';
     ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
 
+    if (this._readerMode && this._readerItem) {
+      renderArticle(ctx, this._readerItem, this._readerSubPage);
+      return;
+    }
+
     if (render) {
       const dk = DATA_KEYS[pageId];
       const cached = this._cachedData[dk];
@@ -182,10 +192,34 @@ export class TeletextSource {
   openItem(localIdx) {
     const items = this._cachedData.rss?.data?.items ?? [];
     const item  = items[this._subPageIdx * 8 + localIdx];
-    if (item?.link) window.open(item.link, '_blank', 'noopener');
+    if (item) this.enterReader(item);
   }
 
   openSelected() { this.openItem(this._cursorIdx); }
+
+  enterReader(item) {
+    this._readerMode    = true;
+    this._readerItem    = item;
+    this._readerSubPage = 0;
+    this._dirty = true;
+  }
+
+  exitReader() {
+    this._readerMode = false;
+    this._readerItem = null;
+    this._dirty = true;
+  }
+
+  readerNextPage() {
+    this._readerSubPage++;
+    this._dirty = true;
+  }
+
+  readerPrevPage() {
+    if (this._readerSubPage > 0) this._readerSubPage--;
+    else this.exitReader();
+    this._dirty = true;
+  }
 
   get pageId() {
     return PAGE_IDS[this._pageIdx] ?? 'P100';
@@ -248,6 +282,11 @@ export class TeletextSource {
         title: el.querySelector('title')?.textContent?.trim() ?? '',
         link:  (el.querySelector('link')?.textContent?.trim()
             || el.querySelector('link')?.getAttribute('href')) ?? '',
+        description: (
+          el.querySelector('description')?.textContent?.trim()
+          || el.querySelector('summary')?.textContent?.trim()
+          || ''
+        ).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim(),
       })).filter(i => i.title);
 
       // Feed title: RSS 2.0 channel > title, or Atom feed > title

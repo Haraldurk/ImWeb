@@ -3931,6 +3931,19 @@ void main() {
 
     // Teletext sub-page navigation — before focus guard so arrows work when UI inputs have focus
     if (ps.get('analog.sourceType')?.value === 14) {
+
+      // Reader mode — takes priority over all other P150 keys
+      if (teletextSource._readerMode) {
+        if (e.key === 'ArrowRight' || e.key === 'ArrowDown') { teletextSource.readerNextPage(); e.preventDefault(); return; }
+        if (e.key === 'ArrowLeft'  || e.key === 'ArrowUp')   { teletextSource.readerPrevPage(); e.preventDefault(); return; }
+        if (e.key === 'Escape')                               { teletextSource.exitReader();     e.preventDefault(); return; }
+        if (e.key === 'Enter') {
+          if (teletextSource._readerItem?.link) window.open(teletextSource._readerItem.link, '_blank', 'noopener');
+          e.preventDefault(); return;
+        }
+        return; // swallow all other keys in reader mode
+      }
+
       if (e.key === 'ArrowLeft')  { teletextSource.prevSubPage(); e.preventDefault(); return; }
       if (e.key === 'ArrowRight') { teletextSource.nextSubPage(); e.preventDefault(); return; }
       if (teletextSource.pageId === 'P150') {
