@@ -59,6 +59,7 @@ export function buildTeletextUI(container, ps, teletextSource, contextMenu) {
   for (let i = 1; i <= 8; i++) {
     container.appendChild(buildParamRow(ps.get(`teletext.openItem${i}`), contextMenu));
   }
+  container.appendChild(buildParamRow(ps.get('teletext.articleFetch'), contextMenu));
 
   // ── Sub-page navigation ───────────────────────────────────────────────
   const spDiv = document.createElement('div');

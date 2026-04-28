@@ -698,6 +698,7 @@ async function main() {
       const idx = i - 1;
       ps.get(`teletext.openItem${i}`)?.onTrigger?.(() => teletextSource.openItem(idx));
     }
+    ps.get('teletext.articleFetch')?.onChange?.(v => teletextSource.setArticleFetch(v));
 
     // Show teletext section only when sourceType === 'Teletext' (index 14)
     const ttSection = document.getElementById('teletext-section');

@@ -51,4 +51,10 @@ export function registerTeletextParams(ps) {
   for (let i = 1; i <= 8; i++) {
     ps.register({ id: `teletext.openItem${i}`, group: G, type: PARAM_TYPE.TRIGGER, label: `Open item ${i}` });
   }
+
+  // Article fetch toggle
+  ps.register({
+    id: 'teletext.articleFetch', group: G, type: PARAM_TYPE.TOGGLE,
+    value: 1, label: 'Article fetch'
+  });
 }

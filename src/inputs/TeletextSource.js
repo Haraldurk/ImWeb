@@ -76,8 +76,9 @@ export class TeletextSource {
     this._movieInput = null; // set via setMovieInput() from main.js
 
     this._readerMode    = false;
-    this._readerItem    = null;   // { title, link, description }
+    this._readerItem    = null;   // { title, link, description, articleText, fetching, fetchFailed }
     this._readerSubPage = 0;
+    this._articleFetchEnabled = true;
 
     // 1-second interval keeps the live clock (and later P900) ticking.
     // Cheap: sets a boolean only; actual canvas work happens in tick().
@@ -192,7 +193,14 @@ export class TeletextSource {
   openItem(localIdx) {
     const items = this._cachedData.rss?.data?.items ?? [];
     const item  = items[this._subPageIdx * 8 + localIdx];
-    if (item) this.enterReader(item);
+    if (!item) return;
+
+    if (this._articleFetchEnabled) {
+      this.enterReader({ ...item, articleText: null, fetching: true, fetchFailed: false });
+      this._fetchArticle(item.link);
+    } else {
+      this.enterReader({ ...item, articleText: null, fetching: false, fetchFailed: false });
+    }
   }
 
   openSelected() { this.openItem(this._cursorIdx); }
@@ -221,8 +229,41 @@ export class TeletextSource {
     this._dirty = true;
   }
 
-  get pageId() {
-    return PAGE_IDS[this._pageIdx] ?? 'P100';
+  setArticleFetch(v) { this._articleFetchEnabled = !!v; }
+
+  async _fetchArticle(url) {
+    try {
+      const proxy = 'https://corsproxy.io/?' + encodeURIComponent(url);
+      const res   = await fetch(proxy, { signal: AbortSignal.timeout(10000) });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const html  = await res.text();
+
+      const doc   = new DOMParser().parseFromString(html, 'text/html');
+
+      // Remove noise elements
+      ['script','style','nav','header','footer','aside','figure','noscript']
+        .forEach(tag => doc.querySelectorAll(tag).forEach(el => el.remove()));
+
+      // Extract paragraphs — prefer <article>, then <main>, then body
+      const container = doc.querySelector('article') ?? doc.querySelector('main') ?? doc.body;
+      const paras = [...container.querySelectorAll('p')]
+        .map(p => p.textContent.replace(/\s+/g, ' ').trim())
+        .filter(t => t.length > 40);
+
+      const articleText = paras.slice(0, 20).join(' \u00B6 ') || null;
+
+      if (this._readerMode && this._readerItem) {
+        this._readerItem = { ...this._readerItem, articleText, fetching: false, fetchFailed: !articleText };
+        this._readerSubPage = 0;
+        this._dirty = true;
+      }
+    } catch (e) {
+      console.warn('[TeletextSource] Article fetch failed:', e.message);
+      if (this._readerMode && this._readerItem) {
+        this._readerItem = { ...this._readerItem, fetching: false, fetchFailed: true };
+        this._dirty = true;
+      }
+    }
   }
 
   _dispatchFetch(dataKey, ps) {
