@@ -9,7 +9,7 @@ export const ROWS     = 25;
 export const CW       = CANVAS_W / COLS; // 18 px / column
 export const CH       = CANVAS_H / ROWS; // ~23 px / row
 
-const FONT = `bold 18px 'Courier New', monospace`;
+const FONT = `bold 30px 'Courier New', monospace`;
 
 /**
  * Draw the standard Teletext header bar (row 0):
