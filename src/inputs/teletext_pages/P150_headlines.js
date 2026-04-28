@@ -61,9 +61,10 @@ export function renderP150(ctx, data, subPageIdx, cursorIdx = 0) {
       const bp = title.lastIndexOf(' ', maxW);
       const cut = bp > 0 ? bp : maxW;
       const part1 = title.slice(0, cut);
-      const part2 = title.slice(cut + 1).slice(0, COLS - prefix.length); // indent
+      const indent = ' '.repeat(prefix.length);
+      const part2 = title.slice(cut).trim().slice(0, COLS - indent.length);
       ttRow(ctx, prefix + part1, row, color);
-      ttRow(ctx, ' '.repeat(prefix.length) + part2, row + 1, color);
+      ttRow(ctx, indent + part2, row + 1, color);
     }
 
     row += lines;
