@@ -3917,6 +3917,13 @@ void main() {
 
   window.addEventListener("keydown", (e) => {
     if (e.metaKey || e.ctrlKey) return;
+
+    // Teletext sub-page navigation — before focus guard so arrows work when UI inputs have focus
+    if (ps.get('analog.sourceType')?.value === 14) {
+      if (e.key === 'ArrowLeft')  { teletextSource.prevSubPage(); e.preventDefault(); return; }
+      if (e.key === 'ArrowRight') { teletextSource.nextSubPage(); e.preventDefault(); return; }
+    }
+
     if (
       (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA") &&
       e.key !== "Escape"
@@ -3972,12 +3979,6 @@ void main() {
       e.preventDefault();
       openParamSearch();
       return;
-    }
-
-    // Teletext sub-page navigation — only active when Teletext source (14) is selected
-    if (ps.get('analog.sourceType')?.value === 14) {
-      if (e.key === 'ArrowLeft')  { teletextSource.prevSubPage(); e.preventDefault(); return; }
-      if (e.key === 'ArrowRight') { teletextSource.nextSubPage(); e.preventDefault(); return; }
     }
 
     // Numpad shortcuts (ImOs9 style)

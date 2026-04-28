@@ -34,7 +34,8 @@ export function renderP150(ctx, data, subPageIdx) {
   const slice = items.slice(start, start + perPage);
 
   slice.forEach((item, i) => {
-    const titleTrunc = (item.title || '').slice(0, 35).trimEnd();
+    const title = item.title || '';
+    const titleTrunc = title.length > 35 ? title.slice(0, 34).trimEnd() + '\u2026' : title;
     const color = (i % 2 === 0) ? '#ffffff' : '#aaaaaa';
     const num = (i + 1).toString().padStart(2, ' ');
     ttRow(ctx, ` ${num}. ${titleTrunc}`, 2 + i, color);
