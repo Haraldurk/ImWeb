@@ -235,7 +235,7 @@ export class TeletextSource {
         data: { items, feedTitle, fetchedAt: Date.now() },
         fetchedAt: Date.now(),
       };
-      this.setSubPageCount(Math.ceil(items.length / 5));
+      this.setSubPageCount(Math.ceil(items.length / 12));
       this._dirty = true;
     } catch (e) {
       console.warn('[TeletextSource] RSS fetch failed:', e.message);

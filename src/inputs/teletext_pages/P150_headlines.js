@@ -32,7 +32,7 @@ export function renderP150(ctx, data, subPageIdx) {
   ctx.textAlign = 'left';
 
   // 12 headlines per sub-page, rows 2–13
-  const perPage = 5;
+  const perPage = 12;
   const start = subPageIdx * perPage;
   const slice = items.slice(start, start + perPage);
 

@@ -686,7 +686,11 @@ async function main() {
   // ── Teletext UI — page nav, sub-page arrows, RSS input ──────────────────
   {
     const ttContainer = document.getElementById('teletext-params');
-    if (ttContainer) buildTeletextUI(ttContainer, ps, teletextSource);
+    if (ttContainer) buildTeletextUI(ttContainer, ps, teletextSource, contextMenu);
+
+    // Teletext sub-page triggers — MIDI/LFO/key assignable
+    ps.get('teletext.subPageNext')?.onTrigger?.(() => teletextSource.nextSubPage());
+    ps.get('teletext.subPagePrev')?.onTrigger?.(() => teletextSource.prevSubPage());
 
     // Show teletext section only when sourceType === 'Teletext' (index 14)
     const ttSection = document.getElementById('teletext-section');

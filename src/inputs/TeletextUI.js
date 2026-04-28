@@ -1,6 +1,8 @@
 // TeletextUI — page navigation buttons, sub-page arrows, RSS URL input.
-// Exported function buildTeletextUI(container, ps, teletextSource).
+// Exported function buildTeletextUI(container, ps, teletextSource, contextMenu).
 // Follows the same pattern as buildAnalogPresetBar() in src/ui/UI.js.
+
+import { buildParamRow } from '../ui/UI.js';
 
 const PAGE_LABELS = ['P100', 'P150', 'P400', 'P401', 'P500', 'P700', 'P900'];
 const RSS_KEY = 'imweb-teletext-rssUrl';
@@ -11,7 +13,7 @@ const ICS_KEY = 'imweb-teletext-ics-url';
  * @param {object}      ps              ParameterSystem instance
  * @param {object}      teletextSource  TeletextSource instance
  */
-export function buildTeletextUI(container, ps, teletextSource) {
+export function buildTeletextUI(container, ps, teletextSource, contextMenu) {
 
   // Clear any existing UI refresh timer (defensive against re-init)
   if (teletextSource._uiRefreshTimer) {
@@ -47,6 +49,10 @@ export function buildTeletextUI(container, ps, teletextSource) {
   ps.get('teletext.page')?.onChange?.(v => {
     pageBtns.forEach((btn, i) => btn.classList.toggle('active', i === v));
   });
+
+  // ── Sub-page trigger rows (MIDI/LFO assignable) ────────────────────────
+  container.appendChild(buildParamRow(ps.get('teletext.subPagePrev'), contextMenu));
+  container.appendChild(buildParamRow(ps.get('teletext.subPageNext'), contextMenu));
 
   // ── Sub-page navigation ───────────────────────────────────────────────
   const spDiv = document.createElement('div');
