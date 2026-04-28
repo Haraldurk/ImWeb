@@ -46,6 +46,10 @@ import { ParticleEngine } from "./particles/ParticleEngine.js";
 import { SDFGenerator } from "./inputs/SDFGenerator.js";
 import { AnalogTV } from "./inputs/AnalogTV.js";
 import { registerAnalogParams } from "./inputs/AnalogParams.js";
+import { BUILTIN_PRESETS, captureAnalogState, applyAnalogPreset } from "./inputs/AnalogPresets.js";
+import { TeletextSource } from "./inputs/TeletextSource.js";
+import { registerTeletextParams } from "./inputs/TeletextParams.js";
+import { buildTeletextUI } from "./inputs/TeletextUI.js";
 import { DrawLayer } from "./inputs/DrawLayer.js";
 import { TextLayer } from "./inputs/TextLayer.js";
 import { buildWarpMaps } from "./inputs/WarpMaps.js";
@@ -87,6 +91,7 @@ import {
   TablesEditor,
   buildClipLibrary,
   buildPaletteSection,
+  buildAnalogPresetBar,
 } from "./ui/UI.js";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -135,6 +140,7 @@ async function main() {
   const ps = new ParameterSystem();
   registerCoreParameters(ps);
   registerAnalogParams(ps);
+  registerTeletextParams(ps);
 
   // ── Hypercube parameters ───────────────────────────────────────────────────
   ps.register({ id:'hypercube.dim',           type:'continuous', value:4,    min:4,    max:12,   step:1,     label:'Dimension',    group:'hypercube' });
@@ -189,7 +195,9 @@ async function main() {
   const vasulkaWarp = new VasulkaWarp(renderer, W, H, 960);
   const particles = new ParticleEngine(renderer, ps);
   const sdfGen = new SDFGenerator(renderer, W, H);
-  const analogTV = new AnalogTV(renderer);
+  const analogTV      = new AnalogTV(renderer);
+  const teletextSource = new TeletextSource();
+  teletextSource.setMovieInput(movieInput);
   const warpMaps = buildWarpMaps(); // 8 procedural warp map textures (map1–map8)
   const warpEditor = new WarpMapEditor(); // interactive editor → warpMaps[8] (Custom)
   warpMaps.push(warpEditor.texture); // index 9 in SELECT = warpMaps[8]
@@ -640,6 +648,53 @@ async function main() {
           ps.set("palette.bg.sat", pr.bgS);
           ps.set("palette.bg.val", pr.bgV);
         },
+      });
+    }
+  }
+
+  // ── AnalogTV preset system ─────────────────────────────────────────────
+  {
+    const analogPresetBar = document.getElementById("analog-preset-bar");
+    if (analogPresetBar) {
+      const PRESET_KEY = "imweb-analogtv-presets";
+      let _atvPresets = [];
+      try { _atvPresets = JSON.parse(localStorage.getItem(PRESET_KEY) ?? "[]"); }
+      catch { _atvPresets = []; }
+
+      const { refreshPresets } = buildAnalogPresetBar(analogPresetBar, ps, {
+        builtinPresets: BUILTIN_PRESETS,
+        presets: _atvPresets,
+        onSave: (name) => {
+          _atvPresets.push({ name, values: captureAnalogState(ps) });
+          try { localStorage.setItem(PRESET_KEY, JSON.stringify(_atvPresets)); }
+          catch { /* storage full */ }
+          refreshPresets(_atvPresets);
+        },
+        onDelete: (idx) => {
+          _atvPresets.splice(idx, 1);
+          try { localStorage.setItem(PRESET_KEY, JSON.stringify(_atvPresets)); }
+          catch { /* storage full */ }
+          refreshPresets(_atvPresets);
+        },
+        onLoad: (pr) => {
+          applyAnalogPreset(ps, pr.values);
+        },
+      });
+    }
+  }
+
+  // ── Teletext UI — page nav, sub-page arrows, RSS input ──────────────────
+  {
+    const ttContainer = document.getElementById('teletext-params');
+    if (ttContainer) buildTeletextUI(ttContainer, ps, teletextSource);
+
+    // Show teletext section only when sourceType === 'Teletext' (index 14)
+    const ttSection = document.getElementById('teletext-section');
+    if (ttSection) {
+      ttSection.style.display = ps.get('analog.sourceType')?.value === 14 ? '' : 'none';
+      ps.get('analog.sourceType')?.onChange?.(v => {
+        ttSection.style.display = v === 14 ? '' : 'none';
+        if (v === 14) ps.set('analog.crop43', 0);
       });
     }
   }
@@ -3919,6 +3974,12 @@ void main() {
       return;
     }
 
+    // Teletext sub-page navigation — only active when Teletext source (14) is selected
+    if (ps.get('analog.sourceType')?.value === 14) {
+      if (e.key === 'ArrowLeft')  { teletextSource.prevSubPage(); e.preventDefault(); return; }
+      if (e.key === 'ArrowRight') { teletextSource.nextSubPage(); e.preventDefault(); return; }
+    }
+
     // Numpad shortcuts (ImOs9 style)
     if (e.code === "NumpadAdd") {
       e.preventDefault();
@@ -4577,10 +4638,19 @@ void main() {
     // Analog TV — on-demand rendering (source index 23)
     const ANALOG_IDX = 23;
     const _analogUsed = ps.get("layer.fg").value === ANALOG_IDX || ps.get("layer.bg").value === ANALOG_IDX || (ps.get("layer.ds")?.value ?? 0) === ANALOG_IDX;
+    const _analogSrcIdx = _analogUsed ? ps.get("analog.sourceType").value : -1;
     if (_analogUsed) {
-      const _analogSrcIdx = ps.get("analog.sourceType").value;
-      const _analogSrc = _analogSrcIdx === 0 ? (camera3d.active ? camera3d.currentTexture : null)
-        : _resolveLayerTex(_analogSrcIdx);
+      const ANALOG_SRC_MAP    = [0, 1, 2, 5, 6, 7, 8]; // Camera=0, Movie=1, Buffer=2, Noise=5, 3D=6, Draw=7, Output=8
+      const TELETEXT_SRC_IDX  = 14;
+      let _analogSrc;
+      if (_analogSrcIdx === TELETEXT_SRC_IDX) {
+        teletextSource.tick(ps, dt);         // handles clock repaint + page switching
+        _analogSrc = teletextSource.texture; // THREE.CanvasTexture → CRT shader
+      } else if (_analogSrcIdx >= 7) {
+        _analogSrc = null;                   // test patterns — generated in shader
+      } else {
+        _analogSrc = _resolveLayerTex(ANALOG_SRC_MAP[_analogSrcIdx] ?? 0);
+      }
       analogTV.tick(ps, dt, _analogSrc);
     }
 
@@ -4593,7 +4663,7 @@ void main() {
 
     // Generate noise only when a layer is using it as a source (512×512 dedicated target)
     const NOISE_IDX = 5;
-    const _noiseUsed = ps.get("layer.fg").value === NOISE_IDX || ps.get("layer.bg").value === NOISE_IDX || (ps.get("layer.ds")?.value ?? 0) === NOISE_IDX;
+    const _noiseUsed = ps.get("layer.fg").value === NOISE_IDX || ps.get("layer.bg").value === NOISE_IDX || (ps.get("layer.ds")?.value ?? 0) === NOISE_IDX || _analogSrcIdx === 3;
     if (_noiseUsed) noiseTexture = pipeline.generateNoise({
       time: lastTime / 1000,
       type: ps.get("noise.type").value,
@@ -4628,7 +4698,7 @@ void main() {
       ps.get("layer.fg").value === SCENE3D_IDX ||
       ps.get("layer.bg").value === SCENE3D_IDX ||
       ps.get("layer.ds").value === SCENE3D_IDX ||
-      depthUsed;
+      depthUsed || _analogSrcIdx === 4;
     // scene3d.getHypercube()?.setInstancerTexture(pipeline.prev.texture); — removed: SceneManager now owns instancer texture via _adoptMesh
     if (scene3dNeeded)
       scene3d.render(ps, dt, {

@@ -3142,3 +3142,253 @@ body.fullscreen-output #app {
     color: var(--text-2);
     font-style: italic;
 }
+
+/* ── AnalogTV preset bar ─────────────────────────────────────────── */
+
+.atv-preset-area {
+    padding: 6px 10px 8px;
+}
+
+.atv-preset-header {
+    font-family: var(--mono);
+    font-size: 9px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--text-2);
+    margin-bottom: 5px;
+}
+
+.atv-preset-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-bottom: 6px;
+}
+
+.atv-preset-sep {
+    height: 1px;
+    background: var(--border);
+    margin: 6px 0 8px;
+}
+
+.atv-preset-save-row {
+    display: flex;
+    gap: 4px;
+    margin-bottom: 6px;
+}
+
+.atv-preset-name-inp {
+    flex: 1;
+    min-width: 0;
+    font-family: var(--mono);
+    font-size: 11px;
+    background: var(--bg-3);
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    color: var(--text-0);
+    padding: 3px 6px;
+}
+
+.atv-preset-name-inp::placeholder {
+    color: var(--text-2);
+}
+
+.atv-preset-name-inp:focus {
+    outline: none;
+    border-color: var(--accent-dim);
+}
+
+.atv-preset-save-btn {
+    font-family: var(--mono);
+    font-size: 10px;
+    padding: 3px 9px;
+    background: var(--bg-3);
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    color: var(--text-1);
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: color 0.1s, border-color 0.1s;
+}
+
+.atv-preset-save-btn:hover {
+    color: var(--accent);
+    border-color: var(--accent-dim);
+}
+
+.atv-preset-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    min-height: 20px;
+}
+
+.atv-preset-chip {
+    font-family: var(--mono);
+    font-size: 10px;
+    padding: 3px 8px;
+    background: var(--bg-3);
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    color: var(--text-1);
+    cursor: pointer;
+    transition: color 0.1s, border-color 0.1s, background 0.1s;
+}
+
+.atv-preset-chip:hover {
+    color: var(--text-0);
+    border-color: var(--border-hi);
+}
+
+.atv-preset-chip.active {
+    color: var(--accent);
+    border-color: var(--accent-dim);
+    background: rgba(232, 200, 64, 0.07);
+}
+
+.atv-preset-empty {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--text-2);
+    font-style: italic;
+}
+
+/* ── Teletext UI ─────────────────────────────────────────────────────────── */
+
+.tt-nav {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-bottom: 6px;
+}
+
+.tt-nav-btn {
+    font-family: var(--mono);
+    font-size: 10px;
+    padding: 3px 8px;
+    background: var(--bg-3);
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    color: var(--text-1);
+    cursor: pointer;
+    transition: color 0.1s, border-color 0.1s, background 0.1s;
+}
+
+.tt-nav-btn:hover {
+    color: var(--text-0);
+    border-color: var(--border-hi);
+}
+
+.tt-nav-btn.active {
+    color: var(--accent);
+    border-color: var(--accent-dim);
+    background: rgba(232, 200, 64, 0.07);
+}
+
+.tt-subpage {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-bottom: 6px;
+}
+
+.tt-subpage.idle {
+    opacity: 0.35;
+    pointer-events: none;
+}
+
+.tt-subpage-btn {
+    font-family: var(--mono);
+    font-size: 10px;
+    padding: 3px 6px;
+    background: var(--bg-3);
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    color: var(--text-1);
+    cursor: pointer;
+    transition: color 0.1s, border-color 0.1s;
+}
+
+.tt-subpage-btn:hover {
+    color: var(--accent);
+    border-color: var(--accent-dim);
+}
+
+.tt-subpage-btn:disabled {
+    opacity: 0.35;
+    cursor: default;
+}
+
+.tt-subpage-label {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--text-1);
+    min-width: 32px;
+    text-align: center;
+}
+
+.tt-rss-row {
+    display: flex;
+    gap: 4px;
+    margin-top: 4px;
+}
+
+.tt-rss-url {
+    flex: 1;
+    min-width: 0;
+    font-family: var(--mono);
+    font-size: 10px;
+    background: var(--bg-3);
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    color: var(--text-0);
+    padding: 3px 6px;
+}
+
+.tt-rss-url::placeholder {
+    color: var(--text-2);
+}
+
+.tt-rss-url:focus {
+    outline: none;
+    border-color: var(--accent-dim);
+}
+
+.tt-connect-btn {
+    font-family: var(--mono);
+    font-size: 10px;
+    padding: 3px 9px;
+    background: var(--bg-3);
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    color: var(--text-1);
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: color 0.1s, border-color 0.1s;
+}
+
+.tt-connect-btn:hover {
+    color: var(--accent);
+    border-color: var(--accent-dim);
+}
+
+.tt-rss-preset-row {
+    margin-bottom: 4px;
+}
+
+.tt-rss-preset {
+    width: 100%;
+    font-family: var(--mono);
+    font-size: 10px;
+    padding: 3px 6px;
+    background: var(--bg-3);
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    color: var(--text-1);
+    cursor: pointer;
+}
+
+.tt-rss-preset:focus {
+    outline: none;
+    border-color: var(--accent-dim);
+}
