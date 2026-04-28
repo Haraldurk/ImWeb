@@ -9,7 +9,8 @@ export const ROWS     = 25;
 export const CW       = CANVAS_W / COLS; // 18 px / column
 export const CH       = CANVAS_H / ROWS; // ~23 px / row
 
-const FONT = `bold 30px 'Courier New', monospace`;
+const FONT = `bold 20px 'Courier New', monospace`;
+export const XSCALE = CW / 12; // 18/12 = 1.5 — stretches 12px chars to fill 18px columns
 
 /**
  * Draw the standard Teletext header bar (row 0):
@@ -27,21 +28,24 @@ export function drawHeader(ctx, pageNum, title) {
   ctx.fillStyle = '#005500';
   ctx.fillRect(0, 0, CANVAS_W, CH);
 
+  ctx.save();
+  ctx.scale(XSCALE, 1);
   ctx.font         = FONT;
   ctx.textBaseline = 'middle';
 
   ctx.textAlign = 'left';
   ctx.fillStyle = '#00ff00';
-  ctx.fillText(String(pageNum), 4, CH * 0.5);
+  ctx.fillText(String(pageNum), 4 / XSCALE, CH * 0.5);
 
   ctx.textAlign = 'center';
   ctx.fillStyle = '#00ff00';
-  ctx.fillText(title, CANVAS_W / 2, CH * 0.5);
+  ctx.fillText(title, (CANVAS_W / 2) / XSCALE, CH * 0.5);
 
   ctx.textAlign = 'right';
   ctx.fillStyle = '#ffffff';
-  ctx.fillText(clock, CANVAS_W - 4, CH * 0.5);
+  ctx.fillText(clock, (CANVAS_W - 4) / XSCALE, CH * 0.5);
 
+  ctx.restore();
   ctx.textBaseline = 'alphabetic';
 }
 
@@ -54,24 +58,30 @@ export function drawHeader(ctx, pageNum, title) {
  * @param {string} [color]
  */
 export function ttRow(ctx, text, r, color = '#00cc00') {
+  ctx.save();
   ctx.font         = FONT;
   ctx.textAlign    = 'left';
   ctx.textBaseline = 'alphabetic';
   ctx.fillStyle    = color;
+  ctx.scale(XSCALE, 1);
   const safe = String(text).slice(0, COLS);
-  ctx.fillText(safe, 4, r * CH + CH * 0.82);
+  ctx.fillText(safe, 4 / XSCALE, r * CH + CH * 0.82);
+  ctx.restore();
 }
 
 /**
  * Draw centred text at row r.
  */
 export function ttCentered(ctx, text, r, color = '#00cc00') {
+  ctx.save();
   ctx.font         = FONT;
   ctx.textAlign    = 'center';
   ctx.textBaseline = 'alphabetic';
   ctx.fillStyle    = color;
+  ctx.scale(XSCALE, 1);
   const safe = String(text).slice(0, COLS);
-  ctx.fillText(safe, CANVAS_W / 2, r * CH + CH * 0.82);
+  ctx.fillText(safe, (CANVAS_W / 2) / XSCALE, r * CH + CH * 0.82);
+  ctx.restore();
 }
 
 /**

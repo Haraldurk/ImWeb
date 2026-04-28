@@ -1,7 +1,7 @@
 // P150 — RSS Headlines
 // Fetches RSS/Atom XML via corsproxy.io + DOMParser.
 
-import { CANVAS_W, drawHeader, ttRow, ttCentered, ttRule } from '../teletext_draw.js';
+import { CANVAS_W, CH, COLS, XSCALE, drawHeader, ttRow, ttCentered, ttRule } from '../teletext_draw.js';
 
 /**
  * @param {CanvasRenderingContext2D} ctx
@@ -21,11 +21,14 @@ export function renderP150(ctx, data, subPageIdx) {
   const title = data.feedTitle || '';
 
   // Feed source name — right-aligned on row 1
-  ctx.font = 'bold 18px \'Courier New\', monospace';
+  ctx.save();
+  ctx.scale(XSCALE, 1);
+  ctx.font = `bold 20px 'Courier New', monospace`;
   ctx.textAlign = 'right';
   ctx.textBaseline = 'alphabetic';
   ctx.fillStyle = '#444444';
-  ctx.fillText(title.substring(0, 42), CANVAS_W - 4, 1 * 23 + 23 * 0.82);
+  ctx.fillText(title.substring(0, COLS), (CANVAS_W - 4) / XSCALE, 1 * CH + CH * 0.82);
+  ctx.restore();
   ctx.textAlign = 'left';
 
   // 12 headlines per sub-page, rows 2–13
