@@ -428,6 +428,10 @@ export class Pipeline {
           uResolution: new THREE.Vector2(this.width, this.height),
         });
       }
+      // Identity guard: if prevTex is the texture of the render target _pass()
+      // will bind next, we create a GL feedback loop. Substitute fallback.
+      const targetTex = this.targets[this._current].texture;
+      if (prevTex === targetTex) prevTex = this._getFallbackTexture();
       blended = this._pass(this.m.transfermode, {
         uFG:          prevTex,
         uBG:          warped,
