@@ -741,7 +741,7 @@ export function buildLayerButtons(ps, contextMenu) {
   [
     { param: ps.get('layer.fg'), label: 'Foreground', blendParam: ps.get('layer.fg.blend') },
     { param: ps.get('layer.bg'), label: 'Background', blendParam: ps.get('layer.bg.blend') },
-    { param: ps.get('layer.ds'), label: 'DisplaceSrc', blendParam: ps.get('layer.ds.blend') },
+    { param: ps.get('layer.ds'), label: 'DisplaceSrc' },
   ].forEach(({ param, label, blendParam }) => {
     const row = document.createElement('div');
     row.className = 'param-row';
@@ -827,16 +827,16 @@ export function buildMappingPanels(ps, contextMenu) {
     'lut-params':          ps.getGroup('lut'),
     'analog-source-params': ps.getGroup('analog').filter(p => p.id.includes('source') || p.id.includes('crop')),
     'analog-signal-params': ps.getGroup('analog').filter(p => p.id.includes('brightness') || p.id.includes('contrast') || p.id.includes('saturation') || p.id.includes('hue')),
+    'analog-crt-params':    ps.getGroup('analog').filter(p => p.id.includes('.crt.')),
+    'analog-composite-params': ps.getGroup('analog').filter(p => p.id.includes('.composite.')),
+    'analog-rf-params':     ps.getGroup('analog').filter(p => p.id.includes('.rf.')),
+    'analog-tuner-params':  ps.getGroup('analog').filter(p => p.id.includes('.tuner.')),
   };
 
   Object.entries(sections).forEach(([elId, params]) => {
     const el = document.getElementById(elId);
-    if (!el || !params.length) {
-      if (elId.startsWith('analog-')) console.warn('[AnalogUI] section not populated:', elId, 'el:', !!el, 'params:', params.length);
-      return;
-    }
+    if (!el || !params.length) return;
     el.innerHTML = '';
-    if (elId.startsWith('analog-')) console.log('[AnalogUI] populating', elId, 'with', params.length, 'params');
     params.forEach(p => el.appendChild(buildParamRow(p, contextMenu)));
   });
 
@@ -3955,4 +3955,121 @@ export function buildPaletteSection(container, ps, contextMenu, opts = {}) {
   refreshPresets(presets);
 
   return { fgPicker, bgPicker, refreshPresets };
+}
+
+// ── AnalogTV preset section ───────────────────────────────────────────────
+//
+// opts:
+//   presets  Array<{name, values: {paramId: value, ...}}>  user-saved presets
+//   onSave   (name) => void
+//   onDelete (index) => void
+//   onLoad   (preset) => void
+//
+// Returns: { refreshPresets(presets) }
+
+export function buildAnalogPresetBar(container, ps, opts = {}) {
+  const { presets = [], builtinPresets = [], onSave, onDelete, onLoad } = opts;
+
+  const area = document.createElement('div');
+  area.className = 'atv-preset-area';
+  container.appendChild(area);
+
+  // ── Built-in presets header ───────────────────────────────────────────
+  const builtinHeader = document.createElement('div');
+  builtinHeader.className = 'atv-preset-header';
+  builtinHeader.textContent = 'Built-in Presets';
+  area.appendChild(builtinHeader);
+
+  const builtinRow = document.createElement('div');
+  builtinRow.className = 'atv-preset-row';
+  area.appendChild(builtinRow);
+
+  builtinPresets.forEach(pr => {
+    const chip = document.createElement('button');
+    chip.className = 'atv-preset-chip';
+    chip.textContent = pr.name;
+    chip.title = pr.name;
+    chip.addEventListener('click', () => onLoad(pr));
+    builtinRow.appendChild(chip);
+  });
+
+  // ── Separator ─────────────────────────────────────────────────────────
+  const sep = document.createElement('div');
+  sep.className = 'atv-preset-sep';
+  area.appendChild(sep);
+
+  // ── User presets header ───────────────────────────────────────────────
+  const userHeader = document.createElement('div');
+  userHeader.className = 'atv-preset-header';
+  userHeader.textContent = 'Saved Presets';
+  area.appendChild(userHeader);
+
+  const saveRow = document.createElement('div');
+  saveRow.className = 'atv-preset-save-row';
+
+  const nameInp = document.createElement('input');
+  nameInp.className = 'atv-preset-name-inp';
+  nameInp.type = 'text';
+  nameInp.placeholder = 'name...';
+  nameInp.maxLength = 32;
+
+  const saveBtn = document.createElement('button');
+  saveBtn.className = 'atv-preset-save-btn';
+  saveBtn.textContent = 'Save';
+  saveBtn.addEventListener('click', () => {
+    const name = nameInp.value.trim();
+    if (!name) { nameInp.focus(); return; }
+    if (onSave) onSave(name);
+    nameInp.value = '';
+  });
+  nameInp.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); saveBtn.click(); }
+  });
+
+  saveRow.append(nameInp, saveBtn);
+  area.appendChild(saveRow);
+
+  const list = document.createElement('div');
+  list.className = 'atv-preset-list';
+  area.appendChild(list);
+
+  let _activeIdx = -1;
+
+  function refreshPresets(prs) {
+    list.innerHTML = '';
+    if (!prs.length) {
+      const hint = document.createElement('div');
+      hint.className = 'atv-preset-empty';
+      hint.textContent = 'No saved presets';
+      list.appendChild(hint);
+      return;
+    }
+    prs.forEach((pr, i) => {
+      const chip = document.createElement('button');
+      chip.className = 'atv-preset-chip' + (i === _activeIdx ? ' active' : '');
+      chip.textContent = pr.name;
+      chip.title = pr.name + '\nRight-click to delete';
+
+      chip.addEventListener('click', () => {
+        _activeIdx = i;
+        if (onLoad) onLoad(pr);
+        list.querySelectorAll('.atv-preset-chip').forEach((c, j) =>
+          c.classList.toggle('active', j === i));
+      });
+
+      chip.addEventListener('contextmenu', e => {
+        e.preventDefault();
+        if (confirm(`Delete preset "${pr.name}"?`)) {
+          if (i === _activeIdx) _activeIdx = -1;
+          if (onDelete) onDelete(i);
+        }
+      });
+
+      list.appendChild(chip);
+    });
+  }
+
+  refreshPresets(presets);
+
+  return { refreshPresets };
 }

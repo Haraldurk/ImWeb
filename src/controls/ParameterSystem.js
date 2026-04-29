@@ -525,12 +525,20 @@ export function registerCoreParameters(ps) {
     value: 0,
   });
   ps.register({
-    id: "layer.ds.blend",
-    label: "DS Blend",
-    group: "layers",
-    type: PARAM_TYPE.SELECT,
-    options: BLEND_MODES,
-    value: 0,
+    id: "layer.fg.blendAmount",
+    label: "FG Blend Amt",
+    group: "fg",
+    min: 0,
+    max: 1,
+    value: 1,
+  });
+  ps.register({
+    id: "layer.bg.blendAmount",
+    label: "BG Blend Amt",
+    group: "bg",
+    min: 0,
+    max: 1,
+    value: 1,
   });
 
   // ── Keyer ─────────────────────────────────────────────────────────────────
@@ -780,8 +788,8 @@ export function registerCoreParameters(ps) {
     value: 0,
   });
   ps.register({
-    id: "output.transfer",
-    label: "TransferMode",
+    id: "feedback.mode",
+    label: "Feedback Mode",
     group: "blend",
     type: PARAM_TYPE.SELECT,
     options: [
