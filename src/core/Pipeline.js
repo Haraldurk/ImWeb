@@ -322,13 +322,14 @@ export class Pipeline {
       });
     }
 
-    // Per-layer blend (self-blend pre-pass — applied before global TransferMode)
+    // Per-layer blend (BG self-process tone treatment, FG composited over BG)
     const fgBlend = Math.round(p.get('layer.fg.blend')?.value ?? 0);
     const bgBlend = Math.round(p.get('layer.bg.blend')?.value ?? 0);
-    const dsBlend = Math.round(p.get('layer.ds.blend')?.value ?? 0);
-    if (fgBlend > 0) workingFG   = this._pass(this.m.transfermode, { uFG: workingFG,   uBG: workingFG,   uMode: fgBlend });
     if (bgBlend > 0) bgTexFinal  = this._pass(this.m.transfermode, { uFG: bgTexFinal,  uBG: bgTexFinal,  uMode: bgBlend });
-    if (dsBlend > 0) dsTex       = this._pass(this.m.transfermode, { uFG: dsTex,       uBG: dsTex,       uMode: dsBlend });
+    if (fgBlend > 0) workingFG   = this._pass(this.m.transfermode, {
+      uFG: workingFG, uBG: bgTexFinal, uMode: fgBlend,
+      uBlendAmount: (p.get('layer.fg.blendAmount')?.value ?? 1),
+    });
 
     // Solo mode — bypass all effects
     if (p.get('output.solo').value) {
@@ -336,18 +337,7 @@ export class Pipeline {
       return;
     }
 
-    // ── TransferMode pre-composite (FG + BG) ──────────────────────────────
-    let composite;
-    const tm = p.get('output.transfer').value;
-
-    if (tm > 0) {
-      composite = this._pass(this.m.transfermode, {
-        uFG: workingFG, uBG: bgTexFinal, uMode: tm,
-      });
-    } else {
-      // Default: FG over BG (keyer decides which wins)
-      composite = workingFG;
-    }
+    let composite = workingFG;
 
     // ── Displacement ──────────────────────────────────────────────────────
     const displAmt = p.get('displace.amount').value / 100;
@@ -438,11 +428,11 @@ export class Pipeline {
           uResolution: new THREE.Vector2(this.width, this.height),
         });
       }
-      blended = this._pass(this.m.blend, {
-        uCurrent: warped,
-        uPrev:    prevTex,
-        uActive:  1,
-        uAmount:  p.get('blend.amount').value / 100,
+      blended = this._pass(this.m.transfermode, {
+        uFG:          prevTex,
+        uBG:          warped,
+        uMode:        p.get('feedback.mode').value,
+        uBlendAmount: p.get('blend.amount').value / 100,
       });
     }
 
