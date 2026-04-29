@@ -159,6 +159,7 @@ export const TRANSFERMODE = /* glsl */ `
   uniform sampler2D uFG;
   uniform sampler2D uBG;
   uniform int       uMode;
+  uniform float     uBlendAmount;
 
   varying vec2 vUv;
 
@@ -310,7 +311,8 @@ export const TRANSFERMODE = /* glsl */ `
     else if (uMode == 21) r = blendLuminosity(a, b);
     else r = a;
 
-    gl_FragColor = vec4(clamp(r, 0.0, 1.0), fg.a);
+    vec3 blended = clamp(r, 0.0, 1.0);
+    gl_FragColor = vec4(mix(b, blended, uBlendAmount), fg.a);
   }
 `;
 

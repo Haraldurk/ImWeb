@@ -785,7 +785,7 @@ export class Pipeline {
         uScale:     { value: 0 },
         uResolution: { value: new THREE.Vector2(1280, 720) },
       }),
-      transfermode: this._mat(TRANSFERMODE, { uMode: { value: 0 } }),
+      transfermode: this._mat(TRANSFERMODE, { uMode: { value: 0 }, uBlendAmount: { value: 1.0 } }),
       colorshift:   this._mat(COLORSHIFT,   { uShift: { value: 0 } }),
       interlace:    this._mat(INTERLACE, {
         uResY: { value: 720 }, uAmount: { value: 0 }, uTime: { value: 0 },
