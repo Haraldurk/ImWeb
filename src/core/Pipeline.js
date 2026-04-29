@@ -428,11 +428,6 @@ export class Pipeline {
           uResolution: new THREE.Vector2(this.width, this.height),
         });
       }
-      // Identity guard: if uFG or uBG is the texture of the render target
-      // _pass() will bind next, we create a GL feedback loop. Substitute fallback.
-      const targetTex = this.targets[this._current].texture;
-      if (prevTex === targetTex) prevTex = this._getFallbackTexture();
-      if (warped === targetTex) warped = this._getFallbackTexture();
       blended = this._pass(this.m.transfermode, {
         uFG:          prevTex,
         uBG:          warped,
@@ -642,8 +637,8 @@ export class Pipeline {
 
   /** Run a shader pass, returns the output texture */
   _pass(material, uniforms) {
-    // Update uniforms — skip null textures (use fallback to avoid WebGL errors)
     const fallback = this._getFallbackTexture();
+    const outTex  = this.targets[this._current].texture;
     Object.entries(uniforms).forEach(([key, val]) => {
       if (material.uniforms[key] !== undefined) {
         // Replace null textures with fallback so WebGL never gets a null sampler
@@ -652,6 +647,13 @@ export class Pipeline {
             key !== 'uActive' && key !== 'uRotateGrey' && key !== 'uFlipH' &&
             key !== 'uFlipV' && key !== 'uType') {
           val = fallback;
+        }
+        // Identity guard: if this texture is the render target we're about
+        // to write to, WebGL throws GL_INVALID_OPERATION. Substitute fallback.
+        if (val && val === outTex) {
+          val = fallback;
+          if (typeof this._fbWarnCount === 'undefined') this._fbWarnCount = 0;
+          if (this._fbWarnCount++ < 10) console.warn('[Pipeline] feedback loop guard fired on', key);
         }
         material.uniforms[key].value = val;
       }
