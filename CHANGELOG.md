@@ -6,7 +6,33 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
 
 ---
 
-## [0.8.6] — 2026-04-21
+## [0.8.7] — 2026-04-29
+
+### Changed
+
+**Per-layer blend architecture refactor**
+- FG.blend now composites FG over BG (was self-blend — blending a texture against itself), using the full 22-mode TRANSFERMODE shader
+- FG.blendAmount slider (0–1) controls blend opacity; defaults to 1.0 for backward compatibility
+- BG.blend remains a self-process tone treatment (Screen/Multiply/etc.)
+- Removed `layer.ds.blend` — DS is a displacement source, not a visual layer
+
+**Feedback loop improvements**
+- `output.transfer` renamed to `feedback.mode` — drives blend mode for the temporal feedback loop (22 modes: Add, Difference, Multiply, etc.) instead of simple `mix()`
+- Feedback loop now uses TRANSFERMODE shader; blend mode + blend.amount enable creative feedback trails (Add-feedback, Difference-feedback)
+
+**uBlendAmount uniform**
+- Added `uBlendAmount` (0–1) to TRANSFERMODE shader; defaults to 1.0 in material constructor so all existing call sites preserve current behavior
+
+### Fixed
+
+**WebGL feedback loop (GL_INVALID_OPERATION)**
+- Guard moved into `_pass()` itself — checks every texture uniform against the render target texture before rendering, substituting fallback if they collide
+- Covers all call sites (feedback, FG-on-BG, displacement, keyer, chromakey, warp, all effects) regardless of upstream pass count
+- Rate-limited console warning fires up to 10 times for regression detection
+
+**Migration**
+- `output.transfer` → `feedback.mode` in `importState()` for backward-compatible preset/project loading
+- DemoPresets and ImXImporter updated
 
 ### Added
 
