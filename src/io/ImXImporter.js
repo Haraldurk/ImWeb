@@ -106,14 +106,14 @@ const PARAM_MAP = {
   'vershift@Offset':            'feedback.ver',
 
   // ── Logic (transfer mode) ──────────────────────────────────────────────────
-  // operation@Logic 0-7 → output.transfer: complex mapping, handled specially
+  // operation@Logic 0-7 → feedback.mode: complex mapping, handled specially
 
   // ── Sine (warp / displacement) ─────────────────────────────────────────────
   'freq1@Sine':                 'displace.warpamt',
   'amp1@Sine':                  'displace.amount',
 };
 
-// ImX Logic.operation values → ImWeb output.transfer index
+// ImX Logic.operation values → ImWeb feedback.mode index
 // ImX: 0=Copy, 1=AND, 2=OR, 3=XOR, 4=Difference, 5=Add, 6=Subtract, 7=Multiply
 const LOGIC_TO_TRANSFER = { 0: 0, 1: 3, 2: 2, 3: 1, 4: 9, 5: 7, 6: 14, 7: 4 };
 
@@ -296,7 +296,7 @@ function _mapstate(ms) {
   // ── Special case: Logic operation → TransferMode ───────────────────────────
   if (name === 'operation' && plugin === 'Logic') {
     const mode = LOGIC_TO_TRANSFER[Math.round(rawVal)] ?? 0;
-    return { 'output.transfer': mode };
+    return { 'feedback.mode': mode };
   }
 
   // ── Special case: _displace_active ─────────────────────────────────────────

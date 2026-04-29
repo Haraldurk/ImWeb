@@ -3,7 +3,7 @@
  * Presets and Display States, stored in IndexedDB.
  */
 
-import { DEMO_PRESETS } from './DemoPresets.js';
+// DemoPresets removed — first-launch seeding now uses MasterProject.imweb
 
 export const MAX_STATES = 32;
 
@@ -73,13 +73,14 @@ export class Preset {
     this.thumbnail    = null;
   }
 
-  addState(values, index = null, fxOrder = null, controllers = {}, mediaRefs = {}, pins = null) {
+  addState(values, index = null, fxOrder = null, controllers = {}, mediaRefs = {}, pins = null, extra = null) {
     const ds = {
       values:      { ...values },
       fxOrder:     fxOrder ? [...fxOrder] : null,
       controllers: { ...controllers },
       mediaRefs:   { movie: null, scene3d: null, text: null, buffer: null, ...mediaRefs },
       pins:        pins ? [...pins] : null,
+      extra:       extra ? { ...extra } : null,
       name:        null,
       thumbnail:   null,
       created:     Date.now(),
@@ -158,6 +159,8 @@ export class PresetManager extends EventTarget {
     this._fadePresets = true;
     this._fadeTimeoutId = null;
     this._mediaRefs  = { movie: null, scene3d: null, text: null, buffer: null };
+    this._getExtra   = null; // () => extraData — callback to capture non-param state
+    this._firstLaunch = false; // true when IndexedDB was empty on init()
 
     // Morph animation state
     this._morphFrom      = null;
@@ -173,6 +176,9 @@ export class PresetManager extends EventTarget {
 
   setMediaRef(key, filename) { this._mediaRefs[key] = filename; }
 
+  // Register extra-state callback (captures non-param state like text content)
+  setExtraCallback(getter) { this._getExtra = getter; }
+
   // Register pin serialisation callbacks (called from main.js after particles init)
   setPinsCallbacks(getter, setter) {
     this._getPins    = getter;
@@ -181,17 +187,12 @@ export class PresetManager extends EventTarget {
 
   async init() {
     const saved = await Preset.loadAll();
-    if (saved.length === 0) {
-      // Seed factory demo presets on first launch
-      for (const def of DEMO_PRESETS) {
-        const p = new Preset(def.index);
-        p.name = def.name;
-        p.controllers = def.controllers;
-        p.states = def.states;
-        p.activeState = def.activeState;
-        this.presets[def.index] = p;
-        await p.save();
-      }
+    this._firstLaunch = saved.length === 0;
+    if (this._firstLaunch) {
+      // First-ever launch — start with a blank Bank 0.
+      // main.js will immediately load /Projects/MasterProject.imweb on top of this.
+      this.presets[0] = new Preset(0);
+      await this.presets[0].save();
     } else {
       saved.forEach(p => { this.presets[p.index] = p; });
     }
@@ -321,7 +322,8 @@ export class PresetManager extends EventTarget {
     const controllers = this.ps.serializeControllers();
     const mediaRefs   = { ...this._mediaRefs };
     const pins        = this._getPins ? this._getPins() : null;
-    const idx = p.addState(values, stateIndex, fxOrder, controllers, mediaRefs, pins);
+    const extra       = this._getExtra ? this._getExtra() : null;
+    const idx = p.addState(values, stateIndex, fxOrder, controllers, mediaRefs, pins, extra);
     await p.save();
     this.dispatchEvent(new CustomEvent('stateSaved',
       { detail: { presetIndex: this.currentIdx, stateIndex: idx } }));
@@ -439,8 +441,12 @@ export class PresetManager extends EventTarget {
   }
 
   importState(data, targetSlot = null) {
-    const { values, fxOrder, controllers, mediaRefs, pins, name, thumbnail } = data;
-    const idx = this.current?.addState(values, targetSlot, fxOrder, controllers, mediaRefs, pins ?? null);
+    if ('output.transfer' in data.values) {
+      data.values['feedback.mode'] = data.values['output.transfer'];
+      delete data.values['output.transfer'];
+    }
+    const { values, fxOrder, controllers, mediaRefs, pins, name, thumbnail, extra } = data;
+    const idx = this.current?.addState(values, targetSlot, fxOrder, controllers, mediaRefs, pins ?? null, extra ?? null);
     if (idx !== null && name)      this.current.states[idx].name = name;
     if (idx !== null && thumbnail) this.current.states[idx].thumbnail = thumbnail;
     return idx;

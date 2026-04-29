@@ -33,7 +33,7 @@ export const DEMO_PRESETS = [
           'sdf.distance': 1.5,
           'blend.active': 1,
           'blend.amount': 35,
-          'output.transfer': 5,  // Screen
+          'feedback.mode': 5,  // Screen
         },
         fxOrder: null,
       },
@@ -58,7 +58,7 @@ export const DEMO_PRESETS = [
           'blend.amount': 82,
           'feedback.rotate': 1.5,
           'feedback.zoom': 2,
-          'output.transfer': 5,  // Screen
+          'feedback.mode': 5,  // Screen
         },
         fxOrder: null,
       },
@@ -87,7 +87,7 @@ export const DEMO_PRESETS = [
           'scene3d.mat.emissive': 0.15,
           'scene3d.light.ambient': 0.3,
           'scene3d.light.point': 1.2,
-          'output.transfer': 0,        // Copy
+          'feedback.mode': 0,        // Copy
         },
         fxOrder: null,
       },
@@ -118,7 +118,7 @@ export const DEMO_PRESETS = [
           'sdf.sat': 0.9,
           'sdf.val': 1.0,
           'blend.active': 0,
-          'output.transfer': 0,  // Copy
+          'feedback.mode': 0,  // Copy
         },
         fxOrder: null,
       },
@@ -149,7 +149,7 @@ export const DEMO_PRESETS = [
           'scene3d.mat.roughness': 0.3,
           'scene3d.mat.metalness': 0.6,
           'scene3d.light.point': 1.5,
-          'output.transfer': 5,          // Screen
+          'feedback.mode': 5,          // Screen
         },
         fxOrder: null,
       },
@@ -176,7 +176,7 @@ export const DEMO_PRESETS = [
           'blend.amount': 75,
           'feedback.zoom': 2,
           'feedback.rotate': 0.5,
-          'output.transfer': 5,    // Screen
+          'feedback.mode': 5,    // Screen
         },
         fxOrder: null,
       },
@@ -190,7 +190,7 @@ export const DEMO_PRESETS = [
           'vwarp.bufsize': 1,
           'vwarp.axis': 0,
           'vwarp.mix': 1.0,
-          'output.transfer': 0,    // Copy
+          'feedback.mode': 0,    // Copy
         },
         fxOrder: null,
       },
