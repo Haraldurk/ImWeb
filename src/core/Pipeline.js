@@ -35,7 +35,6 @@ const _FX = {
   pixelate: (pipe, tex, p) => {
     const amt = p.get('effect.pixelate').value;
     if (amt <= 1) return tex;
-    pipe.m.pixelate.uniforms.uResolution.value.set(pipe.width, pipe.height);
     return pipe._pass(pipe.m.pixelate, {
       uTexture: tex, uAmount: amt,
     });
@@ -43,7 +42,6 @@ const _FX = {
   edge: (pipe, tex, p) => {
     const amt = p.get('effect.edge').value / 100;
     if (amt <= 0) return tex;
-    pipe.m.edge.uniforms.uResolution.value.set(pipe.width, pipe.height);
     return pipe._pass(pipe.m.edge, {
       uTexture: tex, uAmount: amt,
       uInvert: p.get('effect.edge_inv').value,
@@ -119,11 +117,9 @@ const _FX = {
     //    Resolution uniform uses full dimensions so the Gaussian kernel step
     //    (texel = direction / resolution) stays identical to the original,
     //    preserving bloom radius. Half-res render gives 4× fewer fragments.
-    pipe.m.bloomBlurH.uniforms.uResolution.value.set(pipe.width, pipe.height);
     pipe._passTo(pipe.m.bloomBlurH, { uTexture: bright }, pipe._bloomTargetH);
 
     // 3. BlurV at half-res → dedicated target (no ping-pong flip)
-    pipe.m.bloomBlurV.uniforms.uResolution.value.set(pipe.width, pipe.height);
     pipe._passTo(pipe.m.bloomBlurV, { uTexture: pipe._bloomTargetH.texture }, pipe._bloomTargetV);
 
     // 4. Composite at full res — upsamples blur back onto original scene.
@@ -166,7 +162,6 @@ const _FX = {
   pixelsort: (pipe, tex, p) => {
     const amt = p.get('effect.pixelsort').value / 100;
     if (amt <= 0) return tex;
-    pipe.m.pixelsort.uniforms.uResolution.value.set(pipe.width, pipe.height);
     return pipe._pass(pipe.m.pixelsort, {
       uTexture: tex,
       uThreshold: p.get('effect.psortthresh').value / 100,
@@ -238,6 +233,9 @@ export class Pipeline {
 
     // Pre-allocated inputs overlay — avoids { ...inputs } spread allocation each frame
     this._pInputs = Object.create(null);
+
+    this._lastResW = 0;
+    this._lastResH = 0;
   }
 
   // ── 3D LUT ───────────────────────────────────────────────────────────────
@@ -459,7 +457,6 @@ export class Pipeline {
         });
       }
       if (fbHor !== 0 || fbVer !== 0 || fbScale !== 0) {
-        this.m.feedback.uniforms.uResolution.value.set(this.width, this.height);
         prevTex = this._pass(this.m.feedback, {
           uOutput:    prevTex,
           uHorOffset: fbHor,
@@ -526,7 +523,6 @@ export class Pipeline {
     // Final blit — optionally through bicubic interpolation
     const interpMode = p.get('output.interp').value;
     if (interpMode > 0) {
-      this.m.interp.uniforms.uResolution.value.set(this.width, this.height);
       this.m.interp.uniforms.uMode.value = interpMode;
       this.m.interp.uniforms.uTexture.value = customOut;
       this._quad.material = this.m.interp;
@@ -669,6 +665,17 @@ export class Pipeline {
     const hh = Math.ceil(h / 2);
     this._bloomTargetH.setSize(hw, hh);
     this._bloomTargetV.setSize(hw, hh);
+    if (w !== this._lastResW || h !== this._lastResH) {
+      this.m.pixelate.uniforms.uResolution.value.set(w, h);
+      this.m.edge.uniforms.uResolution.value.set(w, h);
+      this.m.bloomBlurH.uniforms.uResolution.value.set(w, h);
+      this.m.bloomBlurV.uniforms.uResolution.value.set(w, h);
+      this.m.pixelsort.uniforms.uResolution.value.set(w, h);
+      this.m.feedback.uniforms.uResolution.value.set(w, h);
+      this.m.interp.uniforms.uResolution.value.set(w, h);
+      this._lastResW = w;
+      this._lastResH = h;
+    }
   }
 
   // ── Private helpers ───────────────────────────────────────────────────────
