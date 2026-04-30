@@ -18,7 +18,7 @@
 import * as THREE from 'three';
 import {
   VERT, KEYER, DISPLACE, BLEND, FEEDBACK,
-  TRANSFERMODE, COLORSHIFT, NOISE_BFG, INTERLACE, MIRROR, SOLID_COLOR, WARP, FADE, PASSTHROUGH,
+  TRANSFERMODE, TRANSFER_COPY, COLORSHIFT, NOISE_BFG, INTERLACE, MIRROR, SOLID_COLOR, WARP, FADE, PASSTHROUGH,
   BUFFER_TRANSFORM, INTERP,
   PIXELATE, EDGE, RGBSHIFT, POSTERIZE, SOLARIZE, COLOR_CORRECT, CHROMA_KEY,
   VIGNETTE, BLOOM_EXTRACT, BLOOM_BLUR, BLOOM_COMPOSITE, KALEIDOSCOPE, PIXEL_SORT,
@@ -325,7 +325,9 @@ export class Pipeline {
     // Per-layer blend (BG self-process tone treatment, FG composited over BG)
     const fgBlend = Math.round(p.get('layer.fg.blend')?.value ?? 0);
     const bgBlend = Math.round(p.get('layer.bg.blend')?.value ?? 0);
-    if (bgBlend > 0) bgTexFinal  = this._pass(this.m.transfermode, { uFG: bgTexFinal,  uBG: bgTexFinal,  uMode: bgBlend });
+    // Self-blend is degenerate for Difference/Exclude/Subtract/Divide — skip
+    const BG_DEGENERATE = bgBlend === 7 || bgBlend === 8 || bgBlend === 14 || bgBlend === 15;
+    if (bgBlend > 0 && !BG_DEGENERATE) bgTexFinal  = this._pass(this.m.transfermode, { uFG: bgTexFinal,  uBG: bgTexFinal,  uMode: bgBlend });
     if (fgBlend > 0) workingFG   = this._pass(this.m.transfermode, {
       uFG: workingFG, uBG: bgTexFinal, uMode: fgBlend,
       uBlendAmount: (p.get('layer.fg.blendAmount')?.value ?? 1),
@@ -428,12 +430,17 @@ export class Pipeline {
           uResolution: new THREE.Vector2(this.width, this.height),
         });
       }
-      blended = this._pass(this.m.transfermode, {
-        uFG:          prevTex,
-        uBG:          warped,
-        uMode:        p.get('feedback.mode').value,
-        uBlendAmount: p.get('blend.amount').value / 100,
-      });
+      const fbMode = p.get('feedback.mode').value;
+      if (fbMode === 0) {
+        blended = warped;
+      } else {
+        blended = this._pass(this.m.transfermode, {
+          uFG:          prevTex,
+          uBG:          warped,
+          uMode:        fbMode,
+          uBlendAmount: p.get('blend.amount').value / 100,
+        });
+      }
     }
 
     // ── Color shift ───────────────────────────────────────────────────────
@@ -783,6 +790,7 @@ export class Pipeline {
         uResolution: { value: new THREE.Vector2(1280, 720) },
       }),
       transfermode: this._mat(TRANSFERMODE, { uMode: { value: 0 }, uBlendAmount: { value: 1.0 } }),
+      transfercopy: this._mat(TRANSFER_COPY, { uBlendAmount: { value: 1.0 } }),
       colorshift:   this._mat(COLORSHIFT,   { uShift: { value: 0 } }),
       interlace:    this._mat(INTERLACE, {
         uResY: { value: 720 }, uAmount: { value: 0 }, uTime: { value: 0 },

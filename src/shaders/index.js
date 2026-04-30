@@ -316,6 +316,20 @@ export const TRANSFERMODE = /* glsl */ `
   }
 `;
 
+// Lightweight Copy-only transfer mode — avoids register pressure from 190+ line
+// TRANSFERMODE shader when the mode is guaranteed to be 0 (Copy/identity).
+export const TRANSFER_COPY = /* glsl */ `
+  uniform sampler2D uFG;
+  uniform sampler2D uBG;
+  uniform float     uBlendAmount;
+  varying vec2 vUv;
+  void main() {
+    vec4 fg = texture2D(uFG, vUv);
+    vec4 bg = texture2D(uBG, vUv);
+    gl_FragColor = vec4(mix(bg.rgb, fg.rgb, uBlendAmount), fg.a);
+  }
+`;
+
 // ── Color Shift ───────────────────────────────────────────────────────────────
 
 export const COLORSHIFT = /* glsl */ `
