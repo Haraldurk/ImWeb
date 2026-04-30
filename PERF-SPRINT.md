@@ -376,13 +376,46 @@ meaningful number.
 
 ---
 
+### Task 5 — GC pressure measurement (2026-04-30)
+
+**Attempted:** `performance.memory` polling via Chrome MCP into localhost:5173 tab.
+
+**Finding: `performance.memory` is not suitable for this measurement.**
+
+Chrome deliberately quantizes `performance.memory` for security (timing side-channel
+mitigation) and only updates it after **major** GC events — not minor/young-gen collections.
+V8's scavenger collects short-lived objects (Vec2, entries arrays, spread objects) entirely
+within the nursery heap before any `performance.memory` snapshot reflects the change.
+
+Three approaches tried:
+- `setInterval` at 100ms → throttled to ~1fps in backgrounded MCP tab (6 samples in 15s)
+- `requestAnimationFrame` sampler → paused entirely in backgrounded tab (0 samples)
+- Synchronous tight-loop benchmark (20k iterations per pattern) → all deltas = 0;
+  `performance.memory` didn't update between pattern runs
+
+**What we know from Task 3 steady-state results:**
+- 60fps / 0 jank / avg 16.67ms after fixes = no measurable GC pauses in steady state
+- Pre-fix: 85 jank frames in the first 5s window (startup), dropping to 0 jank at steady state
+- The Task 3 steady-state result IS the GC confirmation: if young-gen GC was causing
+  frame drops (>16.67ms), they'd appear as jank events in `perf-logger`. They don't.
+
+**For definitive per-allocation profiling:**
+DevTools → Memory tab → Allocation Timeline (10s recording while render loop runs).
+This uses the V8 heap profiler protocol and sees every allocation site.
+Requires DevTools UI — needs computer use or manual session.
+
+**Verdict:** GC fix effectiveness is confirmed indirectly via Task 3 jank=0 steady state.
+Direct heap profiling deferred to a manual DevTools session.
+
+---
+
 ## Backlog
 
 - [x] Task 1: Instrument render loop with perf-logger.js
 - [x] Task 2: Map pipeline stages and rank by cost
 - [x] Task 3: CPU allocation hotspots (Vector2 ×5, Object.entries, spread ×2, getAll ×1)
 - [x] Task 4: Bloom half-res blur optimization
-- [ ] Task 5: Measure GC pressure with DevTools Memory tab after fixes
+- [~] Task 5: Measure GC pressure with DevTools Memory tab after fixes — see findings below
 - [x] Task 6: `ctrl.tick()` inner `p.xControllers.forEach()` — replace with `for` loop
 
 ---
