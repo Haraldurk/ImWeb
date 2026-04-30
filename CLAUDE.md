@@ -76,7 +76,7 @@ UI.js                   All UI builders: param rows, tabs, signal path,
 context menus, seq cards, WarpMap editor,
 controller badge popovers
 
-main.js is the integration hub (~2000 lines). Most feature wiring lives here. Do not split it without a clear architectural reason.
+main.js is the integration hub (~5400 lines). Most feature wiring lives here. Do not split it without a clear architectural reason.
 
 ### Architecture Notes
 - Pipeline.js (src/core/Pipeline.js) owns the noise material uniform init block and the generateNoise() setter — NOT main.js. main.js only contains the call site and event listeners.
@@ -166,7 +166,7 @@ Before implementing any flag or conditional guard:
 
 ## Project-Specific Notes
 
-For barlowgen.html and ImWeb projects: these are large single-file HTML/JS apps. Use surgical edits — never rewrite entire files. Always verify edit targets with grep first, and check that updateDisplay() or similar refresh functions won't overwrite new UI elements.
+Use surgical edits — never rewrite entire files. Always verify edit targets with grep first, and check that updateDisplay() or similar refresh functions won't overwrite new UI elements.
 
 ---
 
@@ -197,7 +197,7 @@ AFTER: git add [files] && git commit -m "[message]" && git push
 
 ---
 
-## Current version: 0.8.5
+## Current version: 0.8.7
 
 See CHANGELOG.md for full history.
 
@@ -259,6 +259,35 @@ npm run build   # Production build to dist/
 ```
 
 Chrome 113+ recommended. Firefox and Safari work with minor WebGL limitations.
+
+---
+
+## MasterProject System
+
+### What it is
+`public/Projects/MasterProject.imweb` is the factory default project. It is a standard `.imweb` project file (JSON) that gets loaded automatically on the very first launch (when IndexedDB is empty). Returning users keep their own saved state from IndexedDB — MasterProject is only applied once, on a fresh browser.
+
+Users can also restore it explicitly via **Project tab → ⟳ Restore MasterProject** (shows a confirmation warning before wiping current state).
+
+### Developer workflow — updating MasterProject
+1. Open ImWeb and build the desired default state (banks, states, params, tables).
+2. In the **Project tab**, click **📤 Save as MasterProject [DEV]** — this downloads `MasterProject.imweb` to your Downloads folder.
+3. Move/copy the downloaded file to `public/Projects/MasterProject.imweb`, replacing the old one.
+4. Commit: `git add public/Projects/MasterProject.imweb && git commit -m "chore: update MasterProject"`
+
+That's all. The next first-launch (fresh browser / cleared IndexedDB) will load the new version.
+
+### Key files
+| File | Role |
+|---|---|
+| `public/Projects/MasterProject.imweb` | Factory default project (served as static asset) |
+| `src/io/ProjectFile.js` | `importFromURL(url)` — fetches and applies a project from a URL |
+| `src/io/ProjectFile.js` | `exportAsMasterProject()` — downloads current project as MasterProject.imweb |
+| `src/state/Preset.js` | `presetMgr._firstLaunch` — true when IndexedDB was empty on init() |
+| `src/main.js` | First-launch load block (~line 1680); Project file UI with both buttons |
+
+### Architecture note
+`DemoPresets.js` is no longer used in the boot sequence. `presetMgr.init()` sets `_firstLaunch = true` when IndexedDB is empty and creates a blank Bank 0. `main.js` then immediately calls `projectFile.importFromURL('/Projects/MasterProject.imweb')` to populate it. If the fetch fails (e.g. file missing), a warning is logged and the app starts with a blank bank — no crash.
 
 ---
 
@@ -334,6 +363,13 @@ After `gemini` exits (success, error, or Ctrl+C) the trap fires `restore_gitigno
 ---
 
 ## Session Log
+
+### 2026-04-30 (Sprint 2 — scene3d investigation)
+- perf: renderer.info.autoReset = false — manual reset before first render pass,
+  accumulates all passes correctly across scene3d + pipeline + VasulkaWarp + SeqTimewarp
+- finding: scene3d uses shared renderer, no parallel RAF, no shadow map overhead
+- baseline: DC:13 / Tri:520K at locked 60fps / 0 jank — architecture healthy, no action needed
+- Sprint 1 baseline: locked 60fps, 0 jank (Vector2 GC, Object.entries, spread, loop merge, Bloom half-res)
 
 ### 2026-04-16 (Session 5)
 - feat(hypercube): hypercube pipeline texture on faces (Session 2 complete)
