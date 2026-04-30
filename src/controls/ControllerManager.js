@@ -105,11 +105,12 @@ export class ControllerManager {
         else if (ct === 'rand3') p.setNormalized(this.rand[2].val);
       }
       if (p.xControllers?.length) {
-        p.xControllers.forEach((xc, idx) => {
-          if (!xc) return;
+        for (let idx = 0; idx < p.xControllers.length; idx++) {
+          const xc = p.xControllers[idx];
+          if (!xc) continue;
           const norm = this._evalXNorm(xc, `${p.id}:${idx}`, dt, beatPhase);
           if (norm !== null) this._applyX(p, xc, norm);
-        });
+        }
       }
     });
 
