@@ -297,6 +297,8 @@ export class ParameterSystem extends EventTarget {
     super();
     this.params = new Map(); // id → Parameter
     this.groups = new Map(); // groupName → [paramId, ...]
+    this._allParams = [];
+    this._allParamsDirty = true;
   }
 
   /**
@@ -305,6 +307,7 @@ export class ParameterSystem extends EventTarget {
   register(config) {
     const p = new Parameter(config);
     this.params.set(p.id, p);
+    this._allParamsDirty = true;
     if (p.group) {
       if (!this.groups.has(p.group)) this.groups.set(p.group, []);
       this.groups.get(p.group).push(p.id);
@@ -319,7 +322,11 @@ export class ParameterSystem extends EventTarget {
     return this.params.has(id);
   }
   getAll() {
-    return [...this.params.values()];
+    if (this._allParamsDirty) {
+      this._allParams = [...this.params.values()];
+      this._allParamsDirty = false;
+    }
+    return this._allParams;
   }
 
   getGroup(name) {
