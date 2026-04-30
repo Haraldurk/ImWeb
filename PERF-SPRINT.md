@@ -37,3 +37,17 @@ first render pass — accumulates all passes correctly.
 Status: ✅ Closed — architecture healthy, cost acceptable.
 
 ---
+
+## Sprint 3 — Open
+
+### Candidate investigations
+
+| # | Area | Hypothesis | Priority |
+|---|---|---|---|
+| 3.1 | Shader uniform uploads | Per-frame uniform sets for inactive/hidden passes may be wasting driver time | Medium |
+| 3.2 | Parameter tick loop | ParameterSystem onChange fan-out — profile cost at ~210 params with active LFOs/MIDI | Medium |
+| 3.3 | GC audit (controllers) | ControllerManager slew/interpolation — any remaining per-tick allocations? | Low |
+| 3.4 | IndexedDB write pressure | Preset auto-save cadence — how often, how large, any jank on flush? | Low |
+
+### Status
+🔲 Not started
