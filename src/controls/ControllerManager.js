@@ -94,12 +94,23 @@ export class ControllerManager {
       r.val += (r.target - r.val) * r.slew;
     });
 
-    // Drive parameters assigned to rand1/2/3
+    // Drive rand1/2/3 params AND tick xControllers in a single pass.
+    // Within each param: primary (rand) applied first, xController override after —
+    // preserving the original execution order guarantee.
     this.ps.getAll().forEach(p => {
-      if (!p.controller) return;
-      if (p.controller.type === 'rand1') p.setNormalized(this.rand[0].val);
-      if (p.controller.type === 'rand2') p.setNormalized(this.rand[1].val);
-      if (p.controller.type === 'rand3') p.setNormalized(this.rand[2].val);
+      if (p.controller) {
+        const ct = p.controller.type;
+        if (ct === 'rand1') p.setNormalized(this.rand[0].val);
+        else if (ct === 'rand2') p.setNormalized(this.rand[1].val);
+        else if (ct === 'rand3') p.setNormalized(this.rand[2].val);
+      }
+      if (p.xControllers?.length) {
+        p.xControllers.forEach((xc, idx) => {
+          if (!xc) return;
+          const norm = this._evalXNorm(xc, `${p.id}:${idx}`, dt, beatPhase);
+          if (norm !== null) this._applyX(p, xc, norm);
+        });
+      }
     });
 
     // Update sound controller if active
@@ -107,17 +118,6 @@ export class ControllerManager {
 
     // Poll gamepads
     this._tickGamepad();
-
-    // Tick xControllers (External Mapping — controller-of-controller modulation)
-    // Runs AFTER primary controllers so 'value' target can also override them
-    this.ps.getAll().forEach(p => {
-      if (!p.xControllers?.length) return;
-      p.xControllers.forEach((xc, idx) => {
-        if (!xc) return;
-        const norm = this._evalXNorm(xc, `${p.id}:${idx}`, dt, beatPhase);
-        if (norm !== null) this._applyX(p, xc, norm);
-      });
-    });
   }
 
   // ── External Mapping helpers ──────────────────────────────────────────────

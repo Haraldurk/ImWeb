@@ -93,6 +93,7 @@ import {
   buildPaletteSection,
   buildAnalogPresetBar,
 } from "./ui/UI.js";
+import { perfFrame } from "./perf-logger.js";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Main
@@ -378,13 +379,46 @@ async function main() {
     (pins) => particles.ghostNodes.restorePins(pins),
   );
 
+  // Wire extra non-param state (text content, imported 3D model flag) into state system
+  presetMgr.setExtraCallback(() => ({
+    textContent:      textLayer._contentList.length > 0
+                        ? [...textLayer._contentList]
+                        : (textLayer._text ? [textLayer._text] : []),
+    scene3dHasImport: !!scene3d.importedModelName,
+  }));
+
   // Populated by the hypercube panel build block (below). Calling it clears and
   // rebuilds the panel DOM so that select/range widgets reflect restored ps values.
   let _hcPanelRebuild = null;
 
   // Re-sync hypercube object after any state recall (onChange only fires on change,
   // so params that restored to the same value as the object's current state need this explicit push).
-  presetMgr.addEventListener('stateRecalled', () => {
+  presetMgr.addEventListener('stateRecalled', (e) => {
+    const ds    = e.detail.state;
+    const extra = ds?.extra;
+
+    // ── Restore text layer content ──────────────────────────────────────────
+    if (Array.isArray(extra?.textContent) && extra.textContent.length > 0) {
+      const lines = extra.textContent;
+      textLayer.setContentList(lines);
+      if (lines.length <= 1) textLayer.setContent(lines[0] ?? '');
+      const textContentEl = document.getElementById('text-content');
+      if (textContentEl) textContentEl.value = lines.join('\n');
+    }
+
+    // ── Handle imported 3D model state ────────────────────────────────────
+    // If the saved state had an imported model but none is currently loaded,
+    // suppress applyParams() geometry overwrite so the user sees a neutral
+    // 3D scene rather than the wrong geometry. _checkMediaRefs() will toast
+    // the user to reload the model file.
+    const mr = ds?.mediaRefs;
+    if (mr?.scene3d && !scene3d.importedModelName) {
+      scene3d.setImportPending(mr.scene3d);
+    } else if (!extra?.scene3dHasImport) {
+      // State was saved without an imported model — clear any pending suppression
+      scene3d.clearImportPending();
+    }
+
     const hc = scene3d.getHypercube();
     if (!hc) return;
     const g = (id, def) => ps.get(id)?.value ?? def;
@@ -1645,6 +1679,16 @@ async function main() {
     seqBuffers: [seq1, seq2, seq3],
   });
 
+  // ── First-ever launch: load MasterProject from server ─────────────────────
+  if (presetMgr._firstLaunch) {
+    try {
+      await projectFile.importFromURL('/Projects/MasterProject.imweb');
+      console.info('[ImWeb] First launch — MasterProject.imweb loaded');
+    } catch (err) {
+      console.warn('[ImWeb] Could not load /Projects/MasterProject.imweb — starting blank:', err.message);
+    }
+  }
+
   // Click OSC indicator → prompt for WebSocket URL and connect
   document.getElementById("status-osc")?.addEventListener("click", () => {
     if (oscBridge.active) {
@@ -1662,7 +1706,7 @@ async function main() {
       container.innerHTML = `
         <div style="padding:8px 10px;display:flex;flex-direction:column;gap:5px;">
           <div style="display:flex;gap:5px;">
-            <input id="project-name-input" type="text" placeholder="Session name…"
+            <input id="project-name-input" type="text" placeholder="Type your new Project name here"
               style="flex:1;background:var(--bg-3);border:1px solid var(--border);border-radius:3px;
                      color:var(--text-0);font-family:var(--mono);font-size:11px;padding:4px 7px;outline:none;" />
           </div>
@@ -1670,6 +1714,13 @@ async function main() {
             <button id="btn-export-project" class="import-btn" style="flex:1" title="Cmd+S / Cmd+E">⇩ Export .imweb</button>
             <button id="btn-import-project" class="import-btn" style="flex:1" title="Cmd+O">⇧ Import .imweb</button>
           </div>
+          <button id="btn-restore-master" class="import-btn"
+            style="width:100%;border-color:var(--accent);color:var(--accent);"
+            title="Reset everything to the factory MasterProject defaults">⟳ Restore MasterProject</button>
+          <button id="btn-save-master" class="import-btn"
+            style="width:100%;border-color:var(--text-2);color:var(--text-2);font-size:9px;opacity:0.6;"
+            title="[DEV] Download current project as MasterProject.imweb — place in public/Projects/ to update factory defaults">
+            📤 Save as MasterProject  [DEV]</button>
           <div id="project-file-status" style="font-family:var(--mono);font-size:10px;color:var(--text-2);min-height:14px;"></div>
           <input id="project-file-input" type="file" accept=".imweb,application/json" style="display:none;" />
         </div>
@@ -1696,6 +1747,15 @@ async function main() {
             setStatus(`✓ Exported "${name}"`, "var(--green)");
           } catch (err) {
             setStatus(`✗ ${err.message}`, "var(--red)");
+          }
+        });
+
+      // Enter key in the name field triggers export
+      document.getElementById("project-name-input")
+        ?.addEventListener("keydown", (e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            document.getElementById("btn-export-project")?.click();
           }
         });
 
@@ -1731,6 +1791,72 @@ async function main() {
             setStatus(`✗ ${err.message}`, "var(--red)");
           }
         });
+
+      // ── Restore MasterProject ─────────────────────────────────────────────
+      // Build a modal dialog once and reuse it
+      const modal = document.createElement("div");
+      modal.id = "restore-master-modal";
+      modal.style.cssText = [
+        "display:none;position:fixed;inset:0;z-index:9999;",
+        "background:rgba(0,0,0,0.82);align-items:center;justify-content:center;",
+      ].join("");
+      modal.innerHTML = `
+        <div style="background:var(--bg-2);border:1px solid var(--accent);border-radius:6px;
+                    padding:24px 28px;max-width:380px;width:90%;font-family:var(--mono);">
+          <div style="color:var(--accent);font-size:13px;font-weight:bold;margin-bottom:12px;">
+            ⚠ Restore MasterProject?
+          </div>
+          <div style="color:var(--text-1);font-size:11px;line-height:1.65;margin-bottom:22px;">
+            All current banks, states, and tables will be permanently replaced
+            with the factory MasterProject defaults.<br><br>
+            <strong style="color:var(--accent);">This cannot be undone.</strong>
+          </div>
+          <div style="display:flex;gap:8px;justify-content:flex-end;">
+            <button id="btn-restore-cancel"  class="import-btn" style="padding:5px 16px;">Cancel</button>
+            <button id="btn-restore-confirm" class="import-btn"
+              style="padding:5px 16px;border-color:var(--accent);color:var(--accent);">
+              Yes, Restore
+            </button>
+          </div>
+        </div>
+      `;
+      document.body.appendChild(modal);
+
+      const showModal  = () => { modal.style.display = "flex"; };
+      const hideModal  = () => { modal.style.display = "none"; };
+
+      document.getElementById("btn-restore-master")?.addEventListener("click", showModal);
+      document.getElementById("btn-restore-cancel")?.addEventListener("click",  hideModal);
+      modal.addEventListener("click", (e) => { if (e.target === modal) hideModal(); });
+      document.addEventListener("keydown", (e) => { if (e.key === "Escape") hideModal(); });
+
+      document.getElementById("btn-restore-confirm")?.addEventListener("click", async () => {
+        hideModal();
+        setStatus("⟳ Restoring MasterProject…", "var(--text-2)");
+        try {
+          await projectFile.importFromURL("/Projects/MasterProject.imweb");
+          memoryPanel?._refresh?.();
+          refreshBufferGrid();
+          setStatus("✓ MasterProject restored", "var(--green)");
+        } catch (err) {
+          setStatus(`✗ Restore failed: ${err.message}`, "var(--red)");
+        }
+      });
+
+      // ── [DEV] Save as MasterProject ───────────────────────────────────────
+      document.getElementById("btn-save-master")?.addEventListener("click", async () => {
+        try {
+          await projectFile.exportAsMasterProject();
+          setStatus("📤 MasterProject.imweb downloaded — place in public/Projects/", "var(--accent)");
+        } catch (err) {
+          setStatus(`✗ ${err.message}`, "var(--red)");
+        }
+      });
+
+      // 💾 status-bar save button (beside Bank selector)
+      document.getElementById("btn-save-project")?.addEventListener("click", () => {
+        document.getElementById("btn-export-project")?.click();
+      });
 
       window.addEventListener("keydown", (e) => {
         if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA")
@@ -4438,6 +4564,7 @@ void main() {
 
   function render(now) {
     requestAnimationFrame(render);
+    perfFrame(now);
 
     const dt = Math.min((now - lastTime) / 1000, 0.1); // cap at 100ms
     lastTime = now;

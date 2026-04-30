@@ -35,18 +35,18 @@ const _FX = {
   pixelate: (pipe, tex, p) => {
     const amt = p.get('effect.pixelate').value;
     if (amt <= 1) return tex;
+    pipe.m.pixelate.uniforms.uResolution.value.set(pipe.width, pipe.height);
     return pipe._pass(pipe.m.pixelate, {
       uTexture: tex, uAmount: amt,
-      uResolution: new THREE.Vector2(pipe.width, pipe.height),
     });
   },
   edge: (pipe, tex, p) => {
     const amt = p.get('effect.edge').value / 100;
     if (amt <= 0) return tex;
+    pipe.m.edge.uniforms.uResolution.value.set(pipe.width, pipe.height);
     return pipe._pass(pipe.m.edge, {
       uTexture: tex, uAmount: amt,
       uInvert: p.get('effect.edge_inv').value,
-      uResolution: new THREE.Vector2(pipe.width, pipe.height),
     });
   },
   // DEPRECATED — vasulka (VASULKA_WARP shader effect) is hidden from DEFAULT_FX_ORDER.
@@ -109,13 +109,34 @@ const _FX = {
     const amt = p.get('effect.bloom').value / 100;
     if (amt <= 0) return tex;
     const thresh = p.get('effect.bloomthresh').value / 100;
-    const res = new THREE.Vector2(pipe.width, pipe.height);
+    const hw = Math.ceil(pipe.width  / 2);
+    const hh = Math.ceil(pipe.height / 2);
+
+    // 1. Extract bright pixels at full resolution (uses ping-pong: 1 flip)
     const bright = pipe._pass(pipe.m.bloomExtract, { uTexture: tex, uThreshold: thresh });
-    pipe.m.bloomBlurH.uniforms.uResolution.value.copy(res);
-    pipe.m.bloomBlurV.uniforms.uResolution.value.copy(res);
-    const blurH = pipe._pass(pipe.m.bloomBlurH, { uTexture: bright });
-    const blurV = pipe._pass(pipe.m.bloomBlurV, { uTexture: blurH });
-    return pipe._pass(pipe.m.bloomComposite, { uTexture: tex, uBloom: blurV, uStrength: amt * 3 });
+
+    // 2. BlurH at half-res → dedicated target (no ping-pong flip).
+    //    Resolution uniform uses full dimensions so the Gaussian kernel step
+    //    (texel = direction / resolution) stays identical to the original,
+    //    preserving bloom radius. Half-res render gives 4× fewer fragments.
+    pipe.m.bloomBlurH.uniforms.uResolution.value.set(pipe.width, pipe.height);
+    pipe._passTo(pipe.m.bloomBlurH, { uTexture: bright }, pipe._bloomTargetH);
+
+    // 3. BlurV at half-res → dedicated target (no ping-pong flip)
+    pipe.m.bloomBlurV.uniforms.uResolution.value.set(pipe.width, pipe.height);
+    pipe._passTo(pipe.m.bloomBlurV, { uTexture: pipe._bloomTargetH.texture }, pipe._bloomTargetV);
+
+    // 4. Composite at full res — upsamples blur back onto original scene.
+    //    After 1 flip (extract) + 0 (blur passes), ping-pong parity would cause
+    //    tex to alias the composite output target. One manual flip restores the
+    //    same final _current state as the original 4-flip path, and eliminates
+    //    the feedback-loop conflict on uTexture.
+    pipe._current ^= 1;
+    return pipe._pass(pipe.m.bloomComposite, {
+      uTexture: tex,
+      uBloom:   pipe._bloomTargetV.texture,
+      uStrength: amt * 3,
+    });
   },
   levels: (pipe, tex, p) => {
     const lvBlack = p.get('effect.lvblack').value / 100;
@@ -145,8 +166,7 @@ const _FX = {
   pixelsort: (pipe, tex, p) => {
     const amt = p.get('effect.pixelsort').value / 100;
     if (amt <= 0) return tex;
-    const res = new THREE.Vector2(pipe.width, pipe.height);
-    pipe.m.pixelsort.uniforms.uResolution.value.copy(res);
+    pipe.m.pixelsort.uniforms.uResolution.value.set(pipe.width, pipe.height);
     return pipe._pass(pipe.m.pixelsort, {
       uTexture: tex,
       uThreshold: p.get('effect.psortthresh').value / 100,
@@ -195,6 +215,13 @@ export class Pipeline {
     // (DomainWarp, Curl) stay fast regardless of output resolution.
     this._noiseTarget = this._makeTarget(512, 512);
 
+    // Dedicated half-resolution targets for bloom blur passes.
+    // BlurH and BlurV render at w/2 × h/2; composite upsamples back to full-res.
+    const hw = Math.ceil(width / 2);
+    const hh = Math.ceil(height / 2);
+    this._bloomTargetH = this._makeTarget(hw, hh);
+    this._bloomTargetV = this._makeTarget(hw, hh);
+
     // Live GLSL custom effect (hot-swappable)
     this._customMat    = null;  // set by setCustomShader()
     this._customError  = null;  // last compile error string, or null
@@ -208,6 +235,9 @@ export class Pipeline {
 
     // Reorderable post-FX chain
     this.fxOrder = [...DEFAULT_FX_ORDER];
+
+    // Pre-allocated inputs overlay — avoids { ...inputs } spread allocation each frame
+    this._pInputs = Object.create(null);
   }
 
   // ── 3D LUT ───────────────────────────────────────────────────────────────
@@ -259,7 +289,9 @@ export class Pipeline {
       const bufTex = this._pass(this.m.bufferTransform, {
         uTexture: inputs.buffer, uPanX: panX, uPanY: panY, uScale: scale,
       });
-      processedInputs = { ...inputs, buffer: bufTex };
+      Object.assign(this._pInputs, inputs);
+      this._pInputs.buffer = bufTex;
+      processedInputs = this._pInputs;
     }
 
     // Frame blend (mix fs1 and fs2)
@@ -271,7 +303,12 @@ export class Pipeline {
         uActive:  1,
         uAmount:  frameBlendAmt,
       });
-      processedInputs = { ...processedInputs, buffer: blended };
+      if (processedInputs === inputs) {
+        // bufferTransform branch did not run — populate _pInputs now
+        Object.assign(this._pInputs, inputs);
+        processedInputs = this._pInputs;
+      }
+      this._pInputs.buffer = blended;
     }
 
     // Resolve input textures
@@ -422,12 +459,12 @@ export class Pipeline {
         });
       }
       if (fbHor !== 0 || fbVer !== 0 || fbScale !== 0) {
+        this.m.feedback.uniforms.uResolution.value.set(this.width, this.height);
         prevTex = this._pass(this.m.feedback, {
-          uOutput:     prevTex,
-          uHorOffset:  fbHor,
-          uVerOffset:  fbVer,
-          uScale:      fbScale,
-          uResolution: new THREE.Vector2(this.width, this.height),
+          uOutput:    prevTex,
+          uHorOffset: fbHor,
+          uVerOffset: fbVer,
+          uScale:     fbScale,
         });
       }
       const fbMode = p.get('feedback.mode').value;
@@ -628,6 +665,10 @@ export class Pipeline {
     this.width = w; this.height = h;
     this.targets.forEach(t => t.setSize(w, h));
     this.prev.setSize(w, h);
+    const hw = Math.ceil(w / 2);
+    const hh = Math.ceil(h / 2);
+    this._bloomTargetH.setSize(hw, hh);
+    this._bloomTargetV.setSize(hw, hh);
   }
 
   // ── Private helpers ───────────────────────────────────────────────────────
@@ -646,8 +687,9 @@ export class Pipeline {
   _pass(material, uniforms) {
     const fallback = this._getFallbackTexture();
     const outTex  = this.targets[this._current].texture;
-    Object.entries(uniforms).forEach(([key, val]) => {
+    for (const key in uniforms) {
       if (material.uniforms[key] !== undefined) {
+        let val = uniforms[key];
         // Replace null textures with fallback so WebGL never gets a null sampler
         if (val === null && key.startsWith('u') && key !== 'uKeyActive' &&
             key !== 'uAlpha' && key !== 'uAlphaInvert' && key !== 'uMode' &&
@@ -664,7 +706,7 @@ export class Pipeline {
         }
         material.uniforms[key].value = val;
       }
-    });
+    }
 
     // Ping-pong
     const target = this.targets[this._current];
@@ -674,6 +716,23 @@ export class Pipeline {
     this.renderer.setRenderTarget(target);
     this.renderer.render(this._scene, this._camera);
 
+    return target.texture;
+  }
+
+  /**
+   * Render to an explicit target without touching ping-pong state.
+   * No feedback-loop guard — caller must ensure no read/write conflict.
+   * Used by bloom blur passes which render to dedicated half-res targets.
+   */
+  _passTo(material, uniforms, target) {
+    for (const key in uniforms) {
+      if (material.uniforms[key] !== undefined) {
+        material.uniforms[key].value = uniforms[key];
+      }
+    }
+    this._quad.material = material;
+    this.renderer.setRenderTarget(target);
+    this.renderer.render(this._scene, this._camera);
     return target.texture;
   }
 
