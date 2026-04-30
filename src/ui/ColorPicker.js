@@ -25,6 +25,7 @@ export class ColorPicker {
     this._loopRunning = false;
     this._svRect = null;
     this._hueRect = null;
+    this._svW = 0; this._svH = 0; this._hueW = 0; this._hueH = 0;
     this._build(container);
     // Two-frame defer: one frame for the browser to attach the element,
     // a second frame to ensure CSS layout has run and offsetWidth is valid.
@@ -106,7 +107,13 @@ export class ColorPicker {
     this._hueCv.addEventListener('pointercancel', () => { this._dragging = null; this._hueRect = null; });
 
     // Re-render when the container resizes (panel open/close, window resize)
-    const ro = new ResizeObserver(() => this._render());
+    const ro = new ResizeObserver(() => {
+      this._svW = this._svCv.offsetWidth;
+      this._svH = this._svCv.offsetHeight;
+      this._hueW = this._hueCv.offsetWidth;
+      this._hueH = this._hueCv.offsetHeight;
+      this._render();
+    });
     ro.observe(container);
   }
 
@@ -172,9 +179,9 @@ export class ColorPicker {
 
   _drawSV() {
     const cv = this._svCv;
-    const W = cv.offsetWidth;
+    const W = this._svW || cv.offsetWidth;
     if (!W) return;
-    const H = cv.offsetHeight || 128;
+    const H = this._svH || cv.offsetHeight || 128;
     if (cv.width !== W) cv.width = W;
     if (cv.height !== H) cv.height = H;
     const ctx = cv.getContext('2d');
@@ -216,9 +223,9 @@ export class ColorPicker {
 
   _drawHue() {
     const cv = this._hueCv;
-    const W = cv.offsetWidth;
+    const W = this._hueW || cv.offsetWidth;
     if (!W) return;
-    const H = cv.offsetHeight || 14;
+    const H = this._hueH || cv.offsetHeight || 14;
     if (cv.width !== W) cv.width = W;
     if (cv.height !== H) cv.height = H;
     const ctx = cv.getContext('2d');
