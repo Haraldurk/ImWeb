@@ -13,7 +13,9 @@ This file gives Claude Code the context needed to contribute effectively to ImWe
 
 ## What this project is
 
-**ImWeb** is a browser-based real-time video synthesis instrument — a ground-up reimplementation of Tom Demeyer and Steina Vasulka's *Image/ine* (STEIM Amsterdam, 1997/2008) in the modern browser.
+**ImWeb** is a browser-based real-time video synthesis instrument — a ground-up reimagining of Tom Demeyer and Steina Vasulka's *Image/ine* (STEIM Amsterdam, 1997/2008) in the modern browser.
+
+ImWeb is **not a faithful recreation or reimplementation**. It is a new instrument with deep roots. Haraldur Karlsson learned Image/ine from the beginning, taught it for years, and used it extensively in installation art and live performance. He has also absorbed years of practice with tools like Max/MSP, Jitter, and others. Everything learned from those instruments is being brought into ImWeb. It will never be the same as Image/ine — it is where Image/ine's lineage goes next.
 
 The instrument composites video sources through a signal chain of effects and renders to a WebGL canvas. Every visual parameter is mappable to a controller (MIDI, LFO, audio, mouse, key, random, expression). The interface is also the performance — no edit/perform mode split.
 
