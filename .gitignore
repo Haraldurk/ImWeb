@@ -216,3 +216,9 @@ imweb-obsidian.md
 # HTML export snapshots
 *.imweb.htm
 *.imweb_files/
+
+# HTML export snapshots at root
+CHANGELOG.htm
+Haraldur.imweb.htm
+ImWeb\ ha.html
+ImWebha.html
