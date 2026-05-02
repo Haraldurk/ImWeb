@@ -3,7 +3,7 @@
 ![ImWeb Preview](assets/preview.png)
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
-[![Version](https://img.shields.io/badge/version-v0.8.5-brightgreen)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-v0.8.7-brightgreen)](CHANGELOG.md)
 [![Live Demo](https://img.shields.io/badge/demo-live-orange)](https://imweb.image-ine.org)
 
 **ImWeb brings Image/ine back to life** — the legendary real-time video synthesis instrument created by Tom Demeyer and Steina Vasulka at STEIM Amsterdam. Free, open source, and running in any browser. No installation required.
@@ -16,7 +16,7 @@
 
 ## Contents
 
-[What This Is](#what-this-is) · [Quick Start](#quick-start) · [Features](#features-v085) · [Keyboard Reference](#keyboard-reference) · [Architecture](#architecture) · [Roadmap](#roadmap) · [Contributing](#contributing) · [Credits](#credits) · [License](#license) · [Support](#support)
+[What This Is](#what-this-is) · [Quick Start](#quick-start) · [Features](#features-v087) · [Keyboard Reference](#keyboard-reference) · [Architecture](#architecture) · [Roadmap](#roadmap) · [Contributing](#contributing) · [Credits](#credits) · [License](#license) · [Support](#support)
 
 ---
 
@@ -26,7 +26,7 @@ Image/ine was a rare instrument. Created at STEIM Amsterdam in the 1990s by Tom 
 
 ImWeb is a ground-up reimagining for the modern browser — not a faithful recreation, but a new instrument rooted in the original's philosophy, restoring what was lost between versions and extending the signal path with a full 3D scene pipeline, N-dimensional geometry, and a modular controller mapping system.
 
-**Built with** Three.js, Vite, and raw WebGL shaders. No framework dependencies.
+Built with Three.js, Vite, and raw WebGL shaders — no framework dependencies, nothing between the artist and the signal.
 
 **Signal path:**
 
@@ -60,7 +60,7 @@ Firefox and Safari supported in WebGL mode with minor limitations.
 
 ---
 
-## Features (v0.8.5)
+## Features (v0.8.7)
 
 ### Input Sources
 
