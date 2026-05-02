@@ -24,9 +24,9 @@
 
 Image/ine was a rare instrument. Created at STEIM Amsterdam in the 1990s by Tom Demeyer in close collaboration with Steina Vasulka — one of the founders of video art — it treated video as a malleable, real-time medium for artistic performance. It ran on Mac OS 9 (1997) and later OS X (2008). No equivalent free tool has existed since.
 
-ImWeb is a ground-up reimagining for the modern browser — not a faithful recreation, but a new instrument rooted in the original's philosophy, restoring what was lost between versions and extending the signal path with a full 3D scene pipeline, N-dimensional geometry, and a modular controller mapping system.
+ImWeb is a ground-up reimagining for the modern browser — an instrument rooted in the original's philosophy, extending a signal path that has always pointed toward what comes next.
 
-Built with Three.js, Vite, and raw WebGL shaders — no framework dependencies, nothing between the artist and the signal.
+**Built with** Built with Three.js, Vite, and raw WebGL shaders — no framework dependencies, nothing between the artist and the signal.
 
 **Signal path:**
 
