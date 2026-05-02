@@ -138,10 +138,7 @@ dist
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 .DS_Store
-.DS_Store
 **/.DS_Store
-.aider*
-\n# AI / Editor specific\n.aider*\n.claude/\n.gemini/\n\n# Backups\nindex_v4_working_do_not_touch.html
 
 # AI / Editor specific
 .aider*
@@ -212,4 +209,10 @@ Brainstorms/
 # Personal state snapshots in assets/
 assets/Projects/Banks/*.imbank
 assets/Projects/States/*.imstate
-\n# Obsidian\nimweb-obsidian.md
+
+# Obsidian
+imweb-obsidian.md
+
+# HTML export snapshots
+*.imweb.htm
+*.imweb_files/
