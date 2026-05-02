@@ -26,7 +26,7 @@ Image/ine was a rare instrument. Created at STEIM Amsterdam in the 1990s by Tom 
 
 ImWeb is a ground-up reimagining for the modern browser — an instrument rooted in the original's philosophy, extending a signal path that has always pointed toward what comes next.
 
-**Built with** Built with Three.js, Vite, and raw WebGL shaders — no framework dependencies, nothing between the artist and the signal.
+**Built with** Three.js, Vite, and raw WebGL shaders — no framework dependencies, nothing between the artist and the signal.
 
 **Signal path:**
 
@@ -263,7 +263,7 @@ Co-conspirator: **Steina Vasulka** — without her, Image/ine would not exist
 ImOs9 manual: Sher Doruff
 ImWeb: **[Haraldur Karlsson](https://haraldur.net)**
 
-This project is a personal reimplementation and artistic continuation. It is not affiliated with or endorsed by the STEIM Foundation (1959–2019).
+This project is a personal reimagining and artistic continuation. It is not affiliated with or endorsed by the STEIM Foundation (1959–2019).
 
 ---
 
