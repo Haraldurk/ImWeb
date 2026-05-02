@@ -15,7 +15,7 @@
 
 ## Contents
 
-[What This Is](#what-this-is) · [Quick Start](#quick-start) · [Features](#features-v087) · [Keyboard Reference](#keyboard-reference) · [Architecture](#architecture) · [Roadmap](#roadmap) · [Contributing](#contributing) · [Credits](#credits) · [License](#license) · [Support](#support)
+[What This Is](#what-this-is) · [Quick Start](#quick-start) · [Features](#features-v085) · [Keyboard Reference](#keyboard-reference) · [Architecture](#architecture) · [Roadmap](#roadmap) · [Contributing](#contributing) · [Credits](#credits) · [License](#license) · [Support](#support)
 
 ---
 
@@ -59,7 +59,7 @@ Firefox and Safari supported in WebGL mode with minor limitations.
 
 ---
 
-## Features (v0.8.7)
+## Features (v0.8.5)
 
 ### Input Sources
 
