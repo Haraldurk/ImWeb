@@ -173,3 +173,37 @@ _imweb_ready/
 !public/assets/*.mp4
 !public/assets/*.webm
 !public/assets/*.mov
+
+# Personal project/session files
+*.imweb
+*.imstate
+*.imbank
+
+# WebM recordings in public/assets
+public/assets/*.webm
+
+# Internal planning / AI session docs
+MEMORY-REDESIGN.md
+PERF-SPRINT.md
+deepseek.md
+AGENTS.md
+
+# Local dev scripts (keep locally, not for public repo)
+dev-catcher.js
+make_seamless.sh
+process-ideas.sh
+create_releases.py
+
+# Auto-generated HTML export artifact folders
+CHANGELOG_files/
+Haraldur.imweb_files/
+ImWeb\ ha_files/
+ImWeb_files/
+ImWebha_files/
+
+# Internal brainstorm notes
+Brainstorms/
+
+# Personal state snapshots in assets/
+assets/Projects/Banks/*.imbank
+assets/Projects/States/*.imstate
