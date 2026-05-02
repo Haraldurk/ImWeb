@@ -174,10 +174,15 @@ _imweb_ready/
 !public/assets/*.webm
 !public/assets/*.mov
 
-# Personal project/session files
+# Personal project/session files (root and subdirs, but NOT public/)
 *.imweb
 *.imstate
 *.imbank
+!public/**/*.imweb
+!public/**/*.imstate
+!public/**/*.imbank
+!public/**/*.webm
+!public/**
 
 # WebM recordings in public/assets
 public/assets/*.webm
@@ -207,3 +212,4 @@ Brainstorms/
 # Personal state snapshots in assets/
 assets/Projects/Banks/*.imbank
 assets/Projects/States/*.imstate
+\n# Obsidian\nimweb-obsidian.md
