@@ -6,8 +6,7 @@
 [![Version](https://img.shields.io/badge/version-v0.8.7-brightgreen)](CHANGELOG.md)
 [![Live Demo](https://img.shields.io/badge/demo-live-orange)](https://imweb.image-ine.org)
 
-**ImWeb brings Image/ine back to life** — the legendary real-time video synthesis instrument created by Tom Demeyer and Steina Vasulka at STEIM Amsterdam. Free, open source, and running in any browser. No installation required.
-
+**ImWeb is Image/ine — reimagined** — The legendary real-time video synthesis instrument created by Tom Demeyer and Steina Vasulka at STEIM Amsterdam, rebuilt for the modern browser and pointed toward what comes next. Free, open source, no installation required.
 → **[Try it live → imweb.image-ine.org](https://imweb.image-ine.org)**
 
 💖 **[Support ImWeb on Open Collective](https://opencollective.com/imweb)**
