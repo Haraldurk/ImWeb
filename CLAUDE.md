@@ -6,18 +6,24 @@ This file gives Claude Code the context needed to contribute effectively to ImWe
 
 ## Editing Rules
 
+- CLAUDE.md and imweb-obsidian.md are READ-ONLY for Claude Code.
+  Never modify either file unless the project owner explicitly instructs
+  it in the same conversation with the exact lines to change.
+
 - Always run grep/search recon BEFORE editing any file. Verify the exact code block exists and check for duplicates or related code that may be affected.
 - When implementing features, write code immediately after a brief targeted recon (max 5-10 tool calls). Do NOT spend an entire session exploring without producing code unless explicitly asked to explore only.
+
+## Project reference
+Full project knowledge base: `imweb-obsidian.md` (project root). 
+Read it for feature status, architecture decisions, and open questions.
 
 ---
 
 ## What this project is
 
-**ImWeb** is a browser-based real-time video synthesis instrument — a ground-up reimagining of Tom Demeyer and Steina Vasulka's *Image/ine* (STEIM Amsterdam, 1997/2008) in the modern browser.
+**ImWeb** is a browser-based real-time video synthesis instrument — a reimagining of Tom Demeyer and Steina Vasulka's *Image/ine* (STEIM Amsterdam, 1997/2008) for the modern browser. It is not a port or recreation — it is a new instrument in the same lineage.
 
-ImWeb is **not a faithful recreation or reimplementation**. It is a new instrument with deep roots. Haraldur Karlsson learned Image/ine from the beginning, taught it for years, and used it extensively in installation art and live performance. He has also absorbed years of practice with tools like Max/MSP, Jitter, and others. Everything learned from those instruments is being brought into ImWeb. It will never be the same as Image/ine — it is where Image/ine's lineage goes next.
-
-The instrument composites video sources through a signal chain of effects and renders to a WebGL canvas. Every visual parameter is mappable to a controller (MIDI, LFO, audio, mouse, key, random, expression). The interface is also the performance — no edit/perform mode split.
+The instrument composites video sources through a signal chain of effects and renders to a WebGL canvas.
 
 ---
 
@@ -60,6 +66,7 @@ CameraInput.js          WebRTC getUserMedia → VideoTexture
 MovieInput.js           Video file → VideoTexture; speed/loop/BPM sync
 StillsBuffer.js         Frame capture store
 SlitScanBuffer.js       Rolling slit scan effect
+SDFGenerator.js       GPU-raymarched SDF metaballs → WebGLRenderTarget
 TextLayer.js            Canvas 2D text → Texture
 DrawLayer.js            Freehand canvas → Texture (Wacom pressure)
 ParticleSystem.js       GPU particle field (emitter shapes, attractors, scale modes)
@@ -166,75 +173,27 @@ Before implementing any flag or conditional guard:
 
 ---
 
-## Project-Specific Notes
-
-Use surgical edits — never rewrite entire files. Always verify edit targets with grep first, and check that updateDisplay() or similar refresh functions won't overwrite new UI elements.
-
----
-
 ## Git Workflow
 
 After completing each task, commit with a descriptive message and move to the next task. Follow git discipline: commit early and often.
 
----
-
-## Collaboration model
-
-Claude Code handles: multi-file wiring, complex JS logic, Pipeline/shader work, AIFeatures.js.
-Gemini CLI (see GEMINI.md) handles: grep/recon, browser screenshots via Chrome DevTools MCP, GLSL drafting, docs.
-
-### Standard prompt template
-You are working on ImWeb. Codebase: ~/Documents/GitHub/ImWeb
-Rules: NEVER rewrite whole files. Surgical edits only.
-One feature per prompt.
-BEFORE TOUCHING ANYTHING:
-
-git log --oneline -5
-git status
-Read [relevant file]
-
-TASK: [single clearly scoped task]
-ACCEPTANCE: [what done looks like]
-AFTER: git add [files] && git commit -m "[message]" && git push
+Session continuity is handled by context-mode (MCP). Do not add session logging to CLAUDE.md.
 
 ---
 
-## Current version: 0.8.7
+## AI Workflow Boundaries
 
-See CHANGELOG.md for full history.
+- **Claude Code** (this instance): surgical JS edits, multi-file wiring, Pipeline/shader work
+- **Gemini CLI**: CHANGELOG.md and documentation only — never JS
+- **OpenCode/DeepSeek**: exploration, recon, grep-heavy investigation — never edits
+- **Claude Chat**: architecture decisions, planning, CLAUDE.md review
 
-### Completed through Phase 6 (current)
-- **Hypercube pipeline texture on faces (Session 2)** — `ShaderMaterial` faces sampling pipeline texture, `faces.active/opacity` params, UI controls
-- **Hypercube 2-cell face rendering (Session 1)** — `InstancedMesh` plane faces, centroid/normal tracking, `generate2CellFaces` N-D logic
-- **Real screen-space hypercube edge width** — quad `Mesh` edges, screen-space extrusion shader, `uResolution` sync, 0.5–8.0 px width
-- **Hypercube edge width shader (Session 1)** — `ShaderMaterial` on edges, `uEdgeWidth` uniform (0.5–8.0), `hypercube.edgeWidth` param and UI slider
-- **N-D Hypercube engine (4D–12D)** — 60fps at 12D; vertex/edge generation, Givens projection, morph state machine, 5 easing functions; permanent Float32/Float64 buffers, zero per-frame allocation, `_colorsDirty` GPU gate, `MAX_DIM` draw range, circular points shader, vertex pub/sub
-- **Hypercube UI** — dimension pills, collapsible rotation tiers, deferred DOM rebuild on morph
-- Full signal chain: 23+ sources, 20+ effect passes
-- All ImOs9 features restored (WarpMap with interactive brush editor,
-  Tables 16k, ExternalMapping, Sequencers ×3, FrameSelect, TransferMode 22 modes, rand1/2/3)
-- 3D scene integration (Three.js → pipeline; 13 geometries; GLB/GLTF/OBJ/STL; depth pass; live video texture on mesh)
-- 3D Cloner (InstancedMesh MoGraph) with effectors: Twist, Scatter, WaveShape, WaveAmp, WaveFreq, CloneScale, ScaleStep
-- Blob/Morph vertex displacement shader (onBeforeCompile; USE_INSTANCING independent per clone)
-- SDF Generator (GPU raymarched metaballs → pipeline source; shape/repeat/warp — Phase 1 + 2)
-- Movie clip reverse playback, MovieEnd, MovieLoop SELECT modes
-- AI provider system (Anthropic/Gemini/OpenAI/Ollama switchable, key management UI)
-- .imweb project file format
-- PWA manifest + service worker
-- ~210+ parameters, all MIDI/LFO-assignable
-- Controller badge popover (right-click RND/LFO/etc for Rate, Slew, Table, Shape)
-- Min/Max range fields: drag or double-click to edit
-- Text animations, 3D materials, pointer events (Phase 5)
-- ParticleSystem: emitter shapes (Box/Ring/LineH/LineV/Point), XY emitter position,
-  two attractor nodes, scale-by-speed point size mode
-- Displacement Map Editor: WarpMode/WarpAmt param rows in editor panel;
-  preset buttons auto-activate Custom mode; section renamed from WarpMap Editor
-- VASULKA_WARP shader: dual-oscillator scan-line UV warp (Wobbulator-inspired) — hidden from UI
-- Raw keyer: uFGRaw/uRawKey uniform for pre-color-correction luminance keying
-- VasulkaWarp (strip-buffer temporal slit-scan): full-width RT, GPU-only scissor capture;
-  feeds camera3d texture when 3D camera is active — EXPERIMENTAL, hidden from UI
+One agent per task. Do not duplicate work across agents.
+
+---
 
 ### Experimental / architecture deferred
+See CHANGELOG.md for current version and full history.
 - **VasulkaWarp (temporal slit-scan)**: VasulkaWarp.js + `vwarp.*` params exist and run, but
   the feature is hidden from UI pending a clearer architecture decision. The strip-buffer
   approach works but conflicts with the pipeline source model. Candidate future direction:
@@ -243,13 +202,6 @@ See CHANGELOG.md for full history.
   to a proper effect slot with a UI section.
 
 ---
-
-## Running the project
-```bash
-npm install
-npm run dev     # Vite dev server at localhost:5173
-npm run build   # Production build to dist/
-```
 
 Chrome 113+ recommended. Firefox and Safari work with minor WebGL limitations.
 
@@ -266,7 +218,9 @@ Users can also restore it explicitly via **Project tab → ⟳ Restore MasterPro
 1. Open ImWeb and build the desired default state (banks, states, params, tables).
 2. In the **Project tab**, click **📤 Save as MasterProject [DEV]** — this downloads `MasterProject.imweb` to your Downloads folder.
 3. Move/copy the downloaded file to `public/Projects/MasterProject.imweb`, replacing the old one.
-4. Commit: `git add public/Projects/MasterProject.imweb && git commit -m "chore: update MasterProject"`
+4. Run `npm run push-master` — stages, commits (if needed), and pushes in one step.
+   Optional: run `npm run install-hooks` once per clone to enable automatic push
+   whenever any commit includes MasterProject.imweb.
 
 That's all. The next first-launch (fresh browser / cleared IndexedDB) will load the new version.
 
@@ -353,73 +307,4 @@ After `gemini` exits (success, error, or Ctrl+C) the trap fires `restore_gitigno
 >
 > **No AI agent may modify, refactor, disable, rename, or interfere with any part of the Dev Capture pipeline** (the `_dc*` block in `src/main.js`, `dev-catcher.js`, `process-ideas.sh`, or the `Brainstorms/` directory layout) **without explicit written permission from the project owner in the same conversation.** This includes "cleanup", "simplification", or "improvement" passes. The pipeline is intentionally minimal and must remain exactly as-is unless the owner requests a specific change.
 
----
-
-## Session Log
-
-### 2026-04-30 (Sprint 2 — scene3d investigation)
-- perf: renderer.info.autoReset = false — manual reset before first render pass,
-  accumulates all passes correctly across scene3d + pipeline + VasulkaWarp + SeqTimewarp
-- finding: scene3d uses shared renderer, no parallel RAF, no shadow map overhead
-- baseline: DC:13 / Tri:520K at locked 60fps / 0 jank — architecture healthy, no action needed
-- Sprint 1 baseline: locked 60fps, 0 jank (Vector2 GC, Object.entries, spread, loop merge, Bloom half-res)
-
-### 2026-04-16 (Session 5)
-- feat(hypercube): hypercube pipeline texture on faces (Session 2 complete)
-- HypercubeFaces.js: MeshBasicMaterial replaced with ShaderMaterial, uFaceTexture / uOpacity / uHasTexture uniforms, samples pipeline texture per face quad, falls back to white when no texture assigned
-- HypercubeObject.js: setFaceTexture(), setFaceOpacity(), setFacesVisible() proxy methods added
-- SceneManager.js: passes inputs.faceTex to hypercube each frame in render()
-- main.js: faceTex: pipeline.prev.texture added to scene3d.render() call; hypercube.faces.active (toggle) and hypercube.faces.opacity (continuous) registered with correct single-object form; onChange callbacks wired
-- HypercubeUI.js: Faces toggle and Face opacity slider added to RENDER section
-- Critical fix: all 12 hypercube param registrations corrected from two-arg form ps.register('id', {}) to single-object form ps.register({ id:'', ... }) — previously every param stored under key undefined, silently breaking all ps.get() lookups on hypercube params
-- fix(scene3d): break GL_INVALID_OPERATION feedback loop by nulling face texture and mesh material.map before render pass (97e88e8)
-- sw.js cache errors on video range requests: known PWA limitation, benign
-
-### 2026-04-16 (Session 4)
-- feat(hypercube): 2-cell face rendering — Session 1 complete
-- Added generate2CellFaces(dim) to HypercubeGeometry.js
-  Returns { corners:[i,i,i,i], axisA, axisB } for all C(dim,2)*2^(dim-2) faces
-- Added HypercubeFaces.js (new file)
-  InstancedMesh of PlaneGeometry(1,1), additive white material
-  update() culls by axis/vertex count, computes centroid, size, normal per frame
-  Module-level _zUp/_zAxis/_zeroMatrix avoid per-frame allocation
-- Wired into HypercubeObject.js (4 lines: import, construct, update, dispose)
-- 4D renders 24 faces correctly, rotating with the hypercube
-- Session 2: setFaceTexture(), pipeline texture assignment, opacity/active params
-
-### 2026-04-16 (Session 3)
-- feat(hypercube): real screen-space edge width (commits 9823e07, a4a5fdb)
-- Replaced LineSegments with quad Mesh — each edge is now 2 triangles
-- Per-edge quad buffers: _quadEndABuf, _quadEndBBuf, _quadColBuf, _quadSideBuf, _quadIndexBuf
-- Vertex shader extrudes perpendicular to line direction in clip space
-- uResolution uniform synced from SceneManager each frame
-- DoubleSide added to ShaderMaterial — back-face culling was killing quads
-- Edge Width slider now produces real variable-width edges (0.5–8.0)
-- gl_VertexID selects A/B endpoint per vertex; aSide drives extrusion direction
-
-### 2026-04-16 (Session 2)
-- feat(hypercube): edge width shader — Session 1 complete (commit b0d0820)
-- Replaced LineBasicMaterial with ShaderMaterial on hypercube edges
-- vertexColors flag removed (breaks GLSL compile on ShaderMaterial)
-- uEdgeWidth uniform wired through _lineMat, updated each frame in _updateBuffers
-- setEdgeWidth() public setter added, clamped 0.5–8.0
-- hypercube.edgeWidth param registered in main.js, slider added to HypercubeUI.js
-- Current behavior: value > 0.5 = visible, ≤ 0.5 = hidden (on/off stub)
-- Session 2 will replace LineSegments with quad geometry for real screen-space width
-
-### 2026-04-16 (Session 1)
-- feat(scene3d): N-D Hypercube engine (4D–12D), 60fps at 12D
-- HypercubeGeometry.js: vertex/edge generation, Givens projection, morph state machine, 5 easing functions
-- HypercubeObject.js: Three.js wrapper, permanent Float32/Float64 buffers, zero per-frame allocation, _colorsDirty GPU gate, MAX_DIM draw range, circular points shader, vertex pub/sub
-- HypercubeUI.js: dimension pills, collapsible rotation tiers, deferred DOM rebuild on morph
-- SceneManager.js: createHypercube(), update integration
-- 7 fix sessions: color offset, morph doubling, JS heap leak, GPU upload waste, missing edges, morph freeze
-
----
-
-## Credits
-
-Original Image/ine: Tom Demeyer and Steina Vasulka, STEIM Foundation, Amsterdam
-ImOs9 manual: Sher Doruff
-ImWeb: H. Karlsson
 ---

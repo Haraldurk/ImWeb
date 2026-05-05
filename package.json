@@ -7,7 +7,9 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "prep-video": "node imweb-prep.js"
+    "prep-video": "node imweb-prep.js",
+    "push-master": "git add public/Projects/MasterProject.imweb && (git diff --cached --quiet || git commit -m 'chore: update MasterProject') && git push origin HEAD:$(git symbolic-ref --short HEAD)",
+    "install-hooks": "bash scripts/install-hooks.sh"
   },
   "dependencies": {
     "cors": "^2.8.6",
