@@ -131,6 +131,29 @@ async function main() {
     preserveDrawingBuffer: true, // needed for canvas.toBlob() capture
   });
   renderer.setPixelRatio(1); // Performance: render at logical CSS pixels, not Retina 2×. On a Retina display, DPR=2 silently doubles every dimension (e.g. 905×963 → 1810×1926), quadrupling fill cost across 35+ shader passes with no perceptible quality gain on moving video. DPR=1 aligns the canvas buffer with Pipeline render targets and enables 60fps on display-size canvas.
+
+  // Fix B — WebGL context loss recovery (GPU switch / second display)
+  renderer.domElement.addEventListener('webglcontextlost', (e) => {
+    e.preventDefault();
+    console.warn('[ImWeb] WebGL context lost');
+  }, false);
+  renderer.domElement.addEventListener('webglcontextrestored', () => {
+    console.warn('[ImWeb] WebGL context restored');
+    pipeline.init?.();
+    applyResolution(ps.get('output.resolution').value);
+  }, false);
+
+  // Fix A — DPR change detection (window moved to display with different pixel density)
+  function _onDPRChange() {
+    const newDPR = window.devicePixelRatio;
+    renderer.setPixelRatio(newDPR);
+    applyResolution(ps.get('output.resolution').value);
+    window.matchMedia(`(resolution: ${newDPR}dppx)`)
+      .addEventListener('change', _onDPRChange, { once: true });
+  }
+  window.matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`)
+    .addEventListener('change', _onDPRChange, { once: true });
+
   renderer.autoClear = false;
 
   // Initial size
