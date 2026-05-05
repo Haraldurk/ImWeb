@@ -990,7 +990,7 @@ async function main() {
   });
   // LUT amount updates are read directly from ps in pipeline.render()
 
-  const stateBar = new StateBar(presetMgr);
+  const stateBar = new StateBar(presetMgr, scene3d);
   const signalPath = new SignalPath({
     ps,
     pipeline,
@@ -1001,7 +1001,7 @@ async function main() {
     },
   });
   const feedbackOl = new FeedbackOverlay(ps);
-  const memoryPanel = new MemoryPanel(presetMgr);
+  const memoryPanel = new MemoryPanel(presetMgr, scene3d);
   const profiler = new Profiler();
   const debugOverlay = new DebugOverlay(ps);
   const tablesEditor = new TablesEditor(tableManager, ps, ctrl, contextMenu);

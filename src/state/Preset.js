@@ -111,9 +111,11 @@ export class Preset {
     };
   }
 
-  exportBank() {
-    return { __type: 'imbank', version: 1, name: this.name,
-             states: this.states, activeState: this.activeState, exported: Date.now() };
+  exportBank(modelAsset = null) {
+    const data = { __type: 'imbank', version: 1, name: this.name,
+                   states: this.states, activeState: this.activeState, exported: Date.now() };
+    if (modelAsset) data.modelAsset = modelAsset;
+    return data;
   }
 
   static importBank(data, targetIndex) {

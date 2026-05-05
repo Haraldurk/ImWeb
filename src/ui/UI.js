@@ -1242,8 +1242,9 @@ export function buildGeometryButtons(ps, sceneManager, contextMenu) {
 // ── State bar (thumbnail tiles + bank selector) ───────────────────────────────
 
 export class StateBar {
-  constructor(presetManager) {
+  constructor(presetManager, sceneManager = null) {
     this.pm          = presetManager;
+    this.sm          = sceneManager;
     this.neutralEl   = document.getElementById('state-neutral');
     this.gridEl      = document.getElementById('state-grid');
     this.bankBtn     = document.getElementById('bank-name-btn');
@@ -1369,6 +1370,7 @@ export class StateBar {
           this.pm.presets[idx] = bank;
           await bank.save();
           await this.pm.activatePreset(idx);
+          if (data.modelAsset && this.sm) await this.sm.loadModelFromUrl(data.modelAsset);
           toast(`✓ Bank "${bank.name}" imported`);
         } catch (err) {
           this.pm.dispatchEvent(new CustomEvent('toast', { detail: { msg: '⚠ Could not import bank: ' + err.message } }));
@@ -2249,8 +2251,9 @@ export class FeedbackOverlay {
 // ── Project panel (States list + Bank selector) ───────────────────────────────
 
 export class MemoryPanel {
-  constructor(presetManager) {
+  constructor(presetManager, sceneManager = null) {
     this.pm = presetManager;
+    this.sm = sceneManager;
     this.listEl = document.getElementById('memory-state-list');
     this._captureThumbFn = null;
     this._build();
@@ -2389,7 +2392,7 @@ export class MemoryPanel {
     document.getElementById('btn-export-bank')?.addEventListener('click', () => {
       const bank = this.pm.current;
       if (!bank) return;
-      const data = bank.exportBank();
+      const data = bank.exportBank(this.sm?.currentModelUrl ?? null);
       const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
       const a = document.createElement('a');
       a.href = URL.createObjectURL(blob);
@@ -2412,6 +2415,7 @@ export class MemoryPanel {
           this.pm.presets[idx] = bank;
           await bank.save();
           await this.pm.activatePreset(idx);
+          if (data.modelAsset && this.sm) await this.sm.loadModelFromUrl(data.modelAsset);
           toast(`✓ Bank "${bank.name}" imported`);
         } catch (err) { toast('⚠ Import failed: ' + err.message); }
       });

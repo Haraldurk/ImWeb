@@ -94,6 +94,9 @@ export class ProjectFile {
       scene3dMetadata = {
         modelName: this.extras.scene3d.importedModelName,
       };
+      if (this.extras.scene3d.currentModelUrl) {
+        scene3dMetadata.modelAsset = this.extras.scene3d.currentModelUrl;
+      }
     }
 
     // Timewarp strip persistence — save each seq in timewarp mode to IndexedDB
@@ -129,6 +132,33 @@ export class ProjectFile {
     const data = JSON.parse(text);
     await this._apply(data);
     return data._name ?? data.name ?? 'project';
+  }
+
+  /**
+   * Fetch a .imweb file from a server URL and apply it.
+   * Used for first-launch MasterProject load and "Restore MasterProject".
+   */
+  async importFromURL(url) {
+    const resp = await fetch(url);
+    if (!resp.ok) throw new Error(`${resp.status} ${resp.statusText}`);
+    const data = await resp.json();
+    await this._apply(data);
+    return data._name ?? data.name ?? 'MasterProject';
+  }
+
+  /**
+   * Export current project as MasterProject.imweb (developer workflow).
+   * The developer downloads this file and places it in public/Projects/.
+   */
+  async exportAsMasterProject() {
+    const data = await this._collect('MasterProject');
+    const json = JSON.stringify(data, null, 2);
+    const blob = new Blob([json], { type: 'application/json' });
+    const a    = document.createElement('a');
+    a.href     = URL.createObjectURL(blob);
+    a.download = 'MasterProject.imweb';
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
   }
 
   async _apply(data) {
@@ -229,8 +259,10 @@ export class ProjectFile {
 
     await Promise.all([drawPromise, ...stillsPromises]);
 
-    // 3D Model reminder
-    if (data.scene3d?.modelName) {
+    // 3D Model: restore public/assets URL model automatically; remind for file-dropped models
+    if (data.scene3d?.modelAsset && this.extras.scene3d) {
+      await this.extras.scene3d.loadModelFromUrl(data.scene3d.modelAsset);
+    } else if (data.scene3d?.modelName && !data.scene3d?.modelAsset) {
       console.info(`[Project] Session uses 3D model: ${data.scene3d.modelName}. Please re-import if not already loaded.`);
     }
 

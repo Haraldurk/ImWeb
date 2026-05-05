@@ -107,6 +107,8 @@ export class SceneManager {
     // Imported model tracking
     this._importedModelName = null;
     this._importedBaseScale = 1.0;
+    this._importPending     = false; // true when _importedModelName is suppressing geo but no mesh loaded
+    this.currentModelUrl    = null;  // set when loaded from a public/assets URL; null for File loads
     this.mixer    = null;
     this.actions  = [];
     this._curAnimIdx = -1;
@@ -551,6 +553,7 @@ export class SceneManager {
         this.mesh = pivot;
         this._geoKey = '__imported__';
         this._importedModelName = name;
+        this._importPending = false;
         this.scene.add(pivot);
         resolve(pivot);
       }, undefined, reject);
@@ -569,6 +572,7 @@ export class SceneManager {
         this.mesh = pivot;
         this._geoKey = '__imported__';
         this._importedModelName = name;
+        this._importPending = false;
         this.scene.add(pivot);
         resolve(pivot);
       }, undefined, reject);
@@ -585,6 +589,7 @@ export class SceneManager {
         this.mesh = pivot;
         this._geoKey = '__imported__';
         this._importedModelName = name;
+        this._importPending = false;
         this.scene.add(pivot);
         resolve(pivot);
       }, undefined, reject);
@@ -605,6 +610,7 @@ export class SceneManager {
         this.mesh = pivot;
         this._geoKey = '__imported__';
         this._importedModelName = name;
+        this._importPending = false;
         this.scene.add(pivot);
 
         // Animations — use collada.scene.animations (collada.animations is deprecated)
@@ -648,6 +654,7 @@ export class SceneManager {
    * we can try to resolve textures if provided.
    */
   async loadModel(file, params = null, extraFiles = []) {
+    this.currentModelUrl = null;
     const url = URL.createObjectURL(file);
     const ext = file.name.split('.').pop().toLowerCase();
     
@@ -684,6 +691,17 @@ export class SceneManager {
     }
   }
 
+  async loadModelFromUrl(url) {
+    if (this.currentModelUrl === url) return;
+    const ext  = url.split('?')[0].split('.').pop().toLowerCase();
+    const name = url.split('/').pop();
+    this.currentModelUrl = url;
+    if (ext === 'glb' || ext === 'gltf') return await this.loadGLTF(url, name);
+    if (ext === 'obj')                   return await this.loadOBJ(url, name);
+    if (ext === 'stl')                   return await this.loadSTL(url, name);
+    if (ext === 'dae')                   return await this.loadCollada(url, name);
+    throw new Error(`Unsupported 3D format: .${ext}`);
+  }
 
   // ── Parameter-driven updates ───────────────────────────────────────────────
 
@@ -1072,6 +1090,29 @@ export class SceneManager {
   get texture()      { return this.target.texture; }
   get depthTexture() { return this.depthTarget.texture; }
   get importedModelName() { return this._importedModelName; }
+
+  /**
+   * Called by state recall when the saved state had an imported model but the
+   * file is no longer loaded. Sets _importedModelName to suppress the geometry
+   * overwrite in applyParams() until the user reloads the model.
+   */
+  setImportPending(name) {
+    if (!this._importedModelName && name) {
+      this._importedModelName = name;
+      this._importPending     = true;
+    }
+  }
+
+  /**
+   * Clears the pending-import suppression (only clears the flag set by
+   * setImportPending — never clears a real loaded model).
+   */
+  clearImportPending() {
+    if (this._importPending) {
+      this._importedModelName = null;
+      this._importPending     = false;
+    }
+  }
 
   resize(w, h) {
     this.width = w; this.height = h;
