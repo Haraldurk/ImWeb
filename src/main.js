@@ -115,6 +115,8 @@ async function main() {
   // ── 1. Canvas & renderer ──────────────────────────────────────────────────
 
   const canvas = document.getElementById("output-canvas");
+  let canvasRect = canvas.getBoundingClientRect();
+  window.addEventListener("resize", () => { canvasRect = canvas.getBoundingClientRect(); });
 
   // Detect WebGPU
   const hasWebGPU = !!navigator.gpu;
@@ -1617,6 +1619,8 @@ async function main() {
 
   // First-visit onboarding overlay
   const _onboarding = document.getElementById("onboarding");
+  const _obVersion = document.getElementById("onboarding-version");
+  if (_obVersion) _obVersion.textContent = `v${__APP_VERSION__}`;
   if (!localStorage.getItem("imweb-onboarding-dismissed")) {
     _onboarding?.classList.remove("hidden");
   }
@@ -4858,6 +4862,8 @@ void main() {
       ps.get("layer.ds").value === SCENE3D_IDX ||
       depthUsed || _analogSrcIdx === 4;
     // scene3d.getHypercube()?.setInstancerTexture(pipeline.prev.texture); — removed: SceneManager now owns instancer texture via _adoptMesh
+    renderer.info.autoReset = false;
+    renderer.info.reset();
     if (scene3dNeeded)
       scene3d.render(ps, dt, {
         camera: camera3d.active ? camera3d.currentTexture : null,
@@ -4945,6 +4951,9 @@ void main() {
       }
     });
 
+    if (frameCount % 60 === 0) console.log('DC:', renderer.info.render.calls, 'Tri:', renderer.info.render.triangles);
+    renderer.info.autoReset = true;
+
     // Profiler + debug overlay
     profiler.end();
     profiler.tick(pipeline, sequencerManager);
@@ -5003,13 +5012,12 @@ void main() {
       if (!warpGridOn) {
         overlayCtx.clearRect(0, 0, overlayCvs.width, overlayCvs.height);
       } else {
-        const rect = canvas.getBoundingClientRect();
         if (
-          overlayCvs.width !== rect.width ||
-          overlayCvs.height !== rect.height
+          overlayCvs.width !== canvasRect.width ||
+          overlayCvs.height !== canvasRect.height
         ) {
-          overlayCvs.width = rect.width;
-          overlayCvs.height = rect.height;
+          overlayCvs.width = canvasRect.width;
+          overlayCvs.height = canvasRect.height;
         }
         const w = overlayCvs.width,
           h = overlayCvs.height;

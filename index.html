@@ -1,400 +1,782 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="description" content="ImWeb — Real-time video synthesis instrument" />
-  <meta name="theme-color" content="#0a0a0f" />
-  <meta name="mobile-web-app-capable" content="yes" />
-  <meta name="apple-mobile-web-app-capable" content="yes" />
-  <meta name="apple-mobile-web-app-status-bar-style" content="black" />
-  <meta name="color-scheme" content="dark" />
-  <meta name="apple-mobile-web-app-title" content="ImWeb" />
-  <link rel="manifest" href="/manifest.webmanifest" />
-  <link rel="apple-touch-icon" href="/icon-192.png" />
-  <title>ImWeb</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/src/style.css" />
-</head>
-<body>
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta
+            name="description"
+            content="ImWeb — Real-time video synthesis instrument"
+        />
+        <meta name="theme-color" content="#0a0a0f" />
+        <meta name="mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-status-bar-style" content="black" />
+        <meta name="color-scheme" content="dark" />
+        <meta name="apple-mobile-web-app-title" content="ImWeb" />
+        <link rel="manifest" href="/manifest.webmanifest" />
+        <link rel="apple-touch-icon" href="/icon-192.png" />
+        <title>ImWeb</title>
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+        <link
+            href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500&display=swap"
+            rel="stylesheet"
+        />
 
-  <!-- STATUS BAR -->
-  <div id="status-bar">
-    <span id="status-name">ImWeb</span>
-    <span id="status-fps">-- fps</span>
-    <span id="status-bank">Bank 1</span>
-    <span id="status-state">State 0</span>
-    <span id="status-bpm"  class="indicator" title="Click to tap tempo" style="cursor:pointer">120 bpm</span>
-    <span id="status-midi" class="indicator" title="MIDI">MIDI</span>
-    <span id="status-osc"  class="indicator" title="OSC">OSC</span>
-    <canvas id="status-vu" width="40" height="14" title="Audio input level" style="display:none;vertical-align:middle;border-radius:2px;"></canvas>
-    <button id="btn-panel-toggle" title="Toggle control panel" style="display:none">☰</button>
-    <div class="status-right">
-      <button id="btn-reset-all"    title="Reset all parameters to defaults (Shift+Esc)">↺</button>
-      <button id="btn-collapse-all" title="Collapse / expand all sections">⊟</button>
-      <button id="btn-signal-path"  title="Signal path — float / dock (Shift+P)">┄</button>
-      <button id="btn-ctrl-map"     title="Active controller assignments">⇌</button>
-      <span class="status-sep"></span>
-      <button id="btn-movie-on" title="Movie playback on/off (M)">Movie</button>
-      <span class="status-sep"></span>
-      <button id="btn-second-screen" title="Send output to second monitor / new window">⊡</button>
-      <button id="btn-projmap"       title="Projection mapping — drag corner handles to reshape output">⬡</button>
-      <button id="btn-ghost-mode"   title="Ghost mode — shrink main output to thumbnail">◫</button>
-      <button id="btn-keylock"       title="Keyboard lock — block letter/number shortcuts (so typing in fields works)">⌨</button>
-      <button id="btn-vkbd" title="Virtual keyboard — assign key controllers on iPad" style="display:none">KBD</button>
-      <button id="btn-spy"          title="Output spy preview (Shift+V)">◧</button>
-      <button id="btn-fullscreen" title="Fullscreen output (Cmd+F)">⛶</button>
-      <button id="btn-record"     title="Record output">⏺</button>
-      <button id="btn-capture"    title="Frame capture — pause render and export PNG frames">📷</button>
-      <span class="status-sep"></span>
-      <button id="btn-ai-narrator" title="AI Narrator — live signal path description (N)">𝔸</button>
-      <button id="btn-ai-coach"    title="AI Coach — 30-second performance suggestions (P)">⬡</button>
-      <button id="btn-ai-settings" title="Settings">⚙</button>
-    </div>
-  </div>
+        <link
+            href="https://fonts.googleapis.com/css2?family=VT323&display=swap"
+            rel="stylesheet"
+        />
 
-  <!-- MAIN LAYOUT -->
-  <div id="app">
+        <link rel="stylesheet" href="/src/style.css" />
+    </head>
+    <body>
+        <!-- STATUS BAR -->
+        <div id="status-bar">
+            <span id="status-name">ImWeb</span>
+            <span id="status-fps">-- fps</span>
+            <span id="status-bank">Bank 1</span>
+            <span id="status-state">State 0</span>
+            <span
+                id="status-bpm"
+                class="indicator"
+                title="Click to tap tempo"
+                style="cursor: pointer"
+                >120 bpm</span
+            >
+            <span id="status-midi" class="indicator" title="MIDI">MIDI</span>
+            <span id="status-osc" class="indicator" title="OSC">OSC</span>
+            <canvas
+                id="status-vu"
+                width="40"
+                height="14"
+                title="Audio input level"
+                style="
+                    display: none;
+                    vertical-align: middle;
+                    border-radius: 2px;
+                "
+            ></canvas>
+            <button
+                id="btn-panel-toggle"
+                title="Toggle control panel"
+                style="display: none"
+            >
+                ☰
+            </button>
+            <div class="status-right">
+                <button
+                    id="btn-reset-all"
+                    title="Reset all parameters to defaults (Shift+Esc)"
+                >
+                    ↺
+                </button>
+                <button
+                    id="btn-collapse-all"
+                    title="Collapse / expand all sections"
+                >
+                    ⊟
+                </button>
+                <button
+                    id="btn-signal-path"
+                    title="Signal path — float / dock (Shift+P)"
+                >
+                    ┄
+                </button>
+                <button id="btn-ctrl-map" title="Active controller assignments">
+                    ⇌
+                </button>
+                <span class="status-sep"></span>
+                <button id="btn-movie-on" title="Movie playback on/off (M)">
+                    Movie
+                </button>
+                <span class="status-sep"></span>
+                <button
+                    id="btn-second-screen"
+                    title="Send output to second monitor / new window"
+                >
+                    ⊡
+                </button>
+                <button
+                    id="btn-projmap"
+                    title="Projection mapping — drag corner handles to reshape output"
+                >
+                    ⬡
+                </button>
+                <button
+                    id="btn-ghost-mode"
+                    title="Ghost mode — shrink main output to thumbnail"
+                >
+                    ◫
+                </button>
+                <button
+                    id="btn-keylock"
+                    title="Keyboard lock — block letter/number shortcuts (so typing in fields works)"
+                >
+                    ⌨
+                </button>
+                <button
+                    id="btn-vkbd"
+                    title="Virtual keyboard — assign key controllers on iPad"
+                    style="display: none"
+                >
+                    KBD
+                </button>
+                <button id="btn-spy" title="Output spy preview (Shift+V)">
+                    ◧
+                </button>
+                <button id="btn-fullscreen" title="Fullscreen output (Cmd+F)">
+                    ⛶
+                </button>
+                <button id="btn-record" title="Record output">⏺</button>
+                <button
+                    id="btn-capture"
+                    title="Frame capture — pause render and export PNG frames"
+                >
+                    📷
+                </button>
+                <span class="status-sep"></span>
+                <button
+                    id="btn-ai-narrator"
+                    title="AI Narrator — live signal path description (N)"
+                >
+                    𝔸
+                </button>
+                <button
+                    id="btn-ai-coach"
+                    title="AI Coach — 30-second performance suggestions (P)"
+                >
+                    ⬡
+                </button>
+                <button id="btn-ai-settings" title="Settings">⚙</button>
+            </div>
+        </div>
 
-    <!-- LEFT: Output canvas -->
-    <div id="output-panel">
-      <canvas id="output-canvas"></canvas>
-      <canvas id="warp-grid-overlay"></canvas>
-      <!-- Floating feedback indicators (repositionable) -->
-      <div id="feedback-overlay"></div>
-      <!-- Ghost mode overlay label -->
-      <div id="ghost-label"><span>⊡</span>output on second screen</div>
-      <!-- AI Narrator overlay -->
-      <div id="ai-narrator-overlay" class="hidden"></div>
-<!-- Video Out Spy (small preview for dual-monitor mode) -->
-      <div id="video-spy" class="hidden">
-        <canvas id="spy-canvas" width="160" height="90"></canvas>
-        <span>output spy</span>
-      </div>
-    </div>
+        <!-- MAIN LAYOUT -->
+        <div id="app">
+            <!-- LEFT: Output canvas -->
+            <div id="output-panel">
+                <canvas id="output-canvas"></canvas>
+                <canvas id="warp-grid-overlay"></canvas>
+                <!-- Floating feedback indicators (repositionable) -->
+                <div id="feedback-overlay"></div>
+                <!-- Ghost mode overlay label -->
+                <div id="ghost-label">
+                    <span>⊡</span>output on second screen
+                </div>
+                <!-- AI Narrator overlay -->
+                <div id="ai-narrator-overlay" class="hidden"></div>
+                <!-- Video Out Spy (small preview for dual-monitor mode) -->
+                <div id="video-spy" class="hidden">
+                    <canvas id="spy-canvas" width="160" height="90"></canvas>
+                    <span>output spy</span>
+                </div>
+            </div>
 
-    <!-- RIGHT: Control panels -->
-    <div id="control-panel">
-      <div id="tab-bar">
-        <button class="tab active" data-tab="mapping">Mapping</button>
-        <button class="tab" data-tab="buffer">Buffer</button>
-        <button class="tab" data-tab="analog">Analog</button>
-        <button class="tab" data-tab="draw">Draw</button>
-        <button class="tab" data-tab="text">Text</button>
-        <button class="tab" data-tab="scene3d">3D</button>
-        <button class="tab" data-tab="clips">Clips</button>
-        <button class="tab" data-tab="presets">Project</button>
-        <button class="tab" data-tab="tables">Tables</button>
-        <button class="tab" data-tab="glsl">GLSL</button>
-      </div>
+            <!-- RIGHT: Control panels -->
+            <div id="control-panel">
+                <div id="tab-bar">
+                    <button class="tab active" data-tab="mapping">
+                        Mapping
+                    </button>
+                    <button class="tab" data-tab="buffer">Buffer</button>
+                    <button class="tab" data-tab="analog">Analog</button>
+                    <button class="tab" data-tab="draw">Draw</button>
+                    <button class="tab" data-tab="text">Text</button>
+                    <button class="tab" data-tab="scene3d">3D</button>
+                    <button class="tab" data-tab="clips">Clips</button>
+                    <button class="tab" data-tab="presets">Project</button>
+                    <button class="tab" data-tab="tables">Tables</button>
+                    <button class="tab" data-tab="glsl">GLSL</button>
+                </div>
 
-      <!-- MAPPING TAB -->
-      <div id="tab-mapping" class="tab-content active">
-        <div class="panel-section">
-          <div class="section-header">Layers</div>
-          <div id="layer-params"></div>
-          <div id="mirror-params"></div>
-        </div>
-        <div class="panel-section">
-          <div class="section-header">Keyer</div>
-          <div style="display:flex;gap:8px;padding:4px 10px;">
-            <label style="font-size:11px;color:var(--text-2);display:flex;align-items:center;gap:4px;">
-              Chroma <input type="color" id="chroma-picker" value="#00ff00" title="Pick chroma key colour">
-            </label>
-          </div>
-          <div id="keyer-params"></div>
-        </div>
-        <div class="panel-section">
-          <div class="section-header">Displacement</div>
-          <div id="displace-params"></div>
-        </div>
-        <div class="panel-section">
-          <div class="section-header">Projection Mapping</div>
-          <div id="projmap-params"></div>
-          <div style="display:flex;gap:4px;padding:4px 10px;">
-            <button id="btn-projmap-reset" class="import-btn" title="Reset all corners to canvas edges">↺ Reset Corners</button>
-          </div>
-        </div>
-        <div class="panel-section">
-          <div class="section-header">Displacement Map Editor</div>
-          <div id="warp-editor-container"></div>
-        </div>
-        <div class="panel-section">
-          <div class="section-header">Blend &amp; Feedback</div>
-          <div id="blend-params"></div>
-        </div>
-        <div class="panel-section">
-          <div class="section-header">ColorSrc 1&amp;2</div>
-          <div id="color-params"></div>
-        </div>
-        <div class="panel-section">
-          <div class="section-header">Palette</div>
-          <div id="palette-params"></div>
-        </div>
-        <div class="panel-section">
-          <div class="section-header">Noise</div>
-          <div id="noise-params-top"></div>
-          <div style="display:flex;gap:8px;padding:4px 10px;">
-            <label style="font-size:11px;color:var(--text-2);display:flex;align-items:center;gap:4px;">
-              Color 1 <input type="color" id="noise-color1-picker" value="#ffffff" title="Noise color 1">
-            </label>
-            <label style="font-size:11px;color:var(--text-2);display:flex;align-items:center;gap:4px;">
-              Color 2 <input type="color" id="noise-color2-picker" value="#000000" title="Noise color 2">
-            </label>
-          </div>
-          <div id="noise-params"></div>
-        </div>
-        <div class="panel-section">
-          <div class="section-header">Layer Color</div>
-          <div id="fg-params"></div>
-          <div id="bg-params"></div>
-        </div>
-        <div class="panel-section">
-          <div class="section-header">Effects</div>
-          <div id="effect-params"></div>
-        </div>
-        <div class="panel-section">
-          <div class="section-header">LUT / Colour Grade</div>
-          <div style="display:flex;gap:4px;padding:4px 10px;flex-wrap:wrap;align-items:center;">
-            <button id="btn-load-lut" class="import-btn">⬆ Load .cube</button>
-            <button id="btn-clear-lut" class="import-btn">✕ Clear LUT</button>
-            <span id="lut-name" style="font-size:10px;color:var(--text-2);margin-left:4px;">No LUT</span>
-          </div>
-          <div id="lut-params"></div>
-        </div>
-        <!-- Output section hidden: Resolution moved to camera header row; Interpolation hidden (advanced/param only) -->
-        <div class="panel-section" style="display:none">
-          <div class="section-header">Output</div>
-          <div id="output-params"></div>
-        </div>
-        <div class="panel-section">
-          <div class="section-header">Global / BPM / Morph</div>
-          <div id="global-params"></div>
-        </div>
-        <div class="panel-section">
-          <div class="section-header">Particles / GPU Engine</div>
-          <div style="display:flex;gap:8px;padding:4px 10px;">
-            <label style="font-size:11px;color:var(--text-2);display:flex;align-items:center;gap:4px;">
-              Col 1 <input type="color" id="particle-col1-picker" value="#1a33cc" title="Particle color 1">
-            </label>
-            <label style="font-size:11px;color:var(--text-2);display:flex;align-items:center;gap:4px;">
-              Col 2 <input type="color" id="particle-col2-picker" value="#ff4d1a" title="Particle color 2">
-            </label>
-          </div>
-          <div id="particle-params"></div>
-        </div>
-        <div class="panel-section">
-          <div class="section-header">SDF / Metaballs</div>
-          <div id="sdf-params"></div>
-        </div>
-        <div class="panel-section">
-          <div class="section-header">Video Delay</div>
-          <div id="delay-params"></div>
-        </div>
-        <!-- VasulkaWarp — hidden, experimental, architecture unresolved. See dev notes. -->
-        <!-- <div class="panel-section">
+                <!-- MAPPING TAB -->
+                <div id="tab-mapping" class="tab-content active">
+                    <div class="panel-section">
+                        <div class="section-header">Layers</div>
+                        <div id="layer-params"></div>
+                        <div id="mirror-params"></div>
+                    </div>
+                    <div class="panel-section">
+                        <div class="section-header">Keyer</div>
+                        <div style="display: flex; gap: 8px; padding: 4px 10px">
+                            <label
+                                style="
+                                    font-size: 11px;
+                                    color: var(--text-2);
+                                    display: flex;
+                                    align-items: center;
+                                    gap: 4px;
+                                "
+                            >
+                                Chroma
+                                <input
+                                    type="color"
+                                    id="chroma-picker"
+                                    value="#00ff00"
+                                    title="Pick chroma key colour"
+                                />
+                            </label>
+                        </div>
+                        <div id="keyer-params"></div>
+                    </div>
+                    <div class="panel-section">
+                        <div class="section-header">Displacement</div>
+                        <div id="displace-params"></div>
+                    </div>
+                    <div class="panel-section">
+                        <div class="section-header">Projection Mapping</div>
+                        <div id="projmap-params"></div>
+                        <div style="display: flex; gap: 4px; padding: 4px 10px">
+                            <button
+                                id="btn-projmap-reset"
+                                class="import-btn"
+                                title="Reset all corners to canvas edges"
+                            >
+                                ↺ Reset Corners
+                            </button>
+                        </div>
+                    </div>
+                    <div class="panel-section">
+                        <div class="section-header">
+                            Displacement Map Editor
+                        </div>
+                        <div id="warp-editor-container"></div>
+                    </div>
+                    <div class="panel-section">
+                        <div class="section-header">Blend &amp; Feedback</div>
+                        <div id="blend-params"></div>
+                    </div>
+                    <div class="panel-section">
+                        <div class="section-header">ColorSrc 1&amp;2</div>
+                        <div id="color-params"></div>
+                    </div>
+                    <div class="panel-section">
+                        <div class="section-header">Palette</div>
+                        <div id="palette-params"></div>
+                    </div>
+                    <div class="panel-section">
+                        <div class="section-header">Noise</div>
+                        <div id="noise-params-top"></div>
+                        <div style="display: flex; gap: 8px; padding: 4px 10px">
+                            <label
+                                style="
+                                    font-size: 11px;
+                                    color: var(--text-2);
+                                    display: flex;
+                                    align-items: center;
+                                    gap: 4px;
+                                "
+                            >
+                                Color 1
+                                <input
+                                    type="color"
+                                    id="noise-color1-picker"
+                                    value="#ffffff"
+                                    title="Noise color 1"
+                                />
+                            </label>
+                            <label
+                                style="
+                                    font-size: 11px;
+                                    color: var(--text-2);
+                                    display: flex;
+                                    align-items: center;
+                                    gap: 4px;
+                                "
+                            >
+                                Color 2
+                                <input
+                                    type="color"
+                                    id="noise-color2-picker"
+                                    value="#000000"
+                                    title="Noise color 2"
+                                />
+                            </label>
+                        </div>
+                        <div id="noise-params"></div>
+                    </div>
+                    <div class="panel-section">
+                        <div class="section-header">Layer Color</div>
+                        <div id="fg-params"></div>
+                        <div id="bg-params"></div>
+                    </div>
+                    <div class="panel-section">
+                        <div class="section-header">Effects</div>
+                        <div id="effect-params"></div>
+                    </div>
+                    <div class="panel-section">
+                        <div class="section-header">LUT / Colour Grade</div>
+                        <div
+                            style="
+                                display: flex;
+                                gap: 4px;
+                                padding: 4px 10px;
+                                flex-wrap: wrap;
+                                align-items: center;
+                            "
+                        >
+                            <button id="btn-load-lut" class="import-btn">
+                                ⬆ Load .cube
+                            </button>
+                            <button id="btn-clear-lut" class="import-btn">
+                                ✕ Clear LUT
+                            </button>
+                            <span
+                                id="lut-name"
+                                style="
+                                    font-size: 10px;
+                                    color: var(--text-2);
+                                    margin-left: 4px;
+                                "
+                                >No LUT</span
+                            >
+                        </div>
+                        <div id="lut-params"></div>
+                    </div>
+                    <!-- Output section hidden: Resolution moved to camera header row; Interpolation hidden (advanced/param only) -->
+                    <div class="panel-section" style="display: none">
+                        <div class="section-header">Output</div>
+                        <div id="output-params"></div>
+                    </div>
+                    <div class="panel-section">
+                        <div class="section-header">Global / BPM / Morph</div>
+                        <div id="global-params"></div>
+                    </div>
+                    <div class="panel-section">
+                        <div class="section-header">Particles / GPU Engine</div>
+                        <div style="display: flex; gap: 8px; padding: 4px 10px">
+                            <label
+                                style="
+                                    font-size: 11px;
+                                    color: var(--text-2);
+                                    display: flex;
+                                    align-items: center;
+                                    gap: 4px;
+                                "
+                            >
+                                Col 1
+                                <input
+                                    type="color"
+                                    id="particle-col1-picker"
+                                    value="#1a33cc"
+                                    title="Particle color 1"
+                                />
+                            </label>
+                            <label
+                                style="
+                                    font-size: 11px;
+                                    color: var(--text-2);
+                                    display: flex;
+                                    align-items: center;
+                                    gap: 4px;
+                                "
+                            >
+                                Col 2
+                                <input
+                                    type="color"
+                                    id="particle-col2-picker"
+                                    value="#ff4d1a"
+                                    title="Particle color 2"
+                                />
+                            </label>
+                        </div>
+                        <div id="particle-params"></div>
+                    </div>
+                    <div class="panel-section">
+                        <div class="section-header">SDF / Metaballs</div>
+                        <div id="sdf-params"></div>
+                    </div>
+                    <div class="panel-section">
+                        <div class="section-header">Video Delay</div>
+                        <div id="delay-params"></div>
+                    </div>
+                    <!-- VasulkaWarp — hidden, experimental, architecture unresolved. See dev notes. -->
+                    <!-- <div class="panel-section">
           <div class="section-header">Vasulka Warp</div>
           <div id="vasulka-params"></div>
         </div> -->
-        <div class="panel-section">
-          <div class="section-header">Vectorscope</div>
-          <div id="vectorscope-params"></div>
-        </div>
-        <div class="panel-section">
-          <div class="section-header">Slit Scan</div>
-          <div id="slitscan-params"></div>
-        </div>
-        <!-- VasulkaWarp — hidden, experimental, architecture unresolved. See dev notes. -->
-        <!-- <div class="panel-section">
+                    <div class="panel-section">
+                        <div class="section-header">Vectorscope</div>
+                        <div id="vectorscope-params"></div>
+                    </div>
+                    <div class="panel-section">
+                        <div class="section-header">Slit Scan</div>
+                        <div id="slitscan-params"></div>
+                    </div>
+                    <!-- VasulkaWarp — hidden, experimental, architecture unresolved. See dev notes. -->
+                    <!-- <div class="panel-section">
           <div class="section-header">Vasulka Warp</div>
           <div id="vwarp-params"></div>
         </div> -->
-        <div class="panel-section">
-          <div class="section-header">Sequences</div>
-          <div id="seq-params"></div>
-        </div>
-      </div>
+                    <div class="panel-section">
+                        <div class="section-header">Sequences</div>
+                        <div id="seq-params"></div>
+                    </div>
+                </div>
 
-      <!-- BUFFER TAB -->
-      <div id="tab-buffer" class="tab-content">
-        <div class="panel-section">
-          <div class="section-header">Stills Buffer</div>
-          <canvas id="buffer-canvas" width="320" height="240"></canvas>
-          <div id="buffer-controls"></div>
-          <div id="buffer-params"></div>
-        </div>
-      </div>
+                <!-- BUFFER TAB -->
+                <div id="tab-buffer" class="tab-content">
+                    <div class="panel-section">
+                        <div class="section-header">Stills Buffer</div>
+                        <canvas
+                            id="buffer-canvas"
+                            width="320"
+                            height="240"
+                        ></canvas>
+                        <div id="buffer-controls"></div>
+                        <div id="buffer-params"></div>
+                    </div>
+                </div>
 
-      <!-- DRAW TAB -->
-      <div id="tab-draw" class="tab-content">
-        <div class="panel-section">
-          <div class="section-header">Draw Layer</div>
-          <canvas id="draw-preview" width="256" height="256"
-            style="display:block;width:100%;image-rendering:pixelated;border:1px solid var(--border);background:#000;"></canvas>
-          <div id="draw-controls" style="display:flex;gap:6px;padding:8px 0 4px;flex-wrap:wrap;"></div>
-        </div>
-        <div class="panel-section">
-          <div class="section-header">Brush</div>
-          <div id="draw-params"></div>
-        </div>
-      </div>
+                <!-- DRAW TAB -->
+                <div id="tab-draw" class="tab-content">
+                    <div class="panel-section">
+                        <div class="section-header">Draw Layer</div>
+                        <canvas
+                            id="draw-preview"
+                            width="256"
+                            height="256"
+                            style="
+                                display: block;
+                                width: 100%;
+                                image-rendering: pixelated;
+                                border: 1px solid var(--border);
+                                background: #000;
+                            "
+                        ></canvas>
+                        <div
+                            id="draw-controls"
+                            style="
+                                display: flex;
+                                gap: 6px;
+                                padding: 8px 0 4px;
+                                flex-wrap: wrap;
+                            "
+                        ></div>
+                    </div>
+                    <div class="panel-section">
+                        <div class="section-header">Brush</div>
+                        <div id="draw-params"></div>
+                    </div>
+                </div>
 
-      <!-- TEXT TAB -->
-      <div id="tab-text" class="tab-content">
-        <div class="panel-section">
-          <div class="section-header">Text Layer</div>
-          <canvas id="text-preview" width="256" height="256"
-            style="display:block;width:100%;image-rendering:pixelated;border:1px solid var(--border);background:#000;"></canvas>
-          <textarea id="text-content" rows="4" spellcheck="false"
-            style="width:100%;box-sizing:border-box;margin-top:6px;font-family:var(--mono);font-size:12px;
-                   background:var(--bg-4);border:1px solid var(--border);color:var(--text-1);
-                   padding:6px;border-radius:3px;resize:vertical;">ImWeb</textarea>
-          <div style="display:flex;gap:6px;padding:4px 0;">
-            <button id="btn-text-advance" class="import-btn">→ Advance</button>
-            <button id="btn-text-reset"   class="import-btn">↩ Reset</button>
-          </div>
-        </div>
-        <div class="panel-section">
-          <div class="section-header">Style</div>
-          <div id="text-params"></div>
-        </div>
-      </div>
+                <!-- TEXT TAB -->
+                <div id="tab-text" class="tab-content">
+                    <div class="panel-section">
+                        <div class="section-header">Text Layer</div>
+                        <canvas
+                            id="text-preview"
+                            width="256"
+                            height="256"
+                            style="
+                                display: block;
+                                width: 100%;
+                                image-rendering: pixelated;
+                                border: 1px solid var(--border);
+                                background: #000;
+                            "
+                        ></canvas>
+                        <textarea
+                            id="text-content"
+                            rows="4"
+                            spellcheck="false"
+                            style="
+                                width: 100%;
+                                box-sizing: border-box;
+                                margin-top: 6px;
+                                font-family: var(--mono);
+                                font-size: 12px;
+                                background: var(--bg-4);
+                                border: 1px solid var(--border);
+                                color: var(--text-1);
+                                padding: 6px;
+                                border-radius: 3px;
+                                resize: vertical;
+                            "
+                        >
+ImWeb</textarea
+                        >
+                        <div style="display: flex; gap: 6px; padding: 4px 0">
+                            <button id="btn-text-advance" class="import-btn">
+                                → Advance
+                            </button>
+                            <button id="btn-text-reset" class="import-btn">
+                                ↩ Reset
+                            </button>
+                        </div>
+                    </div>
+                    <div class="panel-section">
+                        <div class="section-header">Style</div>
+                        <div id="text-params"></div>
+                    </div>
+                </div>
 
-      <!-- 3D SCENE TAB -->
-      <div id="tab-scene3d" class="tab-content">
-        <div class="panel-section">
-          <div class="section-header">Geometry</div>
-          <div id="geometry-controls"></div>
-        </div>
-        <div class="panel-section">
-          <div class="section-header">Transform</div>
-          <div id="transform-params"></div>
-        </div>
-        <div class="panel-section">
-          <div class="section-header">Camera</div>
-          <div id="camera3d-params"></div>
-        </div>
-        <div class="panel-section">
-          <div class="section-header">Material</div>
-          <div id="material-params"></div>
-        </div>
-        <div class="panel-section">
-          <div class="section-header">Lights</div>
-          <div id="lights-params"></div>
-        </div>
-        <div class="panel-section">
-          <div class="section-header">Cloner</div>
-          <div id="cloner-params"></div>
-        </div>
-        <div class="panel-section">
-          <div class="section-header">Metaballs</div>
-          <div id="blob-params"></div>
-        </div>
-        <div class="panel-section">
-          <div class="section-header">Import Model</div>
-          <div id="model-import"></div>
-        </div>
-      </div>
+                <!-- 3D SCENE TAB -->
+                <div id="tab-scene3d" class="tab-content">
+                    <div class="panel-section">
+                        <div class="section-header">Geometry</div>
+                        <div id="geometry-controls"></div>
+                    </div>
+                    <div class="panel-section">
+                        <div class="section-header">Transform</div>
+                        <div id="transform-params"></div>
+                    </div>
+                    <div class="panel-section">
+                        <div class="section-header">Camera</div>
+                        <div id="camera3d-params"></div>
+                    </div>
+                    <div class="panel-section">
+                        <div class="section-header">Material</div>
+                        <div id="material-params"></div>
+                    </div>
+                    <div class="panel-section">
+                        <div class="section-header">Lights</div>
+                        <div id="lights-params"></div>
+                    </div>
+                    <div class="panel-section">
+                        <div class="section-header">Cloner</div>
+                        <div id="cloner-params"></div>
+                    </div>
+                    <div class="panel-section">
+                        <div class="section-header">Metaballs</div>
+                        <div id="blob-params"></div>
+                    </div>
+                    <div class="panel-section">
+                        <div class="section-header">Import Model</div>
+                        <div id="model-import"></div>
+                    </div>
+                </div>
 
-      <!-- CLIPS TAB -->
-      <div id="tab-clips" class="tab-content">
-        <div class="panel-section">
-          <div class="section-header">Movie Clips</div>
-          <div style="display:flex;gap:6px;padding:6px 8px 4px;align-items:center;">
-            <button id="btn-add-clip" class="import-btn" style="flex:1">+ Add Clip</button>
-            <button id="btn-clear-clips" class="import-btn" title="Remove all clips">✕ Clear</button>
-          </div>
-          <div id="clips-list"></div>
-          <div id="clip-params" style="border-top:1px solid var(--border);padding-top:2px;"></div>
-          <div style="padding:4px 8px 6px;font-size:10px;color:var(--text-2);line-height:1.5;">
-            Best formats: H.264 MP4, WebM. For frame-accurate scrubbing run
-            <code style="color:var(--accent);font-family:var(--mono);">node imweb-prep.js</code>
-            — drop raw files in <code style="color:var(--accent);font-family:var(--mono);">_raw_videos/</code>.
-          </div>
-        </div>
-        <div class="panel-section">
-          <div class="section-header">Clip Library</div>
-          <div id="clip-library"></div>
-        </div>
-      </div>
+                <!-- CLIPS TAB -->
+                <div id="tab-clips" class="tab-content">
+                    <div class="panel-section">
+                        <div class="section-header">Movie Clips</div>
+                        <div
+                            style="
+                                display: flex;
+                                gap: 6px;
+                                padding: 6px 8px 4px;
+                                align-items: center;
+                            "
+                        >
+                            <button
+                                id="btn-add-clip"
+                                class="import-btn"
+                                style="flex: 1"
+                            >
+                                + Add Clip
+                            </button>
+                            <button
+                                id="btn-clear-clips"
+                                class="import-btn"
+                                title="Remove all clips"
+                            >
+                                ✕ Clear
+                            </button>
+                        </div>
+                        <div id="clips-list"></div>
+                        <div
+                            id="clip-params"
+                            style="
+                                border-top: 1px solid var(--border);
+                                padding-top: 2px;
+                            "
+                        ></div>
+                        <div
+                            style="
+                                padding: 4px 8px 6px;
+                                font-size: 10px;
+                                color: var(--text-2);
+                                line-height: 1.5;
+                            "
+                        >
+                            Best formats: H.264 MP4, WebM. For frame-accurate
+                            scrubbing run
+                            <code
+                                style="
+                                    color: var(--accent);
+                                    font-family: var(--mono);
+                                "
+                                >node imweb-prep.js</code
+                            >
+                            — drop raw files in
+                            <code
+                                style="
+                                    color: var(--accent);
+                                    font-family: var(--mono);
+                                "
+                                >_raw_videos/</code
+                            >.
+                        </div>
+                    </div>
+                    <div class="panel-section">
+                        <div class="section-header">Clip Library</div>
+                        <div id="clip-library"></div>
+                    </div>
+                </div>
 
-      <!-- PROJECT TAB -->
-      <div id="tab-presets" class="tab-content">
+                <!-- PROJECT TAB -->
+                <div id="tab-presets" class="tab-content">
+                    <!-- 1. PROJECT — file I/O only -->
+                    <div class="panel-section">
+                        <div class="section-header">Project</div>
+                        <div id="project-file-ui"></div>
+                    </div>
 
-        <!-- 1. PROJECT — file I/O only -->
-        <div class="panel-section">
-          <div class="section-header">Project</div>
-          <div id="project-file-ui"></div>
-        </div>
+                    <!-- 2. AI — generator + future AI tools -->
+                    <div class="panel-section">
+                        <div class="section-header">AI</div>
+                        <div id="ai-preset-ui"></div>
+                    </div>
 
-        <!-- 2. AI — generator + future AI tools -->
-        <div class="panel-section">
-          <div class="section-header">AI</div>
-          <div id="ai-preset-ui"></div>
-        </div>
+                    <!-- 3. BANKS — bank management + automation -->
+                    <div id="banks-section" class="panel-section">
+                        <div class="section-header">
+                            Banks — <span id="current-bank-name">Bank 1</span>
+                        </div>
+                        <div
+                            id="memory-bank-row"
+                            style="
+                                display: flex;
+                                gap: 4px;
+                                flex-wrap: wrap;
+                                padding: 4px 8px 0;
+                            "
+                        >
+                            <button id="btn-save-bank" class="import-btn">
+                                💾 Save
+                            </button>
+                            <button id="btn-saveas-bank" class="import-btn">
+                                💾 Save As
+                            </button>
+                            <button id="btn-new-bank" class="import-btn">
+                                + New
+                            </button>
+                            <button id="btn-export-bank" class="import-btn">
+                                ⬇ Export
+                            </button>
+                            <button id="btn-import-bank" class="import-btn">
+                                ⬆ Import
+                            </button>
+                            <button
+                                id="btn-delete-bank"
+                                class="import-btn btn-danger"
+                            >
+                                ✕ Delete
+                            </button>
+                        </div>
+                        <!-- Bank list: all banks in this project, click to switch -->
+                        <div id="bank-list"></div>
+                        <div
+                            id="memory-auto-row"
+                            style="padding: 4px 8px 0"
+                        ></div>
+                    </div>
 
-        <!-- 3. BANKS — bank management + automation -->
-        <div id="banks-section" class="panel-section">
-          <div class="section-header">
-            Banks — <span id="current-bank-name">Bank 1</span>
-          </div>
-          <div id="memory-bank-row" style="display:flex;gap:4px;flex-wrap:wrap;padding:4px 8px 0;">
-            <button id="btn-save-bank"    class="import-btn">💾 Save</button>
-            <button id="btn-saveas-bank"  class="import-btn">💾 Save As</button>
-            <button id="btn-new-bank"     class="import-btn">+ New</button>
-            <button id="btn-export-bank"  class="import-btn">⬇ Export</button>
-            <button id="btn-import-bank"  class="import-btn">⬆ Import</button>
-            <button id="btn-delete-bank"  class="import-btn btn-danger">✕ Delete</button>
-          </div>
-          <!-- Bank list: all banks in this project, click to switch -->
-          <div id="bank-list"></div>
-          <div id="memory-auto-row" style="padding:4px 8px 0;"></div>
-        </div>
+                    <!-- 4. STATES — state list for current bank -->
+                    <div id="states-section" class="panel-section">
+                        <div class="section-header">States</div>
+                        <div id="memory-state-list"></div>
+                        <div style="padding: 4px 8px 6px">
+                            <button
+                                id="btn-import-state"
+                                class="import-btn"
+                                style="width: 100%"
+                            >
+                                ⬆ Import State (.imstate)
+                            </button>
+                        </div>
+                    </div>
 
-        <!-- 4. STATES — state list for current bank -->
-        <div id="states-section" class="panel-section">
-          <div class="section-header">States</div>
-          <div id="memory-state-list"></div>
-          <div style="padding:4px 8px 6px;">
-            <button id="btn-import-state" class="import-btn" style="width:100%">⬆ Import State (.imstate)</button>
-          </div>
-        </div>
+                    <!-- 5. STATE STEP SEQUENCER (controls appended by main.js) -->
+                    <div id="state-seq-section" class="panel-section">
+                        <div class="section-header">State Step Sequencer</div>
+                    </div>
+                </div>
 
-        <!-- 5. STATE STEP SEQUENCER (controls appended by main.js) -->
-        <div id="state-seq-section" class="panel-section">
-          <div class="section-header">State Step Sequencer</div>
-        </div>
+                <!-- TABLES TAB -->
+                <div id="tab-tables" class="tab-content">
+                    <div class="panel-section">
+                        <div class="section-header" id="tables-section-header">
+                            Response Curves
+                        </div>
+                        <div id="tables-list"></div>
+                        <canvas
+                            id="table-editor"
+                            width="280"
+                            height="200"
+                        ></canvas>
+                    </div>
+                </div>
 
-      </div>
-
-      <!-- TABLES TAB -->
-      <div id="tab-tables" class="tab-content">
-        <div class="panel-section">
-          <div class="section-header" id="tables-section-header">Response Curves</div>
-          <div id="tables-list"></div>
-          <canvas id="table-editor" width="280" height="200"></canvas>
-        </div>
-      </div>
-
-      <!-- GLSL TAB -->
-      <div id="tab-glsl" class="tab-content">
-        <div class="panel-section">
-          <div class="section-header">Live GLSL Effect</div>
-          <div style="padding:4px 8px 0;display:flex;gap:4px;align-items:center;">
-            <button id="btn-glsl-apply" class="import-btn" style="flex:1">▶ Apply</button>
-            <button id="btn-glsl-reset" class="import-btn">↺ Reset</button>
-            <label style="font-size:10px;color:var(--text-2);display:flex;align-items:center;gap:4px;">
-              <input type="checkbox" id="glsl-auto-apply"> Auto
-            </label>
-          </div>
-          <div id="glsl-error" style="padding:4px 8px;font-size:10px;color:#e84040;display:none;white-space:pre-wrap;font-family:monospace;"></div>
-          <textarea id="glsl-editor" spellcheck="false" autocomplete="off"
-            style="display:block;width:100%;height:280px;resize:vertical;background:#0a0a0e;color:#c8c8d8;
-                   font-family:monospace;font-size:11px;border:1px solid var(--border);padding:6px;
-                   box-sizing:border-box;outline:none;tab-size:2;"
-          >// Available uniforms:
+                <!-- GLSL TAB -->
+                <div id="tab-glsl" class="tab-content">
+                    <div class="panel-section">
+                        <div class="section-header">Live GLSL Effect</div>
+                        <div
+                            style="
+                                padding: 4px 8px 0;
+                                display: flex;
+                                gap: 4px;
+                                align-items: center;
+                            "
+                        >
+                            <button
+                                id="btn-glsl-apply"
+                                class="import-btn"
+                                style="flex: 1"
+                            >
+                                ▶ Apply
+                            </button>
+                            <button id="btn-glsl-reset" class="import-btn">
+                                ↺ Reset
+                            </button>
+                            <label
+                                style="
+                                    font-size: 10px;
+                                    color: var(--text-2);
+                                    display: flex;
+                                    align-items: center;
+                                    gap: 4px;
+                                "
+                            >
+                                <input type="checkbox" id="glsl-auto-apply" />
+                                Auto
+                            </label>
+                        </div>
+                        <div
+                            id="glsl-error"
+                            style="
+                                padding: 4px 8px;
+                                font-size: 10px;
+                                color: #e84040;
+                                display: none;
+                                white-space: pre-wrap;
+                                font-family: monospace;
+                            "
+                        ></div>
+                        <textarea
+                            id="glsl-editor"
+                            spellcheck="false"
+                            autocomplete="off"
+                            style="
+                                display: block;
+                                width: 100%;
+                                height: 280px;
+                                resize: vertical;
+                                background: #0a0a0e;
+                                color: #c8c8d8;
+                                font-family: monospace;
+                                font-size: 11px;
+                                border: 1px solid var(--border);
+                                padding: 6px;
+                                box-sizing: border-box;
+                                outline: none;
+                                tab-size: 2;
+                            "
+                        >
+// Available uniforms:
 //   sampler2D uTexture    — current frame
 //   float     uTime       — seconds
 //   vec2      uResolution
@@ -404,186 +786,373 @@
 void main() {
   vec4 col = texture2D(uTexture, vUv);
   gl_FragColor = col;
-}</textarea>
-          <!-- Param uniform binding slots -->
-          <div id="glsl-uniforms" style="padding:4px 8px 6px;font-family:monospace;font-size:10px;color:var(--text-2);"></div>
+}</textarea
+                        >
+                        <!-- Param uniform binding slots -->
+                        <div
+                            id="glsl-uniforms"
+                            style="
+                                padding: 4px 8px 6px;
+                                font-family: monospace;
+                                font-size: 10px;
+                                color: var(--text-2);
+                            "
+                        ></div>
+                    </div>
+                </div>
+
+                <!-- ANALOG TAB -->
+                <div id="tab-analog" class="tab-content">
+                    <div id="analog-preset-bar"></div>
+                    <div class="panel-section">
+                        <div class="section-header">Source &amp; Crop</div>
+                        <div id="analog-source-params"></div>
+                    </div>
+                    <div class="panel-section" id="teletext-section" style="display:none">
+                        <div class="section-header">Teletext ▸ page navigation</div>
+                        <div id="teletext-params"></div>
+                    </div>
+                    <div class="panel-section">
+                        <div class="section-header">Signal</div>
+                        <div id="analog-signal-params"></div>
+                    </div>
+                    <div class="panel-section">
+                        <div class="section-header">CRT Screen</div>
+                        <div id="analog-crt-params"></div>
+                    </div>
+                    <div class="panel-section">
+                        <div class="section-header">RF Interference</div>
+                        <div id="analog-rf-params"></div>
+                    </div>
+                    <div class="panel-section">
+                        <div class="section-header">Composite</div>
+                        <div id="analog-composite-params"></div>
+                    </div>
+                    <div class="panel-section">
+                        <div class="section-header">Tuner</div>
+                        <div id="analog-tuner-params"></div>
+                    </div>
+                </div>
+            </div>
         </div>
-      </div>
+        <!-- /app -->
 
-      <!-- ANALOG TAB -->
-      <div id="tab-analog" class="tab-content">
-        <div class="panel-section">
-          <div class="section-header">Source &amp; Crop</div>
-          <div id="analog-source-params"></div>
+        <!-- Panel overlay for mobile (tap to close) -->
+        <div id="panel-overlay" class="hidden"></div>
+
+        <!-- PARAM SEARCH OVERLAY (/ key) -->
+        <div id="param-search" class="hidden">
+            <input
+                id="param-search-input"
+                type="text"
+                placeholder="Search parameters…"
+                autocomplete="off"
+                spellcheck="false"
+            />
+            <div id="param-search-results"></div>
         </div>
-        <div class="panel-section">
-          <div class="section-header">Signal</div>
-          <div id="analog-signal-params"></div>
+
+        <!-- SIGNAL PATH (bottom bar) -->
+        <div id="signal-path">
+            <div id="signal-path-display">
+                <!-- Built dynamically by SignalPath.js -->
+            </div>
         </div>
-      </div>
 
-    </div>
-
-  </div><!-- /app -->
-
-  <!-- Panel overlay for mobile (tap to close) -->
-  <div id="panel-overlay" class="hidden"></div>
-
-  <!-- PARAM SEARCH OVERLAY (/ key) -->
-  <div id="param-search" class="hidden">
-    <input id="param-search-input" type="text" placeholder="Search parameters…" autocomplete="off" spellcheck="false">
-    <div id="param-search-results"></div>
-  </div>
-
-  <!-- SIGNAL PATH (bottom bar) -->
-  <div id="signal-path">
-    <div id="signal-path-display">
-      <!-- Built dynamically by SignalPath.js -->
-    </div>
-  </div>
-
-  <!-- STATE BAR (bottom) -->
-  <div id="state-bar">
-    <button id="state-neutral" class="state-tile state-tile--neutral" title="Neutral — reset all parameters to default">○</button>
-    <div id="state-grid">
-      <!-- 32 tiles built by StateBar -->
-    </div>
-    <div id="morph-ctrl" title="State morph time · drag to adjust · 0 = instant snap">
-      <span class="morph-label">MORPH</span>
-      <span id="morph-speed-val">2.0s</span>
-    </div>
-    <div id="bank-nav">
-      <button id="bank-name-btn">Bank 1 ▾</button>
-      <div id="bank-dropdown" class="hidden"></div>
-    </div>
-    <!-- Hidden select kept as MIDI-assignable proxy -->
-    <select id="bank-select" class="hidden" title="Select Bank" aria-hidden="true"></select>
-  </div>
-
-  <!-- Context menu for parameter mapping (shown on right-click) -->
-  <div id="param-context-menu" class="context-menu hidden">
-    <div class="menu-header" id="ctx-param-label">Parameter</div>
-    <div class="menu-section">Controller</div>
-    <button class="menu-item" data-ctrl="none">None</button>
-    <button class="menu-item" data-ctrl="mouse-x">Mouse X</button>
-    <button class="menu-item" data-ctrl="mouse-y">Mouse Y</button>
-    <button class="menu-item" data-ctrl="midi-cc">MIDI CC...</button>
-    <button class="menu-item" data-action="midi-learn">MIDI Learn</button>
-    <button class="menu-item" data-ctrl="midi-note">MIDI Note...</button>
-    <button class="menu-item" data-ctrl="lfo-sine">LFO Sine</button>
-    <button class="menu-item" data-ctrl="lfo-triangle">LFO Triangle</button>
-    <button class="menu-item" data-ctrl="lfo-sawtooth">LFO Saw ↑</button>
-    <button class="menu-item" data-ctrl="lfo-rampdown">LFO Saw ↓</button>
-    <button class="menu-item" data-ctrl="lfo-square">LFO Square</button>
-    <button class="menu-item" data-ctrl="lfo-sh">LFO S&amp;H</button>
-    <button class="menu-item" data-ctrl="sound">Sound Level</button>
-    <button class="menu-item" data-ctrl="sound-bass">Sound Bass</button>
-    <button class="menu-item" data-ctrl="sound-mid">Sound Mid</button>
-    <button class="menu-item" data-ctrl="sound-high">Sound High</button>
-    <button class="menu-item" data-ctrl="random">Random</button>
-    <button class="menu-item" data-ctrl="fixed">Fixed Value</button>
-    <button class="menu-item" data-ctrl="gamepad-axis-0">Gamepad LX</button>
-    <button class="menu-item" data-ctrl="gamepad-axis-1">Gamepad LY</button>
-    <button class="menu-item" data-ctrl="gamepad-axis-2">Gamepad RX</button>
-    <button class="menu-item" data-ctrl="gamepad-axis-3">Gamepad RY</button>
-    <button class="menu-item" data-ctrl="gamepad-btn-0">Gamepad A/Cross</button>
-    <button class="menu-item" data-ctrl="gamepad-btn-1">Gamepad B/Circle</button>
-    <button class="menu-item" data-ctrl="gamepad-btn-2">Gamepad X/Square</button>
-    <button class="menu-item" data-ctrl="gamepad-btn-3">Gamepad Y/Triangle</button>
-    <button class="menu-item" data-ctrl="wacom-pressure">Wacom Pressure</button>
-    <button class="menu-item" data-ctrl="pen-pressure">Pen/Touch Pressure</button>
-    <button class="menu-item" data-ctrl="key">Key...</button>
-    <button class="menu-item" data-ctrl="expr">Expression…</button>
-    <div class="menu-section">Options</div>
-    <button class="menu-item" data-action="invert">Toggle Invert</button>
-    <button class="menu-item" data-action="show">Toggle Feedback</button>
-    <button class="menu-item" data-action="lock">Toggle Lock</button>
-    <button class="menu-item" data-action="table">Assign Table…</button>
-    <button class="menu-item" data-action="slew">Set Slew…</button>
-    <div class="menu-section">External Mapping</div>
-    <button class="menu-item" data-action="xmap-hz">X-Map: mod LFO Hz…</button>
-    <button class="menu-item" data-action="xmap-amp">X-Map: mod Amplitude…</button>
-    <button class="menu-item" data-action="xmap-value">X-Map: direct override…</button>
-    <div id="ctx-xmap-list"></div>
-    <button class="menu-item" data-action="xmap-clear">Clear X-Maps</button>
-    <canvas id="ctx-lfo-viz" width="160" height="40" style="display:none;margin:4px 8px;border-radius:3px;background:#0a0a0e;"></canvas>
-  </div>
-
-  <!-- KEYBOARD HELP OVERLAY (? key) -->
-  <div id="kb-help" class="hidden">
-    <div id="kb-help-box">
-      <div id="kb-help-title">Keyboard Shortcuts</div>
-      <div id="kb-help-cols">
-        <div class="kb-col">
-          <div class="kb-section">Sources</div>
-          <div class="kb-row"><kbd>v</kbd><span>Camera on/off</span></div>
-          <div class="kb-row"><kbd>m</kbd><span>Movie on/off</span></div>
-          <div class="kb-section">Processing</div>
-          <div class="kb-row"><kbd>b</kbd><span>Blend toggle</span></div>
-          <div class="kb-row"><kbd>k</kbd><span>Keyer toggle</span></div>
-          <div class="kb-row"><kbd>x</kbd><span>External key</span></div>
-          <div class="kb-row"><kbd>s</kbd><span>Solo output</span></div>
-          <div class="kb-row"><kbd>h</kbd><span>Hold / Fade to black</span></div>
-          <div class="kb-row"><kbd>c</kbd><span>Capture to buffer</span></div>
+        <!-- STATE BAR (bottom) -->
+        <div id="state-bar">
+            <button
+                id="state-neutral"
+                class="state-tile state-tile--neutral"
+                title="Neutral — reset all parameters to default"
+            >
+                ○
+            </button>
+            <div id="state-grid">
+                <!-- 32 tiles built by StateBar -->
+            </div>
+            <div
+                id="morph-ctrl"
+                title="State morph time · drag to adjust · 0 = instant snap"
+            >
+                <span class="morph-label">MORPH</span>
+                <span id="morph-speed-val">2.0s</span>
+            </div>
+            <div id="bank-nav">
+                <button
+                    id="btn-save-project"
+                    title="Save project (⌘S)"
+                >💾</button>
+                <button id="bank-name-btn">Bank 1 ▾</button>
+                <div id="bank-dropdown" class="hidden"></div>
+            </div>
+            <!-- Hidden select kept as MIDI-assignable proxy -->
+            <select
+                id="bank-select"
+                class="hidden"
+                title="Select Bank"
+                aria-hidden="true"
+            ></select>
         </div>
-        <div class="kb-col">
-          <div class="kb-section">Navigation</div>
-          <div class="kb-row"><kbd>−</kbd><span>Previous bank</span></div>
-          <div class="kb-row"><kbd>+</kbd><span>Next bank</span></div>
-          <div class="kb-row"><kbd>0–9</kbd><span>Recall state</span></div>
-          <div class="kb-row"><kbd>⇧0</kbd><span>Neutral state</span></div>
-          <div class="kb-row"><kbd>⇧S</kbd><span>Quick-save state</span></div>
-          <div class="kb-row"><kbd>⇧1–8</kbd><span>Select clip 1–8</span></div>
-          <div class="kb-section">Global</div>
-          <div class="kb-row"><kbd>⌘S</kbd><span>Save project (.imweb)</span></div>
-          <div class="kb-row"><kbd>t</kbd><span>Tap tempo</span></div>
-          <div class="kb-row"><kbd>f</kbd><span>Fullscreen</span></div>
-          <div class="kb-row"><kbd>/</kbd><span>Search params</span></div>
-          <div class="kb-row"><kbd>?</kbd><span>This help</span></div>
-          <div class="kb-row"><kbd>Esc</kbd><span>Close / Exit fullscreen</span></div>
-        </div>
-      </div>
-      <div style="text-align:center;margin-top:10px;font-size:10px;color:var(--text-2)">Right-click any parameter to assign a controller</div>
-    </div>
-  </div>
 
-  <!-- FIRST-VISIT ONBOARDING OVERLAY -->
-  <div id="onboarding" class="hidden">
-    <div id="onboarding-box">
-      <div id="onboarding-title">ImWeb</div>
-      <div id="onboarding-sub">Real-time video synthesis instrument</div>
-      <div id="onboarding-gestures">
-        <div class="ob-gesture">
-          <div class="ob-icon">⇌</div>
-          <div class="ob-desc"><strong>Drag</strong> any value field to change it. Right-click a parameter badge to assign a controller — MIDI, LFO, random, audio.</div>
+        <!-- Context menu for parameter mapping (shown on right-click) -->
+        <div id="param-context-menu" class="context-menu hidden">
+            <div class="menu-header" id="ctx-param-label">Parameter</div>
+            <div class="menu-section">Controller</div>
+            <button class="menu-item" data-ctrl="none">None</button>
+            <button class="menu-item" data-ctrl="mouse-x">Mouse X</button>
+            <button class="menu-item" data-ctrl="mouse-y">Mouse Y</button>
+            <button class="menu-item" data-ctrl="midi-cc">MIDI CC...</button>
+            <button class="menu-item" data-action="midi-learn">
+                MIDI Learn
+            </button>
+            <button class="menu-item" data-ctrl="midi-note">
+                MIDI Note...
+            </button>
+            <button class="menu-item" data-ctrl="lfo-sine">LFO Sine</button>
+            <button class="menu-item" data-ctrl="lfo-triangle">
+                LFO Triangle
+            </button>
+            <button class="menu-item" data-ctrl="lfo-sawtooth">
+                LFO Saw ↑
+            </button>
+            <button class="menu-item" data-ctrl="lfo-rampdown">
+                LFO Saw ↓
+            </button>
+            <button class="menu-item" data-ctrl="lfo-square">LFO Square</button>
+            <button class="menu-item" data-ctrl="lfo-sh">LFO S&amp;H</button>
+            <button class="menu-item" data-ctrl="sound">Sound Level</button>
+            <button class="menu-item" data-ctrl="sound-bass">Sound Bass</button>
+            <button class="menu-item" data-ctrl="sound-mid">Sound Mid</button>
+            <button class="menu-item" data-ctrl="sound-high">Sound High</button>
+            <button class="menu-item" data-ctrl="random">Random</button>
+            <button class="menu-item" data-ctrl="fixed">Fixed Value</button>
+            <button class="menu-item" data-ctrl="gamepad-axis-0">
+                Gamepad LX
+            </button>
+            <button class="menu-item" data-ctrl="gamepad-axis-1">
+                Gamepad LY
+            </button>
+            <button class="menu-item" data-ctrl="gamepad-axis-2">
+                Gamepad RX
+            </button>
+            <button class="menu-item" data-ctrl="gamepad-axis-3">
+                Gamepad RY
+            </button>
+            <button class="menu-item" data-ctrl="gamepad-btn-0">
+                Gamepad A/Cross
+            </button>
+            <button class="menu-item" data-ctrl="gamepad-btn-1">
+                Gamepad B/Circle
+            </button>
+            <button class="menu-item" data-ctrl="gamepad-btn-2">
+                Gamepad X/Square
+            </button>
+            <button class="menu-item" data-ctrl="gamepad-btn-3">
+                Gamepad Y/Triangle
+            </button>
+            <button class="menu-item" data-ctrl="wacom-pressure">
+                Wacom Pressure
+            </button>
+            <button class="menu-item" data-ctrl="pen-pressure">
+                Pen/Touch Pressure
+            </button>
+            <button class="menu-item" data-ctrl="key">Key...</button>
+            <button class="menu-item" data-ctrl="expr">Expression…</button>
+            <div class="menu-section">Options</div>
+            <button class="menu-item" data-action="invert">
+                Toggle Invert
+            </button>
+            <button class="menu-item" data-action="show">
+                Toggle Feedback
+            </button>
+            <button class="menu-item" data-action="lock">Toggle Lock</button>
+            <button class="menu-item" data-action="table">Assign Table…</button>
+            <button class="menu-item" data-action="slew">Set Slew…</button>
+            <div class="menu-section">External Mapping</div>
+            <button class="menu-item" data-action="xmap-hz">
+                X-Map: mod LFO Hz…
+            </button>
+            <button class="menu-item" data-action="xmap-amp">
+                X-Map: mod Amplitude…
+            </button>
+            <button class="menu-item" data-action="xmap-value">
+                X-Map: direct override…
+            </button>
+            <div id="ctx-xmap-list"></div>
+            <button class="menu-item" data-action="xmap-clear">
+                Clear X-Maps
+            </button>
+            <canvas
+                id="ctx-lfo-viz"
+                width="160"
+                height="40"
+                style="
+                    display: none;
+                    margin: 4px 8px;
+                    border-radius: 3px;
+                    background: #0a0a0e;
+                "
+            ></canvas>
         </div>
-        <div class="ob-gesture">
-          <div class="ob-icon">0–9</div>
-          <div class="ob-desc"><strong>Number keys</strong> recall States. <kbd>⇧0</kbd> = Neutral State. <kbd>+</kbd> / <kbd>−</kbd> on numpad step through Banks. Press <kbd>?</kbd> for all shortcuts.</div>
-        </div>
-        <div class="ob-gesture">
-          <div class="ob-icon">⊡</div>
-          <div class="ob-desc"><strong>Second screen</strong> button sends output to a new window — open on a projector or second display for performance.</div>
-        </div>
-      </div>
-      <button id="onboarding-dismiss">Start</button>
-    </div>
-  </div>
 
-  <!-- FRAME CAPTURE PANEL -->
-  <div id="capture-panel" class="hidden">
-    <div class="cap-row">
-      <span id="cap-frame-label">Frame 0000</span>
-      <label style="display:flex;align-items:center;gap:4px;">FPS <input id="cap-fps" type="number" value="30" min="1" max="120" step="1"></label>
-    </div>
-    <div class="cap-row">
-      <button id="cap-step">Step Frame</button>
-      <label style="display:flex;align-items:center;gap:4px;">×<input id="cap-count" type="number" value="1" min="1" max="9999" step="1"></label>
-      <button id="cap-run">Auto-Run</button>
-    </div>
-    <button id="cap-close">Exit Capture</button>
-  </div>
+        <!-- KEYBOARD HELP OVERLAY (? key) -->
+        <div id="kb-help" class="hidden">
+            <div id="kb-help-box">
+                <div id="kb-help-title">Keyboard Shortcuts</div>
+                <div id="kb-help-cols">
+                    <div class="kb-col">
+                        <div class="kb-section">Sources</div>
+                        <div class="kb-row">
+                            <kbd>v</kbd><span>Camera on/off</span>
+                        </div>
+                        <div class="kb-row">
+                            <kbd>m</kbd><span>Movie on/off</span>
+                        </div>
+                        <div class="kb-section">Processing</div>
+                        <div class="kb-row">
+                            <kbd>b</kbd><span>Blend toggle</span>
+                        </div>
+                        <div class="kb-row">
+                            <kbd>k</kbd><span>Keyer toggle</span>
+                        </div>
+                        <div class="kb-row">
+                            <kbd>x</kbd><span>External key</span>
+                        </div>
+                        <div class="kb-row">
+                            <kbd>s</kbd><span>Solo output</span>
+                        </div>
+                        <div class="kb-row">
+                            <kbd>h</kbd><span>Hold / Fade to black</span>
+                        </div>
+                        <div class="kb-row">
+                            <kbd>c</kbd><span>Capture to buffer</span>
+                        </div>
+                    </div>
+                    <div class="kb-col">
+                        <div class="kb-section">Navigation</div>
+                        <div class="kb-row">
+                            <kbd>−</kbd><span>Previous bank</span>
+                        </div>
+                        <div class="kb-row">
+                            <kbd>+</kbd><span>Next bank</span>
+                        </div>
+                        <div class="kb-row">
+                            <kbd>0–9</kbd><span>Recall state</span>
+                        </div>
+                        <div class="kb-row">
+                            <kbd>⇧0</kbd><span>Neutral state</span>
+                        </div>
+                        <div class="kb-row">
+                            <kbd>⇧S</kbd><span>Quick-save state</span>
+                        </div>
+                        <div class="kb-row">
+                            <kbd>⇧1–8</kbd><span>Select clip 1–8</span>
+                        </div>
+                        <div class="kb-section">Global</div>
+                        <div class="kb-row">
+                            <kbd>⌘S</kbd><span>Save project (.imweb)</span>
+                        </div>
+                        <div class="kb-row">
+                            <kbd>t</kbd><span>Tap tempo</span>
+                        </div>
+                        <div class="kb-row">
+                            <kbd>f</kbd><span>Fullscreen</span>
+                        </div>
+                        <div class="kb-row">
+                            <kbd>/</kbd><span>Search params</span>
+                        </div>
+                        <div class="kb-row">
+                            <kbd>?</kbd><span>This help</span>
+                        </div>
+                        <div class="kb-row">
+                            <kbd>Esc</kbd><span>Close / Exit fullscreen</span>
+                        </div>
+                    </div>
+                </div>
+                <div
+                    style="
+                        text-align: center;
+                        margin-top: 10px;
+                        font-size: 10px;
+                        color: var(--text-2);
+                    "
+                >
+                    Right-click any parameter to assign a controller
+                </div>
+            </div>
+        </div>
 
-  <script type="module" src="/src/main.js"></script>
-</body>
+        <!-- FIRST-VISIT ONBOARDING OVERLAY -->
+        <div id="onboarding" class="hidden">
+            <div id="onboarding-box">
+                <div id="onboarding-title">ImWeb</div>
+                <div class="splash-version" id="onboarding-version"></div>
+                <div id="onboarding-sub">
+                    Real-time video synthesis instrument
+                </div>
+                <div id="onboarding-gestures">
+                    <div class="ob-gesture">
+                        <div class="ob-icon">⇌</div>
+                        <div class="ob-desc">
+                            <strong>Drag</strong> any value field to change it.
+                            Right-click a parameter badge to assign a controller
+                            — MIDI, LFO, random, audio.
+                        </div>
+                    </div>
+                    <div class="ob-gesture">
+                        <div class="ob-icon">0–9</div>
+                        <div class="ob-desc">
+                            <strong>Number keys</strong> recall States.
+                            <kbd>⇧0</kbd> = Neutral State. <kbd>+</kbd> /
+                            <kbd>−</kbd> on numpad step through Banks. Press
+                            <kbd>?</kbd> for all shortcuts.
+                        </div>
+                    </div>
+                    <div class="ob-gesture">
+                        <div class="ob-icon">⊡</div>
+                        <div class="ob-desc">
+                            <strong>Second screen</strong> button sends output
+                            to a new window — open on a projector or second
+                            display for performance.
+                        </div>
+                    </div>
+                </div>
+                <button id="onboarding-dismiss">Start</button>
+            </div>
+        </div>
+
+        <!-- FRAME CAPTURE PANEL -->
+        <div id="capture-panel" class="hidden">
+            <div class="cap-row">
+                <span id="cap-frame-label">Frame 0000</span>
+                <label style="display: flex; align-items: center; gap: 4px"
+                    >FPS
+                    <input
+                        id="cap-fps"
+                        type="number"
+                        value="30"
+                        min="1"
+                        max="120"
+                        step="1"
+                /></label>
+            </div>
+            <div class="cap-row">
+                <button id="cap-step">Step Frame</button>
+                <label style="display: flex; align-items: center; gap: 4px"
+                    >×<input
+                        id="cap-count"
+                        type="number"
+                        value="1"
+                        min="1"
+                        max="9999"
+                        step="1"
+                /></label>
+                <button id="cap-run">Auto-Run</button>
+            </div>
+            <button id="cap-close">Exit Capture</button>
+        </div>
+
+        <script type="module" src="/src/main.js"></script>
+    </body>
 </html>

@@ -1668,6 +1668,20 @@ body.sp-floating #signal-path-docked-space {
     display: flex;
     align-items: center;
 }
+#btn-save-project {
+    background: var(--bg-3);
+    border: 1px solid var(--border);
+    color: var(--text-2);
+    font-size: 12px;
+    padding: 4px 7px;
+    border-radius: 3px;
+    cursor: pointer;
+    height: 100%;
+    line-height: 1;
+}
+#btn-save-project:hover { border-color: var(--accent); color: var(--accent); }
+#btn-save-project:active { background: var(--bg-4); }
+
 #bank-name-btn {
     background: var(--bg-3);
     border: 1px solid var(--border);
@@ -2101,6 +2115,13 @@ body.sp-floating #signal-path-docked-space {
     letter-spacing: 0.15em;
     text-transform: uppercase;
     margin-bottom: 4px;
+}
+.splash-version {
+    font-size: 11px;
+    color: var(--text-2);
+    letter-spacing: 0.08em;
+    margin-top: 4px;
+    font-variant-numeric: tabular-nums;
 }
 #onboarding-sub {
     font-size: 11px;
