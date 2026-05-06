@@ -6,6 +6,15 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
 
 ---
 
+## [0.8.8] — 2026-05-06
+
+### Fixed
+
+- **Splash version missing** — `__APP_VERSION__` now injected via Vite `define`; value written into `#onboarding-version` span on load (98fecac)
+- **3D models lost on save/load** — `currentModelUrl` persisted as `modelAsset` in `.imweb` and `.imbank` project files; restored on import via `SceneManager` (1175e44)
+- **Second screen → black output** — DPR change handled with `matchMedia` listener re-registration; added `webglcontextlost` / `webglcontextrestored` handlers to recover gracefully from GPU context loss (45fbaa04)
+- **MasterProject not auto-pushed** — `npm run push-master` script added; optional post-commit hook available via `npm run install-hooks`; workflow documented in CLAUDE.md (726e0c0)
+
 ## [0.8.7] — 2026-04-29
 
 ### Changed
@@ -411,6 +420,7 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
 [0.2.0]: https://github.com/haraldurkarlsson/ImWeb/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/haraldurkarlsson/ImWeb/releases/tag/v0.1.0
 
+[0.8.8]: https://github.com/haraldurkarlsson/ImWeb/compare/v0.8.7...v0.8.8
 [0.4.2]: https://github.com/haraldurkarlsson/ImWeb/compare/v0.4.1...v0.4.2
 [0.4.1]: https://github.com/haraldurkarlsson/ImWeb/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/haraldurkarlsson/ImWeb/compare/v0.3.0...v0.4.0
