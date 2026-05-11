@@ -1082,7 +1082,7 @@ export function buildGeometryButtons(ps, sceneManager, contextMenu) {
       btn.style.cssText = 'background:var(--bg-3);color:var(--text-1);border:none;padding:3px 8px;font-size:11px;cursor:pointer;border-radius:2px;';
       btn.addEventListener('mouseenter', () => { btn.style.color = 'var(--accent)'; });
       btn.addEventListener('mouseleave', () => { btn.style.color = 'var(--text-1)'; });
-      btn.addEventListener('click', () => { if (!this.sm) return; this.sm.loadModelFromUrl(path); });
+      btn.addEventListener('click', () => { sceneManager.loadModelFromUrl(path); });
       bmRow.appendChild(btn);
     });
     el.appendChild(bmRow);
