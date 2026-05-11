@@ -1064,6 +1064,30 @@ export function buildGeometryButtons(ps, sceneManager, contextMenu) {
   activeParam.onChange(update3DBtn);
   el.appendChild(btn3D);
 
+  // ── Bundled models ──────────────────────────────────────────────────────
+  const BUNDLED_MODELS = [
+    '/assets/Harabara-optimized.glb',
+  ];
+  if (BUNDLED_MODELS.length && sceneManager) {
+    const bmLabel = document.createElement('div');
+    bmLabel.style.cssText = 'font-size:10px;color:var(--text-2);text-transform:uppercase;letter-spacing:.06em;margin:6px 0 4px 0;';
+    bmLabel.textContent = 'Bundled Models';
+    el.appendChild(bmLabel);
+    const bmRow = document.createElement('div');
+    bmRow.style.cssText = 'display:flex;flex-wrap:wrap;gap:4px;margin-bottom:8px;';
+    BUNDLED_MODELS.forEach(path => {
+      const name = path.split('/').pop().replace(/\.[^.]+$/, '');
+      const btn = document.createElement('button');
+      btn.textContent = name;
+      btn.style.cssText = 'background:var(--bg-3);color:var(--text-1);border:none;padding:3px 8px;font-size:11px;cursor:pointer;border-radius:2px;';
+      btn.addEventListener('mouseenter', () => { btn.style.color = 'var(--accent)'; });
+      btn.addEventListener('mouseleave', () => { btn.style.color = 'var(--text-1)'; });
+      btn.addEventListener('click', () => sceneManager.loadModelFromUrl(path));
+      bmRow.appendChild(btn);
+    });
+    el.appendChild(bmRow);
+  }
+
   const geoParam = ps.get('scene3d.geo');
   el.appendChild(buildParamRow(geoParam, contextMenu));
 
