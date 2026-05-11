@@ -733,6 +733,14 @@ export function registerCoreParameters(ps) {
     feedbackVisible: true,
   });
   ps.register({
+    id: "feedback.active",
+    label: "Feedback",
+    group: "blend",
+    type: PARAM_TYPE.TOGGLE,
+    value: 1,
+    feedbackVisible: true,
+  });
+  ps.register({
     id: "blend.amount",
     label: "BlendAmount",
     group: "blend",
@@ -800,7 +808,7 @@ export function registerCoreParameters(ps) {
     group: "blend",
     type: PARAM_TYPE.SELECT,
     options: [
-      "Copy",
+      "Off",
       "XOR",
       "OR",
       "AND",

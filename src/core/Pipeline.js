@@ -440,7 +440,11 @@ export class Pipeline {
 
     // ── Blend (with previous frame, optionally feedback-shifted) ─────────
     let blended = warped;
-    if (p.get('blend.active').value) {
+    if (!p.get('blend.active').value) {
+      /* blended = warped — blend disabled */
+    } else if (!p.get('feedback.active').value) {
+      /* blended = warped — feedback disabled */
+    } else {
       // Apply feedback offset/scale to prev frame before blending
       const fbHor    = p.get('feedback.hor').value   / 100;
       const fbVer    = p.get('feedback.ver').value   / 100;
