@@ -247,6 +247,7 @@ export class PresetManager extends EventTarget {
       this.ctrl.retriggerLFOs();
       // Send MIDI feedback to motorized faders
       this.ps.getAll().forEach(p => this.ctrl.sendParamFeedback(p));
+      this._onStateActivated?.(ds);
     }
 
     // Restore fx order if saved

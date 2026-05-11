@@ -437,7 +437,9 @@ async function main() {
     // 3D scene rather than the wrong geometry. _checkMediaRefs() will toast
     // the user to reload the model file.
     const mr = ds?.mediaRefs;
-    if (mr?.scene3d && !scene3d.importedModelName) {
+    if (mr?.scene3d && mr.scene3d.startsWith('/')) {
+      scene3d.loadModelFromUrl(mr.scene3d);
+    } else if (mr?.scene3d && !scene3d.importedModelName) {
       scene3d.setImportPending(mr.scene3d);
     } else if (!extra?.scene3dHasImport) {
       // State was saved without an imported model — clear any pending suppression
@@ -481,6 +483,19 @@ async function main() {
     ps.set('layer.ds', 0);
   });
   await presetMgr.init();
+
+  // Track URL-loaded models in preset state so future saveState() captures them
+  const _baseLoadModelFromUrl = scene3d.loadModelFromUrl.bind(scene3d);
+  scene3d.loadModelFromUrl = async (url) => {
+    await _baseLoadModelFromUrl(url);
+    if (url && url.startsWith('/')) presetMgr.setMediaRef('scene3d', url);
+  };
+
+  // Restore bundled model when activatePreset snaps to a state that saved one
+  presetMgr._onStateActivated = (ds) => {
+    const url = ds.mediaRefs?.scene3d;
+    if (url && url.startsWith('/') && scene3d) scene3d.loadModelFromUrl(url);
+  };
 
   // Force-push all hypercube ps values into the HypercubeObject unconditionally.
   // onChange only fires when a value changes — if the saved value matches the ps default
