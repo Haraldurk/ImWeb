@@ -525,7 +525,7 @@ export function registerCoreParameters(ps) {
   });
   ps.register({
     id: "layer.bg.blend",
-    label: "BG Blend",
+    label: "Self-process mode", // self-process: blends BG against itself (not against FG)
     group: "layers",
     type: PARAM_TYPE.SELECT,
     options: BLEND_MODES,
