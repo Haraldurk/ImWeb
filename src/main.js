@@ -1723,11 +1723,19 @@ async function main() {
 
   // ── First-ever launch: load MasterProject from server ─────────────────────
   if (presetMgr._firstLaunch) {
+    const _mpStatus = document.createElement('div');
+    _mpStatus.style.cssText = 'font-size:11px;color:var(--text-2);margin-top:8px;transition:opacity .4s;';
+    _mpStatus.textContent = 'Loading MasterProject…';
+    document.getElementById('onboarding-box')?.appendChild(_mpStatus);
     try {
       await projectFile.importFromURL('/Projects/MasterProject.imweb');
       console.info('[ImWeb] First launch — MasterProject.imweb loaded');
+      setTimeout(() => { _mpStatus.style.opacity = '0'; }, 1000);
     } catch (err) {
       console.warn('[ImWeb] Could not load /Projects/MasterProject.imweb — starting blank:', err.message);
+      _mpStatus.style.color = 'var(--accent)';
+      _mpStatus.textContent = 'Could not load default project — open Project tab to restore.';
+      setTimeout(() => { _mpStatus.style.opacity = '0'; }, 3000);
     }
   }
 
