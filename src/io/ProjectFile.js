@@ -182,11 +182,11 @@ export class ProjectFile {
       await this.presets.importAll(data.presets);
     }
 
-    // Restore active preset
-    const presetIdx = data.activePreset ?? data.currentPreset ?? 0;
-    if (typeof presetIdx === 'number') {
-      await this.presets.loadPreset(presetIdx);
-    }
+    // Restore active preset — find by bank .index field, not array position
+    const savedId = data.activePreset ?? data.currentPreset ?? 0;
+    const banks = this.presets.presets;
+    const pos = banks.findIndex(b => b && b.index === savedId);
+    await this.presets.loadPreset(pos >= 0 ? pos : 0);
 
     // Restore live params (overlay on top of preset)
     if (data.params) {
