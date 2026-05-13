@@ -232,6 +232,14 @@ async function main() {
 
   const scene3d = new SceneManager(renderer, W, H);
   await scene3d.createHypercube({ startDim: 4 });
+  // TEMP DIAG — remove after recon
+  {
+    const _sz   = renderer.getSize(new THREE.Vector2());
+    const _dbsz = renderer.getDrawingBufferSize(new THREE.Vector2());
+    console.log('[diag] renderer.getSize:', _sz.x, _sz.y);
+    console.log('[diag] renderer.getDrawingBufferSize:', _dbsz.x, _dbsz.y);
+    console.log('[diag] window.devicePixelRatio:', window.devicePixelRatio);
+  }
 
   ps.get('hypercube.faces.active').onChange(v => {
     scene3d.getHypercube()?.setFacesVisible(!!v);
