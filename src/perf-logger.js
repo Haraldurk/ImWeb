@@ -3,6 +3,7 @@
 // Call perfFrame(now) once per RAF callback. Logs a summary every REPORT_INTERVAL_S seconds.
 // Access window.__perfStats in DevTools for live data.
 
+const ENABLED = false;   // set true for perf sprints
 const REPORT_INTERVAL_S = 5;
 const JANK_THRESHOLD_MS = 20; // >20ms = dropped frame at 60fps
 const HISTORY = 120; // rolling window for avg/p95
@@ -38,7 +39,7 @@ export function perfFrame(now) {
       jank: _jankCount,
     };
     window.__perfStats = stats;
-    console.log('[perf]', JSON.stringify(stats));
+    if (ENABLED) console.log('[perf]', JSON.stringify(stats));
     _jankCount = 0;
     _worstMs = 0;
   }
