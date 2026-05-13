@@ -77,7 +77,6 @@ export class HypercubeObject {
     this._quadEndBBuf  = new Float32Array(maxEdges * 4 * 3);  // 4 verts × B.xyz
     this._quadColBuf   = new Float32Array(maxEdges * 4 * 3);  // 4 verts × [r g b]
     this._quadSideBuf  = new Float32Array(maxEdges * 4);      // 4 verts × side (+1/-1)
-    this._quadIsBBuf   = new Float32Array(maxEdges * 4);      // 4 verts × isB (0=A 1=B)
     this._quadIndexBuf = new Uint32Array(maxEdges * 6);       // 2 tris × 3 indices
 
     // Index buffer — fixed topology, build once
@@ -99,15 +98,6 @@ export class HypercubeObject {
       this._quadSideBuf[vi + 1] =  1.0;  // vert 1: B end, +extrude
       this._quadSideBuf[vi + 2] = -1.0;  // vert 2: A end, -extrude
       this._quadSideBuf[vi + 3] = -1.0;  // vert 3: B end, -extrude
-    }
-
-    // isB buffer — explicit endpoint selector (0=A 1=B), replaces gl_VertexID, build once
-    for (let e = 0; e < maxEdges; e++) {
-      const vi = e * 4;
-      this._quadIsBBuf[vi]     = 0.0;  // vert 0: A end
-      this._quadIsBBuf[vi + 1] = 1.0;  // vert 1: B end
-      this._quadIsBBuf[vi + 2] = 0.0;  // vert 2: A end
-      this._quadIsBBuf[vi + 3] = 1.0;  // vert 3: B end
     }
     this._ptPosBuf   = new Float32Array(maxVerts * 3);
     this._ptColBuf   = new Float32Array(maxVerts * 3);
@@ -204,7 +194,6 @@ export class HypercubeObject {
       quadGeo.setAttribute('aEndA', new THREE.BufferAttribute(this._quadEndABuf, 3));
       quadGeo.setAttribute('aEndB', new THREE.BufferAttribute(this._quadEndBBuf, 3));
       quadGeo.setAttribute('aSide', new THREE.BufferAttribute(this._quadSideBuf, 1));
-      quadGeo.setAttribute('aIsB',  new THREE.BufferAttribute(this._quadIsBBuf,  1));
       quadGeo.setAttribute('color', new THREE.BufferAttribute(this._quadColBuf,  3));
       quadGeo.setIndex(new THREE.BufferAttribute(this._quadIndexBuf, 1));
       quadGeo.setDrawRange(0, edgeCount(MAX_DIM) * 6);
@@ -222,7 +211,6 @@ export class HypercubeObject {
           attribute vec3 aEndA;
           attribute vec3 aEndB;
           attribute float aSide;
-          attribute float aIsB;
           attribute vec3 color;
           varying vec3 vColor;
           uniform float uEdgeWidth;
@@ -241,8 +229,9 @@ export class HypercubeObject {
             }
             vec2 dir  = normalize(delta);
             vec2 perp = vec2(-dir.y, dir.x);
-            // aIsB: 0 = A endpoint, 1 = B endpoint (explicit attr, avoids gl_VertexID)
-            vec4 clipPos = aIsB < 0.5 ? clipA : clipB;
+            // gl_VertexID mod 2: 0 = A endpoint, 1 = B endpoint
+            float tB = mod(float(gl_VertexID), 2.0);
+            vec4 clipPos = tB < 0.5 ? clipA : clipB;
             // aSide drives extrusion direction (+1 / -1)
             vec2 offset = perp * aSide * uEdgeWidth / uResolution;
             clipPos.xy += offset * clipPos.w;
