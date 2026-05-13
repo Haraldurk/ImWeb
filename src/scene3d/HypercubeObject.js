@@ -199,6 +199,7 @@ export class HypercubeObject {
       quadGeo.setDrawRange(0, edgeCount(MAX_DIM) * 6);
 
       const lineMat = new THREE.ShaderMaterial({
+        glslVersion:  THREE.GLSL3,
         transparent: true,
         depthWrite:  false,
         blending:    THREE.AdditiveBlending,
@@ -208,11 +209,11 @@ export class HypercubeObject {
           uResolution: { value: new THREE.Vector2(800, 600) },
         },
         vertexShader: `
-          attribute vec3 aEndA;
-          attribute vec3 aEndB;
-          attribute float aSide;
-          attribute vec3 color;
-          varying vec3 vColor;
+          in vec3 aEndA;
+          in vec3 aEndB;
+          in float aSide;
+          in vec3 color;
+          out vec3 vColor;
           uniform float uEdgeWidth;
           uniform vec2 uResolution;
           void main() {
@@ -229,7 +230,7 @@ export class HypercubeObject {
             }
             vec2 dir  = normalize(delta);
             vec2 perp = vec2(-dir.y, dir.x);
-            // gl_VertexID mod 2: 0 = A endpoint, 1 = B endpoint
+            // gl_VertexID is valid in GLSL ES 3.0
             float tB = mod(float(gl_VertexID), 2.0);
             vec4 clipPos = tB < 0.5 ? clipA : clipB;
             // aSide drives extrusion direction (+1 / -1)
@@ -239,9 +240,10 @@ export class HypercubeObject {
           }
         `,
         fragmentShader: `
-          varying vec3 vColor;
+          in vec3 vColor;
+          out vec4 fragColor;
           void main() {
-            gl_FragColor = vec4(vColor, 1.0);
+            fragColor = vec4(vColor, 1.0);
           }
         `,
       });
