@@ -27,6 +27,7 @@ export class HypercubeFaces {
   _build() {
     const geo = new THREE.PlaneGeometry(1, 1);
     const mat = new THREE.ShaderMaterial({
+      glslVersion: THREE.GLSL3,
       side:        THREE.DoubleSide,
       transparent: true,
       depthWrite:  false,
@@ -43,7 +44,7 @@ export class HypercubeFaces {
         uMaskLevel:   { value: 1.0 },
       },
       vertexShader: `
-        varying vec2 vUv;
+        out vec2 vUv;
         void main() {
           vUv = uv;
           // Apply per-instance transform (world-space face quad placement).
@@ -64,21 +65,22 @@ export class HypercubeFaces {
         uniform float     uHasMask;
         uniform float     uMaskInvert;
         uniform float     uMaskLevel;
-        varying vec2 vUv;
+        in vec2 vUv;
+        out vec4 fragColor;
         void main() {
           vec4 col = uHasTexture > 0.5
-            ? texture2D(uFaceTexture, vUv)
+            ? texture(uFaceTexture, vUv)
             : vec4(1.0);
           float alpha = col.a * uOpacity;
           if (uHasMask > 0.5) {
             // Luminance of mask texture drives alpha
-            vec3 m3 = texture2D(uMaskTexture, vUv).rgb;
+            vec3 m3 = texture(uMaskTexture, vUv).rgb;
             float lum = dot(m3, vec3(0.299, 0.587, 0.114));
             lum = clamp(lum * uMaskLevel, 0.0, 1.0);
             if (uMaskInvert > 0.5) lum = 1.0 - lum;
             alpha *= lum;
           }
-          gl_FragColor = vec4(col.rgb * uColor, alpha);
+          fragColor = vec4(col.rgb * uColor, alpha);
         }
       `,
     });
