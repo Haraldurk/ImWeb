@@ -345,7 +345,7 @@ export class SceneManager {
           vec2 finalUv  = mix(rawUv, screenUv, uDispTexProj);
           finalUv = (finalUv - 0.5) * uDispTexScale + 0.5;
           float mathNoise = _dispNoise(pos * uDispScale + tOff) * uDisplace;
-          float texVal    = (texture2D(uDispTexture, finalUv).r * 2.0 - 1.0) * uTDisplace;
+          float texVal    = (texture(uDispTexture, finalUv).r * 2.0 - 1.0) * uTDisplace;
           return mathNoise + texVal;
         }
         ${shader.vertexShader}
@@ -356,7 +356,7 @@ export class SceneManager {
         #include <uv_vertex>
         #ifdef USE_UV
           if (uWarpAmt > 0.0) {
-            vec4 warp = texture2D(uWarpMap, vUv);
+            vec4 warp = texture(uWarpMap, vUv);
             vUv += (warp.rg - 0.5) * uWarpAmt * 0.3;
           }
         #endif
