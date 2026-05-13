@@ -1023,8 +1023,18 @@ export class SceneManager {
 
   update(deltaMs) {
     if (this._hypercube) {
+      // TEMP DIAG — remove after recon
+      if (!this._resLogDone) {
+        this._resLogDone = true;
+        console.log('[diag] SceneManager.width/height on first update:', this.width, this.height);
+      }
       this._hypercube.update(deltaMs);
       if (this._hypercube._lineMat) {
+        // TEMP DIAG — remove after recon
+        if (!this._resLog2Done) {
+          this._resLog2Done = true;
+          console.log('[diag] uResolution being set to:', this.width, this.height);
+        }
         this._hypercube._lineMat.uniforms.uResolution.value.set(
           this.width, this.height
         );
