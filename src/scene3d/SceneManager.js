@@ -303,7 +303,7 @@ export class SceneManager {
       mat._shader = shader;
 
       shader.vertexShader = `
-        uniform sampler2D uWarpMap;
+        uniform highp sampler2D uWarpMap;
         uniform float uWarpAmt;
         uniform float uTime;
         uniform float uBlobAmount;
@@ -312,7 +312,7 @@ export class SceneManager {
         uniform float uDisplace;
         uniform float uDispScale;
         uniform float uDispSpeed;
-        uniform sampler2D uDispTexture;
+        uniform highp sampler2D uDispTexture;
         uniform float uTDisplace;
         uniform float uDispTexScale;
         uniform float uDispTexProj;
@@ -339,13 +339,14 @@ export class SceneManager {
                + 0.25 * _bNoise(p * 4.0);
         }
         // Additive math noise + texture displacement (independent strengths)
-        float getDisplacement(vec3 pos, vec2 rawUv, vec3 tOff) {
-          vec4 clipPos  = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
+        float getDisplacement(vec3 pos, vec2 rawUv, vec3 tOff, mat4 _proj, mat4 _mv) {
+          float mathNoise = _dispNoise(pos * uDispScale + tOff) * uDisplace;
+          if (uTDisplace == 0.0) return mathNoise;
+          vec4 clipPos  = _proj * _mv * vec4(pos, 1.0);
           vec2 screenUv = (clipPos.xy / clipPos.w) * 0.5 + 0.5;
           vec2 finalUv  = mix(rawUv, screenUv, uDispTexProj);
           finalUv = (finalUv - 0.5) * uDispTexScale + 0.5;
-          float mathNoise = _dispNoise(pos * uDispScale + tOff) * uDisplace;
-          float texVal    = (texture(uDispTexture, finalUv).r * 2.0 - 1.0) * uTDisplace;
+          float texVal  = (textureLod(uDispTexture, finalUv, 0.0).r * 2.0 - 1.0) * uTDisplace;
           return mathNoise + texVal;
         }
         ${shader.vertexShader}
@@ -356,7 +357,7 @@ export class SceneManager {
         #include <uv_vertex>
         #ifdef USE_UV
           if (uWarpAmt > 0.0) {
-            vec4 warp = texture(uWarpMap, vUv);
+            vec4 warp = textureLod(uWarpMap, vUv, 0.0);
             vUv += (warp.rg - 0.5) * uWarpAmt * 0.3;
           }
         #endif
@@ -380,7 +381,7 @@ export class SceneManager {
           #else
           vec2 _meshUv = vec2(0.0);
           #endif
-          float dn = getDisplacement(position, _meshUv, _dispOff);
+          float dn = getDisplacement(position, _meshUv, _dispOff, projectionMatrix, modelViewMatrix);
           transformed += objectNormal * dn;
 
           // ── Finite-difference normal recalculation ──────────────────────
@@ -394,10 +395,13 @@ export class SceneManager {
           // direction in texture space so texture-driven bumps produce correct normals
           vec3 _pA   = position + _tan  * _eps;
           vec3 _pB   = position + _btan * _eps;
-          vec3 _dispA = _pA + objectNormal * getDisplacement(_pA, _meshUv + vec2(_uvEps, 0.0),   _dispOff);
-          vec3 _dispB = _pB + objectNormal * getDisplacement(_pB, _meshUv + vec2(0.0,   _uvEps), _dispOff);
+          vec3 _dispA = _pA + objectNormal * getDisplacement(_pA, _meshUv + vec2(_uvEps, 0.0),   _dispOff, projectionMatrix, modelViewMatrix);
+          vec3 _dispB = _pB + objectNormal * getDisplacement(_pB, _meshUv + vec2(0.0,   _uvEps), _dispOff, projectionMatrix, modelViewMatrix);
           // New object-space normal via cross product of edge vectors
-          vec3 _newON = normalize(cross(_dispA - transformed, _dispB - transformed));
+          vec3 _crossVec = cross(_dispA - transformed, _dispB - transformed);
+          float _crossLen = length(_crossVec);
+          if (_crossLen > 1e-6) {
+          vec3 _newON = _crossVec / _crossLen;
           if (dot(_newON, objectNormal) < 0.0) _newON = -_newON;
           // Re-apply normalMatrix transform (mirrors defaultnormal_vertex logic)
           vec3 _newTN = _newON;
@@ -413,6 +417,7 @@ export class SceneManager {
           #ifndef FLAT_SHADED
             vNormal = normalize(transformedNormal);
           #endif
+          } // end if (_crossLen > 1e-6) — else: degenerate neighbourhood, keep Three.js default
         }`
       );
 
@@ -431,7 +436,7 @@ export class SceneManager {
         }`
       );
     };
-    mat.customProgramCacheKey = () => 'warpblobrimdispvtf'; // unique cache key for custom shader
+    mat.customProgramCacheKey = () => 'warpblobrimdispvtfv3'; // bump version when shader source changes
   }
 
   _rebuildMaterial(type) {
@@ -549,8 +554,32 @@ export class SceneManager {
     return new Promise((resolve, reject) => {
       this.gltfLoader.load(url, gltf => {
         const model = gltf.scene;
+        // Collect SkinnedMesh nodes first (modifying hierarchy during traverse is unsafe)
+        const skinnedMeshes = [];
+        model.traverse(child => { if (child.isSkinnedMesh) skinnedMeshes.push(child); });
+        // Replace each SkinnedMesh with a plain Mesh to prevent USE_SKINNING being
+        // defined in the shader — ANGLE/Metal incorrectly reads the bone texture via
+        // texelFetch() in the vertex stage, producing geometric distortion in Chrome.
+        for (const sm of skinnedMeshes) {
+          const plainMesh = new THREE.Mesh(sm.geometry, sm.material);
+          plainMesh.position.copy(sm.position);
+          plainMesh.quaternion.copy(sm.quaternion);
+          plainMesh.scale.copy(sm.scale);
+          plainMesh.name = sm.name;
+          sm.parent.add(plainMesh);
+          sm.parent.remove(sm);
+        }
         model.traverse(child => {
-          if (child.isMesh) child.material = this.material;
+          if (child.isMesh) {
+            child.material = this.material;
+            const idx = child.geometry.index;
+            if (idx && idx.array instanceof Uint16Array &&
+                child.geometry.attributes.position.count > 65535) {
+              child.geometry.setIndex(
+                new THREE.BufferAttribute(new Uint32Array(idx.array), 1)
+              );
+            }
+          }
         });
         this._setupAnimations(model, gltf.animations, params);
         const pivot = this._wrapInPivot(model);
@@ -1028,18 +1057,8 @@ export class SceneManager {
 
   update(deltaMs) {
     if (this._hypercube) {
-      // TEMP DIAG — remove after recon
-      if (!this._resLogDone) {
-        this._resLogDone = true;
-        console.log('[diag] SceneManager.width/height on first update:', this.width, this.height);
-      }
       this._hypercube.update(deltaMs);
       if (this._hypercube._lineMat) {
-        // TEMP DIAG — remove after recon
-        if (!this._resLog2Done) {
-          this._resLog2Done = true;
-          console.log('[diag] uResolution being set to:', this.width, this.height);
-        }
         this._hypercube._lineMat.uniforms.uResolution.value.set(
           this.width, this.height
         );

@@ -14,7 +14,7 @@ This file gives Claude Code the context needed to contribute effectively to ImWe
 - When implementing features, write code immediately after a brief targeted recon (max 5-10 tool calls). Do NOT spend an entire session exploring without producing code unless explicitly asked to explore only.
 
 ## Project reference
-Full project knowledge base: `imweb-obsidian.md` (project root). 
+Full project knowledge base: `docs/imweb-obsidian.md` (project root). 
 Read it for feature status, architecture decisions, and open questions.
 
 ---
@@ -170,6 +170,60 @@ Before implementing any flag or conditional guard:
 4. If a fix fails: git revert to the last clean commit. Do not stack a
    new patch on a broken fix. Clean slate only.
 5. Before any fix: state one way this fix could still fail.
+
+---
+
+## Debugging Protocols
+
+These rules apply to all AI agents working on ImWeb. They come from hard-won
+session experience and must be followed before writing any fix prompt.
+
+### Save / Load bugs
+1. Ask for the serialized file FIRST (.imweb, .imbank, .imstate, .json).
+   Read the data before reading any code. The file is the ground truth —
+   if modelAsset is absent from the JSON, no amount of code reading will
+   reveal why the model isn't loading.
+2. Ask "how was the asset loaded?" before assuming anything about the
+   loading method. Drag-drop and URL-load are different code paths with
+   different persistence behaviour. One question saves three fix loops.
+
+### Before writing any Claude Code prompt
+1. Verify every variable name in the actual source file before putting it
+   in a prompt. Never guess a reference name (this.sm vs this.extras.scene3d
+   vs sceneManager) — grep or read the file first. One wrong name costs
+   an entire session loop.
+2. State one way the fix could still fail before sending the prompt.
+   Per the Guard Logic Rules above: if you cannot answer this, the fix
+   is not fully understood.
+
+### One task per prompt — hard rule
+If a task feels like it needs two prompts, it does. Split it. A prompt
+that touches two separate things produces one correct fix and one subtle
+regression that costs twice as long to find.
+
+### Serialized file inspection commands
+Quick reads for common ImWeb file types:
+
+```bash
+  # Check what a .imweb file actually contains:
+  cat file.imweb | python3 -c "import json,sys; d=json.load(sys.stdin);
+    print('banks:', len(d.get('presets',[])));
+    print('scene3d:', d.get('scene3d',{}));
+    print('activePreset:', d.get('activePreset'))"
+
+  # Check if modelAsset is present:
+  cat file.imweb | python3 -c "import json,sys;
+    t=sys.stdin.read(); print('modelAsset present:', 'modelAsset' in t)"
+
+  # Check all states in a bank for a specific param:
+  cat file.imweb | python3 -c \"
+import json,sys
+d=json.load(sys.stdin)
+for bank in d.get('presets',[]):
+  for i,s in enumerate(bank.get('states',[])):
+    v=s.get('params',s.get('values',{})).get('scene3d.geo','MISSING')
+    print(f'{bank[\"name\"]} state {i}: scene3d.geo={v}')\"
+```
 
 ---
 
