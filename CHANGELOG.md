@@ -6,6 +6,24 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
 
 ---
 
+## [0.8.9] — 2026-05-12
+
+### Fixed
+
+- **Active bank lookup** now uses bank `.index` field, not array position
+- **3D model (Harabara-optimized.glb)** now loads correctly from MasterProject on first launch
+- **Model URL persisted in state mediaRefs** — survives bank switches and state recalls
+- **blend.active and feedback.active** now gate their pipeline passes correctly
+- **feedback.active registration** — was not registered as a parameter; added to ParameterSystem
+- **Bundled Models button** click handler used wrong SceneManager reference
+
+### Changed
+
+- **feedback.mode** option 0 renamed Copy → Off
+- **BG blend mode** labelled "Self-process mode" to clarify asymmetry with FG blend
+- **Splash screen** shows MasterProject load status on first launch only
+- **Bundled Models section** added to 3D tab for URL-based public asset loading
+
 ## [0.8.8] — 2026-05-06
 
 ### Fixed
@@ -420,6 +438,7 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
 [0.2.0]: https://github.com/haraldurkarlsson/ImWeb/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/haraldurkarlsson/ImWeb/releases/tag/v0.1.0
 
+[0.8.9]: https://github.com/haraldurkarlsson/ImWeb/compare/v0.8.8...v0.8.9
 [0.8.8]: https://github.com/haraldurkarlsson/ImWeb/compare/v0.8.7...v0.8.8
 [0.4.2]: https://github.com/haraldurkarlsson/ImWeb/compare/v0.4.1...v0.4.2
 [0.4.1]: https://github.com/haraldurkarlsson/ImWeb/compare/v0.4.0...v0.4.1

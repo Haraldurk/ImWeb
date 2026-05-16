@@ -77,6 +77,7 @@ export class HypercubeObject {
     this._quadEndBBuf  = new Float32Array(maxEdges * 4 * 3);  // 4 verts × B.xyz
     this._quadColBuf   = new Float32Array(maxEdges * 4 * 3);  // 4 verts × [r g b]
     this._quadSideBuf  = new Float32Array(maxEdges * 4);      // 4 verts × side (+1/-1)
+    this._quadTBBuf    = new Float32Array(maxEdges * 4);      // 4 verts × T/B flag (0=A,1=B)
     this._quadIndexBuf = new Uint32Array(maxEdges * 6);       // 2 tris × 3 indices
 
     // Index buffer — fixed topology, build once
@@ -98,6 +99,10 @@ export class HypercubeObject {
       this._quadSideBuf[vi + 1] =  1.0;  // vert 1: B end, +extrude
       this._quadSideBuf[vi + 2] = -1.0;  // vert 2: A end, -extrude
       this._quadSideBuf[vi + 3] = -1.0;  // vert 3: B end, -extrude
+      this._quadTBBuf[vi]       = 0.0;   // vert 0: A end
+      this._quadTBBuf[vi + 1]   = 1.0;   // vert 1: B end
+      this._quadTBBuf[vi + 2]   = 0.0;   // vert 2: A end
+      this._quadTBBuf[vi + 3]   = 1.0;   // vert 3: B end
     }
     this._ptPosBuf   = new Float32Array(maxVerts * 3);
     this._ptColBuf   = new Float32Array(maxVerts * 3);
@@ -194,6 +199,7 @@ export class HypercubeObject {
       quadGeo.setAttribute('aEndA', new THREE.BufferAttribute(this._quadEndABuf, 3));
       quadGeo.setAttribute('aEndB', new THREE.BufferAttribute(this._quadEndBBuf, 3));
       quadGeo.setAttribute('aSide', new THREE.BufferAttribute(this._quadSideBuf, 1));
+      quadGeo.setAttribute('aTB',   new THREE.BufferAttribute(this._quadTBBuf,   1));
       quadGeo.setAttribute('color', new THREE.BufferAttribute(this._quadColBuf,  3));
       quadGeo.setIndex(new THREE.BufferAttribute(this._quadIndexBuf, 1));
       quadGeo.setDrawRange(0, edgeCount(MAX_DIM) * 6);
@@ -212,31 +218,28 @@ export class HypercubeObject {
           in vec3 aEndA;
           in vec3 aEndB;
           in float aSide;
+          in float aTB;
           in vec3 color;
           out vec3 vColor;
           uniform float uEdgeWidth;
           uniform vec2 uResolution;
           void main() {
-            vColor = color;
+            gl_Position = vec4(2.0, 0.0, 0.0, 1.0); // default: off-screen
+            vColor = vec3(0.0);
             vec4 clipA = projectionMatrix * modelViewMatrix * vec4(aEndA, 1.0);
             vec4 clipB = projectionMatrix * modelViewMatrix * vec4(aEndB, 1.0);
-            vec2 ndcA = clipA.xy / clipA.w;
-            vec2 ndcB = clipB.xy / clipB.w;
-            // Skip degenerate edges (collapsed / culled to origin)
+            vec2 ndcA  = clipA.xy / clipA.w;
+            vec2 ndcB  = clipB.xy / clipB.w;
             vec2 delta = (ndcB - ndcA) * uResolution;
-            if (dot(delta, delta) < 1e-6) {
-              gl_Position = vec4(2.0, 0.0, 0.0, 1.0); // off-screen
-              return;
+            // 1.0 px threshold: sub-pixel edges are invisible; guards normalize() against NaN under ANGLE/Metal
+            if (dot(delta, delta) >= 1.0) {
+              vColor = color;
+              vec2 dir     = normalize(delta);
+              vec2 perp    = vec2(-dir.y, dir.x);
+              vec4 clipPos = mix(clipA, clipB, round(aTB));
+              clipPos.xy  += perp * aSide * uEdgeWidth / uResolution * clipPos.w;
+              gl_Position  = clipPos;
             }
-            vec2 dir  = normalize(delta);
-            vec2 perp = vec2(-dir.y, dir.x);
-            // gl_VertexID is valid in GLSL ES 3.0
-            float tB = mod(float(gl_VertexID), 2.0);
-            vec4 clipPos = tB < 0.5 ? clipA : clipB;
-            // aSide drives extrusion direction (+1 / -1)
-            vec2 offset = perp * aSide * uEdgeWidth / uResolution;
-            clipPos.xy += offset * clipPos.w;
-            gl_Position = clipPos;
           }
         `,
         fragmentShader: `
