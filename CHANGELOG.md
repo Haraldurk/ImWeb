@@ -6,6 +6,22 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
 
 ---
 
+## [0.8.9+] — 2026-05-16
+
+### Fixed
+- **Chrome 148 ANGLE/Metal regression diagnosed** — vertex shader rendering 
+  broken on macOS Chrome 148 for Hypercube wireframe edges (LineSegments) and 
+  Harabara GLB model (SkinnedMesh). Root cause: Chrome 148 ANGLE/Metal backend 
+  regression. Confirmed across multiple GPU types (Intel UHD 630, AMD RX 590). 
+  Safari and Firefox unaffected. Chromium bug filed May 16 2026.
+- **Workaround:** launch Chrome with --use-angle=gl flag
+- **aTB attribute** replaces gl_VertexID in HypercubeObject edge shader
+- **highp sampler2D** precision declared on vertex-stage samplers in 
+  SceneManager displacement shader injection
+- **textureLod** replaces texture() in vertex shader displacement and warp paths
+- **SkinnedMesh → plain Mesh** conversion in loadGLTF() to eliminate 
+  USE_SKINNING / texelFetch bone texture in vertex stage
+
 ## [0.8.9] — 2026-05-12
 
 ### Fixed
