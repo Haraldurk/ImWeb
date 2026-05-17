@@ -246,6 +246,27 @@ One agent per task. Do not duplicate work across agents.
 
 ---
 
+## Known issues
+
+### Chrome 148 ANGLE/Metal backend regression (macOS)
+Hypercube wireframe edges and imported GLB models (SkinnedMesh) render 
+incorrectly in Chrome 148 on macOS with the default Metal backend.
+Safari and Firefox are unaffected.
+
+**Workaround:** launch Chrome with --use-angle=gl
+  alias: chrome-gl (added to ~/.zshrc)
+
+**Chromium bug:** filed 2026-05-16
+
+**Code fixes applied (379d694):**
+- HypercubeObject.js: aTB attribute replaces gl_VertexID
+- SceneManager.js: highp sampler2D, textureLod, SkinnedMesh→Mesh in loadGLTF
+
+**Still needed:** Metal-compatible fix so users without the flag see correct 
+rendering. Test method: run Chrome normally (Metal) after each fix attempt.
+
+---
+
 ### Experimental / architecture deferred
 See CHANGELOG.md for current version and full history.
 - **VasulkaWarp (temporal slit-scan)**: VasulkaWarp.js + `vwarp.*` params exist and run, but
