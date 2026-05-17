@@ -106,6 +106,70 @@ function _applyLayout() {
 _applyLayout();
 window.addEventListener("resize", _applyLayout);
 
+// --- Metal backend detection ---
+function _detectAngleMetal(renderer) {
+  const gl = renderer.getContext();
+  const ext = gl.getExtension('WEBGL_debug_renderer_info');
+  if (!ext) return false;
+  const r = gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) || '';
+  return r.includes('ANGLE') && r.toLowerCase().includes('metal');
+}
+
+function _detectChromiumBrowser() {
+  const ua = navigator.userAgent;
+  if (ua.includes('Edg/'))                      return 'edge';
+  if (typeof navigator.brave !== 'undefined')   return 'brave';
+  if (ua.includes('OPR/'))                      return 'opera';
+  if (ua.includes('Vivaldi'))                   return 'vivaldi';
+  return 'chrome';
+}
+
+function _showMetalNotice() {
+  if (localStorage.getItem('imweb-metal-notice-dismissed')) return;
+  const browser = _detectChromiumBrowser();
+  const commands = {
+    chrome:  '/Applications/Google\\ Chrome.app/Contents/MacOS/Google\\ Chrome --use-angle=gl',
+    brave:   '/Applications/Brave\\ Browser.app/Contents/MacOS/Brave\\ Browser --use-angle=gl',
+    edge:    '/Applications/Microsoft\\ Edge.app/Contents/MacOS/Microsoft\\ Edge --use-angle=gl',
+    opera:   '/Applications/Opera.app/Contents/MacOS/Opera --use-angle=gl',
+    vivaldi: '/Applications/Vivaldi.app/Contents/MacOS/Vivaldi --use-angle=gl',
+  };
+  const cmd = commands[browser] || 'add --use-angle=gl to your browser launch flags';
+  const browserLabel = browser.charAt(0).toUpperCase() + browser.slice(1);
+
+  const banner = document.createElement('div');
+  banner.id = 'imweb-metal-notice';
+  banner.style.cssText = [
+    'position:fixed;top:0;left:0;right:0;z-index:9999',
+    'background:#2a1f00;border-bottom:1px solid var(--accent)',
+    'color:var(--text-1);font-size:12px;font-family:monospace',
+    'padding:8px 12px;display:flex;gap:12px;align-items:flex-start',
+  ].join(';');
+  banner.innerHTML = `
+    <span style="color:var(--accent);flex-shrink:0">⚠</span>
+    <span>
+      <strong>3D rendering issue detected</strong> — your browser uses the
+      Metal graphics backend, which has a known bug affecting Hypercube
+      geometry and 3D models.<br>
+      <strong>Easiest fix:</strong> open ImWeb in Firefox or Safari.<br>
+      <strong>To keep using ${browserLabel}:</strong> quit it fully, then
+      launch from Terminal:<br>
+      <code style="background:#111;padding:2px 6px;border-radius:3px">${cmd}</code>
+    </span>
+    <button id="imweb-metal-dismiss" style="
+      margin-left:auto;flex-shrink:0;background:none;
+      border:1px solid var(--accent-dim);color:var(--accent-dim);
+      cursor:pointer;padding:2px 8px;border-radius:3px;font-size:11px
+    ">Dismiss</button>
+  `;
+  document.body.prepend(banner);
+  document.getElementById('imweb-metal-dismiss')
+    .addEventListener('click', () => {
+      localStorage.setItem('imweb-metal-notice-dismissed', '1');
+      banner.remove();
+    });
+}
+
 async function main() {
   console.log(
     "%cImWeb v0.6.0",
@@ -130,6 +194,7 @@ async function main() {
     powerPreference: "high-performance",
     preserveDrawingBuffer: true, // needed for canvas.toBlob() capture
   });
+  if (_detectAngleMetal(renderer)) _showMetalNotice();
   renderer.setPixelRatio(1); // Performance: render at logical CSS pixels, not Retina 2×. On a Retina display, DPR=2 silently doubles every dimension (e.g. 905×963 → 1810×1926), quadrupling fill cost across 35+ shader passes with no perceptible quality gain on moving video. DPR=1 aligns the canvas buffer with Pipeline render targets and enables 60fps on display-size canvas.
 
   // Fix B — WebGL context loss recovery (GPU switch / second display)
