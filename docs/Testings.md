@@ -177,4 +177,40 @@ Issues found at initial prototype stage:
 - [ ] Add to manual best praxtis preparing vido clips (.mp4 etc.)
 - [ ] How to not get stuck in effects ?
 - [ ] How to deal with multicams
-- [ ] 
+
+---
+
+## Retrospective — v0.5.0 through v0.8.9 (2026-05-21)
+
+### Features built in these releases
+
+**SDF Generator (Phases 1–3)**
+- Built raymarching engine for metaballs and 3D shapes (Sphere/Box/Torus) with KIFS fractal folding.
+- Added camera navigation, video luma displacement (lumaWarp), and glass refraction.
+
+**Hypercube Engine (4D–12D) & Instancer**
+- Designed high-performance N-D hypercube projection with morphing and circular points shader.
+- Implemented real screen-space variable edge width (0.5–8.0 px) and 2-cell face rendering with alpha masking.
+- Created `HypercubeInstancer` to render 13 geometry types at vertex positions.
+
+**Analog TV & Teletext Source**
+- Added Analog TV simulation (720x480 RT) with 4:3 cropping and color grading.
+- Integrated Teletext input source with drawing utilities and page data files.
+
+**Compositing & Program Hierarchy Refactors**
+- Standardized hierarchy to Program > Bank > State with auto-thumbnailing and sidebar list.
+- Refactored `FG.blend` to composite FG over BG using the 22-mode TRANSFERMODE shader.
+- Upgraded Table resolution to 16,384 points.
+
+**SequenceBuffer Timewarp Mode**
+- Merged slit-scan temporal buffer (TimeWarp mode) with IndexedDB persistence across sessions.
+
+### Bugs fixed
+
+| Bug | Fix |
+|---|---|
+| Non-ASCII character WebGL errors | Replaced comments containing characters like `×`, `–`, `π` with ASCII |
+| WebGL feedback loop errors (GL_INVALID_OPERATION) | Added automated uniform texture collision checks in `_pass()` and unbind guards |
+| 3D models lost on save/load / model URL refs | Persisted model URL as `modelAsset` in project JSON and `mediaRefs` |
+| Second screen black output on layout/DPR changes | Re-registered DPR listener and added context recovery handlers |
+| Chrome 148 ANGLE/Metal backend crashes/rendering bugs | Hardened vertex shaders: replaced gl_VertexID with aTB, forced highp sampler2D, textureLod, and SkinnedMesh→Mesh |
