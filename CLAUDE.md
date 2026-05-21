@@ -246,6 +246,47 @@ One agent per task. Do not duplicate work across agents.
 
 ---
 
+## Browser Verification — verdict-cli
+
+verdict-cli is a token-efficient headless Chromium CLI available to Claude Code
+for DOM and logic verification. Install once:
+
+    npm install -g verdict-cli
+
+Add to `.claude/settings.json`:
+
+    {
+      "permissions": {
+        "allow": ["Bash(verdict*)"]
+      }
+    }
+
+### What Claude Code may use verdict-cli for
+
+- Confirm the Metal detection banner renders in the DOM after a patch
+- Check JS console for errors after any main.js edit (`verdict console`)
+- Verify localStorage flags are written correctly (`verdict js "localStorage.getItem('imweb-metal-notice-dismissed')"`)
+- Confirm UI elements exist after a feature is wired (`verdict snapshot -i`)
+- Smoke-test that the app loads without a crash at localhost:5173
+
+### What verdict-cli CANNOT do
+
+verdict-cli runs headless Chromium. It does not use the macOS ANGLE Metal
+backend. It cannot verify WebGL rendering, 3D geometry, shader output,
+Hypercube edges, GLB model display, or any visual pixel output.
+
+All WebGL visual confirmation requires a human testing in real Chrome or
+Brave on macOS. Claude Code must never treat a passing verdict snapshot as
+confirmation that rendering is correct.
+
+### Workflow boundary
+
+    Claude Code edits → verdict: DOM/console/localStorage checks
+                      → human: visual confirmation in real Chrome (Metal)
+                      → Claude Chat: diagnosis from screenshots/logs → next patch
+
+---
+
 ## Known issues
 
 ### Chrome 148 ANGLE/Metal backend regression (macOS)
