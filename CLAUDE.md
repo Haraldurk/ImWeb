@@ -44,46 +44,79 @@ The instrument composites video sources through a signal chain of effects and re
 
 ## Project structure
 src/
-main.js                   Bootstrap, render loop, all feature wiring
-style.css                 All styles — dark performance UI
-ai/
-AIFeatures.js           AI provider system: narrator, coach, preset
-generator. Provider/key config persisted to
-localStorage 'imweb-ai-config'. All calls
-route through _call(systemPrompt, userPrompt).
-controls/
-ParameterSystem.js      All parameters declared here; reactive onChange
-ControllerManager.js    Mouse, MIDI, LFO, Sound, Key, Random,
-Expression, Gamepad, Wacom, OSC drivers
-LFO.js                  Sine/Triangle/Sawtooth/Square/S&H + beat sync
-Automation.js           Record/play parameter movements, loop playback
-core/
-Pipeline.js             WebGL compositing chain — all render passes
-shaders/
-index.js                All GLSL effect shaders as named exports
-inputs/
-CameraInput.js          WebRTC getUserMedia → VideoTexture
-MovieInput.js           Video file → VideoTexture; speed/loop/BPM sync
-StillsBuffer.js         Frame capture store
-SlitScanBuffer.js       Rolling slit scan effect
-SDFGenerator.js       GPU-raymarched SDF metaballs → WebGLRenderTarget
-TextLayer.js            Canvas 2D text → Texture
-DrawLayer.js            Freehand canvas → Texture (Wacom pressure)
-ParticleSystem.js       GPU particle field (emitter shapes, attractors, scale modes)
-VasulkaWarp.js          Temporal strip-buffer slit-scan — EXPERIMENTAL, hidden from UI
-io/
-ProjectFile.js          .imweb JSON save/load — full session
-OSCBridge.js            WebSocket ↔ UDP OSC relay
-LUTLoader.js            .cube file import
-scene3d/
-SceneManager.js         Three.js 3D scene → RenderTarget
-GeometryFactory.js      13 procedural geometry generators
-state/
-Preset.js               Presets + 128 Display States, IndexedDB
-ui/
-UI.js                   All UI builders: param rows, tabs, signal path,
-context menus, seq cards, WarpMap editor,
-controller badge popovers
+  main.js                   Bootstrap, render loop, all feature wiring (~5400 lines)
+  style.css                 All styles — dark performance UI
+  perf-logger.js            Performance logging utility
+  ai/
+    AIFeatures.js           AI provider system (Anthropic/Gemini/OpenAI/Ollama)
+  controls/
+    ParameterSystem.js      All parameters declared here; reactive onChange
+    ControllerManager.js    Mouse, MIDI, LFO, Sound, Key, Random, Expression,
+                            Gamepad, Wacom, OSC drivers
+    LFO.js                  Sine/Triangle/Sawtooth/Square/S&H + beat sync
+    Automation.js           Record/play parameter movements, loop playback
+    StepSequencer.js        Step-based preset sequencer
+    BeatDetector.js         Auto-BPM from onset detection
+  core/
+    Pipeline.js             WebGL compositing chain — all render passes
+  shaders/
+    index.js                All GLSL effect shaders as named exports
+    analog_crt.frag         CRT scanline/phosphor shader
+    analog_source_signal.frag  Analog signal generation shader
+  inputs/
+    CameraInput.js          WebRTC getUserMedia → VideoTexture
+    MovieInput.js           Video file → VideoTexture; speed/loop/BPM sync
+    StillsBuffer.js         Frame capture store
+    SlitScanBuffer.js       Rolling slit scan effect
+    SequenceBuffer.js       Sequence recorder + timewarp mode (slit-scan temporal)
+    SDFGenerator.js         GPU-raymarched SDF metaballs → WebGLRenderTarget
+    TextLayer.js            Canvas 2D text → Texture
+    DrawLayer.js            Freehand canvas → Texture (Wacom pressure)
+    ParticleSystem.js       GPU particle field (legacy entry point)
+    VasulkaWarp.js          Temporal strip-buffer slit-scan — EXPERIMENTAL, hidden
+    WarpMapEditor.js        Interactive WarpMap brush editor
+    WarpMaps.js             Procedural warp map generators
+    VideoDelayLine.js       Frame delay buffer
+    AnalogTV.js             Analog TV / CRT simulation source
+    AnalogParams.js         Analog TV parameter declarations
+    AnalogPresets.js        Analog TV factory presets
+    TeletextSource.js       Teletext input source → WebGLRenderTarget
+    TeletextUI.js           Teletext UI builder
+    TeletextParams.js       Teletext parameter declarations
+    teletext_draw.js        Teletext drawing utilities
+    teletext_pages/         Teletext page data files
+    VectorscopeInput.js     Audio visualiser (Lissajous/Waveform/FFT)
+  particles/
+    ParticleEngine.js       Main particle engine coordinator
+    ParticleGPU.js          GPU-accelerated particle simulation
+    ParticleRender.js       Particle render pass
+    ForceField.js           Force field system (attractors/repulsors)
+    ForceFormulas.js        Force calculation library
+    GhostNodes.js           Ghost node effects
+    VideoAnalysis.js        Video-reactive particle input
+    PointerPerf.js          Pointer/touch performance utilities
+  io/
+    ProjectFile.js          .imweb JSON save/load — full session
+    OSCBridge.js            WebSocket ↔ UDP OSC relay
+    CubeLoader.js           .cube LUT file import
+    ClipLibrary.js          128-slot clip library (8 banks × 16, MIDI note mapping)
+    ImXImporter.js          Legacy ImX project file importer
+  scene3d/
+    SceneManager.js         Three.js 3D scene → RenderTarget
+    GeometryFactory.js      13 procedural geometry generators
+    HypercubeGeometry.js    N-dimensional vertex/edge generation
+    HypercubeObject.js      Hypercube render object (edges, points)
+    HypercubeFaces.js       Hypercube 2-cell face rendering
+    HypercubeInstancer.js   InstancedMesh at hypercube vertex positions
+    HypercubeUI.js          Hypercube UI builder
+  state/
+    Preset.js               Presets + 128 States per Bank, IndexedDB
+    TableManager.js         Response curve table management (16,384 pt)
+    DemoPresets.js          Legacy demo presets (not used in boot sequence)
+  ui/
+    UI.js                   All UI builders: param rows, tabs, signal path,
+                            context menus, seq cards, controller badge popovers
+    ColorPicker.js          HSV colour picker component
 
 main.js is the integration hub (~5400 lines). Most feature wiring lives here. Do not split it without a clear architectural reason.
 
