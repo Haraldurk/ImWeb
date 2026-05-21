@@ -11,7 +11,7 @@ Read before any session. Update when the workflow actually changes.
 |-------|----------|------|-------------|
 | **Claude Chat** | claude.ai | Architecture, planning, cross-file reasoning, CLAUDE.md review, Obsidian updates | Never writes code directly to repo |
 | **Claude Code** | Ghostty ⌘3 | Surgical JS/CSS edits, multi-file wiring, Pipeline/shader work, recon, git | Never scopes its own tasks — receives a pre-written prompt |
-| **Gemini CLI** | Ghostty ⌘2 | CHANGELOG.md, Quick Reference, README, all markdown/docs | Never touches JS; never feeds raw terminal output back to Claude Code |
+| **Antigravity CLI** | Ghostty ⌘2 | CHANGELOG.md, Quick Reference, README, all markdown/docs | Never touches JS; never feeds raw terminal output back to Claude Code |
 | **Kimi K2.6** | Ghostty ⌘1 | Recon, exploration, reading large files, cross-module tracing | Never edits. Find-only. Feed results to Claude Chat, not directly to Claude Code |
 | **Browser (you)** | — | Visual confirmation after every patch | Only tool that can verify WebGL / Metal rendering |
 
@@ -64,8 +64,8 @@ Then, in order:
 
 1. **KNOWN-ISSUES.md** — add any new bug found; move fixed issues to Resolved table
 2. **docs/imweb-obsidian.md** — add session log entry (date, version, what changed)
-3. **Gemini CLI** — update CHANGELOG.md from the session commits
-4. **Gemini CLI** — update docs/ImWeb_Quick_Reference.md if any source, effect, shortcut, or key binding changed
+3. **Antigravity CLI** — update CHANGELOG.md from the session commits
+4. **Antigravity CLI** — update docs/ImWeb_Quick_Reference.md if any source, effect, shortcut, or key binding changed
 5. **Todo.md** — cross off completed items, add anything deferred
 
 ---
@@ -199,6 +199,6 @@ Scope examples: `ui`, `scene3d`, `shaders`, `midi`, `preset`, `inputs`, `hypercu
 2. Claude Code never scopes its own tasks — it receives a pre-written prompt
 3. Claude Code runs /codex:review before committing core logic
 4. Kimi K2.6 never edits — find and report only
-5. Gemini never touches JS
+5. Antigravity never touches JS
 6. No session starts without `git log` + `git status` + `KNOWN-ISSUES.md`
 7. No session ends without CHANGELOG, Quick Reference, and imweb-obsidian.md sync
