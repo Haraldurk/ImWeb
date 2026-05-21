@@ -1,6 +1,6 @@
-# GEMINI.md — ImWeb Development Context for Gemini CLI
+# GEMINI.md — ImWeb Development Context for Antigravity CLI
 
-This file gives Gemini CLI the context needed to contribute to ImWeb without breaking things.
+This file gives Antigravity CLI the context needed to contribute to ImWeb without breaking things.
 Read CLAUDE.md for full project detail — this file covers your specific role and constraints.
 
 ---
@@ -22,12 +22,12 @@ Running at localhost:5173 (`npm run dev`). Chrome 113+ required.
 | Surgical JS/CSS edits, complex logic          | Claude Code |
 | Pipeline.js, shader work, render loop         | Claude Code |
 | Multi-file wiring, architecture changes       | Claude Code |
-| grep, recon, reading large files              | Gemini CLI  |
-| Browser screenshots for verification          | Gemini CLI  |
-| GLSL review and documentation (not drafting)  | Gemini CLI  |
-| CHANGELOG.md and all markdown/docs            | Gemini CLI  |
-| CSS variable tweaks                           | Gemini CLI  |
-| Git log / status checks                       | Gemini CLI  |
+| grep, recon, reading large files              | Antigravity CLI |
+| Browser screenshots for verification          | Antigravity CLI |
+| GLSL review and documentation (not drafting)  | Antigravity CLI |
+| CHANGELOG.md and all markdown/docs            | Antigravity CLI |
+| CSS variable tweaks                           | Antigravity CLI |
+| Git log / status checks                       | Antigravity CLI |
 
 One agent per task. Do not duplicate work across agents.
 
