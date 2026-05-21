@@ -153,6 +153,7 @@ _imweb_ready/*.mp4
 _imweb_ready/*.webm
 _imweb_ready/*.mov
 _raw_videos/
+Recordings/
 seamless_videos/
 
 # Brainstorm captures — heavy media, keep only the sentinel
