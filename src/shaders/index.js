@@ -628,13 +628,12 @@ export const NOISE_BFG = /* glsl */ `
   }
 
   // ── psrdnoise2 — Stefan Gustavson 2021, MIT license ──────────────────────
-  // 2D simplex noise, periodic tiling, analytic gradient output.
-  // period = vec2(0) disables tiling (standard infinite noise).
-  // alpha rotates all gradient directions — animates without seams.
+  // Rewritten for GLSL ES 1.00 compatibility: no out param, no greaterThan.
 
-  float psrdnoise(vec2 x, vec2 period, float alpha, out vec2 gradient) {
+  float psrdnoise(vec2 x, vec2 period, float alpha) {
     vec2 uv = vec2(x.x + x.y * 0.5, x.y);
-    vec2 i0 = floor(uv), f0 = fract(uv);
+    vec2 i0 = floor(uv);
+    vec2 f0 = fract(uv);
     float cmp = step(f0.y, f0.x);
     vec2 o1 = vec2(cmp, 1.0 - cmp);
     vec2 i1 = i0 + o1;
@@ -644,11 +643,12 @@ export const NOISE_BFG = /* glsl */ `
     vec2 v2 = vec2(i2.x - i2.y * 0.5, i2.y);
     vec2 x0 = x - v0, x1 = x - v1, x2 = x - v2;
     vec3 iu, iv;
-    if (any(greaterThan(period, vec2(0.0)))) {
+    float usePeriod = step(0.001, period.x) + step(0.001, period.y);
+    if (usePeriod > 0.0) {
       vec3 xw = vec3(v0.x, v1.x, v2.x);
       vec3 yw = vec3(v0.y, v1.y, v2.y);
-      if (period.x > 0.0) xw = mod(xw, period.x);
-      if (period.y > 0.0) yw = mod(yw, period.y);
+      if (period.x > 0.001) xw = mod(xw, period.x);
+      if (period.y > 0.001) yw = mod(yw, period.y);
       iu = floor(xw + 0.5 * yw + 0.5);
       iv = floor(yw + 0.5);
     } else {
@@ -664,19 +664,11 @@ export const NOISE_BFG = /* glsl */ `
     vec2 g0 = vec2(gx.x, gy.x);
     vec2 g1 = vec2(gx.y, gy.y);
     vec2 g2 = vec2(gx.z, gy.z);
-    vec3 w = 0.8 - vec3(dot(x0,x0), dot(x1,x1), dot(x2,x2));
-    w = max(w, 0.0);
+    vec3 w = max(0.8 - vec3(dot(x0,x0), dot(x1,x1), dot(x2,x2)), 0.0);
     vec3 w2 = w * w;
     vec3 w4 = w2 * w2;
     vec3 gdotx = vec3(dot(g0,x0), dot(g1,x1), dot(g2,x2));
-    float n = dot(w4, gdotx);
-    vec3 w3 = w2 * w;
-    vec3 dw = -8.0 * w3 * gdotx;
-    vec2 dn0 = w4.x * g0 + dw.x * x0;
-    vec2 dn1 = w4.y * g1 + dw.y * x1;
-    vec2 dn2 = w4.z * g2 + dw.z * x2;
-    gradient = 10.9 * (dn0 + dn1 + dn2);
-    return 10.9 * n;
+    return 10.9 * dot(w4, gdotx);
   }
 
   // ── Main ──────────────────────────────────────────────────────────────────
@@ -846,8 +838,7 @@ export const NOISE_BFG = /* glsl */ `
       float w = domainWarp(p, oct, uLacunarity, uGain);
       n = 0.5 + 0.5 * sin(1.5 * p.x + w * 6.0 + uTime * uSpeed * 0.3); // Marble
     } else if (uType == 39) {
-      vec2 grad;
-      float raw = psrdnoise(p.xy, vec2(uPeriodX, uPeriodY), uAlpha, grad);
+      float raw = psrdnoise(p.xy, vec2(uPeriodX, uPeriodY), t + uAlpha);
       n = raw * 0.5 + 0.5;
     }
 
