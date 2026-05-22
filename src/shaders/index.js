@@ -897,11 +897,14 @@ export const NOISE_BFG = /* glsl */ `
       // uGain    = warp strength (0=plain, 0.13=clouds, 0.5=extreme)
       // uAlpha   = phase offset, Speed animates via t
       vec2 period2d = vec2(uPeriodX, uPeriodY);
+      vec2 periodicP = p.xy;
+      if (period2d.x > 0.001) periodicP.x += 0.5 * (period2d.x - 1.0);
+      if (period2d.y > 0.001) periodicP.y += 0.5 * (period2d.y - 1.0);
       vec2 gsum = vec2(0.0);
       float acc = 0.0, wt = 1.0, sc = 1.0, wtSum = 0.0;
       for (int i = 0; i < 8; i++) {
         if (i >= oct) break;
-        vec2 warped = sc * p.xy + uGain * gsum;
+        vec2 warped = sc * periodicP + uGain * gsum;
         PsrdResult r = psrdnoise_grad(
           warped,
           sc * period2d,
