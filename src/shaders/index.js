@@ -901,10 +901,13 @@ export const NOISE_BFG = /* glsl */ `
       float acc = 0.0, wt = 1.0, sc = 1.0, wtSum = 0.0;
       for (int i = 0; i < 8; i++) {
         if (i >= oct) break;
+        vec2 warped = sc * p.xy + uGain * gsum;
+        if (period2d.x > 0.001) warped.x = mod(warped.x, sc * period2d.x);
+        if (period2d.y > 0.001) warped.y = mod(warped.y, sc * period2d.y);
         PsrdResult r = psrdnoise_grad(
-          sc * p.xy + uGain * gsum,
+          warped,
           sc * period2d,
-          sc * (t + uAlpha));
+          pow(sc, 0.33) * (t + uAlpha));
         acc   += wt * r.n;
         gsum  += wt * r.g;
         wtSum += wt;
