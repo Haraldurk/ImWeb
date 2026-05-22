@@ -22,4 +22,4 @@ All current banks, states, and tables will be permanently replaced with the fact
 
 - ~~Redesign the Noise~~ — Phase 1 done: family→type selector
 - ~~Noise: scale from center (shader fix)~~
-- Noise Phase 2: psrdnoise / Periodic family
+- ~~Noise Phase 2: psrdnoise / Periodic family~~
