@@ -889,7 +889,11 @@ export const NOISE_BFG = /* glsl */ `
       float w = domainWarp(p, oct, uLacunarity, uGain);
       n = 0.5 + 0.5 * sin(1.5 * p.x + w * 6.0 + uTime * uSpeed * 0.3); // Marble
     } else if (uType == 39) {
-      float raw = psrdnoise(p.xy, vec2(uPeriodX, uPeriodY), t + uAlpha);
+      vec2 period2d = vec2(uPeriodX, uPeriodY);
+      vec2 periodicP = p.xy;
+      if (period2d.x > 0.001) periodicP.x += 0.5 * (period2d.x - 1.0);
+      if (period2d.y > 0.001) periodicP.y += 0.5 * (period2d.y - 1.0);
+      float raw = psrdnoise(periodicP, period2d, t + uAlpha);
       n = raw * 0.5 + 0.5;
     } else if (uType == 40) {
       // PsrdWarp: gradient-guided domain warping — Gustavson 2D tutorial 19
