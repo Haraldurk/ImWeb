@@ -640,6 +640,7 @@ export class Pipeline {
   generateNoise(p) {
     const m = this.m.noise;
     m.uniforms.uTime.value       = p.time;
+    m.uniforms.uPhase.value      = p.phase;
     m.uniforms.uType.value       = p.type;
     m.uniforms.uScale.value      = p.scale;
     m.uniforms.uOctaves.value    = p.octaves;
@@ -880,6 +881,7 @@ export class Pipeline {
       }),
       noise: this._mat(NOISE_BFG, {
         uTime:       { value: 0 },
+        uPhase:      { value: 0 },
         uType:       { value: 1 },   // default: Perlin
         uScale:      { value: 3.0 },
         uOctaves:    { value: 4.0 },
