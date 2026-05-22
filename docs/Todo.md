@@ -23,3 +23,5 @@ All current banks, states, and tables will be permanently replaced with the fact
 - ~~Redesign the Noise~~ — Phase 1 done: family→type selector
 - ~~Noise: scale from center (shader fix)~~
 - ~~Noise Phase 2: psrdnoise / Periodic family~~
+- ~~PsrdWarp~~
+  * Note: Period X/Y breaks at Gain>0 (expected — domain warp disrupts tiling); Speed stutters at high values on fine octaves — use Speed 0.1–0.3
