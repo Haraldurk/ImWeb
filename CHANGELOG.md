@@ -9,6 +9,8 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
 ## [0.8.9+] — 2026-05-16
 
 ### Added
+- **psrdnoise2 support as uType 39 (Phase 2)** — implemented Stefan Gustavson's 2D periodic simplex noise (`psrdnoise2`) as noise type 39 under a new `Periodic` noise family. Commit `9fcde26`.
+- **Wired psrdnoise2 parameters** — registered `noise.period.x`, `noise.period.y`, and `noise.alpha` in `ParameterSystem.js`, wired them in the Pipeline rendering path, and integrated them into the Noise panel in `UI.js`. Commit `6d40b20`.
 - **Noise panel family→type selector, Phase 1** — added `noise.family`
   with Gradient, Fractal, Cellular, Warp, Pattern, and Analog families; rebuilt
   the Noise panel as `buildNoisePanel()` with a family row, type grid, shared
@@ -21,6 +23,8 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
   removed. Commit `d2b7fe2`.
 
 ### Fixed
+- **psrdnoise GLSL ES compatibility** — rewrote the `psrdnoise` implementation in `src/shaders/index.js` to remove the `out vec2 gradient` parameter and replaced the `any(greaterThan(period, vec2(0.0)))` check with a float step comparison to ensure compatibility with WebGL 1 / GLSL ES 1.00.
+- **psrdnoise animation flow** — changed animation drive from `uAlpha` to `t + uAlpha` in `src/shaders/index.js` so that the noise pattern animates/flows naturally according to the main Speed slider.
 - **Chrome 148 ANGLE/Metal regression diagnosed** — vertex shader rendering 
   broken on macOS Chrome 148 for Hypercube wireframe edges (LineSegments) and 
   Harabara GLB model (SkinnedMesh). Root cause: Chrome 148 ANGLE/Metal backend 
