@@ -4626,6 +4626,7 @@ void main() {
   // ── Render loop ───────────────────────────────────────────────────────────
 
   let lastTime = performance.now();
+  let noiseTime = 0;
   let frameCount = 0;
   let autoCapTimer = 0;
   let scanTimer = 0;
@@ -4674,6 +4675,7 @@ void main() {
 
     // From here on, we are rendering a frame
     _pendingMidiFrame = false;
+    noiseTime += dt;
     frameCount++;
     profiler.begin();
 
@@ -4904,7 +4906,7 @@ void main() {
     const NOISE_IDX = 5;
     const _noiseUsed = ps.get("layer.fg").value === NOISE_IDX || ps.get("layer.bg").value === NOISE_IDX || (ps.get("layer.ds")?.value ?? 0) === NOISE_IDX || _analogSrcIdx === 3;
     if (_noiseUsed) noiseTexture = pipeline.generateNoise({
-      time: lastTime / 1000,
+      time: noiseTime,
       type: ps.get("noise.type").value,
       family: ps.get("noise.family").value,
       scale: ps.get("noise.scale").value,
