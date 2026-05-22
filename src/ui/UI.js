@@ -981,9 +981,8 @@ export function buildNoisePanel(ps, contextMenu) {
 
   // ── E) Periodic params — built once, shown/hidden per family ─────────────
   const periodicSection = document.createElement('div');
-  const toEven = v => Math.round(v / 2) * 2;
-  ps.set('noise.period.x', toEven(ps.get('noise.period.x').value));
-  ps.set('noise.period.y', toEven(ps.get('noise.period.y').value));
+  ps.set('noise.period.x', Math.round(ps.get('noise.period.x').value));
+  ps.set('noise.period.y', Math.round(ps.get('noise.period.y').value));
   ['noise.period.x', 'noise.period.y', 'noise.alpha'].forEach(id =>
     periodicSection.appendChild(buildParamRow(ps.get(id), contextMenu))
   );
