@@ -934,6 +934,7 @@ export function buildNoisePanel(ps, contextMenu) {
     Warp:     [8, 35, 19, 36, 37],
     Pattern:  [21, 22, 23, 13],
     Analog:   [0, 9, 10, 11, 12, 14, 26, 27, 28, 29, 30, 31, 24, 25],
+    Periodic: [39],
   };
   const FAMILY_NAMES = Object.keys(NOISE_FAMILY_MAP);
 
@@ -978,6 +979,13 @@ export function buildNoisePanel(ps, contextMenu) {
   );
   noiseBot.appendChild(fractalSection);
 
+  // ── E) Periodic params — built once, shown/hidden per family ─────────────
+  const periodicSection = document.createElement('div');
+  ['noise.period.x', 'noise.period.y', 'noise.alpha'].forEach(id =>
+    periodicSection.appendChild(buildParamRow(ps.get(id), contextMenu))
+  );
+  noiseBot.appendChild(periodicSection);
+
   // ── Internal helper ───────────────────────────────────────────────────────
   function _renderNoiseFamilyUI(familyIndex) {
     const name = FAMILY_NAMES[familyIndex];
@@ -1005,7 +1013,8 @@ export function buildNoisePanel(ps, contextMenu) {
       typeGrid.appendChild(btn);
     });
 
-    fractalSection.style.display = name === 'Fractal' ? '' : 'none';
+    fractalSection.style.display  = name === 'Fractal'  ? '' : 'none';
+    periodicSection.style.display = name === 'Periodic' ? '' : 'none';
   }
 
   // Keep type grid active state in sync when type changes externally

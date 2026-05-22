@@ -983,6 +983,7 @@ export function registerCoreParameters(ps) {
       "VelocityField",
       "Advection",
       "Marble",
+      "Psrd2D",
     ],
     value: 1,
   }); // default: WhiteNoise
@@ -991,7 +992,7 @@ export function registerCoreParameters(ps) {
     label: 'NoiseFamily',
     group: 'noise',
     type: PARAM_TYPE.SELECT,
-    options: ['Gradient', 'Fractal', 'Cellular', 'Warp', 'Pattern', 'Analog'],
+    options: ['Gradient', 'Fractal', 'Cellular', 'Warp', 'Pattern', 'Analog', 'Periodic'],
     value: 0,
   });
   ps.register({
@@ -1090,6 +1091,33 @@ export function registerCoreParameters(ps) {
     max: 100,
     value: 0,
     step: 0.5,
+  });
+  ps.register({
+    id: 'noise.period.x',
+    label: 'Period X',
+    group: 'noise',
+    min: 0,
+    max: 64,
+    value: 0,
+    step: 0.5,
+  });
+  ps.register({
+    id: 'noise.period.y',
+    label: 'Period Y',
+    group: 'noise',
+    min: 0,
+    max: 64,
+    value: 0,
+    step: 0.5,
+  });
+  ps.register({
+    id: 'noise.alpha',
+    label: 'Alpha',
+    group: 'noise',
+    min: 0,
+    max: 6.2832,
+    value: 0,
+    step: 0.01,
   });
   // ── Noise color backing params (for state save/restore) ──────────────────
   // Stored as linear-light R/G/B in [0,1]. Not shown in param rows — driven
