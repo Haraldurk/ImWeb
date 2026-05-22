@@ -8,6 +8,18 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
 
 ## [0.8.9+] — 2026-05-16
 
+### Added
+- **Noise panel family→type selector, Phase 1** — added `noise.family`
+  with Gradient, Fractal, Cellular, Warp, Pattern, and Analog families; rebuilt
+  the Noise panel as `buildNoisePanel()` with a family row, type grid, shared
+  params, and a Fractal-only section.
+
+### Changed
+- **Noise UI wiring simplified** — `main.js` now calls exported
+  `buildNoisePanel()` and passes `p.family` into `generateNoise`; legacy
+  `_syncNoiseParamVisibility()` and `_patchNoiseTypeOptgroups()` code was
+  removed. Commit `d2b7fe2`.
+
 ### Fixed
 - **Chrome 148 ANGLE/Metal regression diagnosed** — vertex shader rendering 
   broken on macOS Chrome 148 for Hypercube wireframe edges (LineSegments) and 
@@ -21,6 +33,8 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
 - **textureLod** replaces texture() in vertex shader displacement and warp paths
 - **SkinnedMesh → plain Mesh** conversion in loadGLTF() to eliminate 
   USE_SKINNING / texelFetch bone texture in vertex stage
+- **Noise scale from center** — fixed scale calculation in `NOISE_BFG` 
+  (`vUv * uScale` → `(vUv - 0.5) * uScale + 0.5`) in `src/shaders/index.js` to keep scaling centered
 
 ## [0.8.9] — 2026-05-12
 
