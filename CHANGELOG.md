@@ -9,6 +9,7 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
 ## [0.8.9+] — 2026-05-16
 
 ### Added
+- **PsrdWarp gradient domain warp as uType 40** — added `psrdnoise_grad()` helper returning a `PsrdResult` struct for WebGL ES 1.00 compatibility, mapped `PsrdWarp` at parameter index 40, and wired it under the `Periodic` noise family in `UI.js`. Commit `09fb511`.
 - **psrdnoise2 support as uType 39 (Phase 2)** — implemented Stefan Gustavson's 2D periodic simplex noise (`psrdnoise2`) as noise type 39 under a new `Periodic` noise family. Commit `9fcde26`.
 - **Wired psrdnoise2 parameters** — registered `noise.period.x`, `noise.period.y`, and `noise.alpha` in `ParameterSystem.js`, wired them in the Pipeline rendering path, and integrated them into the Noise panel in `UI.js`. Commit `6d40b20`.
 - **Noise panel family→type selector, Phase 1** — added `noise.family`
