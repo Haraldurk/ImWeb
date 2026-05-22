@@ -372,6 +372,7 @@ export const COLORSHIFT = /* glsl */ `
 
 export const NOISE_BFG = /* glsl */ `
   uniform float uTime;
+  uniform float uPhase;
   uniform int   uType;
   uniform float uScale;
   uniform float uOctaves;
@@ -727,7 +728,7 @@ export const NOISE_BFG = /* glsl */ `
   void main() {
     int  oct = int(uOctaves + 0.5);
     // Time is the 3rd spatial dimension — smooth continuous animation
-    float t  = uTime * uSpeed + uSeed;
+    float t  = uPhase + uSeed;
     vec3  p  = vec3((vUv - 0.5) * uScale + 0.5 + vec2(uOffsetX, uOffsetY), t);
 
     float n     = 0.0;
