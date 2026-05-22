@@ -236,6 +236,7 @@ export class Pipeline {
 
     this._lastResW = 0;
     this._lastResH = 0;
+    this._noiseTime = 0;
   }
 
   // ── 3D LUT ───────────────────────────────────────────────────────────────
