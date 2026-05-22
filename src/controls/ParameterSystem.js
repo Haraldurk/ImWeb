@@ -984,6 +984,7 @@ export function registerCoreParameters(ps) {
       "Advection",
       "Marble",
       "Psrd2D",
+      "PsrdWarp",
     ],
     value: 1,
   }); // default: WhiteNoise

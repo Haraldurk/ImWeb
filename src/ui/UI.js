@@ -934,7 +934,7 @@ export function buildNoisePanel(ps, contextMenu) {
     Warp:     [8, 35, 19, 36, 37],
     Pattern:  [21, 22, 23, 13],
     Analog:   [0, 9, 10, 11, 12, 14, 26, 27, 28, 29, 30, 31, 24, 25],
-    Periodic: [39],
+    Periodic: [39, 40],
   };
   const FAMILY_NAMES = Object.keys(NOISE_FAMILY_MAP);
 
