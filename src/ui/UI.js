@@ -797,8 +797,7 @@ export function buildMappingPanels(ps, contextMenu) {
     'displace-params': ps.getGroup('displace').filter(p => !p.id.startsWith('displace.warp')),
     'blend-params':    ps.getGroup('blend'),
     'color-params':    ps.getGroup('color'),
-    'noise-params-top': ps.getGroup('noise').slice(0, 1),
-    'noise-params':     ps.getGroup('noise').slice(1),
+    // noise-params-top and noise-params are built by buildNoisePanel()
     'output-params':   ps.getGroup('output').filter(p => p.id !== 'output.resolution' && p.id !== 'output.interp'),
     'buffer-controls': ps.getGroup('buffer'),
     'clip-params':     ps.getGroup('movie'),
@@ -917,6 +916,109 @@ export function buildMappingPanels(ps, contextMenu) {
     _row('particle.freeze');
     _row('particle.clearPins');
   }
+}
+
+// ── Noise panel — family → type two-level selector ────────────────────────────
+
+export function buildNoisePanel(ps, contextMenu) {
+  const noiseTop = document.getElementById('noise-params-top');
+  const noiseBot = document.getElementById('noise-params');
+  if (!noiseTop || !noiseBot) return;
+
+  const NOISE_TYPES = ps.get('noise.type').options;
+
+  const NOISE_FAMILY_MAP = {
+    Gradient: [1, 2, 3, 7],
+    Fractal:  [6, 32, 33, 34, 38],
+    Cellular: [4, 5, 15, 16, 17, 18, 20],
+    Warp:     [8, 35, 19, 36, 37],
+    Pattern:  [21, 22, 23, 13],
+    Analog:   [0, 9, 10, 11, 12, 14, 26, 27, 28, 29, 30, 31, 24, 25],
+  };
+  const FAMILY_NAMES = Object.keys(NOISE_FAMILY_MAP);
+
+  // ── A) Family row ─────────────────────────────────────────────────────────
+  const familyRow = document.createElement('div');
+  familyRow.className = 'param-btn-group';
+  const familyBtns = FAMILY_NAMES.map((name, i) => {
+    const btn = document.createElement('button');
+    btn.className = 'param-opt-btn' + (i === ps.get('noise.family').value ? ' active' : '');
+    btn.textContent = name.slice(0, 5);
+    btn.title = name;
+    btn.addEventListener('click', () => {
+      const curType = ps.get('noise.type').value;
+      const indices = NOISE_FAMILY_MAP[name];
+      if (!indices.includes(curType)) ps.set('noise.type', indices[0]);
+      ps.set('noise.family', i);
+      _renderNoiseFamilyUI(i);
+    });
+    familyRow.appendChild(btn);
+    return btn;
+  });
+  noiseTop.appendChild(familyRow);
+
+  // ── B) Type grid ──────────────────────────────────────────────────────────
+  const typeGrid = document.createElement('div');
+  typeGrid.className = 'param-btn-group noise-type-grid';
+  noiseTop.appendChild(typeGrid);
+
+  // ── C) Color Mode param ───────────────────────────────────────────────────
+  noiseBot.appendChild(buildParamRow(ps.get('noise.color'), contextMenu));
+
+  // ── Shared params ─────────────────────────────────────────────────────────
+  ['noise.scale', 'noise.speed', 'noise.offsetX', 'noise.offsetY',
+   'noise.seed', 'noise.contrast', 'noise.invert'].forEach(id =>
+    noiseBot.appendChild(buildParamRow(ps.get(id), contextMenu))
+  );
+
+  // ── D) Fractal params — built once, shown/hidden per family ───────────────
+  const fractalSection = document.createElement('div');
+  ['noise.octaves', 'noise.lacunarity', 'noise.gain'].forEach(id =>
+    fractalSection.appendChild(buildParamRow(ps.get(id), contextMenu))
+  );
+  noiseBot.appendChild(fractalSection);
+
+  // ── Internal helper ───────────────────────────────────────────────────────
+  function _renderNoiseFamilyUI(familyIndex) {
+    const name = FAMILY_NAMES[familyIndex];
+    familyBtns.forEach((b, j) => b.classList.toggle('active', j === familyIndex));
+
+    // Rebuild type grid for new family
+    typeGrid.innerHTML = '';
+    const indices = NOISE_FAMILY_MAP[name];
+    const curType = ps.get('noise.type').value;
+    indices.forEach(typeIdx => {
+      const btn = document.createElement('button');
+      btn.className = 'param-opt-btn' + (typeIdx === curType ? ' active' : '');
+      const label = NOISE_TYPES[typeIdx] ?? String(typeIdx);
+      const abbr = label.includes('-') ? label.split('-').pop().slice(0, 6)
+                 : label.length <= 6   ? label : label.slice(0, 5);
+      btn.textContent = abbr;
+      btn.title = label;
+      btn.dataset.typeIdx = typeIdx;
+      btn.addEventListener('click', () => {
+        ps.set('noise.type', typeIdx);
+        typeGrid.querySelectorAll('button').forEach(b =>
+          b.classList.toggle('active', Number(b.dataset.typeIdx) === typeIdx)
+        );
+      });
+      typeGrid.appendChild(btn);
+    });
+
+    fractalSection.style.display = name === 'Fractal' ? '' : 'none';
+  }
+
+  // Keep type grid active state in sync when type changes externally
+  ps.get('noise.type').onChange(v => {
+    typeGrid.querySelectorAll('button').forEach(b =>
+      b.classList.toggle('active', Number(b.dataset.typeIdx) === v)
+    );
+  });
+
+  // Keep family selector in sync when family changes externally (preset restore)
+  ps.get('noise.family').onChange(v => _renderNoiseFamilyUI(v));
+
+  _renderNoiseFamilyUI(ps.get('noise.family').value);
 }
 
 // ── Sequence params panel ─────────────────────────────────────────────────────

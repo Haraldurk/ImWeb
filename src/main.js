@@ -78,6 +78,7 @@ import {
   buildParamRow,
   buildLayerButtons,
   buildMappingPanels,
+  buildNoisePanel,
   buildSeqParams,
   buildGeometryButtons,
   buildWarpEditor,
@@ -858,7 +859,7 @@ async function main() {
     }
   }
 
-  _patchNoiseTypeOptgroups();
+  buildNoisePanel(ps, contextMenu);
   buildSeqParams(ps, contextMenu);
   buildGeometryButtons(ps, scene3d, contextMenu);
 
@@ -4481,49 +4482,6 @@ void main() {
     'particle.col2.r','particle.col2.g','particle.col2.b',
     (r,g,b) => { particles.color2.set(r,g,b); });
 
-  const HASH_ONLY_NOISE = new Set([0, 9, 10, 11, 12, 13, 14, 24, 25]); // 0=WhiteNoise; 9-14=hash-only types; 24-25=point-pattern types
-  function _syncNoiseParamVisibility(typeIndex) {
-    const hide = HASH_ONLY_NOISE.has(typeIndex);
-    ["noise.octaves", "noise.lacunarity", "noise.gain"].forEach((id) => {
-      const row = document.querySelector(`.param-row[data-param-id="${id}"]`);
-      if (row) row.style.display = hide ? "none" : "";
-    });
-  }
-  ps.get("noise.type").onChange(_syncNoiseParamVisibility);
-  _syncNoiseParamVisibility(ps.get("noise.type").value);
-
-  function _patchNoiseTypeOptgroups() {
-    const sel = document.querySelector(
-      '.param-row[data-param-id="noise.type"] select',
-    );
-    if (!sel) return;
-    const optMap = new Map();
-    sel
-      .querySelectorAll("option")
-      .forEach((o) => optMap.set(Number(o.value), o.textContent));
-    const current = sel.value;
-    sel.innerHTML = "";
-    [
-      { label: "Classic", indices: [0, 1, 2] },
-      { label: "Cellular", indices: [3, 4, 14, 15, 16] },
-      { label: "Fractal", indices: [5, 6, 7, 31, 32, 33, 34, 35, 36, 37] },
-      { label: "Geometric", indices: [17, 18, 19, 20, 21, 22] },
-      { label: "Analog", indices: [9, 11, 12, 26, 27, 28, 30, 29, 25] },
-      { label: "Hash/Digital", indices: [8, 10, 13, 23, 24] },
-    ].forEach(({ label, indices }) => {
-      const grp = document.createElement("optgroup");
-      grp.label = label;
-      indices.forEach((i) => {
-        const o = document.createElement("option");
-        o.value = i;
-        o.textContent = optMap.get(i) ?? String(i);
-        grp.appendChild(o);
-      });
-      sel.appendChild(grp);
-    });
-    sel.value = current;
-  }
-
   // Chroma key colour picker → sets keyer.chromahue
   document.getElementById("chroma-picker")?.addEventListener("input", (e) => {
     const { h } = hexToHsv(e.target.value);
@@ -4948,6 +4906,7 @@ void main() {
     if (_noiseUsed) noiseTexture = pipeline.generateNoise({
       time: lastTime / 1000,
       type: ps.get("noise.type").value,
+      family: ps.get("noise.family").value,
       scale: ps.get("noise.scale").value,
       octaves: ps.get("noise.octaves").value,
       lacunarity: ps.get("noise.lacunarity").value,
