@@ -891,7 +891,7 @@ export const NOISE_BFG = /* glsl */ `
       n = 0.5 + 0.5 * sin(1.5 * p.x + w * 6.0 + uTime * uSpeed * 0.3); // Marble
     } else if (uType == 39) {
       vec2 period2d = vec2(uPeriodX, uPeriodY);
-      vec2 periodicP = p.xy + step(vec2(0.001), period2d) * (floor(uScale * 0.5) + 1.0);
+      vec2 periodicP = p.xy + vec2(floor(uScale * 0.5) + 1.0);
       float raw = psrdnoise(periodicP, period2d, t + uAlpha);
       n = raw * 0.5 + 0.5;
     } else if (uType == 40) {
@@ -900,7 +900,7 @@ export const NOISE_BFG = /* glsl */ `
       // uGain    = warp strength (0=plain, 0.13=clouds, 0.5=extreme)
       // uAlpha   = phase offset, Speed animates via t
       vec2 period2d = vec2(uPeriodX, uPeriodY);
-      vec2 periodicP = p.xy + step(vec2(0.001), period2d) * (floor(uScale * 0.5) + 1.0);
+      vec2 periodicP = p.xy + vec2(floor(uScale * 0.5) + 1.0);
       vec2 gsum = vec2(0.0);
       float acc = 0.0, wt = 1.0, sc = 1.0, wtSum = 0.0;
       for (int i = 0; i < 8; i++) {
