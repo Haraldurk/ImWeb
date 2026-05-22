@@ -4671,13 +4671,13 @@ void main() {
       if (frameCount % autoSyncDiv !== 0) shouldRender = false;
     }
 
+    noisePhase += ps.get('noise.speed').value * dt;
     if (_captureMode) return; // capture mode: render only on explicit step
     if (!shouldRender) return;
 
     // From here on, we are rendering a frame
     _pendingMidiFrame = false;
     noiseTime += dt;
-    noisePhase += ps.get('noise.speed').value * dt;
     frameCount++;
     profiler.begin();
 
