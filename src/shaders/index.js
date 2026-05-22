@@ -671,6 +671,57 @@ export const NOISE_BFG = /* glsl */ `
     return 10.9 * dot(w4, gdotx);
   }
 
+  // ── PsrdResult struct + gradient variant (GLSL ES compat) ────────────────
+
+  struct PsrdResult { float n; vec2 g; };
+
+  PsrdResult psrdnoise_grad(vec2 x, vec2 period, float alpha) {
+    vec2 uv = vec2(x.x + x.y * 0.5, x.y);
+    vec2 i0 = floor(uv);
+    vec2 f0 = fract(uv);
+    float cmp = step(f0.y, f0.x);
+    vec2 o1 = vec2(cmp, 1.0 - cmp);
+    vec2 i1 = i0 + o1;
+    vec2 i2 = i0 + vec2(1.0, 1.0);
+    vec2 v0 = vec2(i0.x - i0.y * 0.5, i0.y);
+    vec2 v1 = vec2(i1.x - i1.y * 0.5, i1.y);
+    vec2 v2 = vec2(i2.x - i2.y * 0.5, i2.y);
+    vec2 x0 = x - v0, x1 = x - v1, x2 = x - v2;
+    vec3 iu, iv;
+    float usePeriod = step(0.001, period.x) + step(0.001, period.y);
+    if (usePeriod > 0.0) {
+      vec3 xw = vec3(v0.x, v1.x, v2.x);
+      vec3 yw = vec3(v0.y, v1.y, v2.y);
+      if (period.x > 0.001) xw = mod(xw, period.x);
+      if (period.y > 0.001) yw = mod(yw, period.y);
+      iu = floor(xw + 0.5 * yw + 0.5);
+      iv = floor(yw + 0.5);
+    } else {
+      iu = vec3(i0.x, i1.x, i2.x);
+      iv = vec3(i0.y, i1.y, i2.y);
+    }
+    vec3 hash = mod(iu, 289.0);
+    hash = mod((hash * 51.0 + 2.0) * hash + iv, 289.0);
+    hash = mod((hash * 34.0 + 10.0) * hash, 289.0);
+    vec3 psi = hash * 0.07482 + alpha;
+    vec3 gx = cos(psi); vec3 gy = sin(psi);
+    vec2 g0 = vec2(gx.x, gy.x);
+    vec2 g1 = vec2(gx.y, gy.y);
+    vec2 g2 = vec2(gx.z, gy.z);
+    vec3 w = max(0.8 - vec3(dot(x0,x0), dot(x1,x1), dot(x2,x2)), 0.0);
+    vec3 w2 = w * w; vec3 w4 = w2 * w2;
+    vec3 gdotx = vec3(dot(g0,x0), dot(g1,x1), dot(g2,x2));
+    vec3 w3 = w2 * w;
+    vec3 dw = -8.0 * w3 * gdotx;
+    vec2 dn0 = w4.x * g0 + dw.x * x0;
+    vec2 dn1 = w4.y * g1 + dw.y * x1;
+    vec2 dn2 = w4.z * g2 + dw.z * x2;
+    PsrdResult r;
+    r.n = 10.9 * dot(w4, gdotx);
+    r.g = 10.9 * (dn0 + dn1 + dn2);
+    return r;
+  }
+
   // ── Main ──────────────────────────────────────────────────────────────────
 
   void main() {
@@ -840,6 +891,27 @@ export const NOISE_BFG = /* glsl */ `
     } else if (uType == 39) {
       float raw = psrdnoise(p.xy, vec2(uPeriodX, uPeriodY), t + uAlpha);
       n = raw * 0.5 + 0.5;
+    } else if (uType == 40) {
+      // PsrdWarp: gradient-guided domain warping — Gustavson 2D tutorial 19
+      // uOctaves = iteration count (1–8)
+      // uGain    = warp strength (0=plain, 0.13=clouds, 0.5=extreme)
+      // uAlpha   = phase offset, Speed animates via t
+      vec2 period2d = vec2(uPeriodX, uPeriodY);
+      vec2 gsum = vec2(0.0);
+      float acc = 0.0, wt = 1.0, sc = 1.0, wtSum = 0.0;
+      for (int i = 0; i < 8; i++) {
+        if (i >= oct) break;
+        PsrdResult r = psrdnoise_grad(
+          sc * p.xy + uGain * gsum,
+          sc * period2d,
+          sc * (t + uAlpha));
+        acc   += wt * r.n;
+        gsum  += wt * r.g;
+        wtSum += wt;
+        wt *= 0.5;
+        sc *= 2.0;
+      }
+      n = 0.5 + 0.5 * (acc / max(wtSum, 0.001));
     }
 
     // ── Post-process ────────────────────────────────────────────────────────
