@@ -907,7 +907,11 @@ export const NOISE_BFG = /* glsl */ `
         if (i >= oct) break;
         vec2 warped = sc * periodicP + uGain * gsum;
         float alphaScale = pow(sc, 0.33);
-        float alphaPhase = alphaScale * mod(t + uAlpha, 6.28318530718 / alphaScale);
+        float alphaArg = t + uAlpha;
+        float alphaPhase = alphaScale * mix(
+          alphaArg,
+          mod(alphaArg, 6.28318530718 / alphaScale),
+          step(0.001, max(period2d.x, period2d.y)));
         PsrdResult r = psrdnoise_grad(
           warped,
           sc * period2d,
