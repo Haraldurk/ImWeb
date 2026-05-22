@@ -1100,7 +1100,7 @@ export function registerCoreParameters(ps) {
     min: 0,
     max: 64,
     value: 0,
-    step: 0.5,
+    step: 1,
   });
   ps.register({
     id: 'noise.period.y',
@@ -1109,7 +1109,7 @@ export function registerCoreParameters(ps) {
     min: 0,
     max: 64,
     value: 0,
-    step: 0.5,
+    step: 1,
   });
   ps.register({
     id: 'noise.alpha',
