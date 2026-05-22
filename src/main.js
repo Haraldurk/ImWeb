@@ -4920,6 +4920,9 @@ void main() {
       color: ps.get("noise.color").value,
       color1: _noiseColor1,
       color2: _noiseColor2,
+      periodX: ps.get('noise.period.x').value,
+      periodY: ps.get('noise.period.y').value,
+      alpha:   ps.get('noise.alpha').value,
     });
 
     // Render 3D scene if active OR used as a layer source
