@@ -987,6 +987,14 @@ export function registerCoreParameters(ps) {
     value: 1,
   }); // default: WhiteNoise
   ps.register({
+    id: 'noise.family',
+    label: 'NoiseFamily',
+    group: 'noise',
+    type: PARAM_TYPE.SELECT,
+    options: ['Gradient', 'Fractal', 'Cellular', 'Warp', 'Pattern', 'Analog'],
+    value: 0,
+  });
+  ps.register({
     id: "noise.color",
     label: "Color Mode",
     group: "noise",
