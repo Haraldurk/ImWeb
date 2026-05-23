@@ -39,7 +39,7 @@ export class HypercubeObject {
     this._wDistance      = options.wDistance      ?? 4.0;
     this._scale          = options.scale          ?? 1.0;
     this._projectionMode = options.projectionMode ?? 'perspective';
-    this._renderMode     = options.renderMode     ?? 'wireframe';
+    this._renderMode     = options.renderMode     ?? 'none';
     this._pointSize      = options.pointSize      ?? 3.0;
     this._edgeOpacityMult = options.edgeOpacity   ?? 1.0;
 
