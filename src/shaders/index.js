@@ -378,6 +378,7 @@ export const NOISE_BFG = /* glsl */ `
   uniform float uOctaves;
   uniform float uLacunarity;
   uniform float uGain;
+  uniform float uSwirl;
   uniform float uSpeed;
   uniform float uOffsetX;
   uniform float uOffsetY;
@@ -905,7 +906,8 @@ export const NOISE_BFG = /* glsl */ `
       float acc = 0.0, wt = 1.0, sc = 1.0, wtSum = 0.0;
       for (int i = 0; i < 8; i++) {
         if (i >= oct) break;
-        vec2 warped = sc * periodicP + uGain * gsum;
+        vec2 warpVec = mix(gsum, vec2(-gsum.y, gsum.x), uSwirl);
+        vec2 warped = sc * periodicP + uGain * warpVec;
         float alphaScale = pow(sc, 0.33);
         float alphaArg = t + uAlpha;
         float alphaPhase = alphaScale * mix(

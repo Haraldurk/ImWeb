@@ -1042,6 +1042,15 @@ export function registerCoreParameters(ps) {
     step: 0.01,
   });
   ps.register({
+    id: 'noise.swirl',
+    label: 'Swirl',
+    group: 'noise',
+    min: 0.0,
+    max: 1.0,
+    value: 0.0,
+    step: 0.01,
+  });
+  ps.register({
     id: "noise.speed",
     label: "Speed",
     group: "noise",
