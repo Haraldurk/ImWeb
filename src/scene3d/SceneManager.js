@@ -893,9 +893,12 @@ export class SceneManager {
         this.material.emissiveIntensity = 0.35;
       } else {
         if (this.material.emissive) {
-          this.material.emissive.setHSL(emHue, emSat, 0.15 * emissiveAmt);
+          this.material.emissive.set(1, 1, 1);
         }
-        this.material.emissiveIntensity = emissiveAmt;
+        if (this.material.emissiveMap !== undefined) {
+          this.material.emissiveMap = this.material.map;
+        }
+        this.material.emissiveIntensity = 1.0;
       }
 
       if (this.material.roughness !== undefined) this.material.roughness = p.get('scene3d.mat.roughness').value;
