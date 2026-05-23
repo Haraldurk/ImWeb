@@ -316,6 +316,7 @@ export class SceneManager {
         uniform float uTDisplace;
         uniform float uDispTexScale;
         uniform float uDispTexProj;
+        varying vec3 vObjPos;
 
         float _bHash(vec3 p) {
           p = fract(p * vec3(127.1, 311.7, 74.7));
@@ -361,6 +362,7 @@ export class SceneManager {
             vUv += (warp.rg - 0.5) * uWarpAmt * 0.3;
           }
         #endif
+        vObjPos = position;
         `
       )
       .replace(
@@ -425,8 +427,29 @@ export class SceneManager {
       shader.fragmentShader = `
         uniform float uRimAmount;
         uniform vec3  uRimColor;
+        varying vec3 vObjPos;
         ${shader.fragmentShader}
       `.replace(
+        '#include <map_fragment>',
+        `
+        #ifdef USE_MAP
+          #ifdef USE_OBJ_NOISE
+            vec3 _triN = abs(normalize(vObjPos));
+            _triN = pow(_triN, vec3(6.0));
+            _triN /= (_triN.x + _triN.y + _triN.z);
+            vec3 _objN = normalize(vObjPos);
+            vec4 _cx = textureLod(map, _objN.yz * 0.5 + 0.5, 0.0);
+            vec4 _cy = textureLod(map, _objN.xz * 0.5 + 0.5, 0.0);
+            vec4 _cz = textureLod(map, _objN.xy * 0.5 + 0.5, 0.0);
+            vec4 sampledDiffuseColor = _cx * _triN.x + _cy * _triN.y + _cz * _triN.z;
+            diffuseColor *= sampledDiffuseColor;
+          #else
+            vec4 sampledDiffuseColor = textureLod(map, vMapUv, 0.0);
+            diffuseColor *= sampledDiffuseColor;
+          #endif
+        #endif
+        `
+      ).replace(
         '#include <dithering_fragment>',
         `#include <dithering_fragment>
         if (uRimAmount > 0.0) {
@@ -436,7 +459,8 @@ export class SceneManager {
         }`
       );
     };
-    mat.customProgramCacheKey = () => 'warpblobrimdispvtfv3'; // bump version when shader source changes
+    mat.customProgramCacheKey = () =>
+      'warpblobrimdispvtfv3' + (mat.defines?.USE_OBJ_NOISE ? '_tri' : '');
   }
 
   _rebuildMaterial(type) {
@@ -894,6 +918,12 @@ export class SceneManager {
 
       // Live texture source on mesh surface
       const texSrcIdx = p.get('scene3d.mat.texsrc')?.value ?? 0;
+      const _useObjNoise = texSrcIdx === 6;
+      if (!!this.material.defines?.USE_OBJ_NOISE !== _useObjNoise) {
+        if (_useObjNoise) this.material.defines.USE_OBJ_NOISE = true;
+        else delete this.material.defines.USE_OBJ_NOISE;
+        this.material.needsUpdate = true;
+      }
       const texSrcMap = [null, inputs.camera, inputs.movie, inputs.screen, inputs.draw, inputs.buffer, inputs.noise];
       const liveTex = texSrcMap[texSrcIdx] ?? null;
       // Block any texture that is the current render target — prevents WebGL feedback loop.
