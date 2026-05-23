@@ -4916,6 +4916,7 @@ void main() {
       octaves: ps.get("noise.octaves").value,
       lacunarity: ps.get("noise.lacunarity").value,
       gain: ps.get("noise.gain").value,
+      swirl: ps.get('noise.swirl').value,
       speed: ps.get("noise.speed").value,
       offsetX: ps.get("noise.offsetX").value,
       offsetY: ps.get("noise.offsetY").value,
