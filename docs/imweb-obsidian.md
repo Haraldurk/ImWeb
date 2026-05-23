@@ -16,7 +16,7 @@ tags:
   - person/steina-vasulka
   - type/technical
 created: 2026-03-18
-modified: 2026-05-22
+modified: 2026-05-23
 status: active-development
 phase: v0.8.7
 related:
@@ -340,6 +340,13 @@ Claude Code for editing, Gemini for docs, OpenCode for cheap recon.
 **Context management:** context-mode MCP plugin (session continuity, token savings)
 
 ## Session log
+
+### 2026-05-23 — uSwirl parameter (v0.8.9+)
+
+Added uSwirl uniform to PsrdWarp (uType 40) domain warp loop.
+Blends gradient warp (uSwirl=0, clouds/smoke) vs curl warp (uSwirl=1,
+vortex/cyclone). Single mix() line in octave loop. 4 files: shaders/index.js,
+ParameterSystem.js, Pipeline.js, main.js. Commit 3f4ce77.
 
 ### 2026-05-23 — PsrdNoise phase investigation (v0.8.9+)
 
