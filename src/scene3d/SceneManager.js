@@ -892,6 +892,7 @@ export class SceneManager {
         if (this.material.emissive) this.material.emissive.set(1, 1, 1);
         this.material.emissiveIntensity = 0.35;
       } else {
+        this.material.color.set(0, 0, 0);
         if (this.material.emissive) {
           this.material.emissive.set(1, 1, 1);
         }
