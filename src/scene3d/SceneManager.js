@@ -1000,7 +1000,10 @@ export class SceneManager {
           m._shader.uniforms.uDisplace.value       = displaceAmt;
           m._shader.uniforms.uDispScale.value      = displaceScale;
           m._shader.uniforms.uDispSpeed.value      = displaceSpeed;
-          m._shader.uniforms.uDispTexture.value    = (dispTex === this.target.texture) ? this._fallback : (dispTex ?? this._fallback);
+          const _dispSource = (texSrcIdx === 6 && inputs.noise)
+            ? inputs.noise
+            : (dispTex ?? this._fallback);
+          m._shader.uniforms.uDispTexture.value    = (_dispSource === this.target.texture) ? this._fallback : _dispSource;
           m._shader.uniforms.uTDisplace.value      = tDisplaceAmt;
           m._shader.uniforms.uDispTexScale.value   = displaceTexScale;
           m._shader.uniforms.uDispTexProj.value    = displaceTexProj;
