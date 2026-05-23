@@ -24,6 +24,36 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
   removed. Commit `d2b7fe2`.
 
 ### Fixed
+- **PsrdWarp mod() wrapping removed** — eliminated manual `mod()` on
+  `warped` coordinates in uType 40 branch; `psrdnoise` handles periodic
+  lattice boundaries internally and requires continuous input coordinates.
+  Commit 1b2ed0a.
+- **PsrdWarp/Psrd2D asymmetric period response fixed** — introduced
+  `periodicP = p.xy + vec2(floor(uScale * 0.5) + 1.0)` in both uType 39
+  and uType 40 so all canvas coordinates are positive, eliminating the
+  left-side/lower-side-only effect when period sliders change.
+  Commits 3d5f6da, a56cdb7.
+- **Noise animation stutter from wall-clock time** — replaced
+  `time: lastTime / 1000` with a capped-dt `noiseTime` accumulator;
+  frame hitches no longer cause large shader time jumps. Commit 386b7fb.
+- **Speed slider phase jump** — added `uPhase` uniform driven by
+  `noisePhase += speed * dt` accumulated in JS before render-gate guards;
+  shader now uses `t = uPhase + uSeed`, eliminating phase discontinuity
+  when Speed is changed mid-session.
+- **noisePhase render-gate bypass** — moved `noisePhase` accumulator
+  before `_captureMode` / `shouldRender` early returns so phase advances
+  every RAF tick regardless of frame skipping.
+- **Alpha cycling in non-periodic mode** — `alphaPhase` mod() bounding
+  now only applies when period > 0; period = 0 (organic mode) uses
+  unbounded `alpha = time` as in the original Gustavson reference,
+  restoring continuously evolving non-repeating animation.
+- **Period step reverted to 1** — `step: 2` even-integer enforcement on
+  `noise.period.x` and `noise.period.y` was based on an incorrect lattice
+  alignment diagnosis and unnecessarily excluded odd values; reverted
+  to `step: 1`.
+- **Pipeline._noiseTime initialized** — added `this._noiseTime = 0` in
+  Pipeline constructor to prevent NaN accumulation affecting film grain,
+  interlace, and custom shader time uniforms.
 - **psrdnoise GLSL ES compatibility** — rewrote the `psrdnoise` implementation in `src/shaders/index.js` to remove the `out vec2 gradient` parameter and replaced the `any(greaterThan(period, vec2(0.0)))` check with a float step comparison to ensure compatibility with WebGL 1 / GLSL ES 1.00.
 - **psrdnoise animation flow** — changed animation drive from `uAlpha` to `t + uAlpha` in `src/shaders/index.js` so that the noise pattern animates/flows naturally according to the main Speed slider.
 - **Chrome 148 ANGLE/Metal regression diagnosed** — vertex shader rendering 
