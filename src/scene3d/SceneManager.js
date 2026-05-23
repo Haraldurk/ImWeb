@@ -884,18 +884,18 @@ export class SceneManager {
       if (this.material.emissive)
         this.material.emissive.setHSL(hue, sat, sat > 0 ? 0.5 : 0.0);
 
-      // Independent emissive color (falls back to base hue when emissiveSat = 0)
-      if (this.material.emissive) {
-        const emissiveAmt = p.get('scene3d.mat.emissive')?.value ?? 0;
-        const emHue = (p.get('scene3d.mat.emissiveHue')?.value ?? 0) / 360;
-        const emSat = (p.get('scene3d.mat.emissiveSat')?.value ?? 0) / 100;
-        const useIndepEmissive = emSat > 0;
-        this.material.emissive.setHSL(
-          useIndepEmissive ? emHue : hue,
-          useIndepEmissive ? emSat : sat,
-          0.15 * emissiveAmt
-        );
-        if (this.material.emissiveIntensity !== undefined) this.material.emissiveIntensity = emissiveAmt;
+      // Emissive: self-lit white when no texture; slider-driven when textured
+      const emissiveAmt = p.get('scene3d.mat.emissive')?.value ?? 0;
+      const emHue = (p.get('scene3d.mat.emissiveHue')?.value ?? 0) / 360;
+      const emSat = (p.get('scene3d.mat.emissiveSat')?.value ?? 0) / 100;
+      if (!this.material.map) {
+        if (this.material.emissive) this.material.emissive.set(1, 1, 1);
+        this.material.emissiveIntensity = 1.0;
+      } else {
+        if (this.material.emissive) {
+          this.material.emissive.setHSL(emHue, emSat, 0.15 * emissiveAmt);
+        }
+        this.material.emissiveIntensity = emissiveAmt;
       }
 
       if (this.material.roughness !== undefined) this.material.roughness = p.get('scene3d.mat.roughness').value;
