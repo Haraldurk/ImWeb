@@ -29,6 +29,8 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
   removed. Commit `d2b7fe2`.
 
 ### Fixed
+- fix(scene3d): white default material when no texture assigned
+  (emissive floor 0.35, preserves directional lighting and shadows)
 - fix(scene3d): _noiseUsed flag includes scene3d.mat.texsrc=Noise
 - fix(scene3d): auto-seamless noise period matched to uScale
 - fix(scene3d): triplanar sampling eliminates UV seam — vObjPos + USE_OBJ_NOISE
