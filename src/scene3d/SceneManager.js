@@ -298,6 +298,7 @@ export class SceneManager {
       shader.uniforms.uTDisplace    = { value: 0 };
       shader.uniforms.uDispTexScale = { value: 1 };
       shader.uniforms.uDispTexProj  = { value: 0 };
+      shader.uniforms.uObjNoiseDisp = { value: 0 };
       shader.uniforms.uRimAmount  = { value: 0 };
       shader.uniforms.uRimColor   = { value: new THREE.Color(0xffffff) };
       mat._shader = shader;
@@ -316,6 +317,7 @@ export class SceneManager {
         uniform float uTDisplace;
         uniform float uDispTexScale;
         uniform float uDispTexProj;
+        uniform float uObjNoiseDisp;
         varying vec3 vObjPos;
 
         float _bHash(vec3 p) {
@@ -347,8 +349,20 @@ export class SceneManager {
           vec2 screenUv = (clipPos.xy / clipPos.w) * 0.5 + 0.5;
           vec2 finalUv  = mix(rawUv, screenUv, uDispTexProj);
           finalUv = (finalUv - 0.5) * uDispTexScale + 0.5;
-          float texVal  = (textureLod(uDispTexture, finalUv, 0.0).r * 2.0 - 1.0) * uTDisplace;
-          return mathNoise + texVal;
+          float texVal;
+          if (uObjNoiseDisp > 0.5) {
+            vec3 _tBlend = abs(normalize(pos));
+            _tBlend = pow(_tBlend, vec3(6.0));
+            _tBlend /= (_tBlend.x + _tBlend.y + _tBlend.z);
+            vec3 _oN = normalize(pos);
+            float _dx = textureLod(uDispTexture, _oN.yz * 0.5 + 0.5, 0.0).r;
+            float _dy = textureLod(uDispTexture, _oN.xz * 0.5 + 0.5, 0.0).r;
+            float _dz = textureLod(uDispTexture, _oN.xy * 0.5 + 0.5, 0.0).r;
+            texVal = (_dx*_tBlend.x + _dy*_tBlend.y + _dz*_tBlend.z) * 2.0 - 1.0;
+          } else {
+            texVal = textureLod(uDispTexture, finalUv, 0.0).r * 2.0 - 1.0;
+          }
+          return mathNoise + texVal * uTDisplace;
         }
         ${shader.vertexShader}
       `
@@ -1007,6 +1021,8 @@ export class SceneManager {
           m._shader.uniforms.uTDisplace.value      = tDisplaceAmt;
           m._shader.uniforms.uDispTexScale.value   = displaceTexScale;
           m._shader.uniforms.uDispTexProj.value    = displaceTexProj;
+          if (m._shader.uniforms.uObjNoiseDisp !== undefined)
+            m._shader.uniforms.uObjNoiseDisp.value = texSrcIdx === 6 ? 1.0 : 0.0;
         }
       };
       updateDisplace(this.material);
