@@ -9,14 +9,11 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
 ## [0.8.9+] — 2026-05-23
 
 ### Added
-- feat(shaders): uSwirl param added to PsrdWarp — blend gradient warp
-  (0.0) vs curl warp (1.0); mix(gsum, vec2(-gsum.y, gsum.x), uSwirl)
-  in octave loop (commit 3f4ce77)
-- feat(shaders): uRidge param added to PsrdWarp — continuous blend from
-  standard noise (0.0) to abs() ridge/tendril accumulation (1.0);
-  orthogonal to uSwirl (commit after 3f4ce77)
-- feat(ui): Swirl and Ridge sliders wired into noise panel fractalSection;
-  visible for Fractal and Periodic families including PsrdWarp
+- feat(shaders): uSwirl added to PsrdWarp — gradient vs curl warp blend;
+  mix(gsum, vec2(-gsum.y, gsum.x), uSwirl) in octave loop
+- feat(shaders): uRidge added to PsrdWarp — abs() accumulation blend;
+  orthogonal to uSwirl
+- feat(ui): Swirl and Ridge sliders wired into noise panel fractalSection
 - **PsrdWarp gradient domain warp as uType 40** — added `psrdnoise_grad()` helper returning a `PsrdResult` struct for WebGL ES 1.00 compatibility, mapped `PsrdWarp` at parameter index 40, and wired it under the `Periodic` noise family in `UI.js`. Commit `09fb511`.
 - **psrdnoise2 support as uType 39 (Phase 2)** — implemented Stefan Gustavson's 2D periodic simplex noise (`psrdnoise2`) as noise type 39 under a new `Periodic` noise family. Commit `9fcde26`.
 - **Wired psrdnoise2 parameters** — registered `noise.period.x`, `noise.period.y`, and `noise.alpha` in `ParameterSystem.js`, wired them in the Pipeline rendering path, and integrated them into the Noise panel in `UI.js`. Commit `6d40b20`.
@@ -32,18 +29,13 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
   removed. Commit `d2b7fe2`.
 
 ### Fixed
-- fix(scene3d): _noiseUsed flag includes scene3d.mat.texsrc=Noise —
-  noise RenderTarget now regenerates every frame for 3D material use
-- fix(scene3d): auto-seamless noise period when texsrc=Noise — period
-  auto-computed from uScale (Gustavson period-matching rule)
-- fix(scene3d): triplanar noise sampling eliminates UV seam for all noise
-  types — vObjPos varying + USE_OBJ_NOISE define in SceneManager
-  onBeforeCompile (commit 46f495c)
-- fix(scene3d): T-Displace uses noise texture when texsrc=Noise — 
-  _dispSource selects inputs.noise over DS layer (commit 7e59ad8)
-- fix(scene3d): T-Displace triplanar sampling when texsrc=Noise —
-  uObjNoiseDisp uniform branches getDisplacement to object-space
-  triplanar; displacement now matches visual texture exactly (commit 37dd953)
+- fix(scene3d): _noiseUsed flag includes scene3d.mat.texsrc=Noise
+- fix(scene3d): auto-seamless noise period matched to uScale
+- fix(scene3d): triplanar sampling eliminates UV seam — vObjPos + USE_OBJ_NOISE
+- fix(scene3d): T-Displace uses noise texture when texsrc=Noise
+- fix(scene3d): T-Displace triplanar sampling matches visual texture
+- fix(scene3d): material.color always 0xffffff; MatHue/MatSat route to
+  emissive tinting only; stale hue fallback 240 fixed to 0
 - **PsrdWarp mod() wrapping removed** — eliminated manual `mod()` on
   `warped` coordinates in uType 40 branch; `psrdnoise` handles periodic
   lattice boundaries internally and requires continuous input coordinates.

@@ -40,12 +40,10 @@ All current banks, states, and tables will be permanently replaced with the fact
       in ParameterSystem; check DOM range input step attribute after
       hard refresh (Cmd+Shift+R)
 - [ ] Speed range -10..10 — confirm ParameterSystem change landed
-- [ ] 3D procedural noise on mesh — inject psrdnoise3D (Gustavson 3D
-  variant) directly into material fragment shader using object-space
-  position; bypasses RenderTarget for Periodic family; requires
-  Gustavson 3D GLSL + 3D variants of other noise types (future)
-- [ ] PSRDnoise further development — improve beyond Gustavson/Davis
-  baseline; Swirl and Ridge shipped, period-as-tile-count and gradient
-  lighting still open (see Todo.md existing items)
+- [ ] FIX FIRST: 3D objects still appear gray by default — material.color=white
+  and emissive routing committed but visual result unchanged; root cause
+  not yet identified; investigate ambient/lighting interaction
+- [ ] 3D procedural noise on mesh — psrdnoise3D injected into material
+  shader using object-space position (future enhancement)
 
 

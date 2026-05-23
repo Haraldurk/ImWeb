@@ -410,13 +410,11 @@ Deferred:
   Metal Fix Needed note above).
 
 ### 2026-05-23 — PsrdNoise extensions + 3D material noise fixes (v0.8.9+)
-Two PsrdNoise extensions: uSwirl (gradient vs curl warp blend) and uRidge
-(abs() accumulation blend), both wired into noise panel UI. Three 3D
-material noise fixes: (1) _noiseUsed flag extended so noise animates on
-3D mesh; (2) triplanar sampling via vObjPos/USE_OBJ_NOISE eliminates UV
-seam for all noise types on all mesh shapes; (3) T-Displace now uses noise
-texture and triplanar projection when texsrc=Noise — displacement locks to
-surface, not UV or screen space. SceneManager.js primary file changed.
+uSwirl and uRidge added to PsrdWarp, wired to UI. Six 3D material noise
+fixes: animation, seamless period, triplanar UV seam elimination, T-Displace
+noise routing and triplanar matching. material.color fixed to always white;
+MatHue/MatSat moved to emissive tinting. Default white 3D object appearance
+still not resolved visually — parked for next session first task.
 
 
 ### 2026-05-05 — 2026-05-13 (v0.8.8 → v0.8.9)
