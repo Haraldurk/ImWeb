@@ -24,4 +24,20 @@ All current banks, states, and tables will be permanently replaced with the fact
 - ~~Noise: scale from center (shader fix)~~
 - ~~Noise Phase 2: psrdnoise / Periodic family~~
 - ~~PsrdWarp~~
-  * Note: Period X/Y breaks at Gain>0 (expected — domain warp disrupts tiling); Speed stutters at high values on fine octaves — use Speed 0.1–0.3
+  * Note: tearing fixed; phase jump fixed; organic non-periodic mode
+    restored. Remaining: period tile-count semantics, gradient
+    discontinuity seams at small period with Gain > 0 (deferred).
+
+**PSRDnoise extensions — next session:**
+- [ ] Swirl parameter — blend gradient warp ↔ perpendicular curl warp
+      (uSwirl=0: billowing clouds, uSwirl=1: vortex/cyclone). One
+      uniform, one line: mix(gsum, vec2(-gsum.y, gsum.x), uSwirl)
+- [ ] Ridge mode — abs() on noise accumulation for turbulent ridge
+      and tendril patterns
+- [ ] Period-as-tile-count redesign — pass uScale/uPeriod to psrdnoise
+      so range 0–8 is always visually meaningful regardless of Scale
+- [ ] Investigate Period slider even-only display — step:1 confirmed
+      in ParameterSystem; check DOM range input step attribute after
+      hard refresh (Cmd+Shift+R)
+- [ ] Speed range -10..10 — confirm ParameterSystem change landed
+
