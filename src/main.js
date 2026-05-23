@@ -4907,6 +4907,11 @@ void main() {
     // Generate noise only when a layer is using it as a source (512×512 dedicated target)
     const NOISE_IDX = 5;
     const _noiseUsed = ps.get("layer.fg").value === NOISE_IDX || ps.get("layer.bg").value === NOISE_IDX || (ps.get("layer.ds")?.value ?? 0) === NOISE_IDX || _analogSrcIdx === 3 || ps.get('scene3d.mat.texsrc')?.value === 6;
+    const _scene3dNoise = ps.get('scene3d.mat.texsrc')?.value === 6;
+    const _noiseScale = ps.get('noise.scale')?.value ?? 8;
+    const _seamlessPeriod = _scene3dNoise
+      ? Math.max(2, Math.floor(_noiseScale / 2) * 2)
+      : undefined;
     if (_noiseUsed) noiseTexture = pipeline.generateNoise({
       time: noiseTime,
       phase: noisePhase,
@@ -4927,8 +4932,8 @@ void main() {
       color: ps.get("noise.color").value,
       color1: _noiseColor1,
       color2: _noiseColor2,
-      periodX: ps.get('noise.period.x').value,
-      periodY: ps.get('noise.period.y').value,
+      periodX: _seamlessPeriod ?? ps.get('noise.period.x').value,
+      periodY: _seamlessPeriod ?? ps.get('noise.period.y').value,
       alpha:   ps.get('noise.alpha').value,
     });
 
