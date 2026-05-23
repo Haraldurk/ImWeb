@@ -9,6 +9,9 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
 ## [0.8.9+] — 2026-05-23
 
 ### Added
+- feat(shaders): uRidge param added to PsrdWarp (uType 40) — continuous blend
+  from standard noise (0.0) to abs() ridge/tendril accumulation (1.0);
+  orthogonal to uSwirl, both usable simultaneously
 - feat(shaders): uSwirl param added to PsrdWarp (uType 40) — blends gradient
   domain warp (0.0 = clouds/smoke) vs curl warp (1.0 = vortex/cyclone);
   single mix(gsum, vec2(-gsum.y, gsum.x), uSwirl) in octave loop (commit 3f4ce77)

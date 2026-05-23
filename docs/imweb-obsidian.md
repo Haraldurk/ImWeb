@@ -341,6 +341,14 @@ Claude Code for editing, Gemini for docs, OpenCode for cheap recon.
 
 ## Session log
 
+### 2026-05-23 — uRidge parameter (v0.8.9+)
+
+Added uRidge uniform to PsrdWarp (uType 40) accumulation loop.
+Continuous 0→1 blend: standard noise (0) → abs() ridge/tendril mode (1).
+ridgeN = 1.0 - 2.0 * abs(r.n) per octave, mixed with uRidge.
+Orthogonal to uSwirl — both work simultaneously.
+4 files: shaders/index.js, ParameterSystem.js, Pipeline.js, main.js.
+
 ### 2026-05-23 — uSwirl parameter (v0.8.9+)
 
 Added uSwirl uniform to PsrdWarp (uType 40) domain warp loop.

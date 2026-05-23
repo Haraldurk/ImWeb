@@ -32,7 +32,7 @@ All current banks, states, and tables will be permanently replaced with the fact
 - [x] Swirl parameter — blend gradient warp ↔ perpendicular curl warp
       (uSwirl=0: billowing clouds, uSwirl=1: vortex/cyclone). One
       uniform, one line: mix(gsum, vec2(-gsum.y, gsum.x), uSwirl)
-- [ ] Ridge mode — abs() on noise accumulation for turbulent ridge
+- [x] Ridge mode — abs() on noise accumulation for turbulent ridge
       and tendril patterns
 - [ ] Period-as-tile-count redesign — pass uScale/uPeriod to psrdnoise
       so range 0–8 is always visually meaningful regardless of Scale
