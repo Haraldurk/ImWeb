@@ -879,7 +879,7 @@ export class SceneManager {
 
     if (this.material) {
       const hue = (p.get('scene3d.mat.hue')?.value ?? 240) / 360;
-      const sat = (p.get('scene3d.mat.sat')?.value ?? 50) / 100;
+      const sat = (p.get('scene3d.mat.sat')?.value ?? 0) / 100;
       if (this.material.color) this.material.color.setHSL(hue, sat, sat > 0 ? 0.5 : 1.0);
 
       // Independent emissive color (falls back to base hue when emissiveSat = 0)
