@@ -40,9 +40,8 @@ All current banks, states, and tables will be permanently replaced with the fact
       in ParameterSystem; check DOM range input step attribute after
       hard refresh (Cmd+Shift+R)
 - [ ] Speed range -10..10 — confirm ParameterSystem change landed
-- [ ] FIX FIRST: 3D objects still appear gray by default — material.color=white
-  and emissive routing committed but visual result unchanged; root cause
-  not yet identified; investigate ambient/lighting interaction
+- [x] FIX FIRST: 3D objects still appear gray by default
+- [ ] Textured 3D objects darker than 2D pipeline — see KNOWN-ISSUES.md
 - [ ] 3D procedural noise on mesh — psrdnoise3D injected into material
   shader using object-space position (future enhancement)
 

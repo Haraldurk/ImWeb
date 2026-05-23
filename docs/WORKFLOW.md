@@ -7,14 +7,14 @@ Read before any session. Update when the workflow actually changes.
 
 ## The Tool Roster
 
-| Agent | Terminal | Role | Hard limits |
-|-------|----------|------|-------------|
-| **Claude Chat** | claude.ai | Architecture, planning, cross-file reasoning, CLAUDE.md review, Obsidian updates | Never writes code directly to repo |
-| **Claude Code** | Ghostty ⌘3 | Surgical JS/CSS edits, multi-file wiring, Pipeline/shader work, recon, git | Never scopes its own tasks — receives a pre-written prompt |
-| **Antigravity CLI** | Ghostty ⌘2 | CHANGELOG.md, Quick Reference, README, all markdown/docs | Never touches JS; never feeds raw terminal output back to Claude Code |
-| **Kimi K2.6** | Ghostty ⌘1 | Recon, exploration, reading large files, cross-module tracing | Never edits. Find-only. Feed results to Claude Chat, not directly to Claude Code |
-| **Browser (you)** | — | Visual confirmation after every patch | Only tool that can verify WebGL / Metal rendering |
-
+| Agent                 | Terminal   | Role                                                                             | Hard limits                                                                          |
+| --------------------- | ---------- | -------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| **Claude Chat**       | claude.ai  | Architecture, planning, cross-file reasoning, CLAUDE.md review, Obsidian updates | Never writes code directly to repo                                                   |
+| **Claude Code**       | Ghostty ⌘3 | Surgical JS/CSS edits, multi-file wiring, Pipeline/shader work, recon, git       | Never scopes its own tasks — receives a pre-written prompt                           |
+| **Antigravity (Agy)** | Ghostty ⌘2 | CHANGELOG.md, Quick Reference, README, all markdown/docs                         | Never touches JS; never feeds raw terminal output back to Claude Code                |
+| **Kimi K2**           | Ghostty ⌘1 | Recon, exploration, reading large files, cross-module tracing                    | Never edits. Find-only. Feed results to Claude Chat, not directly to Claude Code     |
+| **DeepSeek v4-Pro**   | Ghostty ⌘4 | Shader math, GLSL logic, algorithmic deep-dives                                  | Never edits. Consult for hard shader/math problems; route output through Claude Chat |
+| **Browser (you)**     | —          | Visual confirmation after every patch                                            | Only tool that can verify WebGL / Metal rendering                                    |
 ### The Codex Review (inside Claude Code)
 
 After any core logic change and before committing, trigger the GPT-5.5 subagent:

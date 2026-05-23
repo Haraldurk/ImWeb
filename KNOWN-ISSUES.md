@@ -75,6 +75,21 @@ than a live GPU ring buffer
 
 ---
 
+### Textured 3D objects darker than 2D background pipeline
+**Symptom:** When a texture source (noise, camera, etc.) is assigned
+to a 3D object, the PBR lighting darkens the texture in shadow regions,
+creating a brightness mismatch with the flat 2D background pipeline.
+Seamless keyer compositing is broken as a result.
+**Status:** Deferred. emissiveMap runtime approach attempted and
+abandoned — shader recompile path unreliable on live WebGLRenderTarget
+textures without material reconstruction.
+**Future candidates:** MeshBasicMaterial swap on texture assign;
+custom onBeforeCompile unlit shader injection.
+**Related files:** src/scene3d/SceneManager.js
+
+---
+
+
 ## Resolved
 
 | Issue | Fixed in | Commit | Notes |
