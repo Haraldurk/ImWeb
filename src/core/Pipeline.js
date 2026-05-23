@@ -647,6 +647,7 @@ export class Pipeline {
     m.uniforms.uLacunarity.value = p.lacunarity;
     m.uniforms.uGain.value       = p.gain;
     m.uniforms.uSwirl.value      = p.swirl ?? 0;
+    m.uniforms.uRidge.value      = p.ridge ?? 0;
     m.uniforms.uSpeed.value      = p.speed;
     m.uniforms.uOffsetX.value    = p.offsetX;
     m.uniforms.uOffsetY.value    = p.offsetY;
@@ -889,6 +890,7 @@ export class Pipeline {
         uLacunarity: { value: 2.0 },
         uGain:       { value: 0.5 },
         uSwirl:      { value: 0.0 },
+        uRidge:      { value: 0.0 },
         uSpeed:      { value: 0.2 },
         uOffsetX:    { value: 0.0 },
         uOffsetY:    { value: 0.0 },

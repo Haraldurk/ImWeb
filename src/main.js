@@ -4917,6 +4917,7 @@ void main() {
       lacunarity: ps.get("noise.lacunarity").value,
       gain: ps.get("noise.gain").value,
       swirl: ps.get('noise.swirl').value,
+      ridge: ps.get('noise.ridge').value,
       speed: ps.get("noise.speed").value,
       offsetX: ps.get("noise.offsetX").value,
       offsetY: ps.get("noise.offsetY").value,
