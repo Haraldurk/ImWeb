@@ -890,7 +890,7 @@ export class SceneManager {
       const emSat = (p.get('scene3d.mat.emissiveSat')?.value ?? 0) / 100;
       if (!this.material.map) {
         if (this.material.emissive) this.material.emissive.set(1, 1, 1);
-        this.material.emissiveIntensity = 1.0;
+        this.material.emissiveIntensity = 0.35;
       } else {
         if (this.material.emissive) {
           this.material.emissive.setHSL(emHue, emSat, 0.15 * emissiveAmt);
