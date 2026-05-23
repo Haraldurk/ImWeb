@@ -379,6 +379,7 @@ export const NOISE_BFG = /* glsl */ `
   uniform float uLacunarity;
   uniform float uGain;
   uniform float uSwirl;
+  uniform float uRidge;
   uniform float uSpeed;
   uniform float uOffsetX;
   uniform float uOffsetY;
@@ -918,7 +919,8 @@ export const NOISE_BFG = /* glsl */ `
           warped,
           sc * period2d,
           alphaPhase);
-        acc   += wt * r.n;
+        float ridgeN = 1.0 - 2.0 * abs(r.n);
+        acc   += wt * mix(r.n, ridgeN, uRidge);
         gsum  += wt * r.g;
         wtSum += wt;
         wt *= 0.5;
