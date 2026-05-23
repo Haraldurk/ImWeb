@@ -4906,7 +4906,7 @@ void main() {
 
     // Generate noise only when a layer is using it as a source (512×512 dedicated target)
     const NOISE_IDX = 5;
-    const _noiseUsed = ps.get("layer.fg").value === NOISE_IDX || ps.get("layer.bg").value === NOISE_IDX || (ps.get("layer.ds")?.value ?? 0) === NOISE_IDX || _analogSrcIdx === 3;
+    const _noiseUsed = ps.get("layer.fg").value === NOISE_IDX || ps.get("layer.bg").value === NOISE_IDX || (ps.get("layer.ds")?.value ?? 0) === NOISE_IDX || _analogSrcIdx === 3 || ps.get('scene3d.mat.texsrc')?.value === 6;
     if (_noiseUsed) noiseTexture = pipeline.generateNoise({
       time: noiseTime,
       phase: noisePhase,
