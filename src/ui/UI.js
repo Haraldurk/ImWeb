@@ -974,7 +974,8 @@ export function buildNoisePanel(ps, contextMenu) {
 
   // ── D) Fractal params — built once, shown/hidden per family ───────────────
   const fractalSection = document.createElement('div');
-  ['noise.octaves', 'noise.lacunarity', 'noise.gain'].forEach(id =>
+  ['noise.octaves', 'noise.lacunarity', 'noise.gain',
+   'noise.swirl', 'noise.ridge'].forEach(id =>
     fractalSection.appendChild(buildParamRow(ps.get(id), contextMenu))
   );
   noiseBot.appendChild(fractalSection);
@@ -1015,7 +1016,7 @@ export function buildNoisePanel(ps, contextMenu) {
       typeGrid.appendChild(btn);
     });
 
-    fractalSection.style.display  = name === 'Fractal'  ? '' : 'none';
+    fractalSection.style.display  = (name === 'Fractal' || name === 'Periodic') ? '' : 'none';
     periodicSection.style.display = name === 'Periodic' ? '' : 'none';
   }
 
