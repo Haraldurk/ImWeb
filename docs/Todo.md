@@ -29,7 +29,7 @@ All current banks, states, and tables will be permanently replaced with the fact
     discontinuity seams at small period with Gain > 0 (deferred).
 
 **PSRDnoise extensions — next session:**
-- [ ] Swirl parameter — blend gradient warp ↔ perpendicular curl warp
+- [x] Swirl parameter — blend gradient warp ↔ perpendicular curl warp
       (uSwirl=0: billowing clouds, uSwirl=1: vortex/cyclone). One
       uniform, one line: mix(gsum, vec2(-gsum.y, gsum.x), uSwirl)
 - [ ] Ridge mode — abs() on noise accumulation for turbulent ridge
