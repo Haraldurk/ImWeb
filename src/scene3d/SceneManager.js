@@ -896,9 +896,6 @@ export class SceneManager {
         if (this.material.emissive) {
           this.material.emissive.set(1, 1, 1);
         }
-        if (this.material.emissiveMap !== undefined) {
-          this.material.emissiveMap = this.material.map;
-        }
         this.material.emissiveIntensity = 1.0;
       }
 
@@ -954,13 +951,10 @@ export class SceneManager {
         this.material.map = useTex
           ? Object.assign(useTex, { wrapS: THREE.RepeatWrapping, wrapT: THREE.RepeatWrapping })
           : null;
-        if (this._adoptedMesh) {
-          this.material.emissive?.set(1, 1, 1);
-          if (this.material.emissiveMap !== undefined)
-            this.material.emissiveMap = this.material.map;
-          this.material.emissiveIntensity = 1.0;
-          this.material.needsUpdate = true;
+        if (this.material.emissiveMap !== undefined) {
+          this.material.emissiveMap = this.material.map;
         }
+        this.material.needsUpdate = true;
       }
 
       // WarpMap displacement on UVs
