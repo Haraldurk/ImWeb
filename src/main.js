@@ -246,7 +246,7 @@ async function main() {
   ps.register({ id:'hypercube.rot.yz',        type:'continuous', value:0.15, min:-2.0, max:2.0,  step:0.01,  group:'hypercube' });
   ps.register({ id:'hypercube.rot.xw',        type:'continuous', value:0.40, min:-2.0, max:2.0,  step:0.01,  group:'hypercube' });
   ps.register({ id:'hypercube.edgeWidth',     type:'continuous', value:1.5,  min:0.5,  max:8.0,  step:0.1,   label:'Edge Width',   group:'hypercube' });
-  ps.register({ id:'hypercube.renderMode',    type:'select',     options:['wireframe','points','both','none'], value:0, label:'Render Mode', group:'hypercube' });
+  ps.register({ id:'hypercube.renderMode',    type:'select',     options:['wireframe','points','both','none'], value:3, label:'Render Mode', group:'hypercube' });
   ps.register({ id:'hypercube.projMode',      type:'select',     options:['perspective','orthographic'],      value:0, label:'Proj Mode',    group:'hypercube' });
   ps.register({ id:'hypercube.faces.active',  type:'toggle',     value:0,                                    label:'Faces',        group:'hypercube' });
   ps.register({ id:'hypercube.faces.opacity', type:'continuous', value:0.5,  min:0.0,  max:1.0,  step:0.01,  label:'Face opacity', group:'hypercube' });
