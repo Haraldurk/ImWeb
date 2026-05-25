@@ -139,7 +139,7 @@ export function buildHypercubePanel(container, hypercube, ps) {
   const renderSec = _section(panel, 'RENDER');
   const _RMODES = ['wireframe', 'points', 'both', 'none'];
   _selectRow(renderSec, 'Mode', _RMODES,
-    ps?.get('hypercube.renderMode')?.value ?? 0,
+    ps?.get('hypercube.renderMode')?.value ?? 3,
     idx => { hypercube.setRenderMode(_RMODES[idx]); ps?.set('hypercube.renderMode', idx); });
   _paramRow(renderSec, 'Pt size',
     ps?.get('hypercube.pointSize')?.value ?? hypercube._pointSize ?? 3.0,
