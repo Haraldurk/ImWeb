@@ -551,7 +551,11 @@ async function main() {
   });
 
   presetMgr.addEventListener('neutralState', () => {
+    const _morphParam = ps.get('global.morphspeed');
+    const _savedMorph = _morphParam?._value ?? 0;
+    if (_morphParam) _morphParam._value = 0; // TODO: migrate to ps.suspendMorph() if added — suppress morph during reset cascade without firing onChange
     ps.getAll().forEach(p => p.reset());
+    if (_morphParam) _morphParam.value = _savedMorph; // intentional: fires onChange → syncDisplay, correct one-time morph readout update after reset
     ps.set('layer.fg', 0);
     ps.set('layer.bg', 0);
     ps.set('layer.ds', 0);
