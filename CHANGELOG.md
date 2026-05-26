@@ -29,6 +29,12 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
   removed. Commit `d2b7fe2`.
 
 ### Fixed
+- `_resetAllParams` (↺ button, Shift+Esc): suspend `global.morphspeed`
+  during `ps.getAll()` reset cascade to prevent interpolated transitions
+  when MORPH is active. Commit 0bfdfe9.
+- `neutralState` listener (○ button, Shift+0): same morph suspension fix
+  applied — was the actual button causing the reported "shifting loop"
+  on reset. Commit 83118ba.
 - fix(scene3d): white default material when no texture assigned
   (emissive floor 0.35, preserves directional lighting and shadows)
 - fix(scene3d): _noiseUsed flag includes scene3d.mat.texsrc=Noise
