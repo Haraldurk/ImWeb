@@ -36,6 +36,8 @@ export class HypercubeObject {
   constructor(scene, options = {}) {
     this._scene          = scene;
     this._dim            = Math.max(3, Math.min(MAX_DIM, options.dim ?? 4));
+    this._lastActiveEdgeIdx = 0;  // lazily computed in _updateBuffers on dim change
+    this._cachedDimForRange = -1; // -1 forces compute on first frame
     this._wDistance      = options.wDistance      ?? 4.0;
     this._scale          = options.scale          ?? 1.0;
     this._projectionMode = options.projectionMode ?? 'perspective';
@@ -393,6 +395,16 @@ export class HypercubeObject {
     }
   }
 
+  _computeLastActiveEdge() {
+    const nActive = vertexCount(this._dim);
+    let last = 0;
+    for (let e = 0; e < this._edges.length; e++) {
+      const [a, , d] = this._edges[e];
+      if (d < this._dim && a < nActive) last = e;
+    }
+    return last;
+  }
+
   _updateBuffers() {
     const s             = this._scale;
     const projBuf       = this._projBuf;
@@ -466,16 +478,20 @@ export class HypercubeObject {
     }
 
     if (this._lines?.visible) {
-      const activeEdges  = edgeCount(this._dim);
-      const activeFloats = activeEdges * 4 * 3;
-      this._lines.geometry.setDrawRange(0, activeEdges * 6);
+      if (this._cachedDimForRange !== this._dim) {
+        this._lastActiveEdgeIdx = this._computeLastActiveEdge();
+        this._cachedDimForRange = this._dim;
+      }
+      const ceiling      = this._lastActiveEdgeIdx + 1;
+      const uploadFloats = ceiling * 4 * 3;
+      this._lines.geometry.setDrawRange(0, ceiling * 6);
       const aEndA = this._lines.geometry.attributes.aEndA;
       const aEndB = this._lines.geometry.attributes.aEndB;
-      aEndA.clearUpdateRanges(); aEndA.addUpdateRange(0, activeFloats); aEndA.needsUpdate = true;
-      aEndB.clearUpdateRanges(); aEndB.addUpdateRange(0, activeFloats); aEndB.needsUpdate = true;
+      aEndA.clearUpdateRanges(); aEndA.addUpdateRange(0, uploadFloats); aEndA.needsUpdate = true;
+      aEndB.clearUpdateRanges(); aEndB.addUpdateRange(0, uploadFloats); aEndB.needsUpdate = true;
       if (writeColors) {
         const aCol = this._lines.geometry.attributes.color;
-        aCol.clearUpdateRanges(); aCol.addUpdateRange(0, activeFloats); aCol.needsUpdate = true;
+        aCol.clearUpdateRanges(); aCol.addUpdateRange(0, uploadFloats); aCol.needsUpdate = true;
       }
     }
 
