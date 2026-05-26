@@ -465,9 +465,19 @@ export class HypercubeObject {
       }
     }
 
-    this._lines.geometry.attributes.aEndA.needsUpdate = true;
-    this._lines.geometry.attributes.aEndB.needsUpdate = true;
-    if (writeColors) this._lines.geometry.attributes.color.needsUpdate = true;
+    if (this._lines?.visible) {
+      const activeEdges  = edgeCount(this._dim);
+      const activeFloats = activeEdges * 4 * 3;
+      this._lines.geometry.setDrawRange(0, activeEdges * 6);
+      const aEndA = this._lines.geometry.attributes.aEndA;
+      const aEndB = this._lines.geometry.attributes.aEndB;
+      aEndA.clearUpdateRanges(); aEndA.addUpdateRange(0, activeFloats); aEndA.needsUpdate = true;
+      aEndB.clearUpdateRanges(); aEndB.addUpdateRange(0, activeFloats); aEndB.needsUpdate = true;
+      if (writeColors) {
+        const aCol = this._lines.geometry.attributes.color;
+        aCol.clearUpdateRanges(); aCol.addUpdateRange(0, activeFloats); aCol.needsUpdate = true;
+      }
+    }
 
     // ── Point buffer ──────────────────────────────────────────────────────
     const pp  = this._ptPosBuf;
@@ -495,8 +505,10 @@ export class HypercubeObject {
       }
     }
 
-    this._points.geometry.attributes.position.needsUpdate = true;
-    if (writeColors) this._points.geometry.attributes.color.needsUpdate = true;
+    if (this._points?.visible) {
+      this._points.geometry.attributes.position.needsUpdate = true;
+      if (writeColors) this._points.geometry.attributes.color.needsUpdate = true;
+    }
 
     if (writeColors) this._colorsDirty = false;
     if (this._lineMat) {
