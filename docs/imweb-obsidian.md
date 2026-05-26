@@ -341,6 +341,42 @@ Claude Code for editing, Gemini for docs, OpenCode for cheap recon.
 
 ## Session log
 
+## 2026-05-26 — Chrome perf investigation + reset cascade fix
+
+**Commits:** 0bfdfe9, 83118ba
+**Version:** v0.8.9
+
+### Investigation (Claude in Chrome)
+- Confirmed --use-angle=gl flag active: ANGLE / AMD Radeon Pro 5500M
+  OpenGL 4.1, not Metal
+- 7 simultaneous WebGL2 contexts identified as GPU overhead — 4
+  anonymous 300×150 preview canvases render every frame regardless of
+  panel visibility. Deferred.
+- 3D Scene pipeline: ~22–30fps GPU-bound. Movie/Camera pipeline: 60fps.
+  CPU 3–4ms throughout — bottleneck is GPU not CPU.
+- Identified two separate reset code paths: ↺ button (_resetAllParams)
+  and ○ button (neutralState listener, Shift+0). User was pressing ○.
+- Root cause of "shifting loop": ps.getAll().forEach(p => p.reset())
+  with MORPH active (2.0s) fired ~80+ onChange events through the morph
+  interpolation system — looked like cycling through all states.
+
+### Fixes
+- 0bfdfe9: suspend morphspeed during _resetAllParams cascade
+- 83118ba: same fix applied to neutralState listener (the actual trigger)
+- Both: _morphParam._value = 0 before loop, restore via .value setter
+  after — one clean syncDisplay update on restore. TODO comment for
+  future ps.suspendMorph() migration left in both locations.
+
+### New issue found
+After neutral reset, layer.fg lands on Movie (1) instead of Camera (0)
+despite explicit ps.set('layer.fg', 0). Accompanied by MovieInput.tick
+NaN currentTime error. Logged in KNOWN-ISSUES.md. Under investigation.
+
+### Deferred
+- 7 WebGL2 contexts: preview canvases should lazy-render only when panel
+  visible (IntersectionObserver gate on rAF loops)
+- 3D pipeline fps: same root cause — no fix this session
+
 ### 2026-05-23 — uRidge parameter (v0.8.9+)
 
 Added uRidge uniform to PsrdWarp (uType 40) accumulation loop.

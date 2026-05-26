@@ -9,7 +9,7 @@ Read before any session. Update when the workflow actually changes.
 
 | Agent                 | Terminal   | Role                                                                             | Hard limits                                                                          |
 | --------------------- | ---------- | -------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
-| **Claude Chat**       | claude.ai  | Architecture, planning, cross-file reasoning, CLAUDE.md review, Obsidian updates | Never writes code directly to repo                                                   |
+| **Claude Chat**       | claude.ai  | Architecture, planning, cross-file reasoning, CLAUDE.md review, Obsidian updates. Has read-only MCP access to ImWeb repo — reads source files, KNOWN-ISSUES.md, docs/, and src/ directly before every prompt. | Never writes code directly to repo. Never executes terminal commands.                |
 | **Claude Code**       | Ghostty ⌘3 | Surgical JS/CSS edits, multi-file wiring, Pipeline/shader work, recon, git       | Never scopes its own tasks — receives a pre-written prompt                           |
 | **Antigravity (Agy)** | Ghostty ⌘2 | CHANGELOG.md, Quick Reference, README, all markdown/docs                         | Never touches JS; never feeds raw terminal output back to Claude Code                |
 | **Kimi K2**           | Ghostty ⌘1 | Recon, exploration, reading large files, cross-module tracing                    | Never edits. Find-only. Feed results to Claude Chat, not directly to Claude Code     |
@@ -43,11 +43,26 @@ Claude Chat reviewing and reformulating it first.
 
 ## Session Open Ritual (mandatory)
 
+**In Ghostty (⌘3 — Claude Code terminal):**
 ```bash
 git log --oneline -5
 git status
 cat KNOWN-ISSUES.md        # check active issues before touching related code
 ```
+
+**In Claude Chat (claude.ai):**
+
+**1. Verify Filesystem Connection:**
+Ensure the `imweb-filesystem` MCP is live and the planner has direct
+repository access. Run the following check:
+`list /Users/haraldurkarlsson/Documents/GitHub/ImWeb/src`
+> **CRITICAL:** If this command fails, stop immediately. Reconnect the
+> filesystem integration before drafting any prompts or planning any fixes.
+
+Claude Chat reads KNOWN-ISSUES.md, docs/WORKFLOW.md, and relevant src/ files
+directly via the read-only filesystem MCP — no copy-paste required.
+Run `imweb-session-open` in any Ghostty tab and paste the output into Claude Chat
+only when git log / git status context is needed for planning.
 
 Read CLAUDE.md if the session touches architecture or introduces a new pattern.
 
@@ -106,9 +121,41 @@ prompts, it does.
 
 ---
 
+## Prompt Relay
+
+Claude Chat writes the finished Claude Code prompt to `/tmp/imweb-next-prompt.txt`.
+Claude Code reads it from there. No manual transcription.
+
+**Workflow:**
+1. Claude Chat plans the task and drafts the full prompt (with all variable names
+   verified via MCP recon)
+2. Claude Chat outputs the prompt with header: `SAVE TO: /tmp/imweb-next-prompt.txt`
+3. You save it: `pbpaste > /tmp/imweb-next-prompt.txt` — or use the `imweb-prompt`
+   shell function in ~/.zshrc
+4. In Ghostty ⌘3: `cat /tmp/imweb-next-prompt.txt` — review, then paste to Claude Code
+
+**Why this matters:**
+Variable names verified by Chat via MCP are exact. Transcription errors are the
+most common source of "wrong name costs a whole session" failures. The file relay
+eliminates that failure mode.
+
+---
+
 ## Recon Pattern
 
-Before any surgical edit, verify the exact target block in the actual file.
+Two distinct recon phases. Both are mandatory. Neither replaces the other.
+
+**Phase 1 — Claude Chat recon (before writing any prompt)**
+Claude Chat reads relevant files via the filesystem MCP before drafting a Claude Code
+prompt. This eliminates wrong variable names, stale line numbers, and bad assumptions
+from prompts before they reach Claude Code.
+
+What Chat reads: KNOWN-ISSUES.md, the target .js file (or the relevant section),
+ParameterSystem registrations, and any related module the task touches.
+
+**Phase 2 — Claude Code recon (before any str_replace edit)**
+Claude Code always verifies the exact target block in the live file before editing.
+It cannot rely on Chat's reading — HMR may have changed the file.
 
 ```bash
 # 1. Find the thing
@@ -200,5 +247,6 @@ Scope examples: `ui`, `scene3d`, `shaders`, `midi`, `preset`, `inputs`, `hypercu
 3. Claude Code runs /codex:review before committing core logic
 4. Kimi K2.6 never edits — find and report only
 5. Antigravity never touches JS
-6. No session starts without `git log` + `git status` + `KNOWN-ISSUES.md`
+6. No session starts without `git log` + `git status` (Claude Code); Claude Chat
+   reads KNOWN-ISSUES.md directly via MCP before drafting any prompt
 7. No session ends without CHANGELOG, Quick Reference, and imweb-obsidian.md sync
