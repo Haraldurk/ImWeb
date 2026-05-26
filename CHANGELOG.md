@@ -29,6 +29,15 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
   removed. Commit `d2b7fe2`.
 
 ### Fixed
+- **HyperCube wireframe framerate** — wireframe was dropping from 60 fps
+  to 30–40 fps while Points mode held 60 fps. Root cause: `_updateBuffers()`
+  unconditionally uploaded full MAX_DIM-sized GPU buffers (~1.1 MB each for
+  `aEndA`/`aEndB`) every frame and drew all 24,576 edges regardless of active
+  dimension. For a 4D cube only 32 edges are active. Fix: `_computeLastActiveEdge()`
+  scans the edge list once per dimension change and stores the buffer index of
+  the last active edge; per-frame `setDrawRange` and `addUpdateRange` are scoped
+  to that ceiling, cutting GPU upload from ~2.2 MB to ~14 KB and draw calls from
+  147,456 to ~1,000 triangles for 4D. Commits 30530de, 853ab66.
 - `_resetAllParams` (↺ button, Shift+Esc): suspend `global.morphspeed`
   during `ps.getAll()` reset cascade to prevent interpolated transitions
   when MORPH is active. Commit 0bfdfe9.
