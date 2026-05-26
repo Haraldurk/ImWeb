@@ -1055,8 +1055,12 @@ async function main() {
   // Reset all params to defaults → clean camera state
   async function _resetAllParams() {
     if (!confirm("Reset all parameters to defaults?")) return;
+    const _morphParam = ps.get('global.morphspeed');
+    const _savedMorph = _morphParam?._value ?? 0;
+    if (_morphParam) _morphParam._value = 0; // TODO: migrate to ps.suspendMorph() if added — suppress morph during reset cascade without firing onChange
     ctrl.clearAllAssignments();
     ps.getAll().forEach((p) => p.reset());
+    if (_morphParam) _morphParam.value = _savedMorph; // intentional: fires onChange → syncDisplay, correct one-time morph readout update after reset
     ps.set("layer.fg", 0); // Camera
     ps.set("layer.bg", 0); // Camera
     ps.set("layer.ds", 0); // Camera
