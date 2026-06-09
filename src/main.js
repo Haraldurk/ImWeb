@@ -39,6 +39,7 @@ import { MovieInput } from "./inputs/MovieInput.js";
 import { StillsBuffer } from "./inputs/StillsBuffer.js";
 import { SequenceBuffer } from "./inputs/SequenceBuffer.js";
 import { VideoDelayLine } from "./inputs/VideoDelayLine.js";
+import { TimeDisplaceEngine } from "./inputs/TimeDisplaceEngine.js";
 import { VectorscopeInput } from "./inputs/VectorscopeInput.js";
 import { SlitScanBuffer } from "./inputs/SlitScanBuffer.js";
 import { VasulkaWarp } from "./inputs/VasulkaWarp.js";
@@ -107,69 +108,6 @@ function _applyLayout() {
 _applyLayout();
 window.addEventListener("resize", _applyLayout);
 
-// --- Metal backend detection ---
-function _detectAngleMetal(renderer) {
-  const gl = renderer.getContext();
-  const ext = gl.getExtension('WEBGL_debug_renderer_info');
-  if (!ext) return false;
-  const r = gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) || '';
-  return r.includes('ANGLE') && r.toLowerCase().includes('metal');
-}
-
-function _detectChromiumBrowser() {
-  const ua = navigator.userAgent;
-  if (ua.includes('Edg/'))                      return 'edge';
-  if (typeof navigator.brave !== 'undefined')   return 'brave';
-  if (ua.includes('OPR/'))                      return 'opera';
-  if (ua.includes('Vivaldi'))                   return 'vivaldi';
-  return 'chrome';
-}
-
-function _showMetalNotice() {
-  if (localStorage.getItem('imweb-metal-notice-dismissed')) return;
-  const browser = _detectChromiumBrowser();
-  const commands = {
-    chrome:  '/Applications/Google\\ Chrome.app/Contents/MacOS/Google\\ Chrome --use-angle=gl',
-    brave:   '/Applications/Brave\\ Browser.app/Contents/MacOS/Brave\\ Browser --use-angle=gl',
-    edge:    '/Applications/Microsoft\\ Edge.app/Contents/MacOS/Microsoft\\ Edge --use-angle=gl',
-    opera:   '/Applications/Opera.app/Contents/MacOS/Opera --use-angle=gl',
-    vivaldi: '/Applications/Vivaldi.app/Contents/MacOS/Vivaldi --use-angle=gl',
-  };
-  const cmd = commands[browser] || 'add --use-angle=gl to your browser launch flags';
-  const browserLabel = browser.charAt(0).toUpperCase() + browser.slice(1);
-
-  const banner = document.createElement('div');
-  banner.id = 'imweb-metal-notice';
-  banner.style.cssText = [
-    'position:fixed;top:0;left:0;right:0;z-index:9999',
-    'background:#2a1f00;border-bottom:1px solid var(--accent)',
-    'color:var(--text-1);font-size:12px;font-family:monospace',
-    'padding:8px 12px;display:flex;gap:12px;align-items:flex-start',
-  ].join(';');
-  banner.innerHTML = `
-    <span style="color:var(--accent);flex-shrink:0">⚠</span>
-    <span>
-      <strong>3D rendering issue detected</strong> — your browser uses the
-      Metal graphics backend, which has a known bug affecting Hypercube
-      geometry and 3D models.<br>
-      <strong>Easiest fix:</strong> open ImWeb in Firefox or Safari.<br>
-      <strong>To keep using ${browserLabel}:</strong> quit it fully, then
-      launch from Terminal:<br>
-      <code style="background:#111;padding:2px 6px;border-radius:3px">${cmd}</code>
-    </span>
-    <button id="imweb-metal-dismiss" style="
-      margin-left:auto;flex-shrink:0;background:none;
-      border:1px solid var(--accent-dim);color:var(--accent-dim);
-      cursor:pointer;padding:2px 8px;border-radius:3px;font-size:11px
-    ">Dismiss</button>
-  `;
-  document.body.prepend(banner);
-  document.getElementById('imweb-metal-dismiss')
-    .addEventListener('click', () => {
-      localStorage.setItem('imweb-metal-notice-dismissed', '1');
-      banner.remove();
-    });
-}
 
 async function main() {
   console.log(
@@ -195,7 +133,6 @@ async function main() {
     powerPreference: "high-performance",
     preserveDrawingBuffer: true, // needed for canvas.toBlob() capture
   });
-  if (_detectAngleMetal(renderer)) _showMetalNotice();
   renderer.setPixelRatio(1); // Performance: render at logical CSS pixels, not Retina 2×. On a Retina display, DPR=2 silently doubles every dimension (e.g. 905×963 → 1810×1926), quadrupling fill cost across 35+ shader passes with no perceptible quality gain on moving video. DPR=1 aligns the canvas buffer with Pipeline render targets and enables 60fps on display-size canvas.
 
   // Fix B — WebGL context loss recovery (GPU switch / second display)
@@ -206,6 +143,7 @@ async function main() {
   renderer.domElement.addEventListener('webglcontextrestored', () => {
     console.warn('[ImWeb] WebGL context restored');
     pipeline.init?.();
+    tdEngine.reinit?.();   // reallocate ring + re-run render-to-layer probe
     applyResolution(ps.get('output.resolution').value);
   }, false);
 
@@ -282,6 +220,22 @@ async function main() {
   const seq2 = new SequenceBuffer(renderer, W, H, 60, "seq2");
   const seq3 = new SequenceBuffer(renderer, W, H, 60, "seq3");
   const videoDelay = new VideoDelayLine(renderer, W, H, 30);
+  // Time-Displace buffer resolution (decoupled from display). Index → [w,h];
+  // null = Native (live display size). Mirrors RENDER_RESOLUTIONS.
+  const TD_BUFFER_RES = [[320, 240], [640, 360], [640, 480], null];
+  const _tdResolveBufRes = (idx) => {
+    const p = TD_BUFFER_RES[idx];
+    if (p) return p;
+    return [canvas.parentElement.clientWidth || W, canvas.parentElement.clientHeight || H]; // Native
+  };
+  const [_tdBW, _tdBH] = _tdResolveBufRes(ps.get("td.bufferResolution").value);
+  const tdEngine = new TimeDisplaceEngine(renderer, _tdBW, _tdBH, 60);
+  tdEngine.setUpscaleFilter(ps.get("td.upscaleFilter").value);
+  ps.get("td.bufferResolution").onChange((v) => {
+    const [bw, bh] = _tdResolveBufRes(v);
+    tdEngine.setBufferResolution(bw, bh);
+  });
+  ps.get("td.upscaleFilter").onChange((v) => tdEngine.setUpscaleFilter(v));
   const vectorscope = new VectorscopeInput();
   const slitScan = new SlitScanBuffer(W, H);
   const vasulkaWarp = new VasulkaWarp(renderer, W, H, 960);
@@ -4551,6 +4505,7 @@ void main() {
     scene3d.resize(rW, rH);
     stillsBuffer.resize(rW, rH);
     videoDelay.resize(rW, rH);
+    tdEngine.resize(rW, rH);
     slitScan.resize(rW, rH);
     vasulkaWarp.resize(rW, rH);
     particles.resize(rW, rH);
@@ -4886,6 +4841,11 @@ void main() {
     const _sdfUsed = ps.get("layer.fg").value === SDF_IDX || ps.get("layer.bg").value === SDF_IDX || (ps.get("layer.ds")?.value ?? 0) === SDF_IDX;
     if (_sdfUsed) sdfGen.tick(ps, dt, _sdfTex, _sdfRef);
 
+    // Time-Displacement Engine — READ + PUBLISH before pipeline.render so
+    // inputs.tdisp is consumable this frame. Ring WRITE happens after render
+    // (beside videoDelay.capture). Engine gates internally on td.enabled.
+    tdEngine.tick(ps, dt);
+
     // Analog TV — on-demand rendering (source index 23)
     const ANALOG_IDX = 23;
     const _analogUsed = ps.get("layer.fg").value === ANALOG_IDX || ps.get("layer.bg").value === ANALOG_IDX || (ps.get("layer.ds")?.value ?? 0) === ANALOG_IDX;
@@ -5000,6 +4960,7 @@ void main() {
       particles: particles.texture,
       sdf: sdfGen.texture,
       analog: analogTV.texture,
+      tdisp: tdEngine.texture,
       seq1: seq1.texture,
       seq2: seq2.texture,
       seq3: seq3.texture,
@@ -5030,6 +4991,21 @@ void main() {
 
     // Capture output into video delay ring buffer
     videoDelay.capture(pipeline.prev.texture);
+
+    // Time-Displacement Engine — ring WRITE. Source is selectable via
+    // td.captureSource: Camera/Movie/Buffer = clean delay (default Camera);
+    // Output = deliberate self-feedback (pipeline.prev). Write runs here (after
+    // render) for all sources — VideoTextures are stable across the frame, and
+    // Output needs the just-composited prev. Engine skips the write if the
+    // selected source is null (e.g. Camera off).
+    let _tdSrc;
+    switch (ps.get("td.captureSource").value) {
+      case 1:  _tdSrc = movieInput.active ? movieInput.currentTexture : null; break;
+      case 2:  _tdSrc = stillsBuffer.texture; break;
+      case 3:  _tdSrc = pipeline.prev.texture; break;
+      default: _tdSrc = camera3d.active ? camera3d.currentTexture : null; // 0 Camera
+    }
+    if (ps.get('td.enabled').value) tdEngine.capture(_tdSrc);
 
     // Vasulka Warp — DEPRECATED: superseded by SequenceBuffer timewarp mode.
     // Kept for backward compatibility. Do not remove until timewarp mode is stable.
