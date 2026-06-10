@@ -3495,6 +3495,7 @@ export function registerCoreParameters(ps) {
     label: "Mode",
     group: "td",
     type: PARAM_TYPE.SELECT,
+    select: true,
     options: ["Slit X", "Slit Y", "Warp Line", "Slit X Sym", "Slit Y Sym", "Radial"],
     value: 0,
   });
