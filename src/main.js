@@ -4806,6 +4806,12 @@ void main() {
     // Tick slit scan (reads from pipeline.prev render target)
     slitScan.tick(renderer, pipeline.prev, ps, dt);
 
+    // td.captureSource may point at a conditionally-ticked generator (Noise, 3D Scene,
+    // 3D Depth, SDF, Analog, Particles) that would otherwise stay null/stale unless a
+    // layer also displays it. Force those generators to tick when TD is capturing from
+    // them — mirrors the layer.fg/bg/ds gating each one already uses below.
+    const _tdCap = ps.get("td.enabled").value ? ps.get("td.captureSource").value : -1;
+
     // Tick particle system — resolve luma mask source (only pre-ticked textures are safe)
     const _pmSrcMap = [
       null, // 0 None
@@ -4821,7 +4827,7 @@ void main() {
       vectorscope.texture, // 10 Vectorscope
     ];
     const PARTICLE_IDX = 16;
-    const _particlesUsed = ps.get("layer.fg").value === PARTICLE_IDX || ps.get("layer.bg").value === PARTICLE_IDX || (ps.get("layer.ds")?.value ?? 0) === PARTICLE_IDX;
+    const _particlesUsed = ps.get("layer.fg").value === PARTICLE_IDX || ps.get("layer.bg").value === PARTICLE_IDX || (ps.get("layer.ds")?.value ?? 0) === PARTICLE_IDX || _tdCap === PARTICLE_IDX;
     if (_particlesUsed) {
       particles.tick(ps, dt, _pmSrcMap[ps.get("particle.masksrc").value] ?? null);
     }
@@ -4845,7 +4851,7 @@ void main() {
           ? _resolveLayerTex(_sdfSrcToLayerIdx[_sdfRefIdx])
           : null;
     const SDF_IDX = 21;
-    const _sdfUsed = ps.get("layer.fg").value === SDF_IDX || ps.get("layer.bg").value === SDF_IDX || (ps.get("layer.ds")?.value ?? 0) === SDF_IDX;
+    const _sdfUsed = ps.get("layer.fg").value === SDF_IDX || ps.get("layer.bg").value === SDF_IDX || (ps.get("layer.ds")?.value ?? 0) === SDF_IDX || _tdCap === SDF_IDX;
     if (_sdfUsed) sdfGen.tick(ps, dt, _sdfTex, _sdfRef);
 
     // Time-Displacement Engine — READ + PUBLISH before pipeline.render so
@@ -4855,7 +4861,7 @@ void main() {
 
     // Analog TV — on-demand rendering (source index 23)
     const ANALOG_IDX = 23;
-    const _analogUsed = ps.get("layer.fg").value === ANALOG_IDX || ps.get("layer.bg").value === ANALOG_IDX || (ps.get("layer.ds")?.value ?? 0) === ANALOG_IDX;
+    const _analogUsed = ps.get("layer.fg").value === ANALOG_IDX || ps.get("layer.bg").value === ANALOG_IDX || (ps.get("layer.ds")?.value ?? 0) === ANALOG_IDX || _tdCap === ANALOG_IDX;
     const _analogSrcIdx = _analogUsed ? ps.get("analog.sourceType").value : -1;
     if (_analogUsed) {
       const ANALOG_SRC_MAP    = [0, 1, 2, 5, 6, 7, 8]; // Camera=0, Movie=1, Buffer=2, Noise=5, 3D=6, Draw=7, Output=8
@@ -4881,7 +4887,7 @@ void main() {
 
     // Generate noise only when a layer is using it as a source (512×512 dedicated target)
     const NOISE_IDX = 5;
-    const _noiseUsed = ps.get("layer.fg").value === NOISE_IDX || ps.get("layer.bg").value === NOISE_IDX || (ps.get("layer.ds")?.value ?? 0) === NOISE_IDX || _analogSrcIdx === 3 || ps.get('scene3d.mat.texsrc')?.value === 6;
+    const _noiseUsed = ps.get("layer.fg").value === NOISE_IDX || ps.get("layer.bg").value === NOISE_IDX || (ps.get("layer.ds")?.value ?? 0) === NOISE_IDX || _analogSrcIdx === 3 || ps.get('scene3d.mat.texsrc')?.value === 6 || _tdCap === NOISE_IDX;
     const _scene3dNoise = ps.get('scene3d.mat.texsrc')?.value === 6;
     const _noiseScale = ps.get('noise.scale')?.value ?? 8;
     const _seamlessPeriod = _scene3dNoise
@@ -4918,7 +4924,8 @@ void main() {
     const depthUsed =
       ps.get("layer.fg").value === DEPTH3D_IDX ||
       ps.get("layer.bg").value === DEPTH3D_IDX ||
-      ps.get("layer.ds").value === DEPTH3D_IDX;
+      ps.get("layer.ds").value === DEPTH3D_IDX ||
+      _tdCap === DEPTH3D_IDX;
     // Auto-enable depth pass when the depth3d source is routed
     if (depthUsed && !ps.get("scene3d.depth.active").value) {
       ps.set("scene3d.depth.active", 1);
@@ -4928,7 +4935,7 @@ void main() {
       ps.get("layer.fg").value === SCENE3D_IDX ||
       ps.get("layer.bg").value === SCENE3D_IDX ||
       ps.get("layer.ds").value === SCENE3D_IDX ||
-      depthUsed || _analogSrcIdx === 4;
+      depthUsed || _analogSrcIdx === 4 || _tdCap === SCENE3D_IDX;
     // scene3d.getHypercube()?.setInstancerTexture(pipeline.prev.texture); — removed: SceneManager now owns instancer texture via _adoptMesh
     renderer.info.autoReset = false;
     renderer.info.reset();
