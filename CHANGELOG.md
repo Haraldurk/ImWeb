@@ -99,6 +99,19 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
   USE_SKINNING / texelFetch bone texture in vertex stage
 - **Noise scale from center** — fixed scale calculation in `NOISE_BFG` 
   (`vUv * uScale` → `(vUv - 0.5) * uScale + 0.5`) in `src/shaders/index.js` to keep scaling centered
+- **Chrome 148 ANGLE/Metal regression — resolved upstream (2026-06-10)**:
+  Google fixed the Chromium bug filed above. Hypercube wireframe edges and
+  the Harabara GLB model now render correctly on Chrome with the default
+  Metal backend; the `--use-angle=gl` workaround is no longer required.
+- **Noise: Sharpen relocated into Noise panel** — `noise.sharpen` is now a
+  per-noise-texture unsharp-mask pass (dedicated `_noiseSharpTarget`,
+  2px kernel radius, up to 8x amount) instead of a global Effects pass.
+  Commits `f2cecb4`, `fff4bfa`.
+- **Noise: Value/Gradient speed-pulsing fixed** — `vNoise` blends a second
+  sample at a half-cell time offset so the quintic ease curve's
+  zero-derivative point on one phase is covered by the other's peak,
+  removing the periodic "speed up/slow down" breathing. Isolated to
+  Gradient/Value (uType==1). Commit `c079d4b`.
 
 ## [0.8.9] — 2026-05-12
 
