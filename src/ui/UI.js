@@ -1044,7 +1044,7 @@ export function buildNoisePanel(ps, contextMenu) {
 
     const hideColor = COLOR_HIDDEN_TYPES.includes(typeIdx);
     colorModeRow.style.display = hideColor ? 'none' : '';
-    if (colorSwatchesEl) colorSwatchesEl.style.display = hideColor ? 'none' : '';
+    if (colorSwatchesEl) colorSwatchesEl.style.display = hideColor ? 'none' : 'flex';
   }
 
   function _renderNoiseFamilyUI(familyIndex) {
