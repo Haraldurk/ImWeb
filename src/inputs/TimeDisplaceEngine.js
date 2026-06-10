@@ -62,7 +62,8 @@ const ARRAY_READ_FRAG = /* glsl */ `
   uniform int   uDirection;  // 0 forward, 1 backward (reflect window)
   uniform float uMaxDelay;   // frames
   uniform float uDelayCurve; // gamma on map value
-  uniform float uScanPos;    // warpLine band centre (0..1, along x)
+  uniform float uScanPos;    // warpLine band centre (0..1, along x); radial centre x
+  uniform float uScanPosY;   // radial centre y (0..1)
   uniform float uScanWidth;  // warpLine band width (fraction of frame)
   uniform float uInvert;     // >0.5 flips map value
   in  vec2 vUv;
@@ -84,9 +85,9 @@ const ARRAY_READ_FRAG = /* glsl */ `
       float maxDist = max(uScanPos, 1.0 - uScanPos);
       m = clamp((dist - uScanWidth * 0.5) / max(maxDist - uScanWidth * 0.5, 1e-5), 0.0, 1.0);
     } else if (uMode == 5) {
-      // radial: live circle centred on (uScanPos, uScanPos), curve ramps
+      // radial: live circle centred on (uScanPos, uScanPosY), curve ramps
       // outward across both width and height
-      float dist    = length(vUv - vec2(uScanPos));
+      float dist    = length(vUv - vec2(uScanPos, uScanPosY));
       float maxDist = 0.70710678; // half-diagonal of unit square (0.5*sqrt(2))
       m = clamp((dist - uScanWidth * 0.5) / max(maxDist - uScanWidth * 0.5, 1e-5), 0.0, 1.0);
     } else {
@@ -158,6 +159,7 @@ export class TimeDisplaceEngine {
         uMaxDelay:   { value: this.frames - 1 },
         uDelayCurve: { value: 1.0 },
         uScanPos:    { value: 0.5 },
+        uScanPosY:   { value: 0.5 },
         uScanWidth:  { value: 0.05 },
         uInvert:     { value: 0.0 },
       },
@@ -305,8 +307,8 @@ export class TimeDisplaceEngine {
 
   /**
    * Read path. Array path: per-pixel analytic gradient delay (td.mode shapes
-   * d(x,y) in the shader). Fallback path: uniform whole-frame delay only
-   * (per-pixel gradient is not expressible with sampler2D) — uses td.debugK.
+   * d(x,y) in the shader). Fallback path: fixed 1-frame delay only
+   * (per-pixel gradient is not expressible with sampler2D).
    * @param {THREE.Texture|null} noiseTex  current Noise generator output,
    *   sampled when td.mode === "Noise" (6).
    */
@@ -328,19 +330,19 @@ export class TimeDisplaceEngine {
       u.uMaxDelay.value   = Math.min(ps.get('td.maxDelay')?.value ?? (this.frames - 1), this.frames - 1);
       u.uDelayCurve.value = ps.get('td.delayCurve')?.value ?? 1.0;
       u.uScanPos.value    = ps.get('td.scanPosition')?.value ?? 0.5;
+      u.uScanPosY.value   = ps.get('td.scanPosY')?.value ?? 0.5;
       u.uScanWidth.value  = ps.get('td.scanWidth')?.value ?? 0.05;
       u.uInvert.value     = ps.get('td.invertMap')?.value ? 1.0 : 0.0;
       r.setRenderTarget(this._outRT);
       r.render(this._arrayReadScene, this._cam);
     } else {
-      // Fallback: uniform delay via debugK; gradient modes unavailable here.
+      // Fallback: fixed 1-frame delay; gradient modes unavailable here.
       if (!this._fallbackGradientWarned) {
-        console.warn('[TimeDisplace] gradient modes are array-texture only; fallback path shows uniform delay (td.debugK).');
+        console.warn('[TimeDisplace] gradient modes are array-texture only; fallback path shows a fixed 1-frame delay.');
         this._fallbackGradientWarned = true;
       }
-      const kReq = Math.round(ps.get('td.debugK')?.value ?? 1);
       const maxBack = Math.max(1, Math.min(this.frames - 1, this._count - 1));
-      const k = Math.max(1, Math.min(maxBack, kReq));
+      const k = Math.max(1, Math.min(maxBack, 1));
       const idx = (this._head - k + this.frames) % this.frames;
       this._rtReadMat.uniforms.uTexture.value = this._ring[idx].texture;
       r.setRenderTarget(this._outRT);
