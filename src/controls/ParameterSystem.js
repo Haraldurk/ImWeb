@@ -1090,7 +1090,7 @@ export function registerCoreParameters(ps) {
   });
   ps.register({
     id: "noise.contrast",
-    label: "Contrast",
+    label: "Gamma",
     group: "noise",
     min: 0.1,
     max: 5.0,

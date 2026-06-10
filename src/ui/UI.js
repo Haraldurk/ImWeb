@@ -960,15 +960,26 @@ export function buildNoisePanel(ps, contextMenu) {
   const NOISE_TYPES = ps.get('noise.type').options;
 
   const NOISE_FAMILY_MAP = {
-    Gradient: [1, 2, 3, 7],
+    Gradient: [1, 2, 3],
     Fractal:  [6, 32, 33, 34, 38],
     Cellular: [4, 5, 15, 16, 17, 18, 20],
-    Warp:     [8, 35, 19, 36, 37],
+    Warp:     [8, 35, 19, 36, 37, 7],
     Pattern:  [21, 22, 23, 13],
     Analog:   [0, 9, 10, 11, 12, 14, 26, 27, 28, 29, 30, 31, 24, 25],
     Periodic: [39, 40],
   };
   const FAMILY_NAMES = Object.keys(NOISE_FAMILY_MAP);
+
+  // Per-type parameter relevance (derived from NOISE_BFG shader audit) —
+  // Octaves/Lacunarity/Gain/Swirl/Ridge/Period/Color visibility depends on
+  // noise.type, not noise.family.
+  const FRACTAL_TYPES = [1, 2, 3, 6, 7, 8, 19, 32, 33, 34, 35, 36, 37, 38];
+  const OCTAVES_TYPES = [...FRACTAL_TYPES, 40];
+  const LACUNARITY_TYPES = FRACTAL_TYPES;
+  const GAIN_TYPES = [...FRACTAL_TYPES, 26, 29, 30, 40];
+  const SWIRL_RIDGE_TYPES = [40];
+  const PERIODIC_TYPES = [39, 40];
+  const COLOR_HIDDEN_TYPES = [7, 27, 30, 36];
 
   // ── A) Family dropdown ────────────────────────────────────────────────────
   noiseTop.appendChild(buildParamRow(ps.get('noise.family'), contextMenu));
@@ -992,7 +1003,9 @@ export function buildNoisePanel(ps, contextMenu) {
   let typeSel = null; // current _mkSelect wrapper for the Type dropdown
 
   // ── C) Color Mode param ───────────────────────────────────────────────────
-  noiseBot.appendChild(buildParamRow(ps.get('noise.color'), contextMenu));
+  const colorModeRow = buildParamRow(ps.get('noise.color'), contextMenu);
+  noiseBot.appendChild(colorModeRow);
+  const colorSwatchesEl = document.getElementById('noise-color-swatches');
 
   // ── Shared params ─────────────────────────────────────────────────────────
   ['noise.scale', 'noise.speed', 'noise.offsetX', 'noise.offsetY',
@@ -1000,15 +1013,19 @@ export function buildNoisePanel(ps, contextMenu) {
     noiseBot.appendChild(buildParamRow(ps.get(id), contextMenu))
   );
 
-  // ── D) Fractal params — built once, shown/hidden per family ───────────────
-  const fractalSection = document.createElement('div');
-  ['noise.octaves', 'noise.lacunarity', 'noise.gain',
-   'noise.swirl', 'noise.ridge'].forEach(id =>
-    fractalSection.appendChild(buildParamRow(ps.get(id), contextMenu))
-  );
-  noiseBot.appendChild(fractalSection);
+  // ── D) Octaves/Lacunarity/Gain + Swirl/Ridge — shown/hidden per noise.type ─
+  const octavesRow = buildParamRow(ps.get('noise.octaves'), contextMenu);
+  const lacunarityRow = buildParamRow(ps.get('noise.lacunarity'), contextMenu);
+  const gainRow = buildParamRow(ps.get('noise.gain'), contextMenu);
+  noiseBot.append(octavesRow, lacunarityRow, gainRow);
 
-  // ── E) Periodic params — built once, shown/hidden per family ─────────────
+  const swirlRidgeSection = document.createElement('div');
+  ['noise.swirl', 'noise.ridge'].forEach(id =>
+    swirlRidgeSection.appendChild(buildParamRow(ps.get(id), contextMenu))
+  );
+  noiseBot.appendChild(swirlRidgeSection);
+
+  // ── E) Periodic params — built once, shown/hidden per noise.type ─────────
   const periodicSection = document.createElement('div');
   ps.set('noise.period.x', Math.round(ps.get('noise.period.x').value));
   ps.set('noise.period.y', Math.round(ps.get('noise.period.y').value));
@@ -1017,7 +1034,19 @@ export function buildNoisePanel(ps, contextMenu) {
   );
   noiseBot.appendChild(periodicSection);
 
-  // ── Internal helper ───────────────────────────────────────────────────────
+  // ── Internal helpers ──────────────────────────────────────────────────────
+  function _renderNoiseTypeUI(typeIdx) {
+    octavesRow.style.display = OCTAVES_TYPES.includes(typeIdx) ? '' : 'none';
+    lacunarityRow.style.display = LACUNARITY_TYPES.includes(typeIdx) ? '' : 'none';
+    gainRow.style.display = GAIN_TYPES.includes(typeIdx) ? '' : 'none';
+    swirlRidgeSection.style.display = SWIRL_RIDGE_TYPES.includes(typeIdx) ? '' : 'none';
+    periodicSection.style.display = PERIODIC_TYPES.includes(typeIdx) ? '' : 'none';
+
+    const hideColor = COLOR_HIDDEN_TYPES.includes(typeIdx);
+    colorModeRow.style.display = hideColor ? 'none' : '';
+    if (colorSwatchesEl) colorSwatchesEl.style.display = hideColor ? 'none' : '';
+  }
+
   function _renderNoiseFamilyUI(familyIndex) {
     const name = FAMILY_NAMES[familyIndex];
     const indices = NOISE_FAMILY_MAP[name];
@@ -1033,20 +1062,19 @@ export function buildNoisePanel(ps, contextMenu) {
       ps.set('noise.type', indices[i]);
     }, 'param-select');
     typeValueEl.appendChild(typeSel);
-
-    fractalSection.style.display  = (name === 'Fractal' || name === 'Periodic') ? '' : 'none';
-    periodicSection.style.display = name === 'Periodic' ? '' : 'none';
   }
 
-  // Keep the Type dropdown in sync when type changes externally (controller, preset restore)
+  // Keep the Type dropdown + per-type sections in sync when type changes
+  // externally (controller, preset restore, family switch)
   ps.get('noise.type').onChange(v => {
     const indices = NOISE_FAMILY_MAP[FAMILY_NAMES[ps.get('noise.family').value]];
     const idx = indices.indexOf(v);
     if (idx >= 0 && typeSel) typeSel.value = idx;
+    _renderNoiseTypeUI(v);
   });
 
   // Family changes (dropdown or preset restore): keep noise.type valid for the
-  // new family, then rebuild the Type dropdown + fractal/periodic sections
+  // new family, then rebuild the Type dropdown
   ps.get('noise.family').onChange(v => {
     const indices = NOISE_FAMILY_MAP[FAMILY_NAMES[v]];
     if (!indices.includes(ps.get('noise.type').value)) ps.set('noise.type', indices[0]);
@@ -1054,6 +1082,7 @@ export function buildNoisePanel(ps, contextMenu) {
   });
 
   _renderNoiseFamilyUI(ps.get('noise.family').value);
+  _renderNoiseTypeUI(ps.get('noise.type').value);
 }
 
 // ── Sequence params panel ─────────────────────────────────────────────────────
