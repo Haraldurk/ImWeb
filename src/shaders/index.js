@@ -409,6 +409,12 @@ export const NOISE_BFG = /* glsl */ `
     return fract(sin(dot(p, vec2(12.9898, 78.233)) + seed * 37.719) * 43758.5453123);
   }
 
+  // Cross-fades between consecutive "static refresh" frames so low Speed
+  // values dissolve smoothly instead of holding then popping to a new frame.
+  float hashPosSmooth(vec2 p, float seed, float fr, float frFrac) {
+    return mix(hashPos(p, seed + fr), hashPos(p, seed + fr + 1.0), frFrac);
+  }
+
   vec3 h3(vec3 p) {
     p = fract(p * vec3(0.1031, 0.1030, 0.0973));
     p += dot(p, p.yxz + 33.33);
@@ -741,7 +747,10 @@ export const NOISE_BFG = /* glsl */ `
     vec3  p  = vec3((vUv - 0.5) * uScale + 0.5 + vec2(uOffsetX, uOffsetY), t);
     // Shared "static refresh rate" for Analog-family per-pixel noise types —
     // Speed=0 freezes on a single frame; higher Speed = faster re-randomization.
-    float fr = floor(uTime * uSpeed * 24.0);
+    // frFrac dissolves between fr and fr+1 so low Speed feels smooth, not stutter-stepped.
+    float frBase = uTime * uSpeed * 24.0;
+    float fr     = floor(frBase);
+    float frFrac = fract(frBase);
 
     float n     = 0.0;
     vec2  curlV = vec2(0.0);
@@ -751,7 +760,7 @@ export const NOISE_BFG = /* glsl */ `
     if (uType == 0) {
         // Speed = static refresh rate (shared fr); Scale has minimal visual
         // effect by design — true white noise is scale-invariant.
-        n = hashPos(p.xy, uSeed + fr);                    // White Noise
+        n = hashPosSmooth(p.xy, uSeed, fr, frFrac);       // White Noise
     } else if (uType == 1) {
       n = fbm(p, oct, uLacunarity, uGain, 0);           // Value
     } else if (uType == 2) {
@@ -772,21 +781,21 @@ export const NOISE_BFG = /* glsl */ `
     } else if (uType == 8) {
       n = domainWarp(p, oct, uLacunarity, uGain);       // Domain Warp
     } else if (uType == 9) {
-      n = hashPos(p.xy, uSeed + fr);                    // White
+      n = hashPosSmooth(p.xy, uSeed, fr, frFrac);       // White
     } else if (uType == 10) {
       float vig = 1.0 - smoothstep(0.3, 0.8, length(p.xy/uScale - 0.5) * 2.0);
-      n = hashPos(p.xy, uSeed + fr) * (0.75 + vig * 0.5); // Film Grain
+      n = hashPosSmooth(p.xy, uSeed, fr, frFrac) * (0.75 + vig * 0.5); // Film Grain
     } else if (uType == 11) {
-      float u1 = hashPos(p.xy, uSeed + fr);
-      float u2 = hashPos(p.xy + 17.0, uSeed + fr + 91.7);
+      float u1 = hashPosSmooth(p.xy, uSeed, fr, frFrac);
+      float u2 = hashPosSmooth(p.xy + 17.0, uSeed + 91.7, fr, frFrac);
       float gz = sqrt(-2.0 * log(max(u1, 0.0001))) * cos(6.2832 * u2);
       n = clamp(gz * 0.15 + 0.5, 0.0, 1.0);           // Gaussian
     } else if (uType == 12) {
-      n = hashPos(p.xy, uSeed + fr);                    // TV Static
+      n = hashPosSmooth(p.xy, uSeed, fr, frFrac);       // TV Static
     } else if (uType == 13) {
       n = mod(p.y * 20.0, 1.0) < 0.5 + sin(t) * 0.1 ? 1.0 : 0.0; // Scan Lines
     } else if (uType == 14) {
-      float hv = hashPos(p.xy, uSeed + fr);
+      float hv = hashPosSmooth(p.xy, uSeed, fr, frFrac);
       float density = clamp(uGain, 0.0, 1.0) * 0.15;  // uGain=0.5 → ~7.5% salt + ~7.5% pepper
       n = hv < density ? 0.0 : hv > (1.0 - density) ? 1.0 : 0.5; // Salt-and-Pepper
     } else if (uType == 15) {
@@ -841,8 +850,11 @@ export const NOISE_BFG = /* glsl */ `
     } else if (uType == 24) {
       // Interleaved Gradient Noise (Jimenez) — tuned for integer pixel coords;
       // uScale/uOffset intentionally have no effect (dithering is resolution-locked).
-      vec2 uv23 = gl_FragCoord.xy + uSeed + fr;
-      n = fract(52.9829189 * fract(dot(uv23, vec2(0.06711056, 0.00583715)))); // Blue Noise
+      vec2  uv23 = gl_FragCoord.xy + uSeed;
+      vec2  ign  = vec2(0.06711056, 0.00583715);
+      float bnA  = fract(52.9829189 * fract(dot(uv23 + fr, ign)));
+      float bnB  = fract(52.9829189 * fract(dot(uv23 + fr + 1.0, ign)));
+      n = mix(bnA, bnB, frFrac);                        // Blue Noise
     } else if (uType == 25) {
       // 3x3 neighbor search — avoids tile-seam cuts from edge-adjacent jittered points
       vec2 gp = p.xy * 0.2;
@@ -852,18 +864,20 @@ export const NOISE_BFG = /* glsl */ `
       for (int dy = -1; dy <= 1; dy++) {
         for (int dx = -1; dx <= 1; dx++) {
           vec2 nb = vec2(float(dx), float(dy));
-          vec2 jitter = h2(cell + nb + uSeed + fr + 19.4) * 0.7 + 0.15;
+          vec2 jitterA = h2(cell + nb + uSeed + fr + 19.4) * 0.7 + 0.15;
+          vec2 jitterB = h2(cell + nb + uSeed + fr + 20.4) * 0.7 + 0.15;
+          vec2 jitter = mix(jitterA, jitterB, frFrac);
           minD = min(minD, length(local - nb - jitter));
         }
       }
       n = 1.0 - smoothstep(0.05, 0.3, minD);           // Poisson Disc
     } else if (uType == 26) {
-      float sp = hashPos(p.xy, uSeed + fr);
+      float sp = hashPosSmooth(p.xy, uSeed, fr, frFrac);
       n = clamp(0.5 + (sp - 0.5) * 2.0 * uGain, 0.0, 1.0); // Speckle
     } else if (uType == 27) {
-      r_rgb = hashPos(p.xy + vec2(0.1, 0.0), uSeed + fr);
-      g_rgb = hashPos(p.xy + vec2(0.0, 0.1), uSeed + fr + 0.37);
-      b_rgb = hashPos(p.xy + vec2(0.1, 0.1), uSeed + fr + 0.71);
+      r_rgb = hashPosSmooth(p.xy + vec2(0.1, 0.0), uSeed, fr, frFrac);
+      g_rgb = hashPosSmooth(p.xy + vec2(0.0, 0.1), uSeed + 0.37, fr, frFrac);
+      b_rgb = hashPosSmooth(p.xy + vec2(0.1, 0.1), uSeed + 0.71, fr, frFrac);
       n = (r_rgb + g_rgb + b_rgb) / 3.0;               // RGB Shift
     } else if (uType == 28) {
       float line = floor(p.y * 10.0);
@@ -877,18 +891,18 @@ export const NOISE_BFG = /* glsl */ `
       float signal = h1(vec3(p.x * 0.3 + shift2 + uSeed, p.y * 0.3 + uSeed, floor(uTime * 30.0)));
       n = mix(signal, 1.0, dropout * 0.9);             // VCR Noise
     } else if (uType == 30) {
-      r_rgb = clamp(0.5 + (hashPos(p.xy + vec2(0.3, 0.0), uSeed + fr) - 0.5) * 2.0 * uGain, 0.0, 1.0);
-      g_rgb = clamp(0.5 + (hashPos(p.xy + vec2(0.0, 0.3), uSeed + fr + 0.37) - 0.5) * 2.0 * uGain, 0.0, 1.0);
-      b_rgb = clamp(0.5 + (hashPos(p.xy + vec2(0.3, 0.3), uSeed + fr + 0.71) - 0.5) * 2.0 * uGain, 0.0, 1.0);
+      r_rgb = clamp(0.5 + (hashPosSmooth(p.xy + vec2(0.3, 0.0), uSeed, fr, frFrac) - 0.5) * 2.0 * uGain, 0.0, 1.0);
+      g_rgb = clamp(0.5 + (hashPosSmooth(p.xy + vec2(0.0, 0.3), uSeed + 0.37, fr, frFrac) - 0.5) * 2.0 * uGain, 0.0, 1.0);
+      b_rgb = clamp(0.5 + (hashPosSmooth(p.xy + vec2(0.3, 0.3), uSeed + 0.71, fr, frFrac) - 0.5) * 2.0 * uGain, 0.0, 1.0);
       n = (r_rgb + g_rgb + b_rgb) / 3.0;               // Speckle Colour
     } else if (uType == 31) {
       // Animated per-row gradient ramps quantized into bands — reads as
       // "sorted" pixel runs (true per-pixel sort isn't possible, no neighbor access)
       float row = floor(p.y * 5.0);
-      float rowSeed = hashPos(vec2(row, 0.0), uSeed + fr);
+      float rowSeed = hashPosSmooth(vec2(row, 0.0), uSeed, fr, frFrac);
       float ramp = fract(p.x * 0.5 + rowSeed * 4.0);
       float bands = floor(ramp * 8.0) / 8.0;
-      float detail = hashPos(p.xy, uSeed + fr + 0.5) * 0.1;
+      float detail = hashPosSmooth(p.xy, uSeed + 0.5, fr, frFrac) * 0.1;
       n = clamp(bands + detail, 0.0, 1.0);             // Pixel Sort
     } else if (uType == 32) {
       n = fbm(p, oct, uLacunarity, uGain, 1);          // fBm (Perlin)
