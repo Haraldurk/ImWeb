@@ -53,11 +53,12 @@ const ARRAY_READ_FRAG = /* glsl */ `
   precision highp float;
   precision highp sampler2DArray;
   uniform sampler2DArray tRing;
+  uniform sampler2D uNoiseTex; // td.mode==6: per-pixel delay map source
   uniform int   uHead;       // next-write slot; newest capture = head-1
   uniform int   uN;          // ring depth
   uniform int   uCount;      // captured frames so far (clamp to real history)
   uniform int   uMode;       // 0 slitScanX, 1 slitScanY, 2 warpLine,
-                              // 3 slitScanXSym, 4 slitScanYSym, 5 radial
+                              // 3 slitScanXSym, 4 slitScanYSym, 5 radial, 6 noise
   uniform int   uDirection;  // 0 forward, 1 backward (reflect window)
   uniform float uMaxDelay;   // frames
   uniform float uDelayCurve; // gamma on map value
@@ -82,12 +83,16 @@ const ARRAY_READ_FRAG = /* glsl */ `
       float dist    = abs(p - uScanPos);
       float maxDist = max(uScanPos, 1.0 - uScanPos);
       m = clamp((dist - uScanWidth * 0.5) / max(maxDist - uScanWidth * 0.5, 1e-5), 0.0, 1.0);
-    } else {
+    } else if (uMode == 5) {
       // radial: live circle centred on (uScanPos, uScanPos), curve ramps
       // outward across both width and height
       float dist    = length(vUv - vec2(uScanPos));
       float maxDist = 0.70710678; // half-diagonal of unit square (0.5*sqrt(2))
       m = clamp((dist - uScanWidth * 0.5) / max(maxDist - uScanWidth * 0.5, 1e-5), 0.0, 1.0);
+    } else {
+      // noise: per-pixel delay driven by the Noise generator's output
+      vec3 nc = texture(uNoiseTex, vUv).rgb;
+      m = dot(nc, vec3(0.299, 0.587, 0.114)); // luminance, robust across noise.color modes
     }
     if (uInvert > 0.5) m = 1.0 - m;
     float d = pow(clamp(m, 0.0, 1.0), uDelayCurve) * uMaxDelay;
@@ -144,6 +149,7 @@ export class TimeDisplaceEngine {
       glslVersion:    THREE.GLSL3,
       uniforms: {
         tRing:       { value: null },
+        uNoiseTex:   { value: null },
         uHead:       { value: 0 },
         uN:          { value: this.frames },
         uCount:      { value: 0 },
@@ -301,8 +307,10 @@ export class TimeDisplaceEngine {
    * Read path. Array path: per-pixel analytic gradient delay (td.mode shapes
    * d(x,y) in the shader). Fallback path: uniform whole-frame delay only
    * (per-pixel gradient is not expressible with sampler2D) — uses td.debugK.
+   * @param {THREE.Texture|null} noiseTex  current Noise generator output,
+   *   sampled when td.mode === "Noise" (6).
    */
-  tick(ps, dt) {
+  tick(ps, dt, noiseTex = null) {
     if (!ps.get('td.enabled').value) return; // bypass: keep last output
 
     const r = this.renderer;
@@ -311,6 +319,7 @@ export class TimeDisplaceEngine {
     if (this._useArray) {
       const u = this._arrayReadMat.uniforms;
       u.tRing.value       = this._arrayRT.texture;
+      u.uNoiseTex.value   = noiseTex ?? null;
       u.uHead.value       = this._head;
       u.uN.value          = this.frames;
       u.uCount.value      = this._count;
