@@ -461,6 +461,7 @@ export function registerCoreParameters(ps) {
     "SDF",      // 21
     "VWarp",    // 22
     "Analog",   // 23
+    "TimeDisp", // 24
   ];
 
   ps.register({
@@ -3461,6 +3462,122 @@ export function registerCoreParameters(ps) {
     label: "SlitClear",
     group: "slitscan",
     type: PARAM_TYPE.TRIGGER,
+  });
+
+  // ── Time-Displacement Engine (Steina "Warp" / slit-scan) ──────────────────
+  // Phase 1: enable + k-steps-back debug read. Map/range/shape params land in
+  // later phases. Canonical source key is `tdisp` (label "TimeDisp", index 24).
+  ps.register({
+    id: "td.enabled",
+    label: "TimeDisp",
+    group: "td",
+    type: PARAM_TYPE.TOGGLE,
+    value: 0,
+  });
+  // captureSource = what gets WRITTEN into the ring (distinct from mapSource,
+  // Phase 4, which drives the per-pixel delay). Default Camera = clean delay.
+  // Mirrors the Layers source list (SOURCES) for full parity. "Output" and
+  // "TimeDisp" are deliberate self-feedback (needs feedbackGain/clamp, Phase 4).
+  // Conditionally-ticked sources (3D Scene, 3D Depth, SDF, Analog) only update
+  // when a layer also uses them this frame; otherwise capture is a no-op.
+  ps.register({
+    id: "td.captureSource",
+    label: "Capture src",
+    group: "td",
+    type: PARAM_TYPE.SELECT,
+    options: SOURCES,
+    value: 0,
+  });
+  // Phase 3 — analytic gradient read (array-texture path). mode shapes the
+  // per-pixel delay d(x,y); maxDelay clamped ≤ bufferFrames−1 (N=60) in tick.
+  ps.register({
+    id: "td.mode",
+    label: "Mode",
+    group: "td",
+    type: PARAM_TYPE.SELECT,
+    options: ["Slit X", "Slit Y", "Warp Line"],
+    value: 0,
+  });
+  // Phase 5a — buffer/output resolution decoupling. bufferResolution sets the
+  // engine's working size (ring + read); the compositor upscales to display
+  // with upscaleFilter. Native = display size (no decoupling).
+  ps.register({
+    id: "td.bufferResolution",
+    label: "Buffer res",
+    group: "td",
+    type: PARAM_TYPE.SELECT,
+    options: ["320×240", "640×360", "640×480", "Native"],
+    value: 1,
+  });
+  ps.register({
+    id: "td.upscaleFilter",
+    label: "Upscale",
+    group: "td",
+    type: PARAM_TYPE.SELECT,
+    options: ["Nearest", "Linear"],
+    value: 1,
+  });
+  ps.register({
+    id: "td.maxDelay",
+    label: "Max delay",
+    group: "td",
+    min: 1,
+    max: 59,
+    value: 59,
+    step: 1,
+    unit: "fr",
+  });
+  ps.register({
+    id: "td.delayCurve",
+    label: "Curve",
+    group: "td",
+    min: 0.1,
+    max: 4.0,
+    value: 1.0,
+    step: 0.05,
+  });
+  ps.register({
+    id: "td.direction",
+    label: "Direction",
+    group: "td",
+    type: PARAM_TYPE.SELECT,
+    options: ["Forward", "Backward"],
+    value: 0,
+  });
+  ps.register({
+    id: "td.scanPosition",
+    label: "Scan pos",
+    group: "td",
+    min: 0,
+    max: 1,
+    value: 0.5,
+    step: 0.01,
+  });
+  ps.register({
+    id: "td.scanWidth",
+    label: "Scan width",
+    group: "td",
+    min: 0,
+    max: 1,
+    value: 0.05,
+    step: 0.01,
+  });
+  ps.register({
+    id: "td.invertMap",
+    label: "Invert map",
+    group: "td",
+    type: PARAM_TYPE.TOGGLE,
+    value: 0,
+  });
+  ps.register({
+    id: "td.debugK",
+    label: "Debug k-back",
+    group: "td",
+    min: 1,
+    max: 59,
+    value: 1,
+    step: 1,
+    unit: "fr",
   });
 
   // ── Vasulka Warp (Temporal Slit-Scan) ────────────────────────────────────

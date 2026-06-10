@@ -223,6 +223,14 @@ async function main() {
   // Time-Displace buffer resolution (decoupled from display). Index → [w,h];
   // null = Native (live display size). Mirrors RENDER_RESOLUTIONS.
   const TD_BUFFER_RES = [[320, 240], [640, 360], [640, 480], null];
+  // td.captureSource → inputs key, mirroring the Layers SOURCES list (index-aligned).
+  // null = Output (pipeline.prev.texture, resolved separately — not part of `inputs`).
+  const TD_CAPTURE_KEYS = [
+    'camera', 'movie', 'buffer', 'color', 'color2', 'noise', 'scene3d', 'draw',
+    null, 'bg1', 'bg2', 'text', 'sound', 'delay',
+    'scope', 'slitscan', 'particles', 'seq1', 'seq2', 'seq3', 'depth3d', 'sdf',
+    'vwarp', 'analog', 'tdisp',
+  ];
   const _tdResolveBufRes = (idx) => {
     const p = TD_BUFFER_RES[idx];
     if (p) return p;
@@ -4991,19 +4999,16 @@ void main() {
     // Capture output into video delay ring buffer
     videoDelay.capture(pipeline.prev.texture);
 
-    // Time-Displacement Engine — ring WRITE. Source is selectable via
-    // td.captureSource: Camera/Movie/Buffer = clean delay (default Camera);
-    // Output = deliberate self-feedback (pipeline.prev). Write runs here (after
-    // render) for all sources — VideoTextures are stable across the frame, and
-    // Output needs the just-composited prev. Engine skips the write if the
-    // selected source is null (e.g. Camera off).
-    let _tdSrc;
-    switch (ps.get("td.captureSource").value) {
-      case 1:  _tdSrc = movieInput.active ? movieInput.currentTexture : null; break;
-      case 2:  _tdSrc = stillsBuffer.texture; break;
-      case 3:  _tdSrc = pipeline.prev.texture; break;
-      default: _tdSrc = camera3d.active ? camera3d.currentTexture : null; // 0 Camera
-    }
+    // Time-Displacement Engine — ring WRITE. captureSource mirrors the Layers
+    // SOURCES list (TD_CAPTURE_KEYS, index-aligned). Most sources resolve via
+    // `inputs` (already built above for pipeline.render this frame); "Output"
+    // reads pipeline.prev.texture (post-composite feedback); "TimeDisp" reads
+    // TD's own output (recursive echo) — both deliberate self-feedback. Write
+    // runs here (after render) so Output/inputs reflect this frame's composite.
+    // Conditionally-ticked sources (3D Scene, 3D Depth, SDF, Analog) are null
+    // unless a layer also uses them this frame — capture() no-ops on null.
+    const _tdKey = TD_CAPTURE_KEYS[ps.get("td.captureSource").value];
+    const _tdSrc = _tdKey === null ? pipeline.prev.texture : (inputs[_tdKey] ?? null);
     if (ps.get('td.enabled').value) tdEngine.capture(_tdSrc);
 
     // Vasulka Warp — DEPRECATED: superseded by SequenceBuffer timewarp mode.
