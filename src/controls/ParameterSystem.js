@@ -3556,6 +3556,15 @@ export function registerCoreParameters(ps) {
     step: 0.01,
   });
   ps.register({
+    id: "td.scanPosY",
+    label: "Scan pos Y",
+    group: "td",
+    min: 0,
+    max: 1,
+    value: 0.5,
+    step: 0.01,
+  });
+  ps.register({
     id: "td.scanWidth",
     label: "Scan width",
     group: "td",
@@ -3570,16 +3579,6 @@ export function registerCoreParameters(ps) {
     group: "td",
     type: PARAM_TYPE.TOGGLE,
     value: 0,
-  });
-  ps.register({
-    id: "td.debugK",
-    label: "Debug k-back",
-    group: "td",
-    min: 1,
-    max: 119,
-    value: 1,
-    step: 1,
-    unit: "fr",
   });
 
   // ── Vasulka Warp (Temporal Slit-Scan) ────────────────────────────────────

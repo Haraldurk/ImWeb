@@ -815,6 +815,7 @@ export function buildMappingPanels(ps, contextMenu) {
     // 'particle-params': ps.getGroup('particle'),
     'sdf-params':          ps.getGroup('sdf'),
     'delay-params':        ps.getGroup('delay'),
+    'tdisp-params':        ps.getGroup('td'),
     // VasulkaWarp — hidden, experimental, architecture unresolved. See dev notes.
     // 'vasulka-params':   ps.getGroup('vasulka'),
     'vectorscope-params':  ps.getGroup('vectorscope'),
@@ -838,6 +839,29 @@ export function buildMappingPanels(ps, contextMenu) {
     el.innerHTML = '';
     params.forEach(p => el.appendChild(buildParamRow(p, contextMenu)));
   });
+
+  // ── Time Displace: per-mode Scan pos / Scan pos Y / Scan width visibility ──
+  // Slit X/Y (0,1) and Noise (6) use neither; Warp Line/Slit Sym/Radial (2-5)
+  // use Scan pos + Scan width; Radial (5) alone also uses Scan pos Y.
+  {
+    const tdEl = document.getElementById('tdisp-params');
+    const scanPosRow  = tdEl?.querySelector('[data-param-id="td.scanPosition"]');
+    const scanPosYRow = tdEl?.querySelector('[data-param-id="td.scanPosY"]');
+    const scanWidthRow = tdEl?.querySelector('[data-param-id="td.scanWidth"]');
+    if (scanPosRow && scanPosYRow && scanWidthRow) {
+      const SCAN_MODES = [2, 3, 4, 5];
+      const RADIAL_MODE = 5;
+      const modeParam = ps.get('td.mode');
+      const refreshTdScanRows = () => {
+        const showScan = SCAN_MODES.includes(modeParam.value);
+        scanPosRow.style.display   = showScan ? '' : 'none';
+        scanWidthRow.style.display = showScan ? '' : 'none';
+        scanPosYRow.style.display  = modeParam.value === RADIAL_MODE ? '' : 'none';
+      };
+      refreshTdScanRows();
+      modeParam.onChange(refreshTdScanRows);
+    }
+  }
 
   // ── Particle panel: grouped by function ──────────────────────────────────────
   const allParticleP = ps.getGroup('particle');
