@@ -2686,7 +2686,6 @@ async function main() {
     movieInput.active = !!v;
     if (v && movieInput.currentClip) {
       movieInput.currentClip.video.play().catch(() => {});
-      ps.set("layer.fg", 1); // 1 = Movie
     } else if (!v && movieInput.currentClip) {
       movieInput.currentClip.video.pause();
     }
