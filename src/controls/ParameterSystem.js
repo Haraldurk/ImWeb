@@ -991,9 +991,10 @@ export function registerCoreParameters(ps) {
   }); // default: WhiteNoise
   ps.register({
     id: 'noise.family',
-    label: 'NoiseFamily',
+    label: 'Family',
     group: 'noise',
     type: PARAM_TYPE.SELECT,
+    select: true,
     options: ['Gradient', 'Fractal', 'Cellular', 'Warp', 'Pattern', 'Analog', 'Periodic'],
     value: 0,
   });

@@ -105,6 +105,14 @@ function _mkSelect(opts, initVal, onChangeVal, extraClass = '') {
     },
   });
 
+  // Tear down: detach the body-level menu and its outside-click listener.
+  // Required before discarding an instance whose options need to change —
+  // _mkSelect has no setOptions(), so callers rebuild from scratch.
+  wrap._destroy = () => {
+    document.removeEventListener('click', _outside);
+    menu?.remove();
+  };
+
   return wrap;
 }
 
@@ -962,30 +970,26 @@ export function buildNoisePanel(ps, contextMenu) {
   };
   const FAMILY_NAMES = Object.keys(NOISE_FAMILY_MAP);
 
-  // ── A) Family row ─────────────────────────────────────────────────────────
-  const familyRow = document.createElement('div');
-  familyRow.className = 'param-btn-group';
-  const familyBtns = FAMILY_NAMES.map((name, i) => {
-    const btn = document.createElement('button');
-    btn.className = 'param-opt-btn' + (i === ps.get('noise.family').value ? ' active' : '');
-    btn.textContent = name.slice(0, 5);
-    btn.title = name;
-    btn.addEventListener('click', () => {
-      const curType = ps.get('noise.type').value;
-      const indices = NOISE_FAMILY_MAP[name];
-      if (!indices.includes(curType)) ps.set('noise.type', indices[0]);
-      ps.set('noise.family', i);
-      _renderNoiseFamilyUI(i);
-    });
-    familyRow.appendChild(btn);
-    return btn;
-  });
-  noiseTop.appendChild(familyRow);
+  // ── A) Family dropdown ────────────────────────────────────────────────────
+  noiseTop.appendChild(buildParamRow(ps.get('noise.family'), contextMenu));
 
-  // ── B) Type grid ──────────────────────────────────────────────────────────
-  const typeGrid = document.createElement('div');
-  typeGrid.className = 'param-btn-group noise-type-grid';
-  noiseTop.appendChild(typeGrid);
+  // ── B) Type dropdown — rebuilt per family ─────────────────────────────────
+  const typeRow = document.createElement('div');
+  typeRow.className = 'param-row select-row';
+  typeRow.dataset.paramId = 'noise.type';
+  const typeLabel = document.createElement('span');
+  typeLabel.className = 'param-label';
+  typeLabel.textContent = 'Type';
+  const typeCtrl = document.createElement('span');
+  typeCtrl.className = 'param-ctrl';
+  const typeValueEl = document.createElement('span');
+  typeValueEl.className = 'param-value';
+  typeRow.appendChild(typeLabel);
+  typeRow.appendChild(typeCtrl);
+  typeRow.appendChild(typeValueEl);
+  noiseTop.appendChild(typeRow);
+
+  let typeSel = null; // current _mkSelect wrapper for the Type dropdown
 
   // ── C) Color Mode param ───────────────────────────────────────────────────
   noiseBot.appendChild(buildParamRow(ps.get('noise.color'), contextMenu));
@@ -1016,43 +1020,38 @@ export function buildNoisePanel(ps, contextMenu) {
   // ── Internal helper ───────────────────────────────────────────────────────
   function _renderNoiseFamilyUI(familyIndex) {
     const name = FAMILY_NAMES[familyIndex];
-    familyBtns.forEach((b, j) => b.classList.toggle('active', j === familyIndex));
-
-    // Rebuild type grid for new family
-    typeGrid.innerHTML = '';
     const indices = NOISE_FAMILY_MAP[name];
     const curType = ps.get('noise.type').value;
-    indices.forEach(typeIdx => {
-      const btn = document.createElement('button');
-      btn.className = 'param-opt-btn' + (typeIdx === curType ? ' active' : '');
-      const label = NOISE_TYPES[typeIdx] ?? String(typeIdx);
-      const abbr = label.includes('-') ? label.split('-').pop().slice(0, 6)
-                 : label.length <= 6   ? label : label.slice(0, 5);
-      btn.textContent = abbr;
-      btn.title = label;
-      btn.dataset.typeIdx = typeIdx;
-      btn.addEventListener('click', () => {
-        ps.set('noise.type', typeIdx);
-        typeGrid.querySelectorAll('button').forEach(b =>
-          b.classList.toggle('active', Number(b.dataset.typeIdx) === typeIdx)
-        );
-      });
-      typeGrid.appendChild(btn);
-    });
+    const idxInFamily = Math.max(0, indices.indexOf(curType));
+    const labels = indices.map(typeIdx => NOISE_TYPES[typeIdx] ?? String(typeIdx));
+
+    // _mkSelect's option list is fixed at construction, so rebuild from scratch —
+    // destroy the old instance (incl. its detached .imw-sel-menu) first.
+    typeSel?._destroy();
+    typeValueEl.innerHTML = '';
+    typeSel = _mkSelect(labels, idxInFamily, i => {
+      ps.set('noise.type', indices[i]);
+    }, 'param-select');
+    typeValueEl.appendChild(typeSel);
 
     fractalSection.style.display  = (name === 'Fractal' || name === 'Periodic') ? '' : 'none';
     periodicSection.style.display = name === 'Periodic' ? '' : 'none';
   }
 
-  // Keep type grid active state in sync when type changes externally
+  // Keep the Type dropdown in sync when type changes externally (controller, preset restore)
   ps.get('noise.type').onChange(v => {
-    typeGrid.querySelectorAll('button').forEach(b =>
-      b.classList.toggle('active', Number(b.dataset.typeIdx) === v)
-    );
+    const indices = NOISE_FAMILY_MAP[FAMILY_NAMES[ps.get('noise.family').value]];
+    const idx = indices.indexOf(v);
+    if (idx >= 0 && typeSel) typeSel.value = idx;
   });
 
-  // Keep family selector in sync when family changes externally (preset restore)
-  ps.get('noise.family').onChange(v => _renderNoiseFamilyUI(v));
+  // Family changes (dropdown or preset restore): keep noise.type valid for the
+  // new family, then rebuild the Type dropdown + fractal/periodic sections
+  ps.get('noise.family').onChange(v => {
+    const indices = NOISE_FAMILY_MAP[FAMILY_NAMES[v]];
+    if (!indices.includes(ps.get('noise.type').value)) ps.set('noise.type', indices[0]);
+    _renderNoiseFamilyUI(v);
+  });
 
   _renderNoiseFamilyUI(ps.get('noise.family').value);
 }
