@@ -1098,6 +1098,15 @@ export function registerCoreParameters(ps) {
     step: 0.05,
   });
   ps.register({
+    id: "noise.sharpen",
+    label: "Sharpen",
+    group: "noise",
+    min: 0,
+    max: 100,
+    value: 0,
+    unit: "%",
+  });
+  ps.register({
     id: "noise.invert",
     label: "Invert",
     group: "noise",
@@ -3168,15 +3177,6 @@ export function registerCoreParameters(ps) {
   ps.register({
     id: "effect.scanlines",
     label: "Scanlines",
-    group: "effect",
-    min: 0,
-    max: 100,
-    value: 0,
-    unit: "%",
-  });
-  ps.register({
-    id: "effect.sharpen",
-    label: "Sharpen",
     group: "effect",
     min: 0,
     max: 100,

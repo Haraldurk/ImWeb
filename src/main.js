@@ -4907,6 +4907,7 @@ void main() {
       offsetX: ps.get("noise.offsetX").value,
       offsetY: ps.get("noise.offsetY").value,
       contrast: ps.get("noise.contrast").value,
+      sharpen: ps.get("noise.sharpen")?.value ?? 0,
       invert: ps.get("noise.invert").value,
       seed: ps.get("noise.seed").value,
       color: ps.get("noise.color").value,
