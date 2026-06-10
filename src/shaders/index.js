@@ -425,7 +425,7 @@ export const NOISE_BFG = /* glsl */ `
 
   float vNoise(vec3 p) {
     vec3 i = floor(p), f = fract(p);
-    vec3 u = f * f * (3.0 - 2.0 * f);
+    vec3 u = f*f*f*(f*(f*6.0-15.0)+10.0);
     return mix(
       mix(mix(h1(i),              h1(i+vec3(1,0,0)), u.x),
           mix(h1(i+vec3(0,1,0)), h1(i+vec3(1,1,0)), u.x), u.y),
@@ -1195,6 +1195,29 @@ export const EDGE = /* glsl */ `
     float v    = uInvert == 1 ? (1.0 - edge) : edge;
     vec4 orig  = texture2D(uTexture, vUv);
     gl_FragColor = mix(orig, vec4(vec3(v), orig.a), uAmount);
+  }
+`;
+
+// ── Sharpen (unsharp mask) ─────────────────────────────────────────────────────
+// uAmount: 0 = no effect, higher = stronger edge contrast boost
+
+export const SHARPEN = /* glsl */ `
+  uniform sampler2D uTexture;
+  uniform float uAmount;
+  uniform vec2  uResolution;
+  varying vec2 vUv;
+
+  void main() {
+    vec4 c = texture2D(uTexture, vUv);
+    if (uAmount <= 0.0) { gl_FragColor = c; return; }
+    vec2 px = 1.0 / uResolution;
+    vec3 n = texture2D(uTexture, vUv + vec2(0.0,  px.y)).rgb;
+    vec3 s = texture2D(uTexture, vUv + vec2(0.0, -px.y)).rgb;
+    vec3 e = texture2D(uTexture, vUv + vec2( px.x, 0.0)).rgb;
+    vec3 w = texture2D(uTexture, vUv + vec2(-px.x, 0.0)).rgb;
+    vec3 blur = (n + s + e + w) * 0.25;
+    vec3 col  = c.rgb + (c.rgb - blur) * uAmount;
+    gl_FragColor = vec4(clamp(col, 0.0, 1.0), c.a);
   }
 `;
 
