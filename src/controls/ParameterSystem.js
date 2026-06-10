@@ -3495,7 +3495,7 @@ export function registerCoreParameters(ps) {
     label: "Mode",
     group: "td",
     type: PARAM_TYPE.SELECT,
-    options: ["Slit X", "Slit Y", "Warp Line"],
+    options: ["Slit X", "Slit Y", "Warp Line", "Slit X Sym", "Slit Y Sym", "Radial"],
     value: 0,
   });
   // Phase 5a — buffer/output resolution decoupling. bufferResolution sets the
