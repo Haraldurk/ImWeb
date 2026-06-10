@@ -237,7 +237,7 @@ async function main() {
     return [canvas.parentElement.clientWidth || W, canvas.parentElement.clientHeight || H]; // Native
   };
   const [_tdBW, _tdBH] = _tdResolveBufRes(ps.get("td.bufferResolution").value);
-  const tdEngine = new TimeDisplaceEngine(renderer, _tdBW, _tdBH, 60);
+  const tdEngine = new TimeDisplaceEngine(renderer, _tdBW, _tdBH, 120);
   tdEngine.setUpscaleFilter(ps.get("td.upscaleFilter").value);
   ps.get("td.bufferResolution").onChange((v) => {
     const [bw, bh] = _tdResolveBufRes(v);

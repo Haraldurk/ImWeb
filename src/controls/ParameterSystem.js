@@ -3507,6 +3507,7 @@ export function registerCoreParameters(ps) {
     label: "Buffer res",
     group: "td",
     type: PARAM_TYPE.SELECT,
+    select: true,
     options: ["320×240", "640×360", "640×480", "Native"],
     value: 1,
   });
@@ -3523,8 +3524,8 @@ export function registerCoreParameters(ps) {
     label: "Max delay",
     group: "td",
     min: 1,
-    max: 59,
-    value: 59,
+    max: 119,
+    value: 119,
     step: 1,
     unit: "fr",
   });
@@ -3575,7 +3576,7 @@ export function registerCoreParameters(ps) {
     label: "Debug k-back",
     group: "td",
     min: 1,
-    max: 59,
+    max: 119,
     value: 1,
     step: 1,
     unit: "fr",
