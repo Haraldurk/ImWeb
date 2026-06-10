@@ -672,7 +672,7 @@ export class Pipeline {
     if (sharpenAmt <= 0) return this._noiseTarget.texture;
     return this._passTo(this.m.noiseSharpen, {
       uTexture: this._noiseTarget.texture,
-      uAmount:  sharpenAmt * 2.5,
+      uAmount:  sharpenAmt * 8.0,
     }, this._noiseSharpTarget);
   }
 
