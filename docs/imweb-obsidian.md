@@ -64,24 +64,22 @@ Both manuals fully extracted and cross-referenced. See [[#Feature delta summary]
 
 ## Current status (2026-05-17)
 
-## ImWeb — Chrome 148 Metal Fix Needed
+## ImWeb — Chrome 148 Metal Fix — RESOLVED (2026-06-10)
 
 Root cause: Chrome 148 ANGLE/Metal backend regression on macOS.
-Breaks: Hypercube wireframe edges + Harabara GLB model.
+Broke: Hypercube wireframe edges + Harabara GLB model.
 Confirmed: production URL imweb.image-ine.org also broken.
-Workaround: launch Chrome with --use-angle=gl flag.
 Chromium bug filed: May 16 2026.
 
-Next session task:
-Fix code so it works on Chrome Metal without the flag.
-Two fixes needed:
-1. HypercubeObject.js — aTB attribute clean (gl_VertexID eliminated)
-2. SceneManager.js loadGLTF() — SkinnedMesh → plain Mesh conversion
-3. Add startup detector: if Chrome + Metal backend → show user notice
-   with workaround instructions
+**Status: fixed upstream by Google in a Chrome update.** The
+`--use-angle=gl` workaround is no longer required — Hypercube wireframe
+and GLB models render correctly on Chrome with the default Metal backend.
+The defensive code fixes from commit `379d694` (aTB attribute, highp
+sampler2D/textureLod, SkinnedMesh→Mesh) remain in place and are harmless/
+beneficial regardless.
 
-Test method: run Chrome normally (Metal, broken) after each fix.
-Use --use-angle=gl Chrome to verify logic is correct if needed.
+Test method (historical): run Chrome normally (Metal, broken) after each
+fix. Use --use-angle=gl Chrome to verify logic is correct if needed.
 
 (2026-05-02)
 
@@ -340,6 +338,25 @@ Claude Code for editing, Gemini for docs, OpenCode for cheap recon.
 **Context management:** context-mode MCP plugin (session continuity, token savings)
 
 ## Session log
+
+## 2026-06-10 — Chrome 148 Metal/ANGLE bug fixed upstream
+- **Chromium bug resolved by Google** — the ANGLE/Metal backend regression
+  (filed May 16 2026, see [[#ImWeb — Chrome 148 Metal Fix — RESOLVED (2026-06-10)]])
+  has been fixed in a Chrome update. Hypercube wireframe edges and the
+  Harabara GLB model now render correctly on Chrome with the default Metal
+  backend — the `--use-angle=gl` workaround / `chrome-gl` alias is no
+  longer needed.
+- **Noise: Sharpen relocated + strengthened** — `noise.sharpen` lives in
+  the Noise panel (not a global Effects pass), applied via a dedicated
+  512×512 `_noiseSharpTarget` unsharp-mask pass. Widened kernel radius to
+  2px and raised max effect to 8x so it's visible on smooth procedural
+  noise. Commits `f2cecb4`, `fff4bfa`.
+- **Noise: Value/Gradient speed-pulsing fixed** — `vNoise`'s quintic ease
+  curve had zero z-derivative at integer time-cell boundaries with random
+  per-cell amplitude, producing a periodic "speed up/slow down" pulse.
+  Fixed with a two-phase time crossfade (sample at `t` and `t+0.5`,
+  blend toward whichever has the stronger derivative). Isolated to
+  Gradient/Value (uType==1). Commit `c079d4b`.
 
 ## 2026-05-26 — Chrome perf investigation + reset cascade fix
 
