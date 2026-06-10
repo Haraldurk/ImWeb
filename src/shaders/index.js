@@ -423,15 +423,31 @@ export const NOISE_BFG = /* glsl */ `
 
   // ── Value Noise — trilinear interpolation of random grid ──────────────────
 
-  float vNoise(vec3 p) {
-    vec3 i = floor(p), f = fract(p);
-    vec3 u = f*f*f*(f*(f*6.0-15.0)+10.0);
+  float _vLat(vec3 i, vec3 u) {
     return mix(
       mix(mix(h1(i),              h1(i+vec3(1,0,0)), u.x),
           mix(h1(i+vec3(0,1,0)), h1(i+vec3(1,1,0)), u.x), u.y),
       mix(mix(h1(i+vec3(0,0,1)), h1(i+vec3(1,0,1)), u.x),
           mix(h1(i+vec3(0,1,1)), h1(i+vec3(1,1,1)), u.x), u.y),
       u.z);
+  }
+
+  // Two time-phases (offset by half a cell on the z/time axis) crossfade so
+  // the quintic ease curve's zero-derivative point on one phase falls where
+  // the other phase is at peak derivative — removes the periodic "speed up/
+  // slow down" breathing that animated single-phase Value noise has along z.
+  float vNoise(vec3 p) {
+    vec3 i = floor(p), f = fract(p);
+    vec3 u = f*f*f*(f*(f*6.0-15.0)+10.0);
+    float a = _vLat(i, u);
+
+    vec3 pB = p + vec3(0.0, 0.0, 0.5);
+    vec3 iB = floor(pB), fB = fract(pB);
+    vec3 uB = fB*fB*fB*(fB*(fB*6.0-15.0)+10.0);
+    float b = _vLat(iB, uB);
+
+    float w = 1.0 - 4.0 * f.z * (1.0 - f.z); // 1 at f.z=0/1 (a's deriv=0), 0 at f.z=0.5
+    return mix(a, b, w);
   }
 
   // ── Perlin Gradient Noise — quintic interpolation ─────────────────────────
