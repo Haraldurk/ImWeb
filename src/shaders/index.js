@@ -1210,7 +1210,7 @@ export const SHARPEN = /* glsl */ `
   void main() {
     vec4 c = texture2D(uTexture, vUv);
     if (uAmount <= 0.0) { gl_FragColor = c; return; }
-    vec2 px = 1.0 / uResolution;
+    vec2 px = 2.0 / uResolution;
     vec3 n = texture2D(uTexture, vUv + vec2(0.0,  px.y)).rgb;
     vec3 s = texture2D(uTexture, vUv + vec2(0.0, -px.y)).rgb;
     vec3 e = texture2D(uTexture, vUv + vec2( px.x, 0.0)).rgb;
