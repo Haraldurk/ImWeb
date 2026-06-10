@@ -3175,6 +3175,15 @@ export function registerCoreParameters(ps) {
     unit: "%",
   });
   ps.register({
+    id: "effect.sharpen",
+    label: "Sharpen",
+    group: "effect",
+    min: 0,
+    max: 100,
+    value: 0,
+    unit: "%",
+  });
+  ps.register({
     id: "effect.lutamount",
     label: "LUT Amount",
     group: "lut",

@@ -1770,6 +1770,7 @@ const _FX_NODE_INFO = {
   lut:         { label: 'lut',     isActive: p => (p.get('effect.lutamount')?.value ?? 0) > 0 },
   whitebal:    { label: 'wbal',    isActive: p => (p.get('effect.wbtemp')?.value ?? 0) !== 0 || (p.get('effect.wbtint')?.value ?? 0) !== 0 },
   pixelsort:   { label: 'psort',   isActive: p => p.get('effect.pixelsort').value > 0 },
+  sharpen:     { label: 'sharp',   isActive: p => p.get('effect.sharpen').value > 0 },
   grain:       { label: 'grain',   isActive: p => p.get('effect.grain').value > 0 || p.get('effect.scanlines').value > 0 },
 };
 
@@ -1797,7 +1798,7 @@ export class SignalPath {
       'blend.active','feedback.hor','feedback.ver','feedback.scale',
       'output.colorshift','output.fade',
       'effect.pixelate','effect.edge','effect.rgbshift','effect.kaleidoscope','effect.posterize','effect.solarize',
-      'effect.vignette','effect.bloom','effect.pixelsort','effect.grain','effect.scanlines','effect.strobe',
+      'effect.vignette','effect.bloom','effect.pixelsort','effect.sharpen','effect.grain','effect.scanlines','effect.strobe',
       'effect.quadmirror','effect.lvblack','effect.lvwhite','effect.lvgamma',
       'effect.lutamount','effect.wbtemp','effect.wbtint',
       'fg.hue','fg.sat','fg.bright','bg.hue','bg.sat','bg.bright',

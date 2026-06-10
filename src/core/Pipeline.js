@@ -23,12 +23,13 @@ import {
   PIXELATE, EDGE, RGBSHIFT, POSTERIZE, SOLARIZE, COLOR_CORRECT, CHROMA_KEY,
   VIGNETTE, BLOOM_EXTRACT, BLOOM_BLUR, BLOOM_COMPOSITE, KALEIDOSCOPE, PIXEL_SORT,
   FILM_GRAIN, FEEDBACK_ROTATE, QUAD_MIRROR, LEVELS, LUT3D, WHITE_BALANCE, VASULKA_WARP,
+  SHARPEN,
 } from '../shaders/index.js';
 
 export const DEFAULT_FX_ORDER = [
   // VasulkaWarp — hidden, experimental, architecture unresolved. See dev notes.
   'pixelate','edge',/*'vasulka',*/'rgbshift','kaleidoscope','quadmirror',
-  'posterize','solarize','vignette','bloom','levels','lut','whitebal','pixelsort','grain',
+  'posterize','solarize','vignette','bloom','levels','lut','whitebal','pixelsort','sharpen','grain',
 ];
 
 const _FX = {
@@ -177,6 +178,11 @@ const _FX = {
     return pipe._pass(pipe.m.filmgrain, {
       uTexture: tex, uGrain: grainAmt, uScanlines: scanAmt, uTime: pipe._noiseTime,
     });
+  },
+  sharpen: (pipe, tex, p) => {
+    const amt = p.get('effect.sharpen').value / 100;
+    if (amt <= 0) return tex;
+    return pipe._pass(pipe.m.sharpen, { uTexture: tex, uAmount: amt * 2.5 });
   },
 };
 
@@ -684,6 +690,7 @@ export class Pipeline {
       this.m.pixelsort.uniforms.uResolution.value.set(w, h);
       this.m.feedback.uniforms.uResolution.value.set(w, h);
       this.m.interp.uniforms.uResolution.value.set(w, h);
+      this.m.sharpen.uniforms.uResolution.value.set(w, h);
       this._lastResW = w;
       this._lastResH = h;
     }
@@ -773,7 +780,7 @@ export class Pipeline {
   }
 
   _resolveSource(inputs, sourceIdx) {
-    const SOURCES = ['camera', 'movie', 'buffer', 'color', 'color2', 'noise', 'scene3d', 'draw', 'output', 'bg1', 'bg2', 'text', 'sound', 'delay', 'scope', 'slitscan', 'particles', 'seq1', 'seq2', 'seq3', 'depth3d', 'sdf', 'vwarp', 'analog'];
+    const SOURCES = ['camera', 'movie', 'buffer', 'color', 'color2', 'noise', 'scene3d', 'draw', 'output', 'bg1', 'bg2', 'text', 'sound', 'delay', 'scope', 'slitscan', 'particles', 'seq1', 'seq2', 'seq3', 'depth3d', 'sdf', 'vwarp', 'analog', 'tdisp'];
     const key = SOURCES[sourceIdx] ?? 'color';
 
     if (key === 'camera'  && inputs.camera)  return inputs.camera;
@@ -799,6 +806,7 @@ export class Pipeline {
     if (key === 'sdf'       && inputs.sdf)       return inputs.sdf;
     if (key === 'vwarp'     && inputs.vwarp)     return inputs.vwarp;
     if (key === 'analog'    && inputs.analog)    return inputs.analog;
+    if (key === 'tdisp'     && inputs.tdisp)     return inputs.tdisp;
     return inputs.color ?? this._getFallbackTexture();
   }
 
@@ -966,6 +974,10 @@ export class Pipeline {
         uGrain:     { value: 0 },
         uScanlines: { value: 0 },
         uTime:      { value: 0 },
+      }),
+      sharpen: this._mat(SHARPEN, {
+        uAmount:     { value: 0 },
+        uResolution: { value: new THREE.Vector2(1280, 720) },
       }),
       feedbackRotate: this._mat(FEEDBACK_ROTATE, {
         uAngle: { value: 0 },
