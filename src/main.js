@@ -4811,6 +4811,10 @@ void main() {
     // layer also displays it. Force those generators to tick when TD is capturing from
     // them — mirrors the layer.fg/bg/ds gating each one already uses below.
     const _tdCap = ps.get("td.enabled").value ? ps.get("td.captureSource").value : -1;
+    // td.mode === "Noise" (6) drives the per-pixel delay map from the Noise
+    // generator's output — force Noise to tick even if no layer uses it.
+    const TD_MODE_NOISE = 6;
+    const _tdModeNoise = ps.get("td.enabled").value && ps.get("td.mode").value === TD_MODE_NOISE;
 
     // Tick particle system — resolve luma mask source (only pre-ticked textures are safe)
     const _pmSrcMap = [
@@ -4854,11 +4858,6 @@ void main() {
     const _sdfUsed = ps.get("layer.fg").value === SDF_IDX || ps.get("layer.bg").value === SDF_IDX || (ps.get("layer.ds")?.value ?? 0) === SDF_IDX || _tdCap === SDF_IDX;
     if (_sdfUsed) sdfGen.tick(ps, dt, _sdfTex, _sdfRef);
 
-    // Time-Displacement Engine — READ + PUBLISH before pipeline.render so
-    // inputs.tdisp is consumable this frame. Ring WRITE happens after render
-    // (beside videoDelay.capture). Engine gates internally on td.enabled.
-    tdEngine.tick(ps, dt);
-
     // Analog TV — on-demand rendering (source index 23)
     const ANALOG_IDX = 23;
     const _analogUsed = ps.get("layer.fg").value === ANALOG_IDX || ps.get("layer.bg").value === ANALOG_IDX || (ps.get("layer.ds")?.value ?? 0) === ANALOG_IDX || _tdCap === ANALOG_IDX;
@@ -4887,7 +4886,7 @@ void main() {
 
     // Generate noise only when a layer is using it as a source (512×512 dedicated target)
     const NOISE_IDX = 5;
-    const _noiseUsed = ps.get("layer.fg").value === NOISE_IDX || ps.get("layer.bg").value === NOISE_IDX || (ps.get("layer.ds")?.value ?? 0) === NOISE_IDX || _analogSrcIdx === 3 || ps.get('scene3d.mat.texsrc')?.value === 6 || _tdCap === NOISE_IDX;
+    const _noiseUsed = ps.get("layer.fg").value === NOISE_IDX || ps.get("layer.bg").value === NOISE_IDX || (ps.get("layer.ds")?.value ?? 0) === NOISE_IDX || _analogSrcIdx === 3 || ps.get('scene3d.mat.texsrc')?.value === 6 || _tdCap === NOISE_IDX || _tdModeNoise;
     const _scene3dNoise = ps.get('scene3d.mat.texsrc')?.value === 6;
     const _noiseScale = ps.get('noise.scale')?.value ?? 8;
     const _seamlessPeriod = _scene3dNoise
@@ -4917,6 +4916,13 @@ void main() {
       periodY: _seamlessPeriod ?? ps.get('noise.period.y').value,
       alpha:   ps.get('noise.alpha').value,
     });
+
+    // Time-Displacement Engine — READ + PUBLISH before pipeline.render so
+    // inputs.tdisp is consumable this frame. Ring WRITE happens after render
+    // (beside videoDelay.capture). Engine gates internally on td.enabled.
+    // Runs after noise generation so td.mode === "Noise" can sample this
+    // frame's noiseTexture (non-null when _tdModeNoise forces _noiseUsed).
+    tdEngine.tick(ps, dt, noiseTexture);
 
     // Render 3D scene if active OR used as a layer source
     const SCENE3D_IDX = 6; // index in SOURCES array
