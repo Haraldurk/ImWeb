@@ -29,7 +29,7 @@ import {
 export const DEFAULT_FX_ORDER = [
   // VasulkaWarp — hidden, experimental, architecture unresolved. See dev notes.
   'pixelate','edge',/*'vasulka',*/'rgbshift','kaleidoscope','quadmirror',
-  'posterize','solarize','vignette','bloom','levels','lut','whitebal','pixelsort','sharpen','grain',
+  'posterize','solarize','vignette','bloom','levels','lut','whitebal','pixelsort','grain',
 ];
 
 const _FX = {
@@ -179,11 +179,6 @@ const _FX = {
       uTexture: tex, uGrain: grainAmt, uScanlines: scanAmt, uTime: pipe._noiseTime,
     });
   },
-  sharpen: (pipe, tex, p) => {
-    const amt = p.get('effect.sharpen').value / 100;
-    if (amt <= 0) return tex;
-    return pipe._pass(pipe.m.sharpen, { uTexture: tex, uAmount: amt * 2.5 });
-  },
 };
 
 export class Pipeline {
@@ -215,6 +210,9 @@ export class Pipeline {
     // Dedicated noise render target — fixed 512×512 so complex BFG types
     // (DomainWarp, Curl) stay fast regardless of output resolution.
     this._noiseTarget = this._makeTarget(512, 512);
+    // Second 512×512 target for the optional noise-sharpen pass (ping-pong
+    // independent of the main pipeline's targets).
+    this._noiseSharpTarget = this._makeTarget(512, 512);
 
     // Dedicated half-resolution targets for bloom blur passes.
     // BlurH and BlurV render at w/2 × h/2; composite upsamples back to full-res.
@@ -669,7 +667,13 @@ export class Pipeline {
     this._quad.material = m;
     this.renderer.setRenderTarget(this._noiseTarget);
     this.renderer.render(this._scene, this._camera);
-    return this._noiseTarget.texture;
+
+    const sharpenAmt = (p.sharpen ?? 0) / 100;
+    if (sharpenAmt <= 0) return this._noiseTarget.texture;
+    return this._passTo(this.m.noiseSharpen, {
+      uTexture: this._noiseTarget.texture,
+      uAmount:  sharpenAmt * 2.5,
+    }, this._noiseSharpTarget);
   }
 
   // ── Resize ────────────────────────────────────────────────────────────────
@@ -690,7 +694,6 @@ export class Pipeline {
       this.m.pixelsort.uniforms.uResolution.value.set(w, h);
       this.m.feedback.uniforms.uResolution.value.set(w, h);
       this.m.interp.uniforms.uResolution.value.set(w, h);
-      this.m.sharpen.uniforms.uResolution.value.set(w, h);
       this._lastResW = w;
       this._lastResH = h;
     }
@@ -975,9 +978,9 @@ export class Pipeline {
         uScanlines: { value: 0 },
         uTime:      { value: 0 },
       }),
-      sharpen: this._mat(SHARPEN, {
+      noiseSharpen: this._mat(SHARPEN, {
         uAmount:     { value: 0 },
-        uResolution: { value: new THREE.Vector2(1280, 720) },
+        uResolution: { value: new THREE.Vector2(512, 512) },
       }),
       feedbackRotate: this._mat(FEEDBACK_ROTATE, {
         uAngle: { value: 0 },
