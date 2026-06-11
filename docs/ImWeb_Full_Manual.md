@@ -221,17 +221,20 @@ Target bitrate: **4–10 Mbps** for smooth scrubbing and seek. Above 15 Mbps, Ch
 
 ### 4.3 Stills Buffer
 
-Capture and hold up to 16 still frames for compositing.
+Capture and hold still frames for compositing, arranged as a grid of up to
+8×8 = 64 slots (default 4×4 = 16).
 
 **Capture:** Press `C`, or use the Buffer tab controls.
 
 | Parameter | Range | Description |
 |-----------|-------|-------------|
 | `buffer.source` | SELECT | Source to capture from |
-| `buffer.fs1` | 0–15 | Primary frame slot |
-| `buffer.fs2` | 0–15 | Secondary frame slot |
+| `buffer.rows` | 1–8 | Grid rows |
+| `buffer.cols` | 1–8 | Grid columns |
+| `buffer.fs1` | 0–63 | Primary frame slot |
+| `buffer.fs2` | 0–63 | Secondary frame slot |
 | `buffer.frameblend` | 0–100% | Crossfade between fs1 and fs2 |
-| `buffer.fs3` | 0–15 | Tertiary slot |
+| `buffer.fs3` | 0–63 | Tertiary slot |
 | `buffer.scan` | 0–100% | Scan position through frames |
 | `buffer.scanrate` | 0.5–60 fps | Scan speed |
 | `buffer.scandir` | SELECT | Forward / backward |
@@ -241,7 +244,8 @@ Capture and hold up to 16 still frames for compositing.
 | `buffer.rate` | 0.5–60 fps | Auto-capture rate |
 | `buffer.capture` | TRIGGER | Capture to next slot |
 
-Slots can be individually **protected** (lock icon in Buffer tab) to prevent auto-overwrite. Frame count can be set to 4 / 8 / 16 / 32 slots.
+Slots can be individually **protected** (lock icon in Buffer tab) to prevent
+auto-overwrite. Total slot count is `rows × cols`, capped at 64 (8×8).
 
 ---
 

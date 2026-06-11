@@ -24,7 +24,7 @@ FX Chain is **reorderable** by dragging nodes in the Signal Path display.
 | **Movie** | Up to 8 clips; drag `.mp4/.webm/.mov` onto canvas; `Shift+1–8` to select |
 | **Analog TV** | Self-contained 720x480 analog signal simulator. Currently supports 4:3 cropping and base signal color grading (hue, saturation, brightness, contrast). Routes as a standard layer source. |
 | **Teletext** | Teletext input source simulating classic teletext pages; customizable page data and draw utilities; routes as WebGLRenderTarget. |
-| **Stills Buffer** | 4–32 captured frames; `C` to capture; scan/blend between slots |
+| **Stills Buffer** | Up to 64 captured frames (configurable rows×cols grid, 1–8 each, default 4×4=16); `C` to capture; scan/blend between slots |
 | **Color** | Solid or gradient (H/V/radial); HSV + animated hue |
 | **Noise** | GPU fractal (Perlin/Voronoi/Worley/Simplex); 512×512; resolution-independent |
 | **3D Scene** | Three.js; built-in shapes + imported `.glb/.gltf/.obj/.stl/.dae`; auto-fits |
