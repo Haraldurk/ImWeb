@@ -3678,6 +3678,34 @@ export function buildAISettingsPanel(ai, panelEl) {
   note.textContent = 'Keys stored in browser localStorage only.';
   panelEl.appendChild(note);
 
+  // ── AI Performance section ────────────────────────────────────────────────
+  const perfHdr = document.createElement('div');
+  perfHdr.className = 'ai-settings-hdr';
+  perfHdr.style.marginTop = '10px';
+  perfHdr.textContent = 'AI PERFORMANCE';
+  panelEl.appendChild(perfHdr);
+
+  const narrCfg = cfg.narrator ?? { interval: 10000, length: 'medium' };
+  const coachCfg = cfg.coach ?? { interval: 45000 };
+
+  panelEl.appendChild(row('Narrator interval', makeSelect(
+    [5000, 10000, 15000, 30000, 60000].map(v => ({ value: String(v), label: `${v / 1000}s` })),
+    String(narrCfg.interval),
+    v => ai.setNarratorInterval(Number(v))
+  )));
+
+  panelEl.appendChild(row('Narrator length', makeSelect(
+    [['short', 'Short'], ['medium', 'Medium'], ['long', 'Long']].map(([value, label]) => ({ value, label })),
+    narrCfg.length,
+    v => ai.setNarratorLength(v)
+  )));
+
+  panelEl.appendChild(row('Coach interval', makeSelect(
+    [15000, 30000, 45000, 60000, 120000].map(v => ({ value: String(v), label: `${v / 1000}s` })),
+    String(coachCfg.interval),
+    v => ai.setCoachInterval(Number(v))
+  )));
+
   // ── Resources section ─────────────────────────────────────────────────────
   const resHdr = document.createElement('div');
   resHdr.className = 'ai-settings-hdr';

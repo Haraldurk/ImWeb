@@ -73,6 +73,8 @@ import {
   buildStateSnapshot,
   coachSuggestion,
   buildActivitySnapshot,
+  getNarratorConfig,
+  getCoachConfig,
 } from "./ai/AIFeatures.js";
 import {
   initTabs,
@@ -5282,14 +5284,16 @@ void main() {
     if (!_narratorActive) return;
     try {
       const snapshot = buildStateSnapshot(ps);
-      const text = await narrateState(snapshot);
+      const text = await narrateState(snapshot, getNarratorConfig().length);
       if (_narratorOverlay && _narratorActive) {
         _narratorOverlay.textContent = text;
       }
     } catch (err) {
       /* silent — narrator is non-critical */
     }
-    if (_narratorActive) _narratorTimer = setTimeout(_runNarrator, 2500);
+    if (_narratorActive) {
+      _narratorTimer = setTimeout(_runNarrator, getNarratorConfig().interval);
+    }
   }
 
   function _toggleNarrator() {
@@ -5334,6 +5338,7 @@ void main() {
     }
   }
 
+  let _coachNotifFadeTimer = null;
   function _showCoachNotif(text) {
     if (!_coachNotif) {
       _coachNotif = document.createElement("div");
@@ -5342,10 +5347,11 @@ void main() {
       document.body.appendChild(_coachNotif);
     }
     _coachNotif.textContent = `⬡ ${text}`;
-    _coachNotif.classList.remove("fadeout");
     _coachNotif.style.opacity = "1";
-    // Fade out after 10s
-    setTimeout(() => {
+    // Fade out after 10s — clear any pending fade so a fresh message
+    // isn't immediately hidden by a stale timer from a previous call.
+    clearTimeout(_coachNotifFadeTimer);
+    _coachNotifFadeTimer = setTimeout(() => {
       _coachNotif.style.opacity = "0";
     }, 10000);
   }
@@ -5357,9 +5363,11 @@ void main() {
       const text = await coachSuggestion(snapshot);
       if (text && _coachActive) _showCoachNotif(text);
     } catch (err) {
-      /* silent */
+      if (_coachActive) _showCoachNotif(`⚠ Coach error: ${err.message}`);
     }
-    if (_coachActive) _coachTimer = setTimeout(_runCoach, 30000);
+    if (_coachActive) {
+      _coachTimer = setTimeout(_runCoach, getCoachConfig().interval);
+    }
   }
 
   function _toggleCoach() {
@@ -5370,8 +5378,9 @@ void main() {
       if (!getApiKey()) {
         _showCoachNotif("⚠ No API key — click ⚙ in status bar");
       } else {
-        _showCoachNotif("Performance Coach active — watching for 30s…");
-        _coachTimer = setTimeout(_runCoach, 30000);
+        const interval = getCoachConfig().interval;
+        _showCoachNotif(`Performance Coach active — watching for ${Math.round(interval / 1000)}s…`);
+        _coachTimer = setTimeout(_runCoach, interval);
       }
     } else {
       clearTimeout(_coachTimer);

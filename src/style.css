@@ -2638,7 +2638,9 @@ body.fullscreen-output #app {
     font-size: 12px;
     padding: 7px 16px;
     pointer-events: none;
-    white-space: nowrap;
+    max-width: min(90vw, 640px);
+    white-space: normal;
+    text-align: center;
     z-index: 600;
     box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
     letter-spacing: 0.04em;
