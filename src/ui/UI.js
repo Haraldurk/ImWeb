@@ -3505,6 +3505,50 @@ export class Profiler {
   }
 }
 
+// ── In-app Markdown docs viewer ───────────────────────────────────────────────
+
+let _docsViewerWired = false;
+
+/**
+ * Fetch a markdown file and render it into the #docs-viewer modal.
+ * url — path to the .md file (relative to the site root)
+ * title — display title for the modal titlebar
+ */
+export async function openDocsViewer(url, title) {
+  const overlay = document.getElementById('docs-viewer');
+  const titleEl = document.getElementById('docs-viewer-title');
+  const contentEl = document.getElementById('docs-viewer-content');
+  if (!overlay || !titleEl || !contentEl) return;
+
+  if (!_docsViewerWired) {
+    document.getElementById('docs-viewer-close')?.addEventListener('click', () => {
+      overlay.classList.add('hidden');
+    });
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay) overlay.classList.add('hidden');
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && !overlay.classList.contains('hidden')) {
+        overlay.classList.add('hidden');
+      }
+    });
+    _docsViewerWired = true;
+  }
+
+  titleEl.textContent = title;
+  contentEl.textContent = 'Loading…';
+  overlay.classList.remove('hidden');
+
+  try {
+    const [res, { marked }] = await Promise.all([fetch(url), import('marked')]);
+    if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+    const text = await res.text();
+    contentEl.innerHTML = marked.parse(text);
+  } catch (err) {
+    contentEl.textContent = `Failed to load ${url}: ${err.message}`;
+  }
+}
+
 // ── AI Settings Panel ─────────────────────────────────────────────────────────
 
 /**
@@ -3633,12 +3677,24 @@ export function buildAISettingsPanel(ai, panelEl) {
   links.forEach(({ label, href }) => {
     const a = document.createElement('a');
     a.className = 'ai-prov-link';
+    a.href = '#';
     a.textContent = label + ' →';
-    a.href = href;
-    a.target = '_blank';
-    a.rel = 'noopener noreferrer';
+    a.addEventListener('click', (e) => {
+      e.preventDefault();
+      openDocsViewer(href, label);
+    });
     panelEl.appendChild(a);
   });
+
+  const shortcutsLink = document.createElement('a');
+  shortcutsLink.className = 'ai-prov-link';
+  shortcutsLink.href = '#';
+  shortcutsLink.textContent = 'Keyboard Shortcuts →';
+  shortcutsLink.addEventListener('click', (e) => {
+    e.preventDefault();
+    document.getElementById('kb-help')?.classList.remove('hidden');
+  });
+  panelEl.appendChild(shortcutsLink);
 
   const prepHdr = document.createElement('div');
   prepHdr.className = 'ai-settings-hdr';
