@@ -61,6 +61,17 @@ export const PROVIDERS = {
     defaultModel:'llama3.2',
     needsKey:    false,
   },
+  openrouter: {
+    id:          'openrouter',
+    name:        'OpenRouter',
+    keyLabel:    'API Key',
+    keyUrl:      'https://openrouter.ai/keys',
+    keyUrlLabel: 'Get API key →',
+    keyPlaceholder: 'sk-or-…',
+    models:      ['anthropic/claude-sonnet-4.5', 'openai/gpt-4o-mini', 'google/gemini-2.0-flash-001', 'meta-llama/llama-3.3-70b-instruct'],
+    defaultModel:'anthropic/claude-sonnet-4.5',
+    needsKey:    true,
+  },
 };
 
 // ── Config management ─────────────────────────────────────────────────────────
@@ -71,10 +82,11 @@ function buildDefaultConfig() {
   return {
     activeProvider: 'gemini',
     providers: {
-      anthropic: { apiKey: '', model: 'claude-sonnet-4-6' },
-      gemini:    { apiKey: '', model: 'gemini-2.0-flash' },
-      openai:    { apiKey: '', model: 'gpt-4o-mini'       },
-      ollama:    { apiKey: 'http://localhost:11434', model: 'llama3.2' },
+      anthropic:  { apiKey: '', model: 'claude-sonnet-4-6' },
+      gemini:     { apiKey: '', model: 'gemini-2.0-flash' },
+      openai:     { apiKey: '', model: 'gpt-4o-mini'       },
+      ollama:     { apiKey: 'http://localhost:11434', model: 'llama3.2' },
+      openrouter: { apiKey: '', model: 'anthropic/claude-sonnet-4.5' },
     },
   };
 }
@@ -165,6 +177,31 @@ async function callOpenAI(pcfg, system, user, maxTokens) {
   return (await res.json()).choices?.[0]?.message?.content ?? '';
 }
 
+async function callOpenRouter(pcfg, system, user, maxTokens) {
+  const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Content-Type':  'application/json',
+      'Authorization': `Bearer ${pcfg.apiKey}`,
+      'HTTP-Referer':  'https://imweb.app',
+      'X-Title':       'ImWeb',
+    },
+    body: JSON.stringify({
+      model:      pcfg.model,
+      max_tokens: maxTokens,
+      messages: [
+        { role: 'system', content: system },
+        { role: 'user',   content: user   },
+      ],
+    }),
+  });
+  if (!res.ok) {
+    const e = await res.json().catch(() => ({}));
+    throw new Error(e.error?.message ?? `OpenRouter error ${res.status}`);
+  }
+  return (await res.json()).choices?.[0]?.message?.content ?? '';
+}
+
 async function callOllama(pcfg, system, user, _maxTokens) {
   const base = (pcfg.apiKey || 'http://localhost:11434').replace(/\/$/, '');
   const res = await fetch(`${base}/api/chat`, {
@@ -228,6 +265,12 @@ async function fetchModels(providerId) {
       const data = await res.json();
       return (data.models ?? []).map(m => m.name);
     }
+    case 'openrouter': {
+      const res = await fetch('https://openrouter.ai/api/v1/models');
+      if (!res.ok) throw new Error(`OpenRouter error ${res.status}`);
+      const data = await res.json();
+      return (data.data ?? []).map(m => m.id).sort();
+    }
     default:
       throw new Error(`Unknown provider: ${providerId}`);
   }
@@ -242,11 +285,12 @@ async function _call(system, user, maxTokens = 512) {
   if (!pcfg) throw new Error('No provider configured');
   if (PROVIDERS[id]?.needsKey && !pcfg.apiKey) throw new Error('no-key');
   switch (id) {
-    case 'anthropic': return callAnthropic(pcfg, system, user, maxTokens);
-    case 'gemini':    return callGemini   (pcfg, system, user, maxTokens);
-    case 'openai':    return callOpenAI   (pcfg, system, user, maxTokens);
-    case 'ollama':    return callOllama   (pcfg, system, user, maxTokens);
-    default:          throw new Error(`Unknown provider: ${id}`);
+    case 'anthropic':  return callAnthropic (pcfg, system, user, maxTokens);
+    case 'gemini':     return callGemini    (pcfg, system, user, maxTokens);
+    case 'openai':     return callOpenAI    (pcfg, system, user, maxTokens);
+    case 'ollama':     return callOllama    (pcfg, system, user, maxTokens);
+    case 'openrouter': return callOpenRouter(pcfg, system, user, maxTokens);
+    default:           throw new Error(`Unknown provider: ${id}`);
   }
 }
 
@@ -377,13 +421,60 @@ export async function narrateState(stateSnapshot) {
   return _call(NARRATOR_SYSTEM, `Current signal path: ${stateSnapshot}`, 80);
 }
 
+// Must mirror the SOURCES options array registered for layer.fg/bg/ds in
+// ParameterSystem.js — a stale copy here previously caused the Narrator to
+// describe the wrong source entirely (e.g. "Noise" reported as "3D").
+const SOURCE_NAMES = ['Camera','Movie','Buffer','Color','Color2','Noise','3D Scene','Draw','Output',
+  'BG1','BG2','Text','Sound','Delay','Scope','SlitScan','Particles','Seq1','Seq2','Seq3',
+  '3D Depth','SDF','VWarp','Analog','TimeDisp'];
+
+// Adds a short, source-specific detail (e.g. which noise type or 3D geometry
+// is active) so the Narrator can describe what's actually on screen, not just
+// which slot it's routed through.
+function describeSourceDetail(name, ps) {
+  switch (name) {
+    case 'Noise': {
+      const t = ps.get('noise.type');
+      return t?.options ? `noise=${t.options[t.value] ?? '?'}` : null;
+    }
+    case '3D Scene':
+    case '3D Depth': {
+      if (!ps.get('scene3d.active')?.value) return null;
+      const g = ps.get('scene3d.geo');
+      return g?.options ? `3D=${(g.options[g.value] ?? '?').replace(/^.*: /, '')}` : null;
+    }
+    case 'SDF': {
+      if (!ps.get('sdf.active')?.value) return null;
+      const s = ps.get('sdf.shape');
+      return s?.options ? `SDF=${s.options[s.value] ?? '?'}` : null;
+    }
+    case 'Analog': {
+      const t = ps.get('analog.sourceType');
+      return t?.options ? `analog=${t.options[t.value] ?? '?'}` : null;
+    }
+    case 'Seq1': case 'Seq2': case 'Seq3': {
+      const s = ps.get(`${name.toLowerCase()}.source`);
+      return s?.options ? `${name} src=${s.options[s.value] ?? '?'}` : null;
+    }
+    case 'SlitScan':
+      return ps.get('slitscan.active')?.value ? 'slit-scan' : null;
+    case 'Particles': return 'particle field';
+    case 'VWarp':     return 'vasulka warp';
+    case 'TimeDisp':  return 'time-displaced';
+    default: return null;
+  }
+}
+
 export function buildStateSnapshot(ps) {
-  const srcNames = ['Camera','Movie','Buffer','Color','Noise','3D','Draw','Output',
-    'BG1','BG2','Color2','Text','Sound','Delay','Scope','SlitScan','Particles','Seq1','Seq2','Seq3'];
-  const fg = srcNames[ps.get('layer.fg').value] ?? '?';
-  const bg = srcNames[ps.get('layer.bg').value] ?? '?';
-  const ds = srcNames[ps.get('layer.ds').value] ?? '?';
+  const fg = SOURCE_NAMES[ps.get('layer.fg').value] ?? '?';
+  const bg = SOURCE_NAMES[ps.get('layer.bg').value] ?? '?';
+  const ds = SOURCE_NAMES[ps.get('layer.ds').value] ?? '?';
   const parts = [`FG=${fg}`, `BG=${bg}`, `DS=${ds}`];
+
+  for (const name of new Set([fg, bg, ds])) {
+    const detail = describeSourceDetail(name, ps);
+    if (detail) parts.push(detail);
+  }
 
   if (ps.get('keyer.active')?.value) parts.push('keyer active');
   if (ps.get('displace.amount')?.value > 0.05) parts.push(`displace=${ps.get('displace.amount').value.toFixed(2)}`);
@@ -419,14 +510,12 @@ export async function coachSuggestion(activitySnapshot) {
 }
 
 export function buildActivitySnapshot(recentChanges, ps) {
-  const srcNames = ['Camera','Movie','Buffer','Color','Noise','3D','Draw','Output',
-    'BG1','BG2','Color2','Text','Sound','Delay','Scope','SlitScan','Particles','Seq1','Seq2','Seq3'];
   const changed   = recentChanges.map(r => r.id).join(', ') || 'nothing';
   const unchanged = ['keyer.active','displace.amount','blend.active','effect.bloom','effect.kaleid','effect.mirror']
     .filter(id => !recentChanges.find(r => r.id === id))
     .join(', ');
-  const fg = srcNames[ps.get('layer.fg').value] ?? '?';
-  const bg = srcNames[ps.get('layer.bg').value] ?? '?';
+  const fg = SOURCE_NAMES[ps.get('layer.fg').value] ?? '?';
+  const bg = SOURCE_NAMES[ps.get('layer.bg').value] ?? '?';
   return `Current FG=${fg}, BG=${bg}. Recently changed: ${changed}. Untouched: ${unchanged}.`;
 }
 
