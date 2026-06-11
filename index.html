@@ -391,6 +391,10 @@
                         <div class="section-header">Video Delay</div>
                         <div id="delay-params"></div>
                     </div>
+                    <div class="panel-section">
+                        <div class="section-header">Time Displace</div>
+                        <div id="tdisp-params"></div>
+                    </div>
                     <!-- VasulkaWarp — hidden, experimental, architecture unresolved. See dev notes. -->
                     <!-- <div class="panel-section">
           <div class="section-header">Vasulka Warp</div>
@@ -1080,6 +1084,17 @@ void main() {
                 >
                     Right-click any parameter to assign a controller
                 </div>
+            </div>
+        </div>
+
+        <!-- IN-APP MARKDOWN DOCS VIEWER -->
+        <div id="docs-viewer" class="hidden">
+            <div id="docs-viewer-box">
+                <div id="docs-viewer-titlebar">
+                    <span id="docs-viewer-title"></span>
+                    <button id="docs-viewer-close">✕</button>
+                </div>
+                <div id="docs-viewer-content" class="docs-viewer-content"></div>
             </div>
         </div>
 

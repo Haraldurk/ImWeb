@@ -2049,6 +2049,118 @@ body.sp-floating #signal-path-docked-space {
     text-align: center;
 }
 
+/* ── DOCS VIEWER (in-app markdown modal) ──────────────────────────────────── */
+
+#docs-viewer {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.7);
+    z-index: 3100;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+#docs-viewer.hidden {
+    display: none;
+}
+#docs-viewer-box {
+    background: var(--bg-2);
+    border: 1px solid var(--accent-dim);
+    border-radius: 8px;
+    box-shadow: 0 12px 48px rgba(0, 0, 0, 0.8);
+    width: 720px;
+    max-width: 90vw;
+    height: 80vh;
+    display: flex;
+    flex-direction: column;
+}
+#docs-viewer-titlebar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--bg-4);
+}
+#docs-viewer-title {
+    font-family: var(--mono);
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--accent);
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+}
+#docs-viewer-close {
+    background: none;
+    border: none;
+    color: var(--text-2);
+    font-size: 16px;
+    cursor: pointer;
+    line-height: 1;
+    padding: 2px 4px;
+}
+#docs-viewer-close:hover {
+    color: var(--accent);
+}
+.docs-viewer-content {
+    overflow-y: auto;
+    padding: 16px 24px;
+    color: var(--text-1);
+    font-size: 13px;
+    line-height: 1.6;
+}
+.docs-viewer-content h1,
+.docs-viewer-content h2,
+.docs-viewer-content h3 {
+    color: var(--accent);
+    margin: 18px 0 8px;
+}
+.docs-viewer-content h1:first-child,
+.docs-viewer-content h2:first-child,
+.docs-viewer-content h3:first-child {
+    margin-top: 0;
+}
+.docs-viewer-content p,
+.docs-viewer-content li {
+    color: var(--text-1);
+}
+.docs-viewer-content a {
+    color: var(--accent);
+}
+.docs-viewer-content code {
+    font-family: var(--mono);
+    background: var(--bg-3);
+    border-radius: 3px;
+    padding: 1px 4px;
+    font-size: 12px;
+}
+.docs-viewer-content pre {
+    font-family: var(--mono);
+    background: var(--bg-3);
+    border-radius: 4px;
+    padding: 10px 12px;
+    overflow-x: auto;
+}
+.docs-viewer-content pre code {
+    background: none;
+    padding: 0;
+}
+.docs-viewer-content table {
+    border-collapse: collapse;
+    margin: 8px 0;
+}
+.docs-viewer-content th,
+.docs-viewer-content td {
+    border: 1px solid var(--border);
+    padding: 4px 8px;
+    text-align: left;
+}
+.docs-viewer-content blockquote {
+    border-left: 2px solid var(--accent-dim);
+    margin: 8px 0;
+    padding: 2px 12px;
+    color: var(--text-2);
+}
+
 /* ── GLSL EDITOR ─────────────────────────────────────────────────────────── */
 
 #glsl-editor {
