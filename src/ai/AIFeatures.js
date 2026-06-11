@@ -88,6 +88,8 @@ function buildDefaultConfig() {
       ollama:     { apiKey: 'http://localhost:11434', model: 'llama3.2' },
       openrouter: { apiKey: '', model: 'anthropic/claude-sonnet-4.5' },
     },
+    narrator: { interval: 10000, length: 'medium' },
+    coach:    { interval: 45000 },
   };
 }
 
@@ -98,7 +100,13 @@ function loadConfig() {
     const saved = JSON.parse(raw);
     // Merge so any new provider defaults are present
     const def = buildDefaultConfig();
-    return { ...def, ...saved, providers: { ...def.providers, ...saved.providers } };
+    return {
+      ...def,
+      ...saved,
+      providers: { ...def.providers, ...saved.providers },
+      narrator: { ...def.narrator, ...saved.narrator },
+      coach: { ...def.coach, ...saved.coach },
+    };
   } catch {
     return buildDefaultConfig();
   }
@@ -311,6 +319,13 @@ export function clearApiKey() {
   saveConfig(cfg);
 }
 
+export function getNarratorConfig() {
+  return _config().narrator;
+}
+export function getCoachConfig() {
+  return _config().coach;
+}
+
 // ── System prompts ────────────────────────────────────────────────────────────
 
 const PARAM_REFERENCE = `
@@ -412,13 +427,23 @@ export async function generatePreset(description) {
 
 // ── Feature 2: Parameter Narrator ────────────────────────────────────────────
 
-const NARRATOR_SYSTEM = `You are the voice of ImWeb, a real-time video synthesis instrument.
-Given a snapshot of the current signal path, return ONE concise sentence (max 15 words) describing
-what is visually happening — like "Camera keyed over noise with slow displacement feedback loop".
-Be specific about what's active. No punctuation at end. No preamble.`;
+const NARRATOR_LENGTHS = {
+  short:  { words: 15, maxTokens: 80,  sentences: 'ONE concise sentence' },
+  medium: { words: 35, maxTokens: 150, sentences: 'one or two sentences' },
+  long:   { words: 70, maxTokens: 250, sentences: 'two or three sentences' },
+};
 
-export async function narrateState(stateSnapshot) {
-  return _call(NARRATOR_SYSTEM, `Current signal path: ${stateSnapshot}`, 80);
+function narratorSystem(length) {
+  const cfg = NARRATOR_LENGTHS[length] ?? NARRATOR_LENGTHS.medium;
+  return `You are the voice of ImWeb, a real-time video synthesis instrument.
+Given a snapshot of the current signal path, return ${cfg.sentences} (max ${cfg.words} words total) describing
+what is visually happening — like "Camera keyed over noise with slow displacement feedback loop".
+Be specific about what's active: name the sources, effects, and modes in play. No punctuation at end. No preamble.`;
+}
+
+export async function narrateState(stateSnapshot, length = 'medium') {
+  const cfg = NARRATOR_LENGTHS[length] ?? NARRATOR_LENGTHS.medium;
+  return _call(narratorSystem(length), `Current signal path: ${stateSnapshot}`, cfg.maxTokens);
 }
 
 // Must mirror the SOURCES options array registered for layer.fg/bg/ds in
@@ -539,6 +564,10 @@ export class AIFeatures {
   }
   setProviderModel(id, m) { (_config().providers[id] ??= {}).model  = m;   saveConfig(_config()); }
 
+  setNarratorInterval(ms) { _config().narrator = { ..._config().narrator, interval: ms }; saveConfig(_config()); }
+  setNarratorLength(len)  { _config().narrator = { ..._config().narrator, length: len }; saveConfig(_config()); }
+  setCoachInterval(ms)    { _config().coach    = { ..._config().coach, interval: ms };    saveConfig(_config()); }
+
   // Persist the result of a connection test for a provider, with a timestamp
   // so the status survives panel rebuilds and page reloads.
   setProviderTestResult(id, { ok, message }) {
@@ -560,6 +589,6 @@ export class AIFeatures {
 
   // Feature methods (delegates to module-level functions)
   async generatePreset(description)    { return generatePreset(description); }
-  async narrateState()                 { return narrateState(buildStateSnapshot(this.ps)); }
+  async narrateState()                 { return narrateState(buildStateSnapshot(this.ps), _config().narrator?.length); }
   async coachSuggestion(recentChanges) { return coachSuggestion(buildActivitySnapshot(recentChanges, this.ps)); }
 }
