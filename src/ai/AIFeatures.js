@@ -183,6 +183,56 @@ async function callOllama(pcfg, system, user, _maxTokens) {
   return (await res.json()).message?.content ?? '';
 }
 
+// ── Model list fetchers ─────────────────────────────────────────────────────
+
+async function fetchModels(providerId) {
+  const cfg = _config();
+  const pcfg = cfg.providers[providerId];
+  if (!pcfg) throw new Error('No provider configured');
+  switch (providerId) {
+    case 'anthropic': {
+      const res = await fetch('https://api.anthropic.com/v1/models', {
+        headers: {
+          'x-api-key': pcfg.apiKey,
+          'anthropic-version': '2023-06-01',
+          'anthropic-dangerous-direct-browser-access': 'true',
+        },
+      });
+      if (!res.ok) throw new Error(`Anthropic error ${res.status}`);
+      const data = await res.json();
+      return (data.data ?? []).map(m => m.id);
+    }
+    case 'gemini': {
+      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${pcfg.apiKey}`);
+      if (!res.ok) throw new Error(`Gemini error ${res.status}`);
+      const data = await res.json();
+      return (data.models ?? [])
+        .filter(m => m.supportedGenerationMethods?.includes('generateContent'))
+        .map(m => m.name.replace(/^models\//, ''));
+    }
+    case 'openai': {
+      const res = await fetch('https://api.openai.com/v1/models', {
+        headers: { 'Authorization': `Bearer ${pcfg.apiKey}` },
+      });
+      if (!res.ok) throw new Error(`OpenAI error ${res.status}`);
+      const data = await res.json();
+      return (data.data ?? [])
+        .map(m => m.id)
+        .filter(id => /^(gpt|o\d)/.test(id))
+        .sort();
+    }
+    case 'ollama': {
+      const base = (pcfg.apiKey || 'http://localhost:11434').replace(/\/$/, '');
+      const res = await fetch(`${base}/api/tags`);
+      if (!res.ok) throw new Error(`Ollama ${res.status} — is it running at ${base}?`);
+      const data = await res.json();
+      return (data.models ?? []).map(m => m.name);
+    }
+    default:
+      throw new Error(`Unknown provider: ${providerId}`);
+  }
+}
+
 // ── Module-level call router ──────────────────────────────────────────────────
 
 async function _call(system, user, maxTokens = 512) {
@@ -391,8 +441,22 @@ export class AIFeatures {
   // Config accessors
   getConfig()             { return _config(); }
   setActiveProvider(id)   { _config().activeProvider = id; saveConfig(_config()); }
-  setProviderKey(id, key) { (_config().providers[id] ??= {}).apiKey = key; saveConfig(_config()); }
+  setProviderKey(id, key) {
+    const cfg = _config();
+    const pCfg = (cfg.providers[id] ??= {});
+    if (pCfg.apiKey !== key) delete pCfg.lastTest;
+    pCfg.apiKey = key;
+    saveConfig(cfg);
+  }
   setProviderModel(id, m) { (_config().providers[id] ??= {}).model  = m;   saveConfig(_config()); }
+
+  // Persist the result of a connection test for a provider, with a timestamp
+  // so the status survives panel rebuilds and page reloads.
+  setProviderTestResult(id, { ok, message }) {
+    const cfg = _config();
+    (cfg.providers[id] ??= {}).lastTest = { ok, message, ts: Date.now() };
+    saveConfig(cfg);
+  }
 
   // Internal call router (delegates to module-level _call)
   async _call(system, user, maxTokens = 512) { return _call(system, user, maxTokens); }
@@ -401,6 +465,9 @@ export class AIFeatures {
   async testConnection() {
     return _call('Reply with exactly the word: ok', 'ok', 10);
   }
+
+  // Fetch the live model list for a provider from its API
+  async fetchModels(id) { return fetchModels(id); }
 
   // Feature methods (delegates to module-level functions)
   async generatePreset(description)    { return generatePreset(description); }
