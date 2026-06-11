@@ -5382,12 +5382,14 @@ void main() {
     .getElementById("btn-ai-coach")
     ?.addEventListener("click", _toggleCoach);
 
-  // Keyboard shortcuts for narrator (N) and coach (P)
-  // (added to existing keydown handler via additional listener)
+  // Keyboard shortcuts for narrator (n) and coach (p)
+  // Lowercase only — ⇧P is already bound to the Signal Path panel toggle,
+  // and matching that with the Coach shortcut fired both at once.
   window.addEventListener("keydown", (e) => {
     if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA") return;
-    if (e.key === "n" || e.key === "N") _toggleNarrator();
-    if (e.key === "p" || e.key === "P") _toggleCoach();
+    if (e.metaKey || e.ctrlKey || e.shiftKey) return;
+    if (e.key === "n") _toggleNarrator();
+    if (e.key === "p") _toggleCoach();
   });
 
   console.log(
