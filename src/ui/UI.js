@@ -3505,6 +3505,18 @@ export class Profiler {
   }
 }
 
+// ── Relative time formatting (for persisted AI connection status) ─────────────
+
+function relTime(ts) {
+  const s = Math.floor((Date.now() - ts) / 1000);
+  if (s < 60) return `${s}s ago`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ago`;
+  return `${Math.floor(h / 24)}d ago`;
+}
+
 // ── In-app Markdown docs viewer ───────────────────────────────────────────────
 
 let _docsViewerWired = false;
@@ -3632,6 +3644,7 @@ export function buildAISettingsPanel(ai, panelEl) {
   testBtn.textContent = '⟳ Test connection';
   testBtn.style.marginTop = '8px';
   testBtn.addEventListener('click', async () => {
+    const providerId = ai.getConfig().activeProvider;
     testBtn.disabled = true;
     testBtn.textContent = '⏳ Testing…';
     statusEl.textContent = '';
@@ -3640,9 +3653,11 @@ export function buildAISettingsPanel(ai, panelEl) {
       await ai.testConnection();
       statusEl.textContent = '✓ Connected';
       statusEl.className = 'ai-key-status ok';
+      ai.setProviderTestResult(providerId, { ok: true, message: 'Connected' });
     } catch (err) {
       statusEl.textContent = `✗ ${err.message}`;
       statusEl.className = 'ai-key-status error';
+      ai.setProviderTestResult(providerId, { ok: false, message: err.message });
     } finally {
       testBtn.disabled = false;
       testBtn.textContent = '⟳ Test connection';
@@ -3714,6 +3729,9 @@ export function buildAISettingsPanel(ai, panelEl) {
 
   // ── Per-provider fields renderer ───────────────────────────────────────────
 
+  // Live model lists fetched from each provider's API, cached for this panel
+  const fetchedModels = {};
+
   function refreshProviderUI(providerId) {
     const pDef  = PROVIDERS[providerId];
     const pCfg  = ai.getConfig().providers[providerId] ?? {};
@@ -3749,6 +3767,19 @@ export function buildAISettingsPanel(ai, panelEl) {
         keyInput.type = keyInput.type === 'password' ? 'text' : 'password';
       });
       keyWrap.appendChild(toggle);
+
+      // Clear key
+      const clearBtn = document.createElement('button');
+      clearBtn.className   = 'import-btn';
+      clearBtn.textContent = '✕';
+      clearBtn.title       = 'Clear key';
+      clearBtn.style.cssText = 'padding:2px 6px;min-width:0;font-size:12px;';
+      clearBtn.addEventListener('click', () => {
+        keyInput.value = '';
+        ai.setProviderKey(providerId, '');
+        updateStatusFromKey(providerId);
+      });
+      keyWrap.appendChild(clearBtn);
     }
 
     // Save key on blur or Enter
@@ -3770,9 +3801,10 @@ export function buildAISettingsPanel(ai, panelEl) {
     link.rel         = 'noopener noreferrer';
     provFields.appendChild(link);
 
-    // Model selector
-    const modelOpts = pDef.models.map(m => ({ value: m, label: m }));
-    const customModel = pCfg.model && !pDef.models.includes(pCfg.model)
+    // Model selector — union of static defaults and any live-fetched list
+    const baseModels = fetchedModels[providerId] ?? pDef.models;
+    const modelOpts = [...new Set([...baseModels, pDef.defaultModel])].map(m => ({ value: m, label: m }));
+    const customModel = pCfg.model && !modelOpts.find(o => o.value === pCfg.model)
       ? pCfg.model : null;
     if (customModel) modelOpts.push({ value: customModel, label: `${customModel} (custom)` });
     modelOpts.push({ value: '__custom__', label: 'Custom…' });
@@ -3790,7 +3822,32 @@ export function buildAISettingsPanel(ai, panelEl) {
         ai.setProviderModel(providerId, val);
       }
     });
-    provFields.appendChild(row('Model', modelSel));
+    const modelRow = row('Model', modelSel);
+
+    // Refresh models — fetch the live list from the provider's API
+    const refreshBtn = document.createElement('button');
+    refreshBtn.className   = 'import-btn';
+    refreshBtn.textContent = '⟳';
+    refreshBtn.title       = 'Refresh model list from provider';
+    refreshBtn.style.cssText = 'padding:2px 6px;min-width:0;font-size:12px;margin-left:4px;';
+    refreshBtn.addEventListener('click', async () => {
+      refreshBtn.disabled = true;
+      refreshBtn.textContent = '⏳';
+      try {
+        const models = await ai.fetchModels(providerId);
+        if (!models.length) throw new Error('No models returned');
+        fetchedModels[providerId] = models;
+        refreshProviderUI(providerId); // rebuild with the fetched model list
+        return;
+      } catch (err) {
+        statusEl.textContent = `✗ ${err.message}`;
+        statusEl.className = 'ai-key-status error';
+      }
+      refreshBtn.disabled = false;
+      refreshBtn.textContent = '⟳';
+    });
+    modelRow.appendChild(refreshBtn);
+    provFields.appendChild(modelRow);
 
     updateStatusFromKey(providerId);
   }
@@ -3798,16 +3855,28 @@ export function buildAISettingsPanel(ai, panelEl) {
   function updateStatusFromKey(providerId) {
     const pDef = PROVIDERS[providerId];
     const pCfg = ai.getConfig().providers[providerId] ?? {};
+    let text, cls;
     if (!pDef.needsKey) {
-      statusEl.textContent = `Ollama at ${pCfg.apiKey || 'http://localhost:11434'}`;
-      statusEl.className = 'ai-key-status';
+      text = `Ollama at ${pCfg.apiKey || 'http://localhost:11434'}`;
+      cls = 'ai-key-status';
     } else if (pCfg.apiKey) {
-      statusEl.textContent = `Key set: ${pCfg.apiKey.slice(0, 8)}…`;
-      statusEl.className = 'ai-key-status ok';
+      text = `Key set: ${pCfg.apiKey.slice(0, 8)}…`;
+      cls = 'ai-key-status ok';
     } else {
-      statusEl.textContent = 'No key set';
-      statusEl.className = 'ai-key-status';
+      text = 'No key set';
+      cls = 'ai-key-status';
     }
+    if (pCfg.lastTest) {
+      const rel = relTime(pCfg.lastTest.ts);
+      if (pCfg.lastTest.ok) {
+        text += ` · ✓ Connected (${rel})`;
+      } else {
+        text += ` · ✗ ${pCfg.lastTest.message} (${rel})`;
+        cls = 'ai-key-status error';
+      }
+    }
+    statusEl.textContent = text;
+    statusEl.className = cls;
   }
 
   // Initial render
