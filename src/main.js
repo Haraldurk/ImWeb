@@ -1290,10 +1290,11 @@ async function main() {
         <div class="cm-list"></div>`;
       document.body.appendChild(panel);
 
-      // Position near the button
+      // Position near the button (below it, clamped to viewport — the button
+      // sits in the top status bar, so "above" would render off-screen)
       const r = btn.getBoundingClientRect();
-      panel.style.left = Math.max(4, r.left - 220) + "px";
-      panel.style.top = r.top - panel.offsetHeight - 4 + "px";
+      panel.style.left = Math.max(4, Math.min(r.left - 220, window.innerWidth - panel.offsetWidth - 4)) + "px";
+      panel.style.top = Math.min(r.bottom + 4, window.innerHeight - panel.offsetHeight - 4) + "px";
 
       panel.querySelector("#cm-close").addEventListener("click", _close);
       panel.querySelector("#cm-clear-all").addEventListener("click", () => {
@@ -1303,7 +1304,8 @@ async function main() {
 
       _render();
       // Reposition now that height is known
-      panel.style.top = r.top - panel.offsetHeight - 4 + "px";
+      panel.style.left = Math.max(4, Math.min(r.left - 220, window.innerWidth - panel.offsetWidth - 4)) + "px";
+      panel.style.top = Math.min(r.bottom + 4, window.innerHeight - panel.offsetHeight - 4) + "px";
       _pollId = setInterval(_render, 1000);
       btn.classList.add("active");
     }
@@ -4076,18 +4078,28 @@ void main() {
       })
       .slice(0, 20);
 
+    // Drop onChange listeners from the previous render before discarding rows
+    searchRes
+      .querySelectorAll(".psearch-item")
+      .forEach((el) => el._psUnsub?.());
     searchRes.innerHTML = "";
     all.forEach((p, i) => {
-      const item = document.createElement("div");
-      item.className = `psearch-item${i === _searchSel ? " selected" : ""}`;
-      item.innerHTML = `
-        <span class="pi-id">${p.id}</span>
-        <span class="pi-ctrl">${p.controllerLabel}</span>
-        <span class="pi-val">${p.displayValue}</span>
-      `;
-      item.addEventListener("click", () => {
+      // Reuse the same row builder as the main param panels — gives inline
+      // drag/toggle/select/dblclick-reset editing directly in the results.
+      const item = buildParamRow(p, contextMenu);
+      item.classList.add("psearch-item");
+      item.classList.toggle("selected", i === _searchSel);
+
+      const locateBtn = document.createElement("button");
+      locateBtn.className = "psearch-locate";
+      locateBtn.title = "Scroll to this parameter";
+      locateBtn.textContent = "⌖";
+      locateBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
         activateSearchResult(p);
       });
+      item.appendChild(locateBtn);
+
       item.addEventListener("mouseenter", () => {
         _searchSel = i;
         searchRes
@@ -4101,8 +4113,11 @@ void main() {
   }
 
   function activateSearchResult(p) {
-    // Scroll to the param row and flash it
-    const row = document.querySelector(`.param-row[data-param-id="${p.id}"]`);
+    // Scroll to the param row and flash it (skip the search-results copy of
+    // the row, which now also carries .param-row + data-param-id)
+    const row = Array.from(
+      document.querySelectorAll(`.param-row[data-param-id="${p.id}"]`),
+    ).find((el) => !el.closest("#param-search-results"));
     if (row) {
       row.scrollIntoView({ behavior: "smooth", block: "center" });
       row.style.outline = "1px solid var(--accent)";
@@ -4134,7 +4149,7 @@ void main() {
         el.classList.toggle("selected", j === _searchSel),
       );
     } else if (e.key === "Enter") {
-      items[_searchSel]?.click();
+      items[_searchSel]?.querySelector(".psearch-locate")?.click();
     } else if (e.key === "Escape") {
       closeParamSearch();
     }
@@ -4223,8 +4238,8 @@ void main() {
       return; // prevent other shortcuts (e.g. / on Nordic layout) from also firing
     }
 
-    // / = open parameter search
-    if (e.key === "/" && !e.target.closest("input, textarea")) {
+    // / (or þ/Þ on Icelandic, where Shift+7=/ is intercepted by the clip-select shortcut above)
+    if ((e.key === "/" || e.key === "þ" || e.key === "Þ") && !e.target.closest("input, textarea")) {
       e.preventDefault();
       openParamSearch();
       return;

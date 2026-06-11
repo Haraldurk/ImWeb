@@ -632,7 +632,9 @@ export function buildParamRow(param, contextMenu) {
   row.addEventListener('pointercancel', () => clearTimeout(_lpTimer));
 
   // Live update from external controller
-  param.onChange(updateDisplay);
+  // (unsubscribe stashed on the element so callers that rebuild rows
+  // repeatedly — e.g. the param search results — can avoid leaking listeners)
+  row._psUnsub = param.onChange(updateDisplay);
   updateDisplay();
 
   row.appendChild(label);
