@@ -4051,13 +4051,19 @@ void main() {
   const searchEl = document.getElementById("param-search");
   const searchInp = document.getElementById("param-search-input");
   const searchRes = document.getElementById("param-search-results");
+  const searchFilters = document.getElementById("param-search-filters");
   let _searchSel = 0;
+  let _searchFilter = "all";
 
   function openParamSearch() {
     if (!searchEl) return;
     searchEl.classList.remove("hidden");
     searchInp.value = "";
     _searchSel = 0;
+    _searchFilter = "all";
+    searchFilters
+      ?.querySelectorAll(".psearch-chip")
+      .forEach((el) => el.classList.toggle("active", el.dataset.filter === "all"));
     renderSearchResults("");
     searchInp.focus();
   }
@@ -4073,12 +4079,17 @@ void main() {
     const all = ps
       .getAll()
       .filter((p) => {
+        if (_searchFilter === "active") {
+          if (!p.controller) return false;
+        } else if (_searchFilter !== "all") {
+          if (p.controllerClass !== _searchFilter) return false;
+        }
         if (!q) return true;
         return (
           p.id.toLowerCase().includes(q) || p.label.toLowerCase().includes(q)
         );
       })
-      .slice(0, 20);
+      .slice(0, _searchFilter === "all" && !q ? 20 : 60);
 
     // Drop onChange listeners from the previous render before discarding rows
     searchRes
@@ -4131,6 +4142,17 @@ void main() {
   }
 
   searchInp?.addEventListener("input", () => {
+    _searchSel = 0;
+    renderSearchResults(searchInp.value);
+  });
+
+  searchFilters?.addEventListener("click", (e) => {
+    const chip = e.target.closest(".psearch-chip");
+    if (!chip) return;
+    _searchFilter = chip.dataset.filter;
+    searchFilters
+      .querySelectorAll(".psearch-chip")
+      .forEach((el) => el.classList.toggle("active", el === chip));
     _searchSel = 0;
     renderSearchResults(searchInp.value);
   });
