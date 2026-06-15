@@ -328,7 +328,14 @@ export class SDFGenerator {
     this._time    = 0;
     this.active   = false;
 
-    this._rt = new THREE.WebGLRenderTarget(width, height, {
+    // Raymarch at reduced internal resolution and let the bilinear-filtered
+    // render target upscale on composite — the 96-step raymarch + 6-sample
+    // normals + AO is too expensive per-pixel at full canvas resolution.
+    this._scale = 0.5;
+    const rtW = Math.max(1, Math.round(width  * this._scale));
+    const rtH = Math.max(1, Math.round(height * this._scale));
+
+    this._rt = new THREE.WebGLRenderTarget(rtW, rtH, {
       minFilter: THREE.LinearFilter,
       magFilter: THREE.LinearFilter,
       format:    THREE.RGBAFormat,
@@ -355,7 +362,7 @@ export class SDFGenerator {
         uBaseHSV:     { value: new THREE.Vector3(0, 0, 1) },
         uRefract:     { value: 0 },
         uFresnel:     { value: 0.5 },
-        uResolution:  { value: new THREE.Vector2(width, height) },
+        uResolution:  { value: new THREE.Vector2(rtW, rtH) },
         uFgTex:       { value: new THREE.DataTexture(new Uint8Array([0,0,0,255]), 1, 1) },
         uBgTex:       { value: new THREE.DataTexture(new Uint8Array([0,0,0,255]), 1, 1) },
       },
@@ -414,8 +421,10 @@ export class SDFGenerator {
   get texture() { return this._rt.texture; }
 
   resize(w, h) {
-    this._rt.setSize(w, h);
-    this._mat.uniforms.uResolution.value.set(w, h);
+    const rtW = Math.max(1, Math.round(w * this._scale));
+    const rtH = Math.max(1, Math.round(h * this._scale));
+    this._rt.setSize(rtW, rtH);
+    this._mat.uniforms.uResolution.value.set(rtW, rtH);
   }
 
   dispose() {
