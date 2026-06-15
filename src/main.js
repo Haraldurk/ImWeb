@@ -5385,7 +5385,6 @@ void main() {
     try {
       const snapshot = buildActivitySnapshot(_recentChanges, ps);
       const text = await coachSuggestion(snapshot);
-      console.log('[Coach] response:', JSON.stringify(text));
       if (_coachActive) {
         _showCoachNotif(text || '⚠ Coach: empty response from AI — try a different model');
       }
