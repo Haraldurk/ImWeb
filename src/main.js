@@ -4081,6 +4081,8 @@ void main() {
       .filter((p) => {
         if (_searchFilter === "active") {
           if (!p.controller) return false;
+        } else if (_searchFilter === "modified") {
+          if (p.value === p.defaultValue) return false;
         } else if (_searchFilter !== "all") {
           if (p.controllerClass !== _searchFilter) return false;
         }
