@@ -3,7 +3,7 @@
 ![ImWeb Preview](assets/preview.png)
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
-[![Version](https://img.shields.io/badge/version-v0.8.7-brightgreen)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-v0.9.0-brightgreen)](CHANGELOG.md)
 [![Live Demo](https://img.shields.io/badge/demo-live-orange)](https://imweb.image-ine.org)
 
 **ImWeb is Image/ine — reimagined** — The legendary real-time video synthesis instrument created by Tom Demeyer and Steina Vasulka at STEIM Amsterdam, rebuilt for the modern browser and pointed toward what comes next. Free, open source, no installation required.
@@ -15,7 +15,7 @@
 
 ## Contents
 
-[What This Is](#what-this-is) · [Quick Start](#quick-start) · [Features](#features-v085) · [Keyboard Reference](#keyboard-reference) · [Architecture](#architecture) · [Roadmap](#roadmap) · [Contributing](#contributing) · [Credits](#credits) · [License](#license) · [Support](#support)
+[What This Is](#what-this-is) · [Quick Start](#quick-start) · [Features](#features-v090) · [Keyboard Reference](#keyboard-reference) · [Architecture](#architecture) · [Roadmap](#roadmap) · [Contributing](#contributing) · [Credits](#credits) · [License](#license) · [Support](#support)
 
 ---
 
@@ -59,7 +59,7 @@ Firefox and Safari supported in WebGL mode with minor limitations.
 
 ---
 
-## Features (v0.8.5)
+## Features (v0.9.0)
 
 ### Input Sources
 
@@ -80,7 +80,7 @@ Firefox and Safari supported in WebGL mode with minor limitations.
 
 ### Effects Chain
 
-- TransferMode (Copy, XOR, OR, AND)
+- TransferMode — 22 blend modes (Add, Difference, Multiply, Screen, Overlay, etc.)
 - Displacement (amount, angle, offset, RotateGrey)
 - WarpMap
 - Luminance keyer (White, Black, Softness)
@@ -135,7 +135,7 @@ Right-click any parameter to assign:
 - Fullscreen (double-click canvas or `Cmd+F`)
 - Second monitor — `⊡` opens letterboxed popup on any connected display
 - Ghost mode — dims main canvas when second screen is active
-- Output resolution — Fit / 540p / 720p / 1080p / Half
+- Output resolution — Display / 720p / 1080p / 540p / Quarter
 - WebM recording
 - Non-realtime frame capture — 📷 pauses render loop; Step Frame / Auto-Run exports numbered PNG sequence
 
@@ -148,7 +148,14 @@ Right-click any parameter to assign:
 - **Neutral State** — resets all parameter values without touching controller assignments
 - **Bank export/import (.imbank)** — share a single bank
 - **State export/import (.imstate)** — share a single state
-- **AI State Generator** — LLM-driven parameter patching ("make a slow organic ocean")
+
+### AI
+
+- Multi-provider system — Anthropic, Google Gemini, OpenAI, Ollama (local), OpenRouter; switchable, API keys stored locally
+- AI State Generator — LLM-driven parameter patching ("make a slow organic ocean")
+- AI Narrator — periodic AI-generated description of the current parameter state, shown as an overlay
+- AI Coach — periodic AI-generated performance suggestions
+- AI Settings panel — per-provider live model lists, connection status, configurable Narrator/Coach interval & response length
 
 ### UI
 
