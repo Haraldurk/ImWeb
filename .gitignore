@@ -224,3 +224,11 @@ Haraldur.imweb.htm
 ImWeb\ ha.html
 ImWebha.html
 imweb-dist-*.zip
+
+# Local AI tool config/cache dirs
+.agents/
+.antigravitycli/
+.codegraph/
+.codex/
+.deepseek/
+skills-lock.json
