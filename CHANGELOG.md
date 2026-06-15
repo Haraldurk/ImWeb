@@ -6,7 +6,7 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
 
 ---
 
-## [0.8.9+] — 2026-05-23
+## [0.9.0] — 2026-06-15
 
 ### Added
 - feat(shaders): uSwirl added to PsrdWarp — gradient vs curl warp blend;
@@ -112,6 +112,75 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
   zero-derivative point on one phase is covered by the other's peak,
   removing the periodic "speed up/slow down" breathing. Isolated to
   Gradient/Value (uType==1). Commit `c079d4b`.
+
+### Added
+
+- **OpenRouter AI provider** — added as a fifth provider (chat completions +
+  model list), giving access to many vendors' models through a single API
+  key. Commit `1ee3b17`.
+- **In-app Markdown docs viewer** — new `#docs-viewer` modal renders Quick
+  Reference / Full Manual from the Settings panel without leaving the app
+  (lazy-loads `marked`, ~35KB); "Quick Reference" / "Full Manual" links open
+  this modal instead of downloading the raw `.md`. Added a "Keyboard
+  Shortcuts" link that opens the existing `#kb-help` overlay. Commit
+  `6794b23`.
+- **Param search overlay filter chips** — All / Active / LFO / MIDI / Sound /
+  Mouse / Other / **Modified** chips filter the 385 params by controller type
+  or by whether the value differs from its default, composing with text
+  search. Panel enlarged (560px, 60vh results), result cap raised 20 → 60.
+  Commits `2eb4e02` and this release's "Modified" chip.
+- **AI Settings: live model lists + persistent connection status** — "⟳
+  Refresh models" fetches each provider's live model list (Anthropic, Gemini,
+  OpenAI, Ollama); "✕ Clear key" per provider; connection status now shows the
+  last test result with a relative timestamp ("✓ Connected (5m ago)") that
+  survives panel rebuilds and reloads. Commit `f9a6860`.
+- **AI Performance settings** — Narrator/Coach poll intervals (5–60s / 15–120s)
+  and Narrator description length (Short/Medium/Long) are now configurable in
+  AI Settings. Commit `85a9d27`.
+- **SDF Generator** now raymarches at half resolution and bilinear-upscales on
+  composite — the 96-step raymarch + 6-sample normals + AO was too expensive
+  per-pixel at full canvas resolution.
+
+### Changed
+
+- **Narrator/Coach defaults** — Narrator default interval raised from 2.5s to
+  10s (was issuing ~24 calls/min, burning API cost in minutes); Coach default
+  45s. Commit `85a9d27`.
+- **Search Parameters results** now reuse `buildParamRow` for inline
+  drag/toggle/select/dblclick-reset editing directly in the results list, with
+  a ⌖ button to scroll-to/highlight the live row. Commit `b024db6`.
+- **MasterProject factory default** updated to 8 banks (was 5), `activePreset`
+  reset to 0.
+
+### Fixed
+
+- **Narrator source-name mapping** — `SOURCE_NAMES` now mirrors
+  `ParameterSystem.js` exactly (25 sources including 3D Depth/SDF/VWarp/
+  Analog/TimeDisp), fixing misreported active sources (e.g. an active Noise
+  source reported as "3D"); added `describeSourceDetail()` so the Narrator
+  describes the active noise type / 3D geometry / SDF shape / analog source /
+  sequence detail. Commit `1ee3b17`.
+- **AI Coach empty-response / error handling** — shows a visible hint when a
+  model resolves successfully with an empty string (e.g. a "thinking" model
+  consumes its budget on reasoning), and surfaces errors (rate limit, bad key,
+  etc.) instead of silently fading the placeholder; `.ai-coach-notif` now wraps
+  and centers longer text. Commits `a1412b5`, `85a9d27`.
+- **Shift+P no longer also toggles AI Coach** — Narrator/Coach `n`/`p` keydown
+  handler restricted to plain keys (no modifiers), since Shift+P is also bound
+  to the Signal Path panel toggle; documented previously-missing shortcuts
+  (q/a/z, d, n/p, Shift+P, Shift+V) in `#kb-help` and updated button tooltips.
+  Commit `7ced27b`.
+- **Active Controller assignments panel position** — was anchored off-screen
+  above its toolbar button; now positions below the button, clamped to the
+  viewport. Commit `b024db6`.
+- **þ/Þ as alternate Search Parameters shortcut** — `/` didn't fire on
+  Icelandic keyboards (Shift+7=/ intercepted by the clip-select shortcut).
+  Commit `b024db6`.
+- **Assign-controller context menu z-index** — raised above the param search
+  overlay (`.context-menu` was below `#param-search`, opening the menu behind
+  the overlay). Commit `9950db0`.
+- **Stills Buffer slot count docs corrected** — 1–64 via a configurable 8×8
+  grid (default 4×4=16), not 4–32 as previously documented. Commit `003240c`.
 
 ## [0.8.9] — 2026-05-12
 
@@ -545,6 +614,7 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
 [0.2.0]: https://github.com/haraldurkarlsson/ImWeb/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/haraldurkarlsson/ImWeb/releases/tag/v0.1.0
 
+[0.9.0]: https://github.com/haraldurkarlsson/ImWeb/compare/v0.8.9...v0.9.0
 [0.8.9]: https://github.com/haraldurkarlsson/ImWeb/compare/v0.8.8...v0.8.9
 [0.8.8]: https://github.com/haraldurkarlsson/ImWeb/compare/v0.8.7...v0.8.8
 [0.4.2]: https://github.com/haraldurkarlsson/ImWeb/compare/v0.4.1...v0.4.2
