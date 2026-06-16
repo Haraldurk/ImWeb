@@ -66,7 +66,7 @@ Firefox and Safari supported in WebGL mode with minor limitations.
 - Camera (WebRTC, auto-start on load)
 - Movie clips — up to 8; auto-loaded from `_imweb_ready/` on startup; speed, loop range, position scrub, BPM sync, mirror, mute; thumbnails in UI
 - Analog TV — Phase 1 signal simulator (720×480); 4:3 cropping; hue/sat/bright/contrast grading
-- Stills buffer — capture up to 16 frames, FrameSelect 1/2/3
+- Stills buffer — capture up to 64 frames (8×8 grid), FrameSelect 1/2/3
 - Color source (HSV solid)
 - Noise source (pixel)
 - 3D scene — all geometry, transforms, material, camera; GLTF/GLB/OBJ/STL import; auto-spin; Cloner (MoGraph InstancedMesh) with Twist/Scatter/Wave/ScaleStep effectors; Blob/Morph vertex displacement; N-D Hypercube engine (4D–12D) with edge/face/instancer rendering; real-time pipeline texture on instancer geometry
@@ -106,7 +106,7 @@ Right-click any parameter to assign:
 
 - Mouse X/Y
 - MIDI CC (with channel filter)
-- LFO ×4 (Sine/Triangle/Sawtooth/Square; BPM sync; beat retrigger)
+- LFO (Sine/Triangle/Sawtooth/Ramp Down/Square/S&H; BPM sync; beat retrigger)
 - Audio FFT (bass / mid / high)
 - Audio beat detection + auto-BPM
 - Random
@@ -144,7 +144,7 @@ Right-click any parameter to assign:
 - **Project → Bank → State hierarchy** — standard live performance mental model
 - **Project files (.imweb)** — `Cmd+S` or Export button downloads the full session
 - **Banks** — named groups of States; bank list in the Project tab; bank dropdown in the bottom-right corner
-- **States** — up to 32 fully self-contained snapshots per Bank (parameter values + FX order + controller assignments + media refs); thumbnail grid in the bottom bar
+- **States** — unlimited fully self-contained snapshots per Bank (parameter values + FX order + controller assignments + media refs); thumbnail grid in the bottom bar
 - **Neutral State** — resets all parameter values without touching controller assignments
 - **Bank export/import (.imbank)** — share a single bank
 - **State export/import (.imstate)** — share a single state
@@ -207,7 +207,7 @@ src/
   controls/
     ParameterSystem.js    All controllable parameters + reactivity
     ControllerManager.js  Mouse, MIDI, LFO, Sound, Key, Random, Expression drivers
-    LFO.js                Sine / Triangle / Sawtooth / Square oscillators
+    LFO.js                Sine / Triangle / Sawtooth / Ramp Down / Square / S&H oscillators
   core/
     Pipeline.js           WebGL render-target compositing chain
   shaders/
@@ -217,7 +217,7 @@ src/
   inputs/
     CameraInput.js        WebRTC getUserMedia → VideoTexture
     MovieInput.js         Video file → VideoTexture; speed/loop/scrub/BPM sync
-    StillsBuffer.js       Frame capture store (up to 16 frames)
+    StillsBuffer.js       Frame capture store (up to 64 frames, 8×8 grid)
     SlitScanBuffer.js     Rolling slit scan effect
     TextLayer.js          Canvas 2D text → Texture
     SDFGenerator.js       GPU raymarched SDF metaballs → WebGLRenderTarget
