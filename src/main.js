@@ -4734,7 +4734,7 @@ void main() {
     movieInput.tick(ps, beatPhase, dt);
 
     // Tick stills buffer (reads fs1 → readIndex)
-    stillsBuffer.tick(ps);
+    stillsBuffer.tick(ps, dt);
 
     // Tick and capture sequence buffers
     const _seqSrcTex = (idx) =>
