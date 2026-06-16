@@ -182,6 +182,10 @@ _imweb_ready/
 !public/**/*.webm
 !public/**
 
+# Re-ignore Finder metadata inside public/ (overrides the !public/** above)
+public/.DS_Store
+public/**/.DS_Store
+
 # WebM recordings in public/assets
 public/assets/*.webm
 
