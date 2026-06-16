@@ -59,6 +59,7 @@ import { SceneManager } from "./scene3d/SceneManager.js";
 import { Pipeline } from "./core/Pipeline.js";
 import { PresetManager, openDB } from "./state/Preset.js";
 import { OSCBridge } from "./io/OSCBridge.js";
+import { MontyBridge } from "./io/MontyBridge.js";
 import { ProjectFile } from "./io/ProjectFile.js";
 import clipLibrary from "./io/ClipLibrary.js";
 import { importImX } from "./io/ImXImporter.js";
@@ -1760,7 +1761,8 @@ async function main() {
   stateBar._captureThumbFn     = capturePresetThumb;
 
   // ── OSC bridge ────────────────────────────────────────────────────────────
-  const oscBridge = new OSCBridge(ps, presetMgr);
+  const oscBridge   = new OSCBridge(ps, presetMgr);
+  const montyBridge = new MontyBridge(ps, stillsBuffer);
   const projectFile = new ProjectFile(ps, presetMgr, tableManager, {
     warpEditor,
     drawLayer,
@@ -1796,6 +1798,38 @@ async function main() {
       if (url) oscBridge.connect(url);
     }
   });
+
+  // MontyBridge status row — injected into #buffer-params in Buffer tab
+  (() => {
+    const container = document.getElementById('buffer-params');
+    if (!container) return;
+
+    const savedUrl = localStorage.getItem('imweb-monty-url') || 'ws://localhost:8765';
+    container.innerHTML = `
+      <div class="param-row" style="padding:4px 10px;display:flex;align-items:center;gap:8px;border-top:1px solid var(--border);">
+        <span style="font-size:10px;color:var(--text-2);letter-spacing:.05em;flex-shrink:0;">MONTY</span>
+        <span class="monty-dot" style="font-size:14px;line-height:1;color:#404050;">●</span>
+        <span class="monty-source" style="font-size:9px;color:var(--text-2);flex:1;">—</span>
+        <button id="btn-monty-connect" style="
+          background:var(--bg-3);border:1px solid var(--border);border-radius:3px;
+          color:var(--text-1);font-size:9px;padding:2px 7px;cursor:pointer;">Connect</button>
+      </div>`;
+
+    montyBridge.setStatusEl(container.querySelector('.param-row'));
+
+    document.getElementById('btn-monty-connect')?.addEventListener('click', () => {
+      if (montyBridge.active) {
+        montyBridge.disconnect();
+        document.getElementById('btn-monty-connect').textContent = 'Connect';
+      } else {
+        const url = prompt('Monty WebSocket URL:', savedUrl);
+        if (!url) return;
+        localStorage.setItem('imweb-monty-url', url);
+        montyBridge.connect(url);
+        document.getElementById('btn-monty-connect').textContent = 'Disconnect';
+      }
+    });
+  })();
 
   // Project file UI — #project-file-ui container in Presets tab
   (() => {
