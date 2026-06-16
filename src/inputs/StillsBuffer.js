@@ -144,9 +144,24 @@ export class StillsBuffer {
    * Called each frame from the render loop.
    * Reads buffer.fs1 and fs2 to select frames for blend.
    */
-  tick(ps) {
-    const fs1 = Math.round(ps.get('buffer.fs1').value);
-    this.readIndex  = Math.max(0, Math.min(this.frameCount - 1, fs1));
+  tick(ps, dt = 0) {
+    const scatter = Math.round(ps.get('buffer.scatter').value);
+    if (scatter > 0) {
+      this._grainAccum += dt * ps.get('buffer.grainrate').value;
+      if (this._grainAccum >= 1) {
+        this._grainAccum -= 1;
+        this._scatterOffset = Math.round((Math.random() * 2 - 1) * scatter);
+        this._grainFlashSlot = Math.max(0, Math.min(this.frameCount - 1,
+          Math.round(ps.get('buffer.fs1').value) + this._scatterOffset));
+        this._grainFlashTime = performance.now();
+      }
+      const raw = Math.round(ps.get('buffer.fs1').value) + this._scatterOffset;
+      this.readIndex = Math.max(0, Math.min(this.frameCount - 1, raw));
+    } else {
+      this._scatterOffset = 0;
+      this._grainAccum    = 0;
+      this.readIndex      = Math.round(ps.get('buffer.fs1').value);
+    }
     const fs2 = Math.round(ps.get('buffer.fs2').value);
     this.read2Index = Math.max(0, Math.min(this.frameCount - 1, fs2));
   }
