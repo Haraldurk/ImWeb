@@ -3154,6 +3154,22 @@ async function main() {
         bufferCtx.fillRect(x, y, cw - 1, ch - 1);
       }
 
+      // Scatter range overlay — blue tint for slots within ±scatter of fs1
+      const _scatter = Math.round(ps.get('buffer.scatter').value);
+      if (_scatter > 0) {
+        const _center = Math.round(ps.get('buffer.fs1').value);
+        const _dist   = Math.abs(i - _center);
+        if (_dist > 0 && _dist <= _scatter) {
+          bufferCtx.fillStyle = 'rgba(80,140,255,0.12)';
+          bufferCtx.fillRect(x, y, cw - 1, ch - 1);
+        }
+        if (i === stillsBuffer._grainFlashSlot &&
+            performance.now() - stillsBuffer._grainFlashTime < 80) {
+          bufferCtx.fillStyle = 'rgba(80,140,255,0.40)';
+          bufferCtx.fillRect(x, y, cw - 1, ch - 1);
+        }
+      }
+
       // Frame index label (only if cell tall enough)
       if (ch >= 12) {
         bufferCtx.fillStyle = isRead
