@@ -31,6 +31,10 @@ export class StillsBuffer {
     this.writeIndex        = 0;
     this.readIndex         = 0;
     this.read2Index        = 0; // for fs2 / frame blend
+    this._scatterOffset    = 0;
+    this._grainAccum       = 0;
+    this._grainFlashSlot   = -1;
+    this._grainFlashTime   = 0;
 
     // Small render target for cheap CPU readback
     this._thumbTarget = new THREE.WebGLRenderTarget(THUMB_W, THUMB_H, {
