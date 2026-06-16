@@ -214,3 +214,87 @@ Issues found at initial prototype stage:
 | 3D models lost on save/load / model URL refs | Persisted model URL as `modelAsset` in project JSON and `mediaRefs` |
 | Second screen black output on layout/DPR changes | Re-registered DPR listener and added context recovery handlers |
 | Chrome 148 ANGLE/Metal backend crashes/rendering bugs | Hardened vertex shaders: replaced gl_VertexID with aTB, forced highp sampler2D, textureLod, and SkinnedMesh→Mesh |
+
+---
+
+## Session 6 — v0.9.0 (2026-06-15)
+
+### Features built this session
+
+**Periodic noise family (psrdnoise2 + PsrdWarp)**
+- `psrdnoise2` (Stefan Gustavson's 2D periodic simplex noise) added as noise type 39 under new `Periodic` family
+- `PsrdWarp` (gradient domain warp) added as noise type 40 — uses `psrdnoise_grad()` helper returning a `PsrdResult` struct for GLSL ES 1.00 compatibility
+- `noise.period.x`, `noise.period.y`, `noise.alpha` registered in ParameterSystem and wired in Pipeline
+- `uSwirl` param — blends gradient vs curl warp: `mix(gsum, vec2(-gsum.y, gsum.x), uSwirl)` in octave loop
+- `uRidge` param — abs() accumulation blend, orthogonal to Swirl
+- Both sliders wired into `fractalSection` in Noise panel
+
+**Noise panel family→type selector**
+- Noise panel rebuilt as `buildNoisePanel()` with family row (Gradient / Fractal / Cellular / Warp / Periodic / Analog) and type grid within each family
+- Legacy `_syncNoiseParamVisibility()` and `_patchNoiseTypeOptgroups()` removed
+- Fractal-only section (fBm octaves, lacunarity, gain, Swirl, Ridge) hidden for non-fractal types
+
+**Noise: Sharpen relocated into Noise panel**
+- `noise.sharpen` is now a per-noise-texture unsharp-mask pass (dedicated `_noiseSharpTarget`, 2px kernel, up to 8× amount) instead of a global Effects pass
+- Keeps sharpening scoped to the noise source, not the composited output
+
+**OpenRouter as fifth AI provider**
+- Chat completions + live model list via single API key
+- Gives access to many vendors' models (GPT, Gemini, Mistral, etc.) through one endpoint
+
+**In-app Markdown docs viewer**
+- `#docs-viewer` modal renders Quick Reference / Full Manual from Settings panel without leaving the app
+- Lazy-loads `marked` (~35 KB); "Keyboard Shortcuts" link opens existing `#kb-help` overlay
+
+**Param search overlay filter chips**
+- All / Active / LFO / MIDI / Sound / Mouse / Other / **Modified** chips filter 385 params by controller type or deviation from default
+- Composes with text search; panel enlarged (560px, 60vh); result cap raised 20 → 60
+- Results reuse `buildParamRow` for inline drag/toggle/select/dblclick-reset editing; ⌖ button scrolls to and highlights the live row
+
+**AI Settings improvements**
+- Live model lists: "⟳ Refresh models" fetches each provider's current model list
+- Connection status shows last test result with relative timestamp ("✓ Connected 5m ago"), survives panel rebuilds and reloads
+- Narrator/Coach poll intervals configurable (5–60s / 15–120s); Narrator response length (Short/Medium/Long)
+- Narrator default interval raised from 2.5s → 10s (was burning API cost at ~24 calls/min)
+- Coach default 45s
+
+**SDF Generator performance**
+- Now raymarches at half resolution and bilinear-upscales on composite — 96-step raymarch + 6-sample normals + AO was too expensive at full canvas resolution
+
+**MasterProject updated**
+- Factory default expanded to 8 banks (was 5); `activePreset` reset to 0
+
+### Bugs fixed
+
+| Bug | Fix |
+|---|---|
+| Hypercube wireframe dropping to 30–40 fps (Points held 60 fps) | `_computeLastActiveEdge()` scopes per-frame GPU uploads and draw range to active edges only — cuts upload from ~2.2 MB to ~14 KB for 4D |
+| Morph loop on ↺ reset / Neutral State button | Suspend `global.morphspeed` during `ps.getAll()` reset cascade to prevent interpolated transitions |
+| Noise animation stutter on frame hitches | Replaced `lastTime / 1000` with capped-dt `noiseTime` accumulator; hitches no longer cause large shader time jumps |
+| Speed slider phase jump on change | `uPhase` uniform driven by `noisePhase += speed * dt` in JS; shader uses `t = uPhase + uSeed` — no discontinuity |
+| noisePhase frozen during frame-skip | Moved `noisePhase` accumulator before `_captureMode` / `shouldRender` early returns |
+| Alpha cycling stopped in non-periodic mode | `mod()` bounding only applied when period > 0; period = 0 uses unbounded `alpha = time` (Gustavson reference) |
+| PsrdWarp mod() wrapping introduced discontinuities | Removed manual `mod()` on warped coordinates — `psrdnoise` handles periodic lattice internally |
+| PsrdWarp / Psrd2D asymmetric period response | Introduced `periodicP = p.xy + vec2(floor(uScale * 0.5) + 1.0)` to keep all canvas coordinates positive |
+| psrdnoise GLSL ES incompatibility (`out vec2 gradient`, `any(greaterThan(...))`) | Rewrote to remove output parameter and float-based period check; GLSL ES 1.00 compatible |
+| psrdnoise animation not responding to Speed slider | Changed animation drive from `uAlpha` to `t + uAlpha`; pattern now flows with Speed |
+| `Pipeline._noiseTime` NaN causing film grain / interlace glitches | Added `this._noiseTime = 0` in Pipeline constructor |
+| Noise scale not centered (scaled from top-left corner) | `vUv * uScale` → `(vUv - 0.5) * uScale + 0.5` in NOISE_BFG shader |
+| Value/Gradient noise speed-pulsing ("breathing") | `vNoise` blends second sample at half-cell time offset to cover quintic ease zero-derivative |
+| period step: 2 excluding valid odd values | Reverted to `step: 1`; even-integer enforcement was based on incorrect diagnosis |
+| 3D scene white/flat default material | `emissive` floor 0.35 preserves directional lighting; `material.color` always 0xffffff; MatHue/MatSat route to emissive tinting only |
+| Narrator misreporting active source (e.g. Noise reported as "3D") | `SOURCE_NAMES` now mirrors ParameterSystem.js exactly (25 sources); `describeSourceDetail()` added |
+| AI Coach silent on empty or error response | Shows visible hint for empty responses (thinking model budget exhausted); surfaces rate-limit and bad-key errors |
+| Shift+P toggling AI Coach and Signal Path simultaneously | Narrator/Coach keydown handler restricted to plain keys (no modifiers) |
+| Active Controller panel appearing off-screen | Now positions below its toolbar button, clamped to viewport |
+| Chrome 148 ANGLE/Metal regression — resolved upstream 2026-06-10 | Google fixed the Chromium bug; Hypercube edges and GLB models render correctly on Chrome Metal backend; `--use-angle=gl` workaround no longer needed |
+
+### Backlog update
+
+- [ ] Interactive WarpMode mesh editor (currently procedural + limited brush)
+- [ ] Insert Video to Buffer (context menu exists, needs dedicated UI)
+- [ ] MidiSync / AutoSync (frame rate locked to MIDI clock)
+- [ ] Mobile-friendly UI (touch targets, responsive layout)
+- [ ] Multi-quad projection mapping (independent sources per quad)
+- [ ] Multi-cam workflow (per-layer camera selector)
+- [ ] GLSL editor: resolve WebGL 1281/1282 on preset apply
