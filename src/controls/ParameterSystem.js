@@ -1306,6 +1306,25 @@ export function registerCoreParameters(ps) {
     step: 1,
   });
   ps.register({
+    id: "buffer.scatter",
+    label: "Scatter",
+    group: "buffer",
+    min: 0,
+    max: 32,
+    value: 0,
+    step: 1,
+  });
+  ps.register({
+    id: "buffer.grainrate",
+    label: "GrainRate",
+    group: "buffer",
+    min: 0.5,
+    max: 30,
+    value: 4,
+    step: 0.5,
+    unit: "Hz",
+  });
+  ps.register({
     id: "buffer.scan",
     label: "ScanFrames",
     group: "buffer",
