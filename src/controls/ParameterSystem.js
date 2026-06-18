@@ -227,6 +227,10 @@ export class Parameter {
       "movie-pos": "MVP",
       osc: "OSC",
       expr: `ƒ(t)`,
+      "monty-saccade-x": "MX",
+      "monty-saccade-y": "MY",
+      "monty-confidence": "MC",
+      "monty-pe": "MP",
     };
     return labels[c.type] ?? c.type.toUpperCase().slice(0, 4);
   }
@@ -238,6 +242,7 @@ export class Parameter {
     if (t.startsWith("midi")) return "midi";
     if (t.startsWith("mouse")) return "mouse";
     if (t.startsWith("sound")) return "sound";
+    if (t.startsWith("monty")) return "monty";
     return "assigned";
   }
 
