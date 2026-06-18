@@ -32,6 +32,12 @@ def parse_args():
     p.add_argument("--steps", type=int,  default=50,   help="Steps per Monty episode (default 50)")
     p.add_argument("--min-interval", type=float, default=0.5,
                    help="Min seconds between accepted frames (default 0.5)")
+    p.add_argument("--governor", choices=["adaptive", "static"], default="adaptive",
+                   help="Frame governor mode (default adaptive)")
+    p.add_argument("--model", choices=["pretrained", "self"], default="pretrained",
+                   help="Model mode: pretrained YCB or self-supervised (default pretrained)")
+    p.add_argument("--confidence-agg", choices=["mean", "max"], default="mean",
+                   help="Confidence aggregation across LMs (default mean)")
     return p.parse_args()
 
 
@@ -104,6 +110,44 @@ async def run_mock(hz: float, port: int):
 
 
 # ---------------------------------------------------------------------------
+# Phase 4 — adaptive governor
+# ---------------------------------------------------------------------------
+
+class AdaptiveGovernor:
+    def __init__(self, min_interval=0.15, max_interval=2.0, initial=0.5):
+        self._min = min_interval
+        self._max = max_interval
+        self.current = initial
+        self._last_accepted = 0.0
+
+    def accept(self, now: float) -> bool:
+        if now - self._last_accepted >= self.current:
+            self._last_accepted = now
+            return True
+        return False
+
+    def update(self, peak_pe: float):
+        target = self._min + (self._max - self._min) * peak_pe
+        self.current = self.current * 0.7 + target * 0.3
+        self.current = max(self._min, min(self._max, self.current))
+
+
+class StaticGovernor:
+    def __init__(self, interval=0.5):
+        self.current = interval
+        self._last_accepted = 0.0
+
+    def accept(self, now: float) -> bool:
+        if now - self._last_accepted >= self.current:
+            self._last_accepted = now
+            return True
+        return False
+
+    def update(self, peak_pe: float):
+        pass
+
+
+# ---------------------------------------------------------------------------
 # Phase 3.0 — live Monty inference
 # ---------------------------------------------------------------------------
 
@@ -128,7 +172,7 @@ def _setup_scene_folder(data_path: Path):
     return data_path
 
 
-def _setup_monty(model_path: str):
+def _setup_monty(model_path: str, model_mode: str = "pretrained"):
     """Load Monty experiment via Hydra config — returns (model, env, env_interface)."""
     import numpy as np
     import hydra
@@ -146,20 +190,26 @@ def _setup_monty(model_path: str):
     from tbp.monty.hydra import register_resolvers
     register_resolvers()
 
+    overrides = [
+        "experiment=tutorial/monty_meets_world_2dimage_inference",
+        "environment=two_d_data_stream",
+        "env_interface=eval_stream",
+        "logging=silent_warning_monty_runs",
+        "experiment.config.max_eval_steps=1000",
+        "experiment.config.show_sensor_output=false",
+    ]
+
+    if model_mode == "self":
+        overrides.append("monty=noresetevidencegraph_exp20_e3_t3_tot2500")
+    else:
+        overrides.append(f"experiment.config.model_name_or_path={model_path}")
+
     conf_dir = str(Path.home() / "tbp/tbp.monty/src/tbp/monty/conf")
     GlobalHydra.instance().clear()
     with hydra.initialize_config_dir(config_dir=conf_dir, version_base=None):
         cfg = hydra.compose(
             config_name="experiment",
-            overrides=[
-                "experiment=tutorial/monty_meets_world_2dimage_inference",
-                "environment=two_d_data_stream",
-                "env_interface=eval_stream",
-                "logging=silent_warning_monty_runs",
-                f"experiment.config.model_name_or_path={model_path}",
-                "experiment.config.max_eval_steps=1000",
-                "experiment.config.show_sensor_output=false",
-            ],
+            overrides=overrides,
         )
 
     exp = hydra.utils.instantiate(cfg.experiment)
@@ -171,7 +221,8 @@ def _setup_monty(model_path: str):
     return exp.model, exp.env, exp.eval_env_interface
 
 
-def _monty_thread(model, env, env_interface, frame_queue, signal_queue, n_steps):
+def _monty_thread(model, env, env_interface, frame_queue, signal_queue, n_steps,
+                   confidence_agg="mean", governor=None):
     """Background thread: waits for frames, runs Monty episodes, emits signals."""
     import numpy as np
     import random as _rng
@@ -220,6 +271,7 @@ def _monty_thread(model, env, env_interface, frame_queue, signal_queue, n_steps)
         env_interface.pre_episode(rng)
         ctx = RuntimeContext(rng=rng)
         actions = []
+        peak_pe = 0.0
 
         for step in range(n_steps):
             try:
@@ -251,7 +303,8 @@ def _monty_thread(model, env, env_interface, frame_queue, signal_queue, n_steps)
                 threshold = max(getattr(lm, "object_evidence_threshold", 1), 1)
                 ev = lm.current_mlh.get("evidence", 0) if isinstance(lm.current_mlh, dict) else 0
                 confidences.append(ev / threshold)
-            confidence = float(np.clip(np.mean(confidences), 0.0, 1.0))
+            agg_fn = np.max if confidence_agg == "max" else np.mean
+            confidence = float(np.clip(agg_fn(confidences), 0.0, 1.0))
 
             # --- prediction error: max evidence delta across LMs ---
             deltas = []
@@ -274,16 +327,21 @@ def _monty_thread(model, env, env_interface, frame_queue, signal_queue, n_steps)
                 "step": step,
             }
             signal_queue.put_nowait(signal)
+            if prediction_error > peak_pe:
+                peak_pe = prediction_error
 
             if model.is_done:
                 break
 
         model.post_episode()
-        # Reset scene index so next episode can switch_to_scene(0) cleanly
+        if governor is not None:
+            governor.update(peak_pe)
         env_interface.current_scene = 0
 
 
-async def run_live(port: int, steps: int, min_interval: float):
+async def run_live(port: int, steps: int, min_interval: float,
+                   governor_mode: str = "adaptive", model_mode: str = "pretrained",
+                   confidence_agg: str = "mean"):
     import websockets
 
     model_path = str(
@@ -292,10 +350,15 @@ async def run_live(port: int, steps: int, min_interval: float):
         / "supervised_pre_training_base/pretrained"
     )
 
-    print("Loading Monty model...", flush=True)
-    model, env, env_interface = _setup_monty(model_path)
+    print(f"Loading Monty model (mode={model_mode})...", flush=True)
+    model, env, env_interface = _setup_monty(model_path, model_mode)
     n_lms = len(model.learning_modules)
     print(f"LMs: {n_lms}", flush=True)
+
+    if governor_mode == "adaptive":
+        governor = AdaptiveGovernor(initial=min_interval)
+    else:
+        governor = StaticGovernor(interval=min_interval)
 
     frame_queue = queue.Queue(maxsize=1)
     signal_queue: queue.Queue = queue.Queue()
@@ -303,12 +366,12 @@ async def run_live(port: int, steps: int, min_interval: float):
     t = threading.Thread(
         target=_monty_thread,
         args=(model, env, env_interface, frame_queue, signal_queue, steps),
+        kwargs={"confidence_agg": confidence_agg, "governor": governor},
         daemon=True,
     )
     t.start()
 
     connected: set = set()
-    _last_accepted = [0.0]
 
     async def handler(ws):
         connected.add(ws)
@@ -316,9 +379,7 @@ async def run_live(port: int, steps: int, min_interval: float):
             async for message in ws:
                 if isinstance(message, bytes):
                     now = time.time()
-                    if now - _last_accepted[0] >= min_interval:
-                        _last_accepted[0] = now
-                        # Latest-wins: discard old frame if queue full
+                    if governor.accept(now):
                         try:
                             frame_queue.get_nowait()
                         except queue.Empty:
@@ -345,9 +406,11 @@ async def run_live(port: int, steps: int, min_interval: float):
             await asyncio.sleep(0.01)
 
     async with websockets.serve(handler, "localhost", port):
+        gov_label = f"governor={governor_mode}" if governor_mode == "adaptive" else f"static interval={min_interval}s"
         print(
             f"Monty bridge listening on ws://localhost:{port}  "
-            f"(live mode, {steps} steps/episode, min_interval={min_interval}s)",
+            f"(live mode, {steps} steps/episode, {gov_label}, "
+            f"model={model_mode}, agg={confidence_agg})",
             flush=True,
         )
         await drain_signals()
@@ -358,7 +421,12 @@ async def run_live(port: int, steps: int, min_interval: float):
 def main():
     args = parse_args()
     if args.live:
-        asyncio.run(run_live(args.port, args.steps, args.min_interval))
+        asyncio.run(run_live(
+            args.port, args.steps, args.min_interval,
+            governor_mode=args.governor,
+            model_mode=args.model,
+            confidence_agg=args.confidence_agg,
+        ))
     else:
         asyncio.run(run_mock(args.hz, args.port))
 
