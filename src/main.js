@@ -1763,6 +1763,7 @@ async function main() {
   // ── OSC bridge ────────────────────────────────────────────────────────────
   const oscBridge   = new OSCBridge(ps, presetMgr);
   const montyBridge = new MontyBridge(ps, stillsBuffer);
+  ctrl.setMontySignal(montyBridge._signal);
   const projectFile = new ProjectFile(ps, presetMgr, tableManager, {
     warpEditor,
     drawLayer,

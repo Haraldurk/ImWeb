@@ -25,6 +25,7 @@ export class MontyBridge {
     this._backoff      = 1000;
     this._retryTimer   = null;
     this._statusEl     = null;
+    this._signal       = { sx: 0.5, sy: 0.5, confidence: 0, pe: 0 };
   }
 
   get active() { return this._active; }
@@ -93,6 +94,11 @@ export class MontyBridge {
     }
 
     if (Date.now() - msg.t > 500) return; // stale
+
+    this._signal.sx = msg.saccade[0];
+    this._signal.sy = msg.saccade[1];
+    this._signal.confidence = msg.confidence;
+    this._signal.pe = msg.prediction_error;
 
     const n = this._stillsBuffer.frameCount; // live — correct after buffer resize
     this._ps.set('buffer.fs1',     msg.saccade[0] * (n - 1));

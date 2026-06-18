@@ -42,6 +42,8 @@ export class ControllerManager {
     // xLFOs keyed by `${paramId}:${xIndex}`
     this._xLFOs = new Map();
 
+    this._montySignal = null;
+
     // Independent global noise oscillators (rand1, rand2, rand3)
     this.rand = [
       { val: 0.5, target: 0.5, slew: 0.1 },
@@ -55,6 +57,8 @@ export class ControllerManager {
     this._initSound();
     this._initGamepad();
   }
+
+  setMontySignal(signal) { this._montySignal = signal; }
 
   // ── Frame tick ────────────────────────────────────────────────────────────
 
@@ -103,6 +107,12 @@ export class ControllerManager {
         if (ct === 'rand1') p.setNormalized(this.rand[0].val);
         else if (ct === 'rand2') p.setNormalized(this.rand[1].val);
         else if (ct === 'rand3') p.setNormalized(this.rand[2].val);
+        else if (this._montySignal) {
+          if (ct === 'monty-saccade-x')  p.setNormalized(this._montySignal.sx);
+          else if (ct === 'monty-saccade-y')  p.setNormalized(this._montySignal.sy);
+          else if (ct === 'monty-confidence') p.setNormalized(this._montySignal.confidence);
+          else if (ct === 'monty-pe')         p.setNormalized(this._montySignal.pe);
+        }
       }
       if (p.xControllers?.length) {
         for (let idx = 0; idx < p.xControllers.length; idx++) {
