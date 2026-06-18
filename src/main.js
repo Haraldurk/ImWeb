@@ -1831,6 +1831,12 @@ async function main() {
     });
   })();
 
+  // MontyBridge: send capture frame on buffer.capture trigger
+  ps.get('buffer.capture').onChange(() => {
+    if (!montyBridge.active) return;
+    montyBridge.sendCaptureFrame(renderer, pipeline.output);
+  });
+
   // Project file UI — #project-file-ui container in Presets tab
   (() => {
     const container = document.getElementById("project-file-ui");

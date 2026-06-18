@@ -59,8 +59,10 @@ export class MontyBridge {
     }
     this._ws = ws;
 
+    ws.binaryType = 'arraybuffer';
     ws.onopen = () => {
       this._backoff = 1000;
+      this._sendSeedFrame();
       this._updateBadge('connected');
     };
 
@@ -99,6 +101,44 @@ export class MontyBridge {
 
     this._source = msg.source ?? '—';
     this._updateBadge('connected');
+  }
+
+  _sendSeedFrame() {
+    if (!this._ws || this._ws.readyState !== WebSocket.OPEN) return;
+    const canvas = document.createElement('canvas');
+    canvas.width = 320; canvas.height = 240;
+    canvas.getContext('2d');
+    canvas.toBlob(blob => {
+      if (!blob) return;
+      blob.arrayBuffer().then(buf => {
+        if (this._ws?.readyState === WebSocket.OPEN) this._ws.send(buf);
+      });
+    }, 'image/png');
+  }
+
+  sendCaptureFrame(renderer, renderTarget) {
+    if (!this._ws || this._ws.readyState !== WebSocket.OPEN) return;
+    const W = 320, H = 240;
+    const pixels = new Uint8Array(W * H * 4);
+    renderer.readRenderTargetPixels(renderTarget, 0, 0, W, H, pixels);
+    const flipped = new Uint8Array(W * H * 4);
+    for (let row = 0; row < H; row++) {
+      flipped.set(
+        pixels.subarray((H - 1 - row) * W * 4, (H - row) * W * 4),
+        row * W * 4
+      );
+    }
+    const canvas = document.createElement('canvas');
+    canvas.width = W; canvas.height = H;
+    const ctx = canvas.getContext('2d');
+    const imgData = new ImageData(new Uint8ClampedArray(flipped.buffer), W, H);
+    ctx.putImageData(imgData, 0, 0);
+    canvas.toBlob(blob => {
+      if (!blob) return;
+      blob.arrayBuffer().then(buf => {
+        if (this._ws?.readyState === WebSocket.OPEN) this._ws.send(buf);
+      });
+    }, 'image/png');
   }
 
   _updateBadge(state) {
