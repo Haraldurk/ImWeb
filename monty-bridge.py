@@ -116,14 +116,14 @@ def _setup_scene_folder(data_path: Path):
 
     data_path.mkdir(parents=True, exist_ok=True)
 
+    # Seed frame: black RGB + uniform depth at 0.2
+    # Depth must be < 0.4 (process_depth_data clips above) and < 1.0 (semantic_id gate)
     depth_path = data_path / "depth_0.data"
-    # Constant non-zero depth so entire image reads as "on object"
-    np.full((_IMG_H, _IMG_W), 1.0, dtype=np.float32).tofile(str(depth_path))
+    np.full((_IMG_H, _IMG_W), 0.2, dtype=np.float32).tofile(str(depth_path))
 
     rgb_path = data_path / "rgb_0.png"
-    if not rgb_path.exists():
-        from PIL import Image
-        Image.new("RGB", (_IMG_W, _IMG_H), (0, 0, 0)).save(str(rgb_path))
+    from PIL import Image
+    Image.new("RGB", (_IMG_W, _IMG_H), (0, 0, 0)).save(str(rgb_path))
 
     return data_path
 
@@ -180,6 +180,7 @@ def _monty_thread(model, env, env_interface, frame_queue, signal_queue, n_steps)
     from tbp.monty.frameworks.actions.actions import LookUp, LookDown, TurnLeft, TurnRight
 
     rgb_path = env.data_path / "rgb_0.png"
+    depth_path = env.data_path / "depth_0.data"
     rng = np.random.RandomState(42)
 
     print("Monty thread ready", flush=True)
@@ -195,6 +196,14 @@ def _monty_thread(model, env, env_interface, frame_queue, signal_queue, n_steps)
 
         img = img.resize((_IMG_W, _IMG_H))
         img.save(str(rgb_path))
+
+        # Luminance-as-depth: image brightness → depth topology
+        # Range 0.05–0.35: must stay < 0.4 (process_depth_data clips above)
+        # and < 1.0 (DepthTo3DLocations semantic_id gate)
+        rgb_arr = np.array(img, dtype=np.float64)
+        gray = np.mean(rgb_arr, axis=2)
+        depth = (0.05 + 0.30 * (gray / 255.0)).astype(np.float32)
+        depth.tofile(str(depth_path))
 
         env.switch_to_scene(0)
         H, W = env.current_rgb_image.shape[:2]
