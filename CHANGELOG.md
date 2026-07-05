@@ -24,6 +24,15 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
   untouched (mouse pointers ignored). Replaces the always-on two-finger
   pinch block in main.js, which is now Camera-mode-gated.
 
+- **Touch refinements (Phase 3)** — non-passive `touchmove` preventDefault
+  in GestureArbitrator releases 1-finger movement from iOS Safari scroll
+  trapping (orbit now works on iPad); new status-bar **Camera** toggle
+  (`btn-camera-toggle`, wired to `camera.active`, mirrors the MovieOn
+  pattern); fullscreen button now enters true device fullscreen
+  (`requestFullscreen` + webkit fallback, `pointerup` for iOS activation)
+  with a `fullscreenchange` sync so browser-initiated exits drop the
+  layout class. Commit `4e7bef7`.
+
 ### Changed
 - **Phase 2 UI componentization complete** (tag `ui-componentization-done`) —
   five verbatim extractions from the UI.js / main.js monoliths, zero visual
