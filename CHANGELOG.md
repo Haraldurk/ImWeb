@@ -24,9 +24,11 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
   untouched (mouse pointers ignored). Replaces the always-on two-finger
   pinch block in main.js, which is now Camera-mode-gated.
 
-- **Touch refinements (Phase 3)** — non-passive `touchmove` preventDefault
-  in GestureArbitrator releases 1-finger movement from iOS Safari scroll
-  trapping (orbit now works on iPad); new status-bar **Camera** toggle
+- **Touch refinements (Phase 3)** — 1-finger orbit on iPad: scroll
+  suppression is `touch-action: none` ONLY (stylesheet + inline in the
+  arbitrator constructor); a touchmove-preventDefault approach was tried
+  and reverted (`a9edf05`) because iOS WebKit stops synthesizing
+  pointermove events for cancelled touches; new status-bar **Camera** toggle
   (`btn-camera-toggle`, wired to `camera.active`, mirrors the MovieOn
   pattern); fullscreen button now enters true device fullscreen
   (`requestFullscreen` + webkit fallback, `pointerup` for iOS activation)
