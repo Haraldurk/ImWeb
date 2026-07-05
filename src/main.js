@@ -2275,7 +2275,10 @@ async function main() {
 
   // Enumerate all media devices on startup — shows labels immediately if permission
   // already granted from a previous session; falls back to generic names otherwise.
-  navigator.mediaDevices.enumerateDevices().then(devices => {
+  // Optional-chained: navigator.mediaDevices is undefined in insecure contexts
+  // (iOS Safari over http:// LAN) — the whole chain must short-circuit, since
+  // the property access itself throws before any .catch() can help.
+  navigator.mediaDevices?.enumerateDevices?.().then(devices => {
     const cams = devices.filter(d => d.kind === "videoinput");
     const mics = devices.filter(d => d.kind === "audioinput");
     if (cams.length) {
@@ -2325,7 +2328,8 @@ async function main() {
     const ok = await vectorscope.initMic(deviceId);
     if (ok) {
       // Re-enumerate with full labels now that permission is granted
-      navigator.mediaDevices.enumerateDevices().then(devices => {
+      // (optional-chained — mediaDevices is undefined in insecure contexts)
+      navigator.mediaDevices?.enumerateDevices?.().then(devices => {
         const mics = devices.filter(d => d.kind === "audioinput");
         if (!mics.length) return;
         const prev = audioDeviceSel.value;
