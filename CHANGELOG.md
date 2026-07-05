@@ -6,6 +6,35 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
 
 ---
 
+## [Unreleased]
+
+### Changed
+- **Phase 2 UI componentization complete** (tag `ui-componentization-done`) —
+  five verbatim extractions from the UI.js / main.js monoliths, zero visual
+  change; every moved function is re-imported under its original alias so all
+  call sites and the main.js import block are untouched:
+  - `mkSelect` → `src/ui/components/Select.js`. Commit `bb0b2c7`.
+  - `openCtrlPopover` → `src/ui/components/CtrlPopover.js`. Commit `0d9af03`.
+  - New `src/ui/bindings/ParamBinding.js` — `createBinding(param)` with
+    immediate-fire `sync(fn)` and idempotent `dispose()`. Commit `66215f5`.
+  - `buildParamRow` → `src/ui/components/ParamRow.js`; all 5 `param.onChange`
+    call sites routed through `binding.sync()`. Commit `d2f1001`.
+  - `initTabs` (UI.js) + `_applyLayout` (main.js) →
+    `src/ui/layout/LayoutManager.js`. Commit `5076e22`.
+
+### Fixed
+- **Param-row listener leak on search rebuild** — `row._psUnsub` released only
+  the `updateDisplay` subscription; the range-field, button-group/dropdown, and
+  slider subscriptions leaked on every param-search rerender. `_psUnsub` now
+  disposes the row's full ParamBinding (all subscriptions), with no change to
+  the consumer in main.js. Commit `d2f1001`.
+
+### Known issues (pre-existing, confirmed at `bdbe955`)
+- Narrow-window / portrait layout: `#status-bar` buttons overflow and clip
+  (flex row without wrap/overflow handling), and slide-over panel sections
+  can be unresponsive. Not a Phase 2 regression — verified identical on the
+  pre-phase commit. Targeted for the responsive/touch phase.
+
 ## [0.9.0] — 2026-06-15
 
 ### Added
