@@ -104,10 +104,8 @@ import { perfFrame } from "./perf-logger.js";
 // Main
 // ─────────────────────────────────────────────────────────────────────────────
 
-function _applyLayout() {
-  const portrait = window.innerHeight > window.innerWidth;
-  document.body.classList.toggle("layout-portrait", portrait);
-}
+// _applyLayout extracted to ui/layout/LayoutManager.js (Phase 2 Task 5)
+import { applyLayout as _applyLayout } from "./ui/layout/LayoutManager.js";
 _applyLayout();
 window.addEventListener("resize", _applyLayout);
 

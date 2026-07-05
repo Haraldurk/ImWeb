@@ -15,18 +15,9 @@ import { buildParamRow } from './components/ParamRow.js';
 const DEFAULT_FX_ORDER_SP = DEFAULT_FX_ORDER;
 
 // ── Tab switching ──────────────────────────────────────────────────────────────
-
-export function initTabs() {
-  document.querySelectorAll('.tab').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const id = btn.dataset.tab;
-      document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t === btn));
-      document.querySelectorAll('.tab-content').forEach(c => {
-        c.classList.toggle('active', c.id === `tab-${id}`);
-      });
-    });
-  });
-}
+// initTabs extracted to layout/LayoutManager.js (Phase 2 Task 5);
+// re-exported here so the main.js import block is unchanged.
+export { initTabs } from './layout/LayoutManager.js';
 
 // ── ParamRow builder ──────────────────────────────────────────────────────────
 
