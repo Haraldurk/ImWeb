@@ -15,8 +15,9 @@
  * 3+ fingers = null-zone clutch: all gesture output suspends and stays
  * suspended until every finger lifts (fresh gesture required). Nothing is
  * ever bound to 3+ fingers so an OS-claimed gesture (iOS three-finger
- * undo/redo) can never corrupt state; touch-action:none on the canvas +
- * non-passive touchstart preventDefault suppress the system recognizers.
+ * undo/redo) can never corrupt state. Scroll/system-gesture suppression is
+ * touch-action:none ONLY — preventDefault on touchmove makes iOS WebKit
+ * stop synthesizing pointermove for that touch (learned the hard way).
  *
  * Mouse pointers are ignored entirely — the desktop mouse grammar
  * (mouse-x/y controllers in ControllerManager) is untouched.
@@ -48,21 +49,18 @@ export class GestureArbitrator {
     this._onDown = (e) => this._pointerDown(e);
     this._onMove = (e) => this._pointerMove(e);
     this._onEnd = (e) => this._pointerEnd(e);
-    // iOS system-gesture suppression (three-finger undo/redo etc.):
-    // must be a non-passive touchstart so preventDefault reaches the
-    // recognizer before it claims the touches
-    this._onTouchStart = (e) => e.preventDefault();
-    // iOS Safari can still trap 1-finger movement for page scrolling
-    // despite touch-action:none — a non-passive touchmove preventDefault
-    // forces the OS to release the touch to our pointermove handler
-    this._onTouchMove = (e) => e.preventDefault();
+
+    // Scroll/system-gesture prevention is CSS-only (touch-action: none) —
+    // enforced inline here so the arbitrator works regardless of stylesheet.
+    // Do NOT preventDefault touchstart/touchmove: iOS WebKit stops
+    // synthesizing pointermove events for touches whose touchmove is
+    // cancelled, which blinds the arbitrator to 1-finger motion.
+    canvas.style.touchAction = 'none';
 
     canvas.addEventListener('pointerdown', this._onDown);
     canvas.addEventListener('pointermove', this._onMove);
     canvas.addEventListener('pointerup', this._onEnd);
     canvas.addEventListener('pointercancel', this._onEnd);
-    canvas.addEventListener('touchstart', this._onTouchStart, { passive: false });
-    canvas.addEventListener('touchmove', this._onTouchMove, { passive: false });
   }
 
   get _mode() {
@@ -162,8 +160,6 @@ export class GestureArbitrator {
     this.canvas.removeEventListener('pointermove', this._onMove);
     this.canvas.removeEventListener('pointerup', this._onEnd);
     this.canvas.removeEventListener('pointercancel', this._onEnd);
-    this.canvas.removeEventListener('touchstart', this._onTouchStart);
-    this.canvas.removeEventListener('touchmove', this._onTouchMove);
     this._pointers.clear();
   }
 }
