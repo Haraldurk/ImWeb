@@ -52,12 +52,17 @@ export class GestureArbitrator {
     // must be a non-passive touchstart so preventDefault reaches the
     // recognizer before it claims the touches
     this._onTouchStart = (e) => e.preventDefault();
+    // iOS Safari can still trap 1-finger movement for page scrolling
+    // despite touch-action:none — a non-passive touchmove preventDefault
+    // forces the OS to release the touch to our pointermove handler
+    this._onTouchMove = (e) => e.preventDefault();
 
     canvas.addEventListener('pointerdown', this._onDown);
     canvas.addEventListener('pointermove', this._onMove);
     canvas.addEventListener('pointerup', this._onEnd);
     canvas.addEventListener('pointercancel', this._onEnd);
     canvas.addEventListener('touchstart', this._onTouchStart, { passive: false });
+    canvas.addEventListener('touchmove', this._onTouchMove, { passive: false });
   }
 
   get _mode() {
@@ -158,6 +163,7 @@ export class GestureArbitrator {
     this.canvas.removeEventListener('pointerup', this._onEnd);
     this.canvas.removeEventListener('pointercancel', this._onEnd);
     this.canvas.removeEventListener('touchstart', this._onTouchStart);
+    this.canvas.removeEventListener('touchmove', this._onTouchMove);
     this._pointers.clear();
   }
 }
