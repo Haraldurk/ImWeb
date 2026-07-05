@@ -57,6 +57,7 @@ import { buildWarpMaps } from "./inputs/WarpMaps.js";
 import { WarpMapEditor } from "./inputs/WarpMapEditor.js";
 import { SceneManager } from "./scene3d/SceneManager.js";
 import { Pipeline } from "./core/Pipeline.js";
+import { GestureArbitrator } from "./core/GestureArbitrator.js";
 import { PresetManager, openDB } from "./state/Preset.js";
 import { OSCBridge } from "./io/OSCBridge.js";
 import { MontyBridge } from "./io/MontyBridge.js";
@@ -4654,40 +4655,10 @@ void main() {
     if (ds === 3 || ds === 4) ps.set("layer.ds", 0);
   });
 
-  // ── Pinch zoom on canvas (two-finger → scene3d.scale) ────────────────────
-  {
-    const _pinch = new Map();
-    let _pinchBaseDist = 0;
-    let _pinchBaseScale = 0;
-
-    canvas.addEventListener("pointerdown", (e) => {
-      _pinch.set(e.pointerId, { x: e.clientX, y: e.clientY });
-    });
-    canvas.addEventListener("pointermove", (e) => {
-      if (!_pinch.has(e.pointerId)) return;
-      _pinch.set(e.pointerId, { x: e.clientX, y: e.clientY });
-      if (_pinch.size === 2) {
-        const [a, b] = [..._pinch.values()];
-        const dist = Math.hypot(a.x - b.x, a.y - b.y);
-        if (_pinchBaseDist === 0) {
-          _pinchBaseDist = dist;
-          _pinchBaseScale = ps.get("scene3d.scale")?.value ?? 1;
-        } else {
-          const ratio = dist / _pinchBaseDist;
-          ps.set(
-            "scene3d.scale",
-            Math.max(0.01, Math.min(50, _pinchBaseScale * ratio)),
-          );
-        }
-      }
-    });
-    const _pinchEnd = (e) => {
-      _pinch.delete(e.pointerId);
-      if (_pinch.size < 2) _pinchBaseDist = 0;
-    };
-    canvas.addEventListener("pointerup", _pinchEnd);
-    canvas.addEventListener("pointercancel", _pinchEnd);
-  }
+  // ── Canvas touch grammar — GestureArbitrator (Camera/Pad/Locked via
+  //    touch.mode; absorbs the former always-on two-finger pinch zoom) ──────
+  const gestureArb = new GestureArbitrator(canvas, ps, ctrl);
+  void gestureArb; // instance kept alive for the app lifetime
 
   // ── Render loop ───────────────────────────────────────────────────────────
 

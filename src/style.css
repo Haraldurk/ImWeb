@@ -245,6 +245,9 @@ button {
     /* default: fill container (overridden by applyResolution for fixed resolutions) */
     width: 100%;
     height: 100%;
+    /* GestureArbitrator owns all touch on the canvas; prevents browser
+       pan/zoom and iOS system gesture recognizers from claiming touches */
+    touch-action: none;
 }
 
 #warp-grid-overlay {
