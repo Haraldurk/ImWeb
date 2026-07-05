@@ -29,11 +29,21 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
   disposes the row's full ParamBinding (all subscriptions), with no change to
   the consumer in main.js. Commit `d2f1001`.
 
+- **Mobile slide-over panel unclickable / grayed out** — `#panel-overlay`
+  (z 199) painted on top of `#control-panel` (z 200), so panel taps hit the
+  overlay's tap-to-close handler and dismissed the menu. Root cause: `#app`
+  was `position: fixed`; Chromium promotes fixed elements to composited
+  layers, forcing a stacking context that trapped the panel's z-index below
+  the body-level overlay. Fix: `#app` is now `position: absolute` — pixel-
+  identical since body never scrolls, but the panel's z-index resolves in
+  the root stacking context again. Pre-existing bug (present at `bdbe955`),
+  diagnosed via DevTools + headless hit-testing.
+
 ### Known issues (pre-existing, confirmed at `bdbe955`)
 - Narrow-window / portrait layout: `#status-bar` buttons overflow and clip
-  (flex row without wrap/overflow handling), and slide-over panel sections
-  can be unresponsive. Not a Phase 2 regression — verified identical on the
-  pre-phase commit. Targeted for the responsive/touch phase.
+  (flex row without wrap/overflow handling). Not a Phase 2 regression —
+  verified identical on the pre-phase commit. Targeted for the
+  responsive/touch phase.
 
 ## [0.9.0] — 2026-06-15
 

@@ -210,7 +210,11 @@ button {
 /* ── MAIN LAYOUT ─────────────────────────────────────────────────────────── */
 
 #app {
-    position: fixed;
+    /* absolute, not fixed: body never scrolls so rendering is identical,
+       but Chromium promotes fixed elements to composited layers, forcing a
+       stacking context that traps #control-panel's z-index below the
+       mobile #panel-overlay (z 199 vs 200) */
+    position: absolute;
     top: var(--status-h);
     left: 0;
     right: 0;
