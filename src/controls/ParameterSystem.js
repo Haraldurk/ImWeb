@@ -2929,6 +2929,14 @@ export function registerCoreParameters(ps) {
     options: [],   // populated by setTableManager() once tableManager is ready
     value: 0,
   });
+  ps.register({
+    id: "touch.mode",
+    label: "Touch Mode",
+    group: "global",
+    type: PARAM_TYPE.SELECT,
+    options: ["Camera", "Pad", "Locked"],
+    value: 0,
+  });
   // ── Per-layer color correction ────────────────────────────────────────────
   ps.register({
     id: "fg.hue",

@@ -8,6 +8,22 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
 
 ## [Unreleased]
 
+### Added
+- **Canvas touch grammar — GestureArbitrator (Phase 3)** — new
+  `src/core/GestureArbitrator.js` routes touch/pen gestures on the output
+  canvas by pointer count and the new `touch.mode` SELECT param
+  (Camera / Pad / Locked, global group — preset/MIDI/sequencer-capable):
+  Camera = 1-finger orbit (`scene3d.rot.x/y`, 0.35°/px) + 2-finger pinch
+  zoom (`scene3d.scale`); Pad = normalized canvas X/Y (finger or 2-finger
+  centroid) fed into the ControllerManager mouse channel, driving every
+  mouse-x/mouse-y-assigned param; Locked = touch ignored. 3+ fingers is a
+  null-zone clutch: output suspends until all fingers lift — nothing is
+  bound to 3+ fingers so iOS system gestures (three-finger undo/redo)
+  can never corrupt state; `touch-action: none` + non-passive touchstart
+  preventDefault suppress the OS recognizers. Desktop mouse grammar
+  untouched (mouse pointers ignored). Replaces the always-on two-finger
+  pinch block in main.js, which is now Camera-mode-gated.
+
 ### Changed
 - **Phase 2 UI componentization complete** (tag `ui-componentization-done`) —
   five verbatim extractions from the UI.js / main.js monoliths, zero visual
