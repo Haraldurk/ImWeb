@@ -22,4 +22,14 @@ export function initTabs() {
 export function applyLayout() {
   const portrait = window.innerHeight > window.innerWidth;
   document.body.classList.toggle('layout-portrait', portrait);
+
+  // Sync --status-h to the real (possibly wrapped) status bar height so
+  // #app and the slide-over panel start below it. Reset before measuring:
+  // min-height reads the var, so a stale override would ratchet the height.
+  const bar = document.getElementById('status-bar');
+  if (bar) {
+    document.documentElement.style.removeProperty('--status-h');
+    const h = bar.offsetHeight;
+    if (h > 0) document.documentElement.style.setProperty('--status-h', h + 'px');
+  }
 }
