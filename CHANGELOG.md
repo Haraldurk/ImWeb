@@ -39,11 +39,13 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
   the root stacking context again. Pre-existing bug (present at `bdbe955`),
   diagnosed via DevTools + headless hit-testing.
 
-### Known issues (pre-existing, confirmed at `bdbe955`)
-- Narrow-window / portrait layout: `#status-bar` buttons overflow and clip
-  (flex row without wrap/overflow handling). Not a Phase 2 regression —
-  verified identical on the pre-phase commit. Targeted for the
-  responsive/touch phase.
+- **Status bar buttons clipped on narrow windows** — `#status-bar` was a
+  fixed-height flex row without wrap; buttons overflowed off the right edge.
+  Now `flex-wrap: wrap` with `min-height` and a 4px row gap; `applyLayout()`
+  syncs `--status-h` to the measured bar height on init/resize so `#app` and
+  the slide-over panel start below the wrapped bar (with anti-ratchet reset
+  and a fullscreen zero-height guard). Pre-existing (present at `bdbe955`).
+  Commit `ae1e661`.
 
 ## [0.9.0] — 2026-06-15
 
