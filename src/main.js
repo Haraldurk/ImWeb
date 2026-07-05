@@ -1337,6 +1337,19 @@ async function main() {
     update(ps.get("movie.active").value);
   })();
 
+  // ── Camera toggle button (status bar) — mirrors MovieOn pattern ──────────
+  (() => {
+    const btn = document.getElementById("btn-camera-toggle");
+    if (!btn) return;
+    const update = (v) => {
+      btn.classList.toggle("active", !!v);
+      btn.textContent = v ? "Camera On" : "Camera Off";
+    };
+    btn.addEventListener("click", () => ps.toggle("camera.active"));
+    ps.get("camera.active").onChange(update);
+    update(ps.get("camera.active").value);
+  })();
+
   // ── Second screen output ──────────────────────────────────────────────────
   let _outWin = null;
   let _outWinReady = false;
@@ -4561,13 +4574,36 @@ void main() {
   // ── Fullscreen button and double-click toggle ─────────────────────────────
 
   const toggleFullscreen = () => {
-    document.body.classList.toggle("fullscreen-output");
+    const on = document.body.classList.toggle("fullscreen-output");
+    // True device fullscreen alongside the layout class — webkit-prefixed
+    // fallback for iPadOS Safari. Promise rejection (user gesture rules,
+    // iPhone unsupported) is swallowed: the layout fullscreen still applies.
+    const de = document.documentElement;
+    const fsEl = document.fullscreenElement ?? document.webkitFullscreenElement;
+    if (on && !fsEl) {
+      const req = de.requestFullscreen ?? de.webkitRequestFullscreen;
+      try { req?.call(de)?.catch?.(() => {}); } catch { /* unsupported */ }
+    } else if (!on && fsEl) {
+      const exit = document.exitFullscreen ?? document.webkitExitFullscreen;
+      try { exit?.call(document)?.catch?.(() => {}); } catch { /* noop */ }
+    }
   };
 
+  // pointerup (not click) so a touch tap grants the user-activation the
+  // Fullscreen API requires on iOS Safari
   document
     .getElementById("btn-fullscreen")
-    ?.addEventListener("click", toggleFullscreen);
+    ?.addEventListener("pointerup", toggleFullscreen);
   canvas.addEventListener("dblclick", toggleFullscreen);
+
+  // Browser-initiated exit (Esc in native fullscreen, iOS swipe) → drop the
+  // layout class so in-page and device fullscreen never desync
+  const _fsSync = () => {
+    const fsEl = document.fullscreenElement ?? document.webkitFullscreenElement;
+    if (!fsEl) document.body.classList.remove("fullscreen-output");
+  };
+  document.addEventListener("fullscreenchange", _fsSync);
+  document.addEventListener("webkitfullscreenchange", _fsSync);
 
   // ── Keyboard help overlay ─────────────────────────────────────────────────
 
