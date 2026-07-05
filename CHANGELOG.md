@@ -39,6 +39,15 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
     `src/ui/layout/LayoutManager.js`. Commit `5076e22`.
 
 ### Fixed
+- **iPad boot crash: mediaDevices in insecure contexts** — `navigator.
+  mediaDevices` is undefined on iOS Safari over http:// (LAN dev server),
+  so the I/O section's `enumerateDevices()` property access threw a
+  TypeError seconds after first paint (the call sits late in main()'s
+  async boot flow — no polling loop involved). Both main.js call sites now
+  optional-chain the full expression; all other mediaDevices callers were
+  already try/catch-wrapped. Camera/audio remain unavailable over http on
+  iOS (WebKit policy) — the app now degrades gracefully instead of dying.
+  Commit `5bbc934`.
 - **Param-row listener leak on search rebuild** — `row._psUnsub` released only
   the `updateDisplay` subscription; the range-field, button-group/dropdown, and
   slider subscriptions leaked on every param-search rerender. `_psUnsub` now
