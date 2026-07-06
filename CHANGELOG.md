@@ -9,6 +9,13 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
 ## [Unreleased]
 
 ### Added
+- **Movie texture upload gating (Phase 5)** — movie textures upload to the
+  GPU only when the decoded position actually moves (plus a `seeked`
+  refresh for async seek completion); paused or held frames are no longer
+  re-uploaded every render tick. Note: rVFC gating à la the camera fix
+  does NOT work for file playback — `requestVideoFrameCallback` never
+  fires for these non-DOM `<video>` elements — so `currentTime` change is
+  the gate. Commit `ea35381`.
 - **Mobile state pad (Phase 4)** — on ≤900px screens the 32-tile state bar
   is replaced by a single touch button showing the active state's thumbnail
   and name; tapping opens a full-screen modal with a 4-column grid of large
