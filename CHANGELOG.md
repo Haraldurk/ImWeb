@@ -9,6 +9,12 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
 ## [Unreleased]
 
 ### Added
+- **3-finger tap mode cycle (Phase 5)** — a quick 3-finger tap on the
+  canvas advances the touch mode (Camera → Pad → Locked → …) and flashes
+  a large "MODE: <NAME>" OSD that fades after 800ms. Works in Locked mode
+  (so it can unlock); camera values are restored on clutch engage so the
+  tap is a net no-op on the image; held/moved 3-finger contact remains an
+  unbound null zone. Commit `e9d91b6`.
 - **Movie texture upload gating (Phase 5)** — movie textures upload to the
   GPU only when the decoded position actually moves (plus a `seeked`
   refresh for async seek completion); paused or held frames are no longer
