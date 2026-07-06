@@ -5507,9 +5507,22 @@ void main() {
     "color:#9090a8",
   );
 
-  // Register service worker for PWA / offline support
+  // Register service worker for PWA / offline support — PRODUCTION ONLY.
+  // sw.js is cache-first for the app shell (style.css, main.js); in dev its
+  // install fetch gets Vite's JS-module rendition of style.css and serves it
+  // to the <link> tag on later loads → unstyled app, stale code on devices.
   if ("serviceWorker" in navigator) {
-    navigator.serviceWorker.register("/sw.js").catch(() => {});
+    if (import.meta.env.PROD) {
+      navigator.serviceWorker.register("/sw.js").catch(() => {});
+    } else {
+      // Dev: actively remove any previously-installed worker and its caches
+      // so cache-first app-shell copies can't shadow the dev server
+      navigator.serviceWorker
+        .getRegistrations()
+        .then((rs) => rs.forEach((r) => r.unregister()))
+        .catch(() => {});
+      caches?.keys?.().then((ks) => ks.forEach((k) => caches.delete(k))).catch(() => {});
+    }
   }
 
   // ── Dev Capture Modal (Ctrl+Cmd+C) ───────────────────────────────────────

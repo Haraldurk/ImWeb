@@ -3,7 +3,7 @@
  * Cache-first strategy for app shell; network-first for anything else.
  */
 
-const CACHE = 'imweb-v0.5';
+const CACHE = 'imweb-v0.6'; // bumped to flush caches poisoned by dev use of v0.5
 
 const APP_SHELL = [
   '/',
