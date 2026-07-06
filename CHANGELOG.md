@@ -129,6 +129,15 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
     `src/ui/layout/LayoutManager.js`. Commit `5076e22`.
 
 ### Fixed
+- **camera.active now drives the hardware** — toggling the param (status
+  bar, V key, presets, MIDI) previously changed display state only; the
+  stream and camera LED kept running because start/stop lived solely in
+  the I/O button's click handler. Commit `5409d01`. Also `c34bc2a`:
+  camera texture no longer force-re-uploads every render frame (three's
+  VideoTexture rVFC gating now applies). Note: desktop low-fps reports on
+  the MacBook were ultimately macOS automatic graphics switching parking
+  Chrome on the Intel iGPU — disable switching (Battery → Options) for
+  performance sessions; not a code issue.
 - **iPad boot crash: mediaDevices in insecure contexts** — `navigator.
   mediaDevices` is undefined on iOS Safari over http:// (LAN dev server),
   so the I/O section's `enumerateDevices()` property access threw a
