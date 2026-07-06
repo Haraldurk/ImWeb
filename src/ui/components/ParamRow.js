@@ -11,6 +11,31 @@ import { mkSelect as _mkSelect } from './Select.js';
 import { openCtrlPopover as _openCtrlPopover } from './CtrlPopover.js';
 
 /**
+ * Touch double-tap detector (iOS doesn't synthesize dblclick reliably on
+ * pointer-captured rows). Two taps within 300ms / 24px, each with <12px
+ * travel, fire fn. Mouse pointers are ignored — desktop dblclick paths
+ * are untouched.
+ */
+function addDoubleTap(el, fn) {
+  let lastT = 0, lastX = 0, lastY = 0, downX = 0, downY = 0;
+  el.addEventListener('pointerdown', (e) => {
+    if (e.pointerType === 'mouse') return;
+    downX = e.clientX; downY = e.clientY;
+  });
+  el.addEventListener('pointerup', (e) => {
+    if (e.pointerType === 'mouse') return;
+    if (Math.hypot(e.clientX - downX, e.clientY - downY) > 12) { lastT = 0; return; } // drag, not tap
+    const now = performance.now();
+    if (now - lastT < 300 && Math.hypot(e.clientX - lastX, e.clientY - lastY) < 24) {
+      lastT = 0;
+      fn(e);
+    } else {
+      lastT = now; lastX = e.clientX; lastY = e.clientY;
+    }
+  });
+}
+
+/**
  * Build a parameter row element and wire it to a Parameter.
  * Supports: continuous (slider + value), toggle, select, trigger.
  * Right-click opens the controller context menu.
@@ -111,6 +136,13 @@ export function buildParamRow(param, contextMenu) {
 
     // Double-click to reset
     row.addEventListener('dblclick', () => {
+      param.reset();
+      updateDisplay();
+    });
+    // Touch equivalent: double-tap resets (range fields excluded — they
+    // have their own double-tap → min/max editor)
+    addDoubleTap(row, (e) => {
+      if (e.target.closest('.param-range')) return;
       param.reset();
       updateDisplay();
     });
@@ -267,7 +299,7 @@ export function buildParamRow(param, contextMenu) {
       });
       el.addEventListener('pointerup', () => {});
 
-      el.addEventListener('dblclick', e => {
+      const openEditor = e => {
         e.stopPropagation();
         e.preventDefault();
         const current = which === 'min' ? (param.ctrlMin ?? param.min) : (param.ctrlMax ?? param.max);
@@ -294,7 +326,9 @@ export function buildParamRow(param, contextMenu) {
           if (e2.key === 'Enter')  { commit(); e2.stopPropagation(); }
           if (e2.key === 'Escape') { refresh(); e2.stopPropagation(); }
         });
-      });
+      };
+      el.addEventListener('dblclick', openEditor);
+      addDoubleTap(el, openEditor); // touch: double-tap opens the same editor
       return el;
     };
     row.appendChild(makeRangeEl('min'));
