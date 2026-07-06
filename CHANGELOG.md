@@ -34,6 +34,15 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
   doesn't support `resize`, and `overflow: auto` made iOS eat key taps
   (async-scroll region pointercancel); key size increases kept.
   Commit `9e14dd2`.
+- **Long-press to clear + callout suppression (Phase 4 Task 4)** —
+  long-pressing a state thumbnail (strip or modal grid, 600ms / <10px
+  travel) clears that slot through the identical code path as the desktop
+  tile menu's Clear, with a red-ring shrink flash as feedback; movement,
+  lift, or cancel aborts the timer so scrolling never deletes.
+  `-webkit-touch-callout: none` (+ selection/drag lockdown) applied to the
+  mobile bar and modal subtrees, killing iOS's native Save Image/Share
+  menu on long-press. Desktop right-click menu unaffected.
+  Commit `4975ebc`.
 - **Canvas touch grammar — GestureArbitrator (Phase 3)** — new
   `src/core/GestureArbitrator.js` routes touch/pen gestures on the output
   canvas by pointer count and the new `touch.mode` SELECT param
