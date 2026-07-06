@@ -34,6 +34,14 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
   (`requestFullscreen` + webkit fallback, `pointerup` for iOS activation)
   with a `fullscreenchange` sync so browser-initiated exits drop the
   layout class. Commit `4e7bef7`.
+- **2-finger double-tap fullscreen + video touch hardening** — a 2-finger
+  double-tap on the canvas (taps ≤300ms / ≤12px travel, ≤300ms apart)
+  triggers the same fullscreen toggle as the status-bar button
+  (GestureArbitrator `onDoubleTap2` hook); all texture video elements
+  (MovieInput, CameraInput, ClipLibrary probe) carry `playsinline` +
+  `webkit-playsinline` attributes and `pointer-events: none` so iOS
+  media-session heuristics can't pause/play them during touch
+  interaction. Commit `ed68d2f`.
 
 ### Changed
 - **Phase 2 UI componentization complete** (tag `ui-componentization-done`) —
