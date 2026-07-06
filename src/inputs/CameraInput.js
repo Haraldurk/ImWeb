@@ -126,7 +126,12 @@ export class CameraInput {
   }
 
   tick() {
-    if (this.texture && this.video?.readyState >= this.video.HAVE_CURRENT_DATA) {
+    // three r160+ VideoTexture self-gates GPU uploads to the camera's real
+    // frame rate via requestVideoFrameCallback — forcing needsUpdate here
+    // every render frame defeats that and re-uploads 720p at 60Hz (double
+    // the camera rate). Only force it on browsers without rVFC.
+    if (!this.video || 'requestVideoFrameCallback' in this.video) return;
+    if (this.texture && this.video.readyState >= this.video.HAVE_CURRENT_DATA) {
       this.texture.needsUpdate = true;
     }
   }
