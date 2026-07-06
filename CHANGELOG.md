@@ -18,6 +18,14 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
   recalls never leave a stale thumbnail. New `src/ui/components/
   MobileStatePad.js`; elements mount as direct `<body>` children (modal
   z-index 300). Desktop layout untouched. Commit `9b78bf8`.
+- **Mobile ergonomics (Phase 4 Task 2)** — mobile media queries now also
+  match large touch devices (`(max-width: 1366px) and (hover: none) and
+  (pointer: coarse)`), so iPad landscape gets the mobile layout; [＋Save]
+  and [○Clear] quick actions flank the mobile state button and appear in
+  the modal head (Save = exact Shift+S quick-save path, extracted into a
+  shared `quickSaveState()`; Clear = the desktop ○ `neutralState` event);
+  virtual keyboard keys enlarged 26×30→40×44px with `resize: both` on the
+  panel. Commit `dd28177`.
 - **Canvas touch grammar — GestureArbitrator (Phase 3)** — new
   `src/core/GestureArbitrator.js` routes touch/pen gestures on the output
   canvas by pointer count and the new `touch.mode` SELECT param
