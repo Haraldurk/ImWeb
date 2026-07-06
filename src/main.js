@@ -2558,6 +2558,27 @@ async function main() {
     }
   });
 
+  // camera.active drives the hardware. Previously only the I/O button's
+  // click handler started/stopped the stream, so toggling the param (status
+  // bar button, V key, presets, MIDI) changed the display state but left
+  // the camera running. Guards keep this a no-op when the I/O button (or
+  // any imperative path) already did the work.
+  ps.get("camera.active")?.onChange(async (v) => {
+    if (v && !camera3d.active) {
+      const devParam = ps.get("camera.device");
+      const devId = devParam?._deviceIds?.[Math.round(devParam.value)] ?? "";
+      const ok = await camera3d.start(devId || camDeviceSel.value || null);
+      if (!ok) {
+        ps.set("camera.active", 0);
+        return;
+      }
+      btnCameraOn.textContent = "■ Camera";
+    } else if (!v && camera3d.active) {
+      camera3d.stop();
+      btnCameraOn.textContent = "▶ Camera";
+    }
+  });
+
   // ── Clip management UI ──────────────────────────────────────────────────
 
   const clipsList = document.getElementById("clips-list");
