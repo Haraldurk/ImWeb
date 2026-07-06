@@ -75,7 +75,11 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
   Cam in the Layers section, populated from device enumeration, and is
   the single camera-restart path (the I/O dropdown drives and follows
   it); flipping to the front camera auto-sets Mirror Cam, back camera
-  clears it. Commit `e324bf9`.
+  clears it. Rendered as a true dropdown (`select: true`) with the device
+  list re-enumerated after camera permission (iOS hides front cameras
+  until granted), and a label heuristic (front/facetime vs back/rear)
+  drives Mirror Cam on manual device picks too. Commits `e324bf9`,
+  `f03a52a`, `ce8434d`.
 - **Canvas touch grammar — GestureArbitrator (Phase 3)** — new
   `src/core/GestureArbitrator.js` routes touch/pen gestures on the output
   canvas by pointer count and the new `touch.mode` SELECT param
