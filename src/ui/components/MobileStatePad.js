@@ -97,10 +97,12 @@ export class MobileStatePad {
       pad.appendChild(num);
       pad.appendChild(label);
       pad.addEventListener('click', () => {
+        if (pad._lpFired) { pad._lpFired = false; return; }
         if (!this.pm.current?.states[i]) return;
         this.pm.recallState(i); // identical path to desktop StateBar tiles
         this._close();
       });
+      this._addLongPress(pad, i);
       this.gridEl.appendChild(pad);
       this.pads.push(pad);
     }
@@ -117,6 +119,44 @@ export class MobileStatePad {
   _neutral() {
     // Same event the desktop ○ button and Shift+0 dispatch
     this.pm.dispatchEvent(new CustomEvent('neutralState'));
+  }
+
+  /** Clear one slot — identical block to the desktop tile menu's 'Clear'
+   *  (StateBar._openTileMenu); the stateSaved event repaints both bars. */
+  async _clearState(i) {
+    const bank = this.pm.current;
+    if (!bank?.states[i]) return;
+    bank.removeState(i);
+    await bank.save?.();
+    this.pm.dispatchEvent(new CustomEvent('stateSaved',
+      { detail: { presetIndex: this.pm.currentIdx, stateIndex: i } }));
+  }
+
+  /** Long-press (600ms, <10px travel) on a tile clears its state.
+   *  pointerup / pointercancel / movement cancels the timer, so strip
+   *  scrolling and normal taps never delete anything. */
+  _addLongPress(el, i) {
+    let timer = null, sx = 0, sy = 0;
+    const cancel = () => { if (timer) { clearTimeout(timer); timer = null; } };
+    el.addEventListener('pointerdown', (e) => {
+      if (!this.pm.current?.states[i]) return;
+      sx = e.clientX; sy = e.clientY;
+      timer = setTimeout(() => {
+        timer = null;
+        el._lpFired = true; // swallow the click that follows finger lift
+        el.classList.add('msb-tile--clearing');
+        // let the red flash render before the stateSaved repaint removes it
+        setTimeout(() => this._clearState(i), 180);
+      }, 600);
+    });
+    el.addEventListener('pointermove', (e) => {
+      if (timer && Math.hypot(e.clientX - sx, e.clientY - sy) > 10) cancel();
+    });
+    el.addEventListener('pointerup', cancel);
+    el.addEventListener('pointercancel', cancel);
+    // iOS long-press also fires contextmenu — suppress on these
+    // mobile-only tiles (desktop right-click menus live on #state-bar)
+    el.addEventListener('contextmenu', (e) => e.preventDefault());
   }
 
   _open() {
@@ -151,7 +191,11 @@ export class MobileStatePad {
       num.className = 'msb-tile-num';
       num.textContent = i + 1;
       tile.appendChild(num);
-      tile.addEventListener('click', () => this.pm.recallState(i));
+      tile.addEventListener('click', () => {
+        if (tile._lpFired) { tile._lpFired = false; return; }
+        this.pm.recallState(i);
+      });
+      this._addLongPress(tile, i);
       this.stripEl.appendChild(tile);
     });
     // Keep the active state visible in the scroll window
