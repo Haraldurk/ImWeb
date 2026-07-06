@@ -1379,6 +1379,9 @@ async function main() {
   // ── Camera facing flip (mobile-only button, hidden >900px) ───────────────
   document.getElementById("btn-camera-flip")?.addEventListener("click", async () => {
     const facing = await camera3d.switchFacing();
+    // Front camera mirrors by default (selfie convention) — drives the
+    // regular Mirror Cam param, so it stays user-overridable in Layers
+    ps.set("mirror.camera", facing === "user" ? 1 : 0);
     console.info(`[Camera] Facing: ${facing}`);
   });
 
@@ -2334,6 +2337,20 @@ async function main() {
         o.textContent = d.label || `Camera ${i + 1}`;
         camDeviceSel.appendChild(o);
       });
+
+      // Mirror the device list into the camera.device param (rendered next
+      // to Mirror Cam in the Layers section). The row was built with the
+      // placeholder options, so rebuild it now that real labels exist.
+      const devParam = ps.get("camera.device");
+      if (devParam) {
+        devParam.options = ["Default", ...cams.map((d, i) => d.label || `Camera ${i + 1}`)];
+        devParam._deviceIds = ["", ...cams.map(d => d.deviceId)];
+        const oldRow = document.querySelector('#mirror-params [data-param-id="camera.device"]');
+        if (oldRow) {
+          oldRow._psUnsub?.();
+          oldRow.replaceWith(buildParamRow(devParam, contextMenu));
+        }
+      }
     }
     if (mics.length) {
       audioDeviceSel.innerHTML = "";
@@ -2458,14 +2475,25 @@ async function main() {
     if (prev) camDeviceSel.value = prev; // restore selection if possible
   }
 
-  camDeviceSel.addEventListener("change", async () => {
+  // camera.device param is the single restart path; the I/O <select> just
+  // drives it (and is kept in sync by it), so Layers-row picks, I/O picks,
+  // presets, and MIDI all behave identically
+  ps.get("camera.device")?.onChange(async (v) => {
+    const devParam = ps.get("camera.device");
+    const devId = devParam._deviceIds?.[Math.round(v)] ?? "";
+    if (camDeviceSel.value !== devId) camDeviceSel.value = devId;
     if (!camera3d.active) return;
     camera3d.stop();
-    const ok = await camera3d.start(camDeviceSel.value || null);
+    const ok = await camera3d.start(devId || null);
     if (!ok) {
       btnCameraOn.textContent = "▶ Camera";
       ps.set("camera.active", 0);
     }
+  });
+  camDeviceSel.addEventListener("change", () => {
+    const devParam = ps.get("camera.device");
+    const idx = devParam?._deviceIds?.indexOf(camDeviceSel.value) ?? -1;
+    if (idx >= 0) ps.set("camera.device", idx);
   });
 
   btnCameraOn.addEventListener("click", async () => {

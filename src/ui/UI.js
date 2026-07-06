@@ -98,7 +98,9 @@ export function buildLayerButtons(ps, contextMenu) {
 
 export function buildMappingPanels(ps, contextMenu) {
   const sections = {
-    'mirror-params':   ps.getGroup('mirror'),
+    // Camera device select lives with the mirror rows (Layers section);
+    // its options are filled after device enumeration in main.js
+    'mirror-params':   [ps.get('camera.device'), ...ps.getGroup('mirror')].filter(Boolean),
     'keyer-params':    ps.getGroup('keyer'),
     'displace-params': ps.getGroup('displace').filter(p => !p.id.startsWith('displace.warp')),
     'blend-params':    ps.getGroup('blend'),
