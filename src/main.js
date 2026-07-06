@@ -2498,8 +2498,17 @@ async function main() {
   // presets, and MIDI all behave identically
   ps.get("camera.device")?.onChange(async (v) => {
     const devParam = ps.get("camera.device");
-    const devId = devParam._deviceIds?.[Math.round(v)] ?? "";
+    const idx = Math.round(v);
+    const devId = devParam._deviceIds?.[idx] ?? "";
     if (camDeviceSel.value !== devId) camDeviceSel.value = devId;
+
+    // Facing heuristic from the device label: front-ish names get the
+    // selfie mirror, back-ish names clear it, ambiguous names (incl.
+    // "Default") leave the user's Mirror Cam setting alone
+    const label = devParam.options?.[idx] ?? "";
+    if (/front|user|facetime|selfie/i.test(label)) ps.set("mirror.camera", 1);
+    else if (/back|rear|environment/i.test(label)) ps.set("mirror.camera", 0);
+
     if (!camera3d.active) return;
     camera3d.stop();
     const ok = await camera3d.start(devId || null);
