@@ -63,6 +63,13 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
 - **Endless 1-finger orbit** — touch orbit wraps rotation modulo 360
   instead of clamping at the rot param bounds, so a drag keeps spinning
   past full turns. Commit `613af0b`.
+- **Front/back camera flip (mobile)** — new ⇄ status-bar button (mobile
+  media query only) toggles `facingMode` user/environment;
+  `CameraInput.switchFacing()` restarts the live stream after stopping
+  all previous tracks so device hardware is cleanly released. Trusted
+  mkcert dev certificate added for `dev:https` (iPad Safari has no
+  self-signed bypass) — `certs/` gitignored, root CA install documented.
+  Commits `fc646a5`, `eac52a3`.
 - **Canvas touch grammar — GestureArbitrator (Phase 3)** — new
   `src/core/GestureArbitrator.js` routes touch/pen gestures on the output
   canvas by pointer count and the new `touch.mode` SELECT param
