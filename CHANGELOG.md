@@ -24,8 +24,16 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
   and [○Clear] quick actions flank the mobile state button and appear in
   the modal head (Save = exact Shift+S quick-save path, extracted into a
   shared `quickSaveState()`; Clear = the desktop ○ `neutralState` event);
-  virtual keyboard keys enlarged 26×30→40×44px with `resize: both` on the
-  panel. Commit `dd28177`.
+  virtual keyboard keys enlarged 26×30→40×44px. Commit `dd28177`.
+- **Hybrid mobile state bar (Phase 4 Task 3)** — the wide Current State
+  button is replaced by `[○Clear] [＋Save] [scrolling thumbnail strip]
+  [⋯More]`; the strip shows every stored state as a tappable mini-tile
+  (same `pm.recallState` path), active tile ringed and kept in view, new
+  saves appear live; ⋯More opens the modal pad grid. Also reverts
+  `resize: both`/`overflow: auto` on the virtual keyboard panel — iOS
+  doesn't support `resize`, and `overflow: auto` made iOS eat key taps
+  (async-scroll region pointercancel); key size increases kept.
+  Commit `9e14dd2`.
 - **Canvas touch grammar — GestureArbitrator (Phase 3)** — new
   `src/core/GestureArbitrator.js` routes touch/pen gestures on the output
   canvas by pointer count and the new `touch.mode` SELECT param
