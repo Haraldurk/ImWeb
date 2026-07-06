@@ -37,6 +37,9 @@ const ORBIT_DEG_PER_PX = 0.35;
 const TAP_MAX_MS = 300;     // max contact duration to count as a tap
 const TAP_SLOP_PX = 12;     // max finger travel to count as a tap
 const DOUBLE_TAP_MS = 300;  // window between two taps
+const COAST_FRICTION = 0.92;   // velocity multiplier per 60Hz frame
+const COAST_MIN_V = 2;         // deg/s — below this, coasting stops
+const FLICK_MAX_AGE_MS = 80;   // finger held still longer than this → no coast
 
 export class GestureArbitrator {
   constructor(canvas, ps, cm, opts = {}) {
@@ -55,6 +58,13 @@ export class GestureArbitrator {
     this._gestureMaxCount = 0;  // max simultaneous pointers this gesture
     this._gestureMoved = false; // any finger travelled > TAP_SLOP_PX
     this._lastTap2At = 0;       // end time of the previous 2-finger tap
+
+    // Orbit inertia — drag velocity sampled during 1-finger orbit, handed
+    // to tick() on release, damped by COAST_FRICTION each frame
+    this._dragVX = 0;  this._dragVY = 0;   // live gesture velocity (deg/s)
+    this._coastVX = 0; this._coastVY = 0;  // coasting velocity (deg/s)
+    this._lastMoveT = 0;                    // timestamp of last orbit move
+    this._lastCX = 0;  this._lastCY = 0;    // centroid at last orbit move
 
     // Gesture baselines (captured whenever the pointer count changes)
     this._baseRotX = 0;
@@ -98,6 +108,9 @@ export class GestureArbitrator {
     [this._startCX, this._startCY] = this._centroid();
     this._baseRotX = this.ps.get('scene3d.rot.x')?.value ?? 0;
     this._baseRotY = this.ps.get('scene3d.rot.y')?.value ?? 0;
+    this._dragVX = 0;
+    this._dragVY = 0;
+    this._lastMoveT = 0; // stale velocity samples never leak across configs
     if (this._pointers.size === 2) {
       const [a, b] = [...this._pointers.values()];
       this._pinchBaseDist = Math.hypot(a.x - b.x, a.y - b.y);
@@ -136,6 +149,10 @@ export class GestureArbitrator {
     // mode-cycle can unlock) — it just never drives params: _pointerMove
     // routes only for Camera/Pad.
     try { this.canvas.setPointerCapture(e.pointerId); } catch { /* pointer already released */ }
+    // Tactile clutch: touching the canvas while coasting kills the inertia
+    // instantly — the finger owns the rotation again
+    this._coastVX = 0;
+    this._coastVY = 0;
     if (this._pointers.size === 0) {
       this._gestureT0 = performance.now();
       this._gestureMaxCount = 0;
@@ -185,9 +202,45 @@ export class GestureArbitrator {
     // required after a 3+ finger contact
     if (this._pointers.size === 0) {
       this._suspended = false;
+      // Flick → coast: only a moved 1-finger camera drag whose last motion
+      // was recent (a finger held still before lifting flicks nothing)
+      if (
+        this._mode === MODE_CAMERA &&
+        this._gestureMaxCount === 1 &&
+        this._gestureMoved &&
+        performance.now() - this._lastMoveT < FLICK_MAX_AGE_MS
+      ) {
+        this._coastVX = this._dragVX;
+        this._coastVY = this._dragVY;
+      }
       this._evalTap();
     } else if (!this._suspended) {
       this._rebaseline();
+    }
+  }
+
+  /** Per-frame inertia — called from the render loop with dt in seconds.
+   *  Coasts the orbit after a flick, damped by COAST_FRICTION per 60Hz
+   *  frame (frame-rate independent). Any new touch, a mode change, or
+   *  dropping below COAST_MIN_V stops it. */
+  tick(dt) {
+    if (!this._coastVX && !this._coastVY) return;
+    if (this._mode !== MODE_CAMERA || this._pointers.size > 0) {
+      this._coastVX = 0;
+      this._coastVY = 0;
+      return;
+    }
+    const wrap = (v) => ((v % 360) + 360) % 360;
+    const ry = this.ps.get('scene3d.rot.y');
+    const rx = this.ps.get('scene3d.rot.x');
+    if (ry) this.ps.set('scene3d.rot.y', wrap(ry.value + this._coastVX * dt));
+    if (rx) this.ps.set('scene3d.rot.x', wrap(rx.value + this._coastVY * dt));
+    const f = Math.pow(COAST_FRICTION, dt * 60);
+    this._coastVX *= f;
+    this._coastVY *= f;
+    if (Math.abs(this._coastVX) < COAST_MIN_V && Math.abs(this._coastVY) < COAST_MIN_V) {
+      this._coastVX = 0;
+      this._coastVY = 0;
     }
   }
 
@@ -236,6 +289,19 @@ export class GestureArbitrator {
       const wrap = (v) => ((v % 360) + 360) % 360;
       this.ps.set('scene3d.rot.y', wrap(this._baseRotY + (cx - this._startCX) * ORBIT_DEG_PER_PX));
       this.ps.set('scene3d.rot.x', wrap(this._baseRotX + (cy - this._startCY) * ORBIT_DEG_PER_PX));
+
+      // Sample flick velocity (deg/s), lightly smoothed against jitter
+      const now = performance.now();
+      const mdt = (now - this._lastMoveT) / 1000;
+      if (this._lastMoveT && mdt > 0 && mdt < 0.1) {
+        const ivx = ((cx - this._lastCX) * ORBIT_DEG_PER_PX) / mdt;
+        const ivy = ((cy - this._lastCY) * ORBIT_DEG_PER_PX) / mdt;
+        this._dragVX = this._dragVX * 0.6 + ivx * 0.4;
+        this._dragVY = this._dragVY * 0.6 + ivy * 0.4;
+      }
+      this._lastCX = cx;
+      this._lastCY = cy;
+      this._lastMoveT = now;
     } else if (n === 2 && this._pinchBaseDist > 0) {
       const [a, b] = [...this._pointers.values()];
       const ratio = Math.hypot(a.x - b.x, a.y - b.y) / this._pinchBaseDist;

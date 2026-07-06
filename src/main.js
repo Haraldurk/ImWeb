@@ -4816,7 +4816,7 @@ void main() {
     onModeCycled: showModeOSD, // 3-finger tap → next touch.mode + OSD flash
     sceneManager: scene3d, // spin→rot handover when a grab takes control
   });
-  void gestureArb; // instance kept alive for the app lifetime
+  void gestureArb; // referenced by the render loop's inertia tick
 
   // ── Render loop ───────────────────────────────────────────────────────────
 
@@ -4913,6 +4913,9 @@ void main() {
     stepSequencer.tick(beatPhase);
     // Update camera texture
     camera3d.tick();
+
+    // Orbit inertia — coast + damp after a touch flick
+    gestureArb.tick(dt);
 
     // Update movie clip
     movieInput.tick(ps, beatPhase, dt);
