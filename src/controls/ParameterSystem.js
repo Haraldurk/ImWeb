@@ -1542,6 +1542,7 @@ export function registerCoreParameters(ps) {
     type: PARAM_TYPE.SELECT,
     options: ["default"],
     value: 0,
+    select: true, // device names are long — always a dropdown, never buttons
   });
 
   // ── 3D Scene ──────────────────────────────────────────────────────────────

@@ -2326,32 +2326,50 @@ async function main() {
   // Optional-chained: navigator.mediaDevices is undefined in insecure contexts
   // (iOS Safari over http:// LAN) — the whole chain must short-circuit, since
   // the property access itself throws before any .catch() can help.
+  // Refreshable camera list: iOS reveals the full device set (front/back,
+  // real labels) only AFTER camera permission is granted, so this runs at
+  // boot AND again whenever the camera turns on.
+  const refreshCameraDevices = (cams) => {
+    if (!cams.length) return;
+    const prevSel = camDeviceSel.value;
+    camDeviceSel.innerHTML = "";
+    cams.forEach((d, i) => {
+      const o = document.createElement("option");
+      o.value = d.deviceId;
+      o.textContent = d.label || `Camera ${i + 1}`;
+      camDeviceSel.appendChild(o);
+    });
+    if (prevSel) camDeviceSel.value = prevSel;
+
+    // Mirror the list into the camera.device param (rendered next to
+    // Mirror Cam in the Layers section). SELECT rows bake their options at
+    // build time, so rebuild the row.
+    const devParam = ps.get("camera.device");
+    if (devParam) {
+      devParam.options = ["Default", ...cams.map((d, i) => d.label || `Camera ${i + 1}`)];
+      devParam._deviceIds = ["", ...cams.map(d => d.deviceId)];
+      const oldRow = document.querySelector('#mirror-params [data-param-id="camera.device"]');
+      if (oldRow) {
+        oldRow._psUnsub?.();
+        oldRow.replaceWith(buildParamRow(devParam, contextMenu));
+      }
+    }
+  };
+  ps.get("camera.active")?.onChange((v) => {
+    // Re-enumerate shortly after the camera starts — permission is granted
+    // by then, so labels and the full front/back list become visible
+    if (!v || !camera3d.active) return;
+    setTimeout(() => {
+      navigator.mediaDevices?.enumerateDevices?.().then(devices => {
+        refreshCameraDevices(devices.filter(d => d.kind === "videoinput"));
+      }).catch(() => {});
+    }, 400);
+  });
+
   navigator.mediaDevices?.enumerateDevices?.().then(devices => {
     const cams = devices.filter(d => d.kind === "videoinput");
     const mics = devices.filter(d => d.kind === "audioinput");
-    if (cams.length) {
-      camDeviceSel.innerHTML = "";
-      cams.forEach((d, i) => {
-        const o = document.createElement("option");
-        o.value = d.deviceId;
-        o.textContent = d.label || `Camera ${i + 1}`;
-        camDeviceSel.appendChild(o);
-      });
-
-      // Mirror the device list into the camera.device param (rendered next
-      // to Mirror Cam in the Layers section). The row was built with the
-      // placeholder options, so rebuild it now that real labels exist.
-      const devParam = ps.get("camera.device");
-      if (devParam) {
-        devParam.options = ["Default", ...cams.map((d, i) => d.label || `Camera ${i + 1}`)];
-        devParam._deviceIds = ["", ...cams.map(d => d.deviceId)];
-        const oldRow = document.querySelector('#mirror-params [data-param-id="camera.device"]');
-        if (oldRow) {
-          oldRow._psUnsub?.();
-          oldRow.replaceWith(buildParamRow(devParam, contextMenu));
-        }
-      }
-    }
+    refreshCameraDevices(cams);
     if (mics.length) {
       audioDeviceSel.innerHTML = "";
       mics.forEach((d, i) => {
