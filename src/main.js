@@ -1080,7 +1080,26 @@ async function main() {
   // LUT amount updates are read directly from ps in pipeline.render()
 
   const stateBar = new StateBar(presetMgr, scene3d);
-  const mobileStatePad = new MobileStatePad(presetMgr); // ≤900px only (Phase 4)
+
+  // Quick-save current state to next empty slot with auto-thumbnail —
+  // shared by Shift+S and the mobile Save button
+  const quickSaveState = () =>
+    presetMgr.saveCurrentState(null).then((idx) => {
+      if (idx !== null) {
+        const bank = presetMgr.current;
+        if (stateBar._captureThumbFn && bank?.states[idx]) {
+          bank.states[idx].thumbnail = stateBar._captureThumbFn();
+          bank.save?.();
+          presetMgr.dispatchEvent(new CustomEvent('stateSaved',
+            { detail: { presetIndex: presetMgr.currentIdx, stateIndex: idx } }));
+        }
+        stateBar._flashTile?.(idx);
+      }
+      return idx;
+    });
+
+  // ≤900px / large-touch only (Phase 4)
+  const mobileStatePad = new MobileStatePad(presetMgr, { onQuickSave: quickSaveState });
   void mobileStatePad;
   const signalPath = new SignalPath({
     ps,
@@ -4309,18 +4328,7 @@ void main() {
     // Shift+S = quick-save State to next empty slot (with auto-thumbnail)
     if (e.shiftKey && e.key === 'S' && !e.target.closest('input,textarea')) {
       e.preventDefault();
-      presetMgr.saveCurrentState(null).then(idx => {
-        if (idx !== null) {
-          const bank = presetMgr.current;
-          if (stateBar._captureThumbFn && bank?.states[idx]) {
-            bank.states[idx].thumbnail = stateBar._captureThumbFn();
-            bank.save?.();
-            presetMgr.dispatchEvent(new CustomEvent('stateSaved',
-              { detail: { presetIndex: presetMgr.currentIdx, stateIndex: idx } }));
-          }
-          stateBar._flashTile?.(idx);
-        }
-      });
+      quickSaveState();
       return;
     }
 
