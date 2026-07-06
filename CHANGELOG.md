@@ -9,6 +9,10 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
 ## [Unreleased]
 
 ### Added
+- **Orbit inertia (Phase 5)** — flicking a 1-finger orbit lets the scene
+  coast with friction (0.92/frame, frame-rate independent) until it stops;
+  holding still before lifting doesn't coast; touching the canvas while
+  coasting kills the momentum instantly (tactile clutch). Commit `d7284b1`.
 - **3-finger tap mode cycle (Phase 5)** — a quick 3-finger tap on the
   canvas advances the touch mode (Camera → Pad → Locked → …) and flashes
   a large "MODE: <NAME>" OSD that fades after 800ms. Works in Locked mode
