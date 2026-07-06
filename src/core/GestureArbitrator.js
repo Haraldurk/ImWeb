@@ -41,6 +41,7 @@ export class GestureArbitrator {
     this.ps = ps;
     this.cm = cm;
     this.onDoubleTap2 = opts.onDoubleTap2 ?? null; // 2-finger double-tap hook
+    this.sm = opts.sceneManager ?? null; // for spin→rot handover on grab
 
     this._pointers = new Map(); // pointerId → {x, y, sx, sy}
     this._suspended = false;    // 3+ finger null zone latch
@@ -102,6 +103,29 @@ export class GestureArbitrator {
     }
   }
 
+  /** Grab takes control: if auto-spin is running, SceneManager ignores the
+   *  rot params entirely (spin accumulates on the mesh instead), so orbit
+   *  writes would be invisible. On grab, freeze the current mesh pose into
+   *  the rot params (wrapped to the 0–360 param range — no jump) and zero
+   *  the spins. */
+  _grabSpinControl() {
+    const spinning =
+      (this.ps.get('scene3d.spin.x')?.value ?? 0) !== 0 ||
+      (this.ps.get('scene3d.spin.y')?.value ?? 0) !== 0 ||
+      (this.ps.get('scene3d.spin.z')?.value ?? 0) !== 0;
+    if (!spinning) return;
+    const mesh = this.sm?.mesh;
+    if (mesh) {
+      const norm = (rad) => (((rad * 180 / Math.PI) % 360) + 360) % 360;
+      this.ps.set('scene3d.rot.x', norm(mesh.rotation.x));
+      this.ps.set('scene3d.rot.y', norm(mesh.rotation.y));
+      this.ps.set('scene3d.rot.z', norm(mesh.rotation.z));
+    }
+    this.ps.set('scene3d.spin.x', 0);
+    this.ps.set('scene3d.spin.y', 0);
+    this.ps.set('scene3d.spin.z', 0);
+  }
+
   _pointerDown(e) {
     if (e.pointerType === 'mouse') return;
     if (this._mode === MODE_LOCKED) return;
@@ -110,6 +134,7 @@ export class GestureArbitrator {
       this._gestureT0 = performance.now();
       this._gestureMaxCount = 0;
       this._gestureMoved = false;
+      if (this._mode === MODE_CAMERA) this._grabSpinControl();
     }
     this._pointers.set(e.pointerId, { x: e.clientX, y: e.clientY, sx: e.clientX, sy: e.clientY });
     this._gestureMaxCount = Math.max(this._gestureMaxCount, this._pointers.size);

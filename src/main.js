@@ -4716,6 +4716,7 @@ void main() {
   //    status-bar button
   const gestureArb = new GestureArbitrator(canvas, ps, ctrl, {
     onDoubleTap2: toggleFullscreen,
+    sceneManager: scene3d, // spin→rot handover when a grab takes control
   });
   void gestureArb; // instance kept alive for the app lifetime
 
