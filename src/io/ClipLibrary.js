@@ -78,6 +78,9 @@ class ClipLibrary {
             const probe    = document.createElement('video');
             probe.src      = probeUrl;
             probe.muted    = true;
+            probe.setAttribute('playsinline', '');
+            probe.setAttribute('webkit-playsinline', '');
+            probe.style.pointerEvents = 'none';
             await new Promise(r => { probe.onloadedmetadata = r; probe.onerror = r; });
             if (isFinite(probe.duration)) duration = probe.duration;
             URL.revokeObjectURL(probeUrl);

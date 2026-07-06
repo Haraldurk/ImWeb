@@ -4697,7 +4697,11 @@ void main() {
 
   // ── Canvas touch grammar — GestureArbitrator (Camera/Pad/Locked via
   //    touch.mode; absorbs the former always-on two-finger pinch zoom) ──────
-  const gestureArb = new GestureArbitrator(canvas, ps, ctrl);
+  //    2-finger double-tap on the canvas = same fullscreen toggle as the
+  //    status-bar button
+  const gestureArb = new GestureArbitrator(canvas, ps, ctrl, {
+    onDoubleTap2: toggleFullscreen,
+  });
   void gestureArb; // instance kept alive for the app lifetime
 
   // ── Render loop ───────────────────────────────────────────────────────────

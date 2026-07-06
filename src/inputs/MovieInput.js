@@ -49,6 +49,11 @@ export class MovieInput {
     const video = document.createElement('video');
     video.crossOrigin = 'anonymous'; // must be set before src
     video.playsInline = true;
+    // iOS: attribute form + webkit- prefix needed alongside the DOM property,
+    // and pointer-events:none so no touch path can reach native media controls
+    video.setAttribute('playsinline', '');
+    video.setAttribute('webkit-playsinline', '');
+    video.style.pointerEvents = 'none';
     video.muted = true;
     video.loop = true;
     video.preload = 'auto';

@@ -19,6 +19,9 @@
  * touch-action:none ONLY — preventDefault on touchmove makes iOS WebKit
  * stop synthesizing pointermove for that touch (learned the hard way).
  *
+ * A 2-finger double-tap (≤300ms taps, ≤12px travel, ≤300ms apart) fires
+ * the onDoubleTap2 hook — wired to the fullscreen toggle in main.js.
+ *
  * Mouse pointers are ignored entirely — the desktop mouse grammar
  * (mouse-x/y controllers in ControllerManager) is untouched.
  */
@@ -28,15 +31,25 @@ const MODE_PAD = 1;
 const MODE_LOCKED = 2;
 
 const ORBIT_DEG_PER_PX = 0.35;
+const TAP_MAX_MS = 300;     // max contact duration to count as a tap
+const TAP_SLOP_PX = 12;     // max finger travel to count as a tap
+const DOUBLE_TAP_MS = 300;  // window between two taps
 
 export class GestureArbitrator {
-  constructor(canvas, ps, cm) {
+  constructor(canvas, ps, cm, opts = {}) {
     this.canvas = canvas;
     this.ps = ps;
     this.cm = cm;
+    this.onDoubleTap2 = opts.onDoubleTap2 ?? null; // 2-finger double-tap hook
 
-    this._pointers = new Map(); // pointerId → {x, y}
+    this._pointers = new Map(); // pointerId → {x, y, sx, sy}
     this._suspended = false;    // 3+ finger null zone latch
+
+    // Tap detection (2-finger double-tap → onDoubleTap2)
+    this._gestureT0 = 0;        // gesture start (first finger down)
+    this._gestureMaxCount = 0;  // max simultaneous pointers this gesture
+    this._gestureMoved = false; // any finger travelled > TAP_SLOP_PX
+    this._lastTap2At = 0;       // end time of the previous 2-finger tap
 
     // Gesture baselines (captured whenever the pointer count changes)
     this._baseRotX = 0;
@@ -93,14 +106,23 @@ export class GestureArbitrator {
     if (e.pointerType === 'mouse') return;
     if (this._mode === MODE_LOCKED) return;
     try { this.canvas.setPointerCapture(e.pointerId); } catch { /* pointer already released */ }
-    this._pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (this._pointers.size === 0) {
+      this._gestureT0 = performance.now();
+      this._gestureMaxCount = 0;
+      this._gestureMoved = false;
+    }
+    this._pointers.set(e.pointerId, { x: e.clientX, y: e.clientY, sx: e.clientX, sy: e.clientY });
+    this._gestureMaxCount = Math.max(this._gestureMaxCount, this._pointers.size);
     if (this._pointers.size >= 3) this._suspended = true; // null-zone clutch
     this._rebaseline();
   }
 
   _pointerMove(e) {
-    if (!this._pointers.has(e.pointerId)) return;
-    this._pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    const rec = this._pointers.get(e.pointerId);
+    if (!rec) return;
+    rec.x = e.clientX;
+    rec.y = e.clientY;
+    if (Math.hypot(rec.x - rec.sx, rec.y - rec.sy) > TAP_SLOP_PX) this._gestureMoved = true;
     if (this._suspended) return;
 
     const mode = this._mode;
@@ -113,8 +135,29 @@ export class GestureArbitrator {
     this._pointers.delete(e.pointerId);
     // Null zone releases only when ALL fingers lift — a fresh gesture is
     // required after a 3+ finger contact
-    if (this._pointers.size === 0) this._suspended = false;
-    else if (!this._suspended) this._rebaseline();
+    if (this._pointers.size === 0) {
+      this._suspended = false;
+      this._evalTap();
+    } else if (!this._suspended) {
+      this._rebaseline();
+    }
+  }
+
+  /** Gesture just ended (all fingers up) — was it a 2-finger tap, and if so
+   *  the second within the double-tap window? */
+  _evalTap() {
+    const now = performance.now();
+    const isTap2 =
+      this._gestureMaxCount === 2 &&
+      !this._gestureMoved &&
+      now - this._gestureT0 <= TAP_MAX_MS;
+    if (!isTap2) { this._lastTap2At = 0; return; }
+    if (now - this._lastTap2At <= DOUBLE_TAP_MS) {
+      this._lastTap2At = 0; // consume — a third tap starts fresh
+      this.onDoubleTap2?.();
+    } else {
+      this._lastTap2At = now;
+    }
   }
 
   // ── Camera mode ──────────────────────────────────────────────────────────

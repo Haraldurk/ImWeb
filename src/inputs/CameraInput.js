@@ -74,6 +74,11 @@ export class CameraInput {
       this.video = document.createElement('video');
       this.video.srcObject = this._stream;
       this.video.playsInline = true;
+      // iOS: attribute form + webkit- prefix needed alongside the DOM property,
+      // and pointer-events:none so no touch path can reach native media controls
+      this.video.setAttribute('playsinline', '');
+      this.video.setAttribute('webkit-playsinline', '');
+      this.video.style.pointerEvents = 'none';
       this.video.muted = true;
       await this.video.play();
 
