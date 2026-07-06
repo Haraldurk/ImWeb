@@ -132,9 +132,62 @@ export class MobileStatePad {
       { detail: { presetIndex: this.pm.currentIdx, stateIndex: i } }));
   }
 
-  /** Long-press (600ms, <10px travel) on a tile clears its state.
+  /** Duplicate slot i into the next empty slot — pure reuse of the
+   *  export/import code paths. */
+  async _duplicateState(i) {
+    const data = this.pm.exportState(i);
+    if (!data) return;
+    if (data.name) data.name += ' copy';
+    const idx = this.pm.importState(data, null); // null → next empty slot
+    if (idx === null) return;
+    await this.pm.current?.save?.();
+    this.pm.dispatchEvent(new CustomEvent('stateSaved',
+      { detail: { presetIndex: this.pm.currentIdx, stateIndex: idx } }));
+  }
+
+  /** Touch action menu opened by long-press: Duplicate / Clear / outside
+   *  tap dismisses. Anchored near the pressed tile. */
+  _openTileMenu(el, i) {
+    this._closeTileMenu();
+    const menu = document.createElement('div');
+    menu.className = 'msb-menu';
+    const add = (label, cls, fn) => {
+      const b = document.createElement('button');
+      b.className = cls;
+      b.textContent = label;
+      b.addEventListener('click', (e) => { e.stopPropagation(); this._closeTileMenu(); fn(); });
+      menu.appendChild(b);
+    };
+    add('⧉ Duplicate', '', () => this._duplicateState(i));
+    add('✕ Clear', 'msb-menu-danger', () => {
+      el.classList.add('msb-tile--clearing');
+      // let the red flash render before the stateSaved repaint removes it
+      setTimeout(() => this._clearState(i), 180);
+    });
+    document.body.appendChild(menu);
+    // Position above the tile, clamped to the viewport
+    const r = el.getBoundingClientRect();
+    const mr = menu.getBoundingClientRect();
+    menu.style.left = Math.max(8, Math.min(r.left, window.innerWidth - mr.width - 8)) + 'px';
+    menu.style.top = Math.max(8, r.top - mr.height - 8) + 'px';
+    this._menuEl = menu;
+    // Outside tap dismisses. Capture phase: it must fire before any app
+    // handler that stopPropagation()s pointerdown lower in the tree.
+    // Deferred so the opening gesture doesn't immediately close it.
+    this._menuDismiss = (e) => { if (!menu.contains(e.target)) this._closeTileMenu(); };
+    setTimeout(() => document.addEventListener('pointerdown', this._menuDismiss, true), 0);
+  }
+
+  _closeTileMenu() {
+    if (this._menuDismiss) document.removeEventListener('pointerdown', this._menuDismiss, true);
+    this._menuDismiss = null;
+    this._menuEl?.remove();
+    this._menuEl = null;
+  }
+
+  /** Long-press (600ms, <10px travel) on a tile opens the action menu.
    *  pointerup / pointercancel / movement cancels the timer, so strip
-   *  scrolling and normal taps never delete anything. */
+   *  scrolling and normal taps never trigger it. */
   _addLongPress(el, i) {
     let timer = null, sx = 0, sy = 0;
     const cancel = () => { if (timer) { clearTimeout(timer); timer = null; } };
@@ -144,9 +197,7 @@ export class MobileStatePad {
       timer = setTimeout(() => {
         timer = null;
         el._lpFired = true; // swallow the click that follows finger lift
-        el.classList.add('msb-tile--clearing');
-        // let the red flash render before the stateSaved repaint removes it
-        setTimeout(() => this._clearState(i), 180);
+        this._openTileMenu(el, i);
       }, 600);
     });
     el.addEventListener('pointermove', (e) => {
@@ -165,6 +216,7 @@ export class MobileStatePad {
   }
 
   _close() {
+    this._closeTileMenu();
     this.modalEl.classList.add('hidden');
   }
 
