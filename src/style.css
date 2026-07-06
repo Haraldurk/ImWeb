@@ -3611,6 +3611,19 @@ body.fullscreen-output #app {
         display: none;
     }
 
+    /* iOS long-press hygiene: these live outside #app, so the global
+       lockdown doesn't reach them — no native Save Image/Share callout,
+       no text selection, no image drag on any tile or container */
+    #mobile-state-bar,
+    #mobile-state-bar *,
+    #mobile-state-modal,
+    #mobile-state-modal * {
+        -webkit-touch-callout: none;
+        user-select: none;
+        -webkit-user-select: none;
+        -webkit-user-drag: none;
+    }
+
     /* Hybrid row: [○Clear] [＋Save] [scrolling thumbnails] [⋯More] */
     #mobile-state-bar {
         position: fixed;
@@ -3676,6 +3689,15 @@ body.fullscreen-output #app {
     .msb-tile--active {
         border-color: var(--accent);
         box-shadow: 0 0 0 1px var(--accent);
+    }
+    /* Long-press clear feedback: red ring + shrink, then the stateSaved
+       repaint removes the tile (applies to strip tiles and modal pads) */
+    .msb-tile--clearing {
+        border-color: #e04040 !important;
+        box-shadow: 0 0 0 1px #e04040 !important;
+        transform: scale(0.82);
+        opacity: 0.35;
+        transition: transform 0.16s ease, opacity 0.16s ease;
     }
     .msb-tile-num {
         position: absolute;
