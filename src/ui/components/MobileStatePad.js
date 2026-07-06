@@ -1,11 +1,11 @@
 /**
  * MobileStatePad — touch-first state recall for narrow screens (Phase 4).
  *
- * Collapsed: #mobile-state-btn (bottom bar, ≤900px only) shows the active
- * state's thumbnail + name. Tapping opens #mobile-state-modal — a grid of
- * large pads for the current bank. Tapping a stored pad recalls it via the
- * EXACT same code path as the desktop tiles (pm.recallState) and closes
- * the modal.
+ * Hybrid bottom bar (#mobile-state-bar, mobile only):
+ *   [○ Clear] [＋ Save] [ scrolling thumbnail strip ] [⋯ More]
+ * The strip shows every stored state as a tappable mini-tile (recall via
+ * pm.recallState — the EXACT desktop tile path); More opens
+ * #mobile-state-modal, the full pad grid for the current bank.
  *
  * Both elements live as direct children of <body> (never inside #app —
  * Chromium composites #app descendants into a trapped stacking context)
@@ -21,20 +21,22 @@ export class MobileStatePad {
   constructor(presetManager, opts = {}) {
     this.pm = presetManager;
     this.onQuickSave = opts.onQuickSave ?? null;
-    this.btnEl = document.getElementById('mobile-state-btn');
+    this.stripEl = document.getElementById('mobile-state-strip');
     this.modalEl = document.getElementById('mobile-state-modal');
-    if (!this.btnEl || !this.modalEl) return;
+    if (!this.stripEl || !this.modalEl) return;
 
     this._buildModalShell();
-    this.btnEl.addEventListener('click', () => this._open());
 
-    // Flanking quick-action buttons in the collapsed bar:
+    // Hybrid bar: [Clear] [+Save] [thumbnail strip] [More…]
     // Save = same quick-save-to-next-empty-slot path as Shift+S;
-    // Clear = neutral state, same event the desktop ○ button dispatches
+    // Clear = neutral state, same event the desktop ○ button dispatches;
+    // More = full modal pad grid
     document.getElementById('mobile-state-save')
       ?.addEventListener('click', () => this.onQuickSave?.());
     document.getElementById('mobile-state-clear')
       ?.addEventListener('click', () => this._neutral());
+    document.getElementById('mobile-state-more')
+      ?.addEventListener('click', () => this._open());
 
     // Same event set as StateBar._wirePresetManager — external changes
     // (MIDI, sequencer, automation) repaint button + open grid
@@ -133,21 +135,27 @@ export class MobileStatePad {
   _refresh() {
     const bank = this.pm.current;
     if (!bank) return;
-
-    // Collapsed button: active state thumbnail + name
     const idx = bank.activeState;
-    const active = idx != null ? bank.states[idx] : null;
-    this.btnEl.innerHTML = '';
-    const swatch = document.createElement('span');
-    swatch.className = 'msp-btn-thumb';
-    if (active?.thumbnail) swatch.style.backgroundImage = `url(${active.thumbnail})`;
-    const label = document.createElement('span');
-    label.className = 'msp-btn-name';
-    label.textContent = active
-      ? this._stateName(active, idx)
-      : (bank.name || 'No state');
-    this.btnEl.appendChild(swatch);
-    this.btnEl.appendChild(label);
+
+    // Thumbnail strip: one mini-tile per STORED state (empties skipped);
+    // newly saved states appear via the stateSaved event that calls this
+    this.stripEl.innerHTML = '';
+    let activeTile = null;
+    bank.states.forEach((state, i) => {
+      if (!state) return;
+      const tile = document.createElement('button');
+      tile.className = 'msb-tile';
+      if (state.thumbnail) tile.style.backgroundImage = `url(${state.thumbnail})`;
+      if (i === idx) { tile.classList.add('msb-tile--active'); activeTile = tile; }
+      const num = document.createElement('span');
+      num.className = 'msb-tile-num';
+      num.textContent = i + 1;
+      tile.appendChild(num);
+      tile.addEventListener('click', () => this.pm.recallState(i));
+      this.stripEl.appendChild(tile);
+    });
+    // Keep the active state visible in the scroll window
+    activeTile?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
 
     // Modal grid (cheap enough to repaint even while hidden)
     this.bankNameEl.textContent = bank.name || 'Bank';
