@@ -3,6 +3,7 @@ import { resolve } from "path";
 import { fileURLToPath } from "url";
 import { dirname } from "path";
 import fs from "fs";
+import basicSsl from "@vitejs/plugin-basic-ssl";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -10,6 +11,11 @@ const __dirname = dirname(__filename);
 export default defineConfig({
   root: ".",
   plugins: [
+    // Opt-in HTTPS (npm run dev:https) — iOS blocks getUserMedia on http,
+    // so camera/mic on the iPad need a secure origin. Off by default:
+    // an https page cannot reach the http Dev Capture catcher on :5174
+    // (mixed content), so the normal dev workflow stays on http.
+    ...(process.env.IMWEB_HTTPS ? [basicSsl()] : []),
     {
       name: 'serve-raw-videos',
       configureServer(server) {
