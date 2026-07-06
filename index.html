@@ -847,8 +847,10 @@ void main() {
         <!-- Panel overlay for mobile (tap to close) -->
         <div id="panel-overlay" class="hidden"></div>
 
-        <!-- Mobile state pad (≤900px only; populated by MobileStatePad) -->
+        <!-- Mobile state pad (≤900px / large-touch only; populated by MobileStatePad) -->
+        <button id="mobile-state-save" title="Quick-save state to next empty slot">＋</button>
         <button id="mobile-state-btn" title="Current state — tap for state grid"></button>
+        <button id="mobile-state-clear" title="Neutral — reset all parameters">○</button>
         <div id="mobile-state-modal" class="hidden"></div>
 
         <!-- PARAM SEARCH OVERLAY (/ key) -->

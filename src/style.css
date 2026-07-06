@@ -2870,8 +2870,10 @@ body.fullscreen-output #app {
     }
 }
 
-/* Tablet portrait / phone landscape (≤900px) — panel becomes slide-over */
-@media (max-width: 900px) {
+/* Tablet portrait / phone landscape (≤900px) OR any large touch device
+   (iPad landscape is 1024–1366px but has no hover + coarse pointer) —
+   panel becomes slide-over */
+@media (max-width: 900px), (max-width: 1366px) and (hover: none) and (pointer: coarse) {
     :root {
         --ctrl-w: 300px;
     }
@@ -2962,6 +2964,12 @@ body.fullscreen-output #app {
     user-select: none;
     touch-action: none;
     cursor: move;
+    /* Native drag-to-resize from the bottom-right corner (drag-to-move
+       stays on the handle, so the two do not conflict) */
+    resize: both;
+    overflow: auto;
+    min-width: 320px;
+    min-height: 120px;
 }
 #vkbd-panel.hidden {
     display: none;
@@ -2984,10 +2992,10 @@ body.fullscreen-output #app {
     border: 1px solid var(--border);
     color: var(--text-0);
     border-radius: 4px;
-    padding: 0 4px;
-    min-width: 26px;
-    height: 30px;
-    font-size: 10px;
+    padding: 0 5px;
+    min-width: 40px;
+    height: 44px; /* Apple minimum touch target */
+    font-size: 13px;
     font-family: var(--mono);
     cursor: pointer;
     touch-action: none;
@@ -3003,10 +3011,10 @@ body.fullscreen-output #app {
     border-color: var(--accent-dim);
 }
 .vkbd-key-wide {
-    min-width: 46px;
+    min-width: 64px;
 }
 .vkbd-key-xl {
-    min-width: 80px;
+    min-width: 120px;
 }
 
 /* ── Clip Library ────────────────────────────────────────────────────────── */
@@ -3594,11 +3602,13 @@ body.fullscreen-output #app {
    Desktop (>900px) never sees these elements; the desktop #state-bar is
    untouched outside the media query below. */
 #mobile-state-btn,
+#mobile-state-save,
+#mobile-state-clear,
 #mobile-state-modal {
     display: none;
 }
 
-@media (max-width: 900px) {
+@media (max-width: 900px), (max-width: 1366px) and (hover: none) and (pointer: coarse) {
     /* Swap the 32-tile bar for the single touch button (same --state-h,
        so #app / signal-path offsets are unchanged) */
     #state-bar {
@@ -3608,8 +3618,8 @@ body.fullscreen-output #app {
     #mobile-state-btn {
         position: fixed;
         bottom: 0;
-        left: 0;
-        right: 0;
+        left: 68px;   /* room for the Save button */
+        right: 68px;  /* room for the Clear button */
         height: var(--state-h);
         z-index: 100; /* same slot as the desktop state bar */
         display: flex;
@@ -3623,6 +3633,37 @@ body.fullscreen-output #app {
         font-family: var(--mono);
         font-size: 14px;
         cursor: pointer;
+    }
+    /* Flanking quick actions: [＋Save] [Current State] [○Clear] */
+    #mobile-state-save,
+    #mobile-state-clear {
+        position: fixed;
+        bottom: 0;
+        width: 68px;
+        height: var(--state-h);
+        z-index: 100;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: var(--bg-3);
+        border: none;
+        border-top: 1px solid var(--border);
+        color: var(--text-1);
+        font-size: 22px;
+        cursor: pointer;
+    }
+    #mobile-state-save {
+        left: 0;
+        border-right: 1px solid var(--border);
+        color: var(--accent);
+    }
+    #mobile-state-clear {
+        right: 0;
+        border-left: 1px solid var(--border);
+    }
+    #mobile-state-save:active,
+    #mobile-state-clear:active {
+        background: var(--bg-4);
     }
     .msp-btn-thumb {
         width: 72px;
@@ -3657,11 +3698,11 @@ body.fullscreen-output #app {
     .msp-head {
         display: flex;
         align-items: center;
-        justify-content: space-between;
         flex-shrink: 0;
         padding: 4px 4px 12px;
     }
     .msp-bank-name {
+        margin-right: auto; /* actions + close cluster right */
         font-family: var(--mono);
         font-size: 15px;
         color: var(--accent);
@@ -3674,6 +3715,20 @@ body.fullscreen-output #app {
         font-size: 16px;
         padding: 8px 14px;
         cursor: pointer;
+    }
+    .msp-action {
+        background: var(--bg-3);
+        border: 1px solid var(--border);
+        border-radius: 4px;
+        color: var(--accent);
+        font-family: var(--mono);
+        font-size: 14px;
+        padding: 8px 14px;
+        margin-left: 8px;
+        cursor: pointer;
+    }
+    .msp-action:active {
+        background: var(--bg-4);
     }
     .msp-grid {
         flex: 1;

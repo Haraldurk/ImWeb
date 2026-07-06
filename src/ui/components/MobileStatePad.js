@@ -18,14 +18,23 @@
 const STATE_COUNT = 32;
 
 export class MobileStatePad {
-  constructor(presetManager) {
+  constructor(presetManager, opts = {}) {
     this.pm = presetManager;
+    this.onQuickSave = opts.onQuickSave ?? null;
     this.btnEl = document.getElementById('mobile-state-btn');
     this.modalEl = document.getElementById('mobile-state-modal');
     if (!this.btnEl || !this.modalEl) return;
 
     this._buildModalShell();
     this.btnEl.addEventListener('click', () => this._open());
+
+    // Flanking quick-action buttons in the collapsed bar:
+    // Save = same quick-save-to-next-empty-slot path as Shift+S;
+    // Clear = neutral state, same event the desktop ○ button dispatches
+    document.getElementById('mobile-state-save')
+      ?.addEventListener('click', () => this.onQuickSave?.());
+    document.getElementById('mobile-state-clear')
+      ?.addEventListener('click', () => this._neutral());
 
     // Same event set as StateBar._wirePresetManager — external changes
     // (MIDI, sequencer, automation) repaint button + open grid
@@ -47,11 +56,27 @@ export class MobileStatePad {
     head.className = 'msp-head';
     this.bankNameEl = document.createElement('span');
     this.bankNameEl.className = 'msp-bank-name';
+
+    const saveBtn = document.createElement('button');
+    saveBtn.className = 'msp-action';
+    saveBtn.textContent = '＋ Save';
+    // Stays open: the stateSaved event repaints the grid, so the new pad
+    // appears with its active ring — immediate visual confirmation
+    saveBtn.addEventListener('click', () => this.onQuickSave?.());
+
+    const clearBtn = document.createElement('button');
+    clearBtn.className = 'msp-action';
+    clearBtn.textContent = '○ Clear';
+    clearBtn.addEventListener('click', () => { this._neutral(); this._close(); });
+
     const closeBtn = document.createElement('button');
     closeBtn.className = 'msp-close';
     closeBtn.textContent = '✕';
     closeBtn.addEventListener('click', () => this._close());
+
     head.appendChild(this.bankNameEl);
+    head.appendChild(saveBtn);
+    head.appendChild(clearBtn);
     head.appendChild(closeBtn);
 
     this.gridEl = document.createElement('div');
@@ -85,6 +110,11 @@ export class MobileStatePad {
     this.modalEl.addEventListener('click', (e) => {
       if (e.target === this.modalEl) this._close();
     });
+  }
+
+  _neutral() {
+    // Same event the desktop ○ button and Shift+0 dispatch
+    this.pm.dispatchEvent(new CustomEvent('neutralState'));
   }
 
   _open() {
