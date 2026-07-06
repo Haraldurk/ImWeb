@@ -4796,8 +4796,24 @@ void main() {
   //    touch.mode; absorbs the former always-on two-finger pinch zoom) ──────
   //    2-finger double-tap on the canvas = same fullscreen toggle as the
   //    status-bar button
+  // Mode OSD — big centered flash for blind performance gestures
+  let _modeOsdEl = null;
+  let _modeOsdTimer = null;
+  const showModeOSD = (label) => {
+    if (!_modeOsdEl) {
+      _modeOsdEl = document.createElement("div");
+      _modeOsdEl.id = "touch-mode-osd";
+      document.body.appendChild(_modeOsdEl);
+    }
+    _modeOsdEl.textContent = `MODE: ${String(label).toUpperCase()}`;
+    _modeOsdEl.classList.add("show");
+    clearTimeout(_modeOsdTimer);
+    _modeOsdTimer = setTimeout(() => _modeOsdEl.classList.remove("show"), 800);
+  };
+
   const gestureArb = new GestureArbitrator(canvas, ps, ctrl, {
     onDoubleTap2: toggleFullscreen,
+    onModeCycled: showModeOSD, // 3-finger tap → next touch.mode + OSD flash
     sceneManager: scene3d, // spin→rot handover when a grab takes control
   });
   void gestureArb; // instance kept alive for the app lifetime

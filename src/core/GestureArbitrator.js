@@ -13,11 +13,14 @@
  *   mode 2 Locked — all touch ignored
  *
  * 3+ fingers = null-zone clutch: all gesture output suspends and stays
- * suspended until every finger lifts (fresh gesture required). Nothing is
- * ever bound to 3+ fingers so an OS-claimed gesture (iOS three-finger
- * undo/redo) can never corrupt state. Scroll/system-gesture suppression is
- * touch-action:none ONLY — preventDefault on touchmove makes iOS WebKit
- * stop synthesizing pointermove for that touch (learned the hard way).
+ * suspended until every finger lifts (fresh gesture required), with the
+ * camera values restored to their pre-gesture snapshot so nothing drifts.
+ * The only 3-finger binding is a quick TAP (≤300ms, no travel), which
+ * cycles touch.mode and reports the new label via onModeCycled — a held
+ * or OS-claimed 3-finger gesture still does nothing. Scroll/system-gesture
+ * suppression is touch-action:none ONLY — preventDefault on touchmove makes
+ * iOS WebKit stop synthesizing pointermove for that touch (learned the
+ * hard way).
  *
  * A 2-finger double-tap (≤300ms taps, ≤12px travel, ≤300ms apart) fires
  * the onDoubleTap2 hook — wired to the fullscreen toggle in main.js.
@@ -41,6 +44,7 @@ export class GestureArbitrator {
     this.ps = ps;
     this.cm = cm;
     this.onDoubleTap2 = opts.onDoubleTap2 ?? null; // 2-finger double-tap hook
+    this.onModeCycled = opts.onModeCycled ?? null; // 3-finger tap OSD hook
     this.sm = opts.sceneManager ?? null; // for spin→rot handover on grab
 
     this._pointers = new Map(); // pointerId → {x, y, sx, sy}
@@ -128,17 +132,36 @@ export class GestureArbitrator {
 
   _pointerDown(e) {
     if (e.pointerType === 'mouse') return;
-    if (this._mode === MODE_LOCKED) return;
+    // Locked mode still TRACKS pointers (taps must work so 3-finger
+    // mode-cycle can unlock) — it just never drives params: _pointerMove
+    // routes only for Camera/Pad.
     try { this.canvas.setPointerCapture(e.pointerId); } catch { /* pointer already released */ }
     if (this._pointers.size === 0) {
       this._gestureT0 = performance.now();
       this._gestureMaxCount = 0;
       this._gestureMoved = false;
       if (this._mode === MODE_CAMERA) this._grabSpinControl();
+      // Snapshot camera values so a 3-finger tap can undo the micro-drive
+      // from the first fingers landing a few ms apart
+      this._gestureStartVals = {
+        rotX: this.ps.get('scene3d.rot.x')?.value,
+        rotY: this.ps.get('scene3d.rot.y')?.value,
+        scale: this.ps.get('scene3d.scale')?.value,
+      };
     }
     this._pointers.set(e.pointerId, { x: e.clientX, y: e.clientY, sx: e.clientX, sy: e.clientY });
     this._gestureMaxCount = Math.max(this._gestureMaxCount, this._pointers.size);
-    if (this._pointers.size >= 3) this._suspended = true; // null-zone clutch
+    if (this._pointers.size >= 3 && !this._suspended) {
+      this._suspended = true; // null-zone clutch
+      // Gesture isolation: undo whatever the first 1–2 fingers drove in the
+      // milliseconds before the 3rd landed, so a 3-finger tap is a net no-op
+      if (this._mode === MODE_CAMERA && this._gestureStartVals) {
+        const s = this._gestureStartVals;
+        if (s.rotX !== undefined) this.ps.set('scene3d.rot.x', s.rotX);
+        if (s.rotY !== undefined) this.ps.set('scene3d.rot.y', s.rotY);
+        if (s.scale !== undefined) this.ps.set('scene3d.scale', s.scale);
+      }
+    }
     this._rebaseline();
   }
 
@@ -168,14 +191,19 @@ export class GestureArbitrator {
     }
   }
 
-  /** Gesture just ended (all fingers up) — was it a 2-finger tap, and if so
-   *  the second within the double-tap window? */
+  /** Gesture just ended (all fingers up) — 2-finger double-tap fires
+   *  onDoubleTap2 (fullscreen); a single 3-finger tap cycles touch.mode. */
   _evalTap() {
     const now = performance.now();
-    const isTap2 =
-      this._gestureMaxCount === 2 &&
-      !this._gestureMoved &&
-      now - this._gestureT0 <= TAP_MAX_MS;
+    const isTap = !this._gestureMoved && now - this._gestureT0 <= TAP_MAX_MS;
+
+    if (isTap && this._gestureMaxCount === 3) {
+      this._lastTap2At = 0;
+      this._cycleMode();
+      return;
+    }
+
+    const isTap2 = isTap && this._gestureMaxCount === 2;
     if (!isTap2) { this._lastTap2At = 0; return; }
     if (now - this._lastTap2At <= DOUBLE_TAP_MS) {
       this._lastTap2At = 0; // consume — a third tap starts fresh
@@ -183,6 +211,17 @@ export class GestureArbitrator {
     } else {
       this._lastTap2At = now;
     }
+  }
+
+  /** 3-finger tap: advance touch.mode (Camera → Pad → Locked → Camera) and
+   *  report the new mode's label for the on-screen flash. */
+  _cycleMode() {
+    const p = this.ps.get('touch.mode');
+    if (!p) return;
+    const count = p.options?.length ?? 3;
+    const next = (Math.round(p.value) + 1) % count;
+    this.ps.set('touch.mode', next);
+    this.onModeCycled?.(p.options?.[next] ?? String(next));
   }
 
   // ── Camera mode ──────────────────────────────────────────────────────────

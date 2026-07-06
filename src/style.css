@@ -3596,6 +3596,32 @@ body.fullscreen-output #app {
     border-color: var(--accent-dim);
 }
 
+/* ── Touch mode OSD (3-finger tap flash) ────────────────────────────────── */
+#touch-mode-osd {
+    position: fixed;
+    top: 40%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 6000;
+    padding: 14px 28px;
+    border-radius: 8px;
+    background: rgba(10, 10, 16, 0.82);
+    border: 1px solid var(--accent);
+    color: var(--accent);
+    font-family: var(--mono);
+    font-size: 22px;
+    letter-spacing: 2px;
+    opacity: 0;
+    pointer-events: none;
+    user-select: none;
+    -webkit-user-select: none;
+    transition: opacity 0.35s ease; /* fade-out */
+}
+#touch-mode-osd.show {
+    opacity: 1;
+    transition: opacity 0.08s ease; /* near-instant appear */
+}
+
 /* ── Mobile state pad (Phase 4) ──────────────────────────────────────────
    Desktop (>900px) never sees these elements; the desktop #state-bar is
    untouched outside the media query below. */
