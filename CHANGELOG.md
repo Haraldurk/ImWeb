@@ -9,6 +9,15 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
 ## [Unreleased]
 
 ### Added
+- **Mobile state pad (Phase 4)** — on ≤900px screens the 32-tile state bar
+  is replaced by a single touch button showing the active state's thumbnail
+  and name; tapping opens a full-screen modal with a 4-column grid of large
+  pads for the current bank. Pad taps use the exact desktop code path
+  (`pm.recallState`) and auto-close the modal; button and grid subscribe to
+  the same PresetManager events as the desktop StateBar, so MIDI/sequencer
+  recalls never leave a stale thumbnail. New `src/ui/components/
+  MobileStatePad.js`; elements mount as direct `<body>` children (modal
+  z-index 300). Desktop layout untouched. Commit `9b78bf8`.
 - **Canvas touch grammar — GestureArbitrator (Phase 3)** — new
   `src/core/GestureArbitrator.js` routes touch/pen gestures on the output
   canvas by pointer count and the new `touch.mode` SELECT param
