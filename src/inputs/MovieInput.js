@@ -69,6 +69,10 @@ export class MovieInput {
     texture.minFilter = THREE.LinearFilter;
     texture.magFilter = THREE.LinearFilter;
     texture.format    = THREE.RGBAFormat;
+    // Scrub safety: completed seeks always refresh the texture, covering
+    // browsers where rVFC doesn't fire for paused seeks (pos-drive scrub,
+    // manual pos nudge, BPM re-sync while paused)
+    video.addEventListener('seeked', () => { texture.needsUpdate = true; });
 
     // Capture a thumbnail frame (seek to 10% or 0.5s, whichever is earlier)
     let thumb = null;
@@ -139,6 +143,19 @@ export class MovieInput {
     const clip = this.clips[this._current];
     if (!clip) return;
     const v = clip.video;
+    // Upload only when the decoded position moved — a paused/held frame is
+    // never re-uploaded. NOTE: rVFC-based gating (as in CameraInput) was
+    // tried and FROZE movie textures: requestVideoFrameCallback fires on
+    // frames "presented for composition", and these <video> elements are
+    // never in the DOM. currentTime change is the reliable ground truth;
+    // the 'seeked' listener in addClip covers async seek completion (the
+    // new frame decodes after currentTime already reads the target).
+    const uploadIfNewFrame = () => {
+      if (v.readyState >= v.HAVE_CURRENT_DATA && v.currentTime !== clip._lastUploadT) {
+        clip._lastUploadT = v.currentTime;
+        clip.texture.needsUpdate = true;
+      }
+    };
 
     // BPM sync mode: lock clip position to beat phase
     const bpmSync = params.get('movie.bpmsync')?.value;
@@ -151,7 +168,7 @@ export class MovieInput {
       if (Math.abs(v.currentTime - targetT) > 0.05) {
         v.currentTime = targetT;
       }
-      if (v.readyState >= v.HAVE_CURRENT_DATA) clip.texture.needsUpdate = true;
+      uploadIfNewFrame();
       return;
     }
 
@@ -169,7 +186,7 @@ export class MovieInput {
       if (!v.paused) v.pause();
       const targetT = startT + (posParam.value / 100) * range;
       if (Math.abs(v.currentTime - targetT) > 0.001) v.currentTime = targetT;
-      if (v.readyState >= v.HAVE_CURRENT_DATA) clip.texture.needsUpdate = true;
+      uploadIfNewFrame();
       return;
     }
 
@@ -220,10 +237,8 @@ export class MovieInput {
       v.currentTime = startT + (posVal / 100) * range;
     }
 
-    // Update texture
-    if (v.readyState >= v.HAVE_CURRENT_DATA) {
-      clip.texture.needsUpdate = true;
-    }
+    // Upload if playback produced a new frame this tick
+    uploadIfNewFrame();
   }
 
   /**
