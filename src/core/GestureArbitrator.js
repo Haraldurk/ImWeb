@@ -191,8 +191,12 @@ export class GestureArbitrator {
     const n = this._pointers.size;
     if (n === 1) {
       const [cx, cy] = this._centroid();
-      this.ps.set('scene3d.rot.y', this._baseRotY + (cx - this._startCX) * ORBIT_DEG_PER_PX);
-      this.ps.set('scene3d.rot.x', this._baseRotX + (cy - this._startCY) * ORBIT_DEG_PER_PX);
+      // Wrap, don't clamp: rotation is periodic, so folding the value back
+      // into the 0–360 param range gives endless orbit instead of hitting
+      // the param bounds and stopping
+      const wrap = (v) => ((v % 360) + 360) % 360;
+      this.ps.set('scene3d.rot.y', wrap(this._baseRotY + (cx - this._startCX) * ORBIT_DEG_PER_PX));
+      this.ps.set('scene3d.rot.x', wrap(this._baseRotX + (cy - this._startCY) * ORBIT_DEG_PER_PX));
     } else if (n === 2 && this._pinchBaseDist > 0) {
       const [a, b] = [...this._pointers.values()];
       const ratio = Math.hypot(a.x - b.x, a.y - b.y) / this._pinchBaseDist;
