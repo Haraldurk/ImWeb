@@ -12,6 +12,16 @@ export class CameraInput {
     this.active   = false;
     this.devices  = [];
     this._stream  = null;
+    this.facing   = 'environment'; // 'environment' (back) | 'user' (front)
+  }
+
+  /** Toggle front/back camera. If a stream is live, restart with the new
+   *  facing — start() stops the old tracks first, so the hardware is
+   *  released before the new getUserMedia request. */
+  async switchFacing() {
+    this.facing = this.facing === 'environment' ? 'user' : 'environment';
+    if (this.active) await this.start(null); // null deviceId → facingMode governs
+    return this.facing;
   }
 
   async init() {
@@ -37,17 +47,18 @@ export class CameraInput {
     }
 
     // Progressive constraint fallback — iOS fails hard on { exact } deviceId
+    const facing = this.facing;
     const constraintSets = deviceId
       ? [
           { video: { deviceId: { ideal: deviceId }, width: { ideal: 1280 }, height: { ideal: 720 } } },
           { video: { deviceId: { ideal: deviceId } } },
-          { video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } } },
-          { video: { facingMode: { ideal: 'environment' } } },
+          { video: { facingMode: { ideal: facing }, width: { ideal: 1280 }, height: { ideal: 720 } } },
+          { video: { facingMode: { ideal: facing } } },
           { video: true },
         ]
       : [
-          { video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } } },
-          { video: { facingMode: { ideal: 'environment' } } },
+          { video: { facingMode: { ideal: facing }, width: { ideal: 1280 }, height: { ideal: 720 } } },
+          { video: { facingMode: { ideal: facing } } },
           { video: { width: { ideal: 1280 }, height: { ideal: 720 } } },
           { video: true },
         ];
