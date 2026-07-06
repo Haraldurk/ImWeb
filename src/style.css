@@ -2964,12 +2964,10 @@ body.fullscreen-output #app {
     user-select: none;
     touch-action: none;
     cursor: move;
-    /* Native drag-to-resize from the bottom-right corner (drag-to-move
-       stays on the handle, so the two do not conflict) */
-    resize: both;
-    overflow: auto;
-    min-width: 320px;
-    min-height: 120px;
+    /* NO resize/overflow here: iOS Safari does not support the resize
+       property, and overflow:auto makes the panel an async-scroll region
+       whose child buttons stop receiving taps (pointercancel) — the vkbd
+       only exists on coarse-pointer devices, so the grip helped nothing */
 }
 #vkbd-panel.hidden {
     display: none;
@@ -3601,9 +3599,7 @@ body.fullscreen-output #app {
 /* ── Mobile state pad (Phase 4) ──────────────────────────────────────────
    Desktop (>900px) never sees these elements; the desktop #state-bar is
    untouched outside the media query below. */
-#mobile-state-btn,
-#mobile-state-save,
-#mobile-state-clear,
+#mobile-state-bar,
 #mobile-state-modal {
     display: none;
 }
@@ -3615,70 +3611,80 @@ body.fullscreen-output #app {
         display: none;
     }
 
-    #mobile-state-btn {
+    /* Hybrid row: [○Clear] [＋Save] [scrolling thumbnails] [⋯More] */
+    #mobile-state-bar {
         position: fixed;
         bottom: 0;
-        left: 68px;   /* room for the Save button */
-        right: 68px;  /* room for the Clear button */
+        left: 0;
+        right: 0;
         height: var(--state-h);
         z-index: 100; /* same slot as the desktop state bar */
         display: flex;
-        align-items: center;
-        gap: 10px;
-        padding: 6px 12px;
+        align-items: stretch;
         background: var(--bg-2);
-        border: none;
         border-top: 1px solid var(--border);
-        color: var(--text-1);
-        font-family: var(--mono);
-        font-size: 14px;
-        cursor: pointer;
     }
-    /* Flanking quick actions: [＋Save] [Current State] [○Clear] */
     #mobile-state-save,
-    #mobile-state-clear {
-        position: fixed;
-        bottom: 0;
-        width: 68px;
-        height: var(--state-h);
-        z-index: 100;
-        display: flex;
-        align-items: center;
-        justify-content: center;
+    #mobile-state-clear,
+    #mobile-state-more {
+        flex-shrink: 0;
+        width: 56px;
         background: var(--bg-3);
         border: none;
-        border-top: 1px solid var(--border);
         color: var(--text-1);
         font-size: 22px;
         cursor: pointer;
     }
+    #mobile-state-clear {
+        border-right: 1px solid var(--border);
+    }
     #mobile-state-save {
-        left: 0;
         border-right: 1px solid var(--border);
         color: var(--accent);
     }
-    #mobile-state-clear {
-        right: 0;
+    #mobile-state-more {
         border-left: 1px solid var(--border);
     }
     #mobile-state-save:active,
-    #mobile-state-clear:active {
+    #mobile-state-clear:active,
+    #mobile-state-more:active {
         background: var(--bg-4);
     }
-    .msp-btn-thumb {
-        width: 72px;
-        height: calc(var(--state-h) - 16px);
+    #mobile-state-strip {
+        flex: 1;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 6px 8px;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        min-width: 0;
+    }
+    .msb-tile {
+        position: relative;
         flex-shrink: 0;
-        border: 1px solid var(--border-hi);
+        width: 82px;
+        height: calc(var(--state-h) - 14px);
+        border: 1px solid var(--border);
         border-radius: 3px;
         background-color: var(--bg-4);
         background-size: cover;
         background-position: center;
+        cursor: pointer;
+        padding: 0;
     }
-    .msp-btn-name {
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
+    .msb-tile--active {
+        border-color: var(--accent);
+        box-shadow: 0 0 0 1px var(--accent);
+    }
+    .msb-tile-num {
+        position: absolute;
+        top: 2px;
+        left: 4px;
+        font-family: var(--mono);
+        font-size: 10px;
+        color: var(--text-1);
+        text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9);
     }
 
     #mobile-state-modal {
