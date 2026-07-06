@@ -1376,6 +1376,12 @@ async function main() {
     update(ps.get("camera.active").value);
   })();
 
+  // ── Camera facing flip (mobile-only button, hidden >900px) ───────────────
+  document.getElementById("btn-camera-flip")?.addEventListener("click", async () => {
+    const facing = await camera3d.switchFacing();
+    console.info(`[Camera] Facing: ${facing}`);
+  });
+
   // ── Second screen output ──────────────────────────────────────────────────
   let _outWin = null;
   let _outWinReady = false;

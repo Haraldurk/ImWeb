@@ -3600,7 +3600,8 @@ body.fullscreen-output #app {
    Desktop (>900px) never sees these elements; the desktop #state-bar is
    untouched outside the media query below. */
 #mobile-state-bar,
-#mobile-state-modal {
+#mobile-state-modal,
+#btn-camera-flip {
     display: none;
 }
 
@@ -3609,6 +3610,15 @@ body.fullscreen-output #app {
        so #app / signal-path offsets are unchanged) */
     #state-bar {
         display: none;
+    }
+
+    /* Mobile-only camera front/back flip, beside the Camera toggle */
+    #btn-camera-flip {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 16px;
+        min-width: 40px;
     }
 
     /* iOS long-press hygiene: these live outside #app, so the global
