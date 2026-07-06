@@ -269,6 +269,27 @@ button {
     color: var(--accent);
 }
 
+/* iOS touch lockdown: native text selection / drag must never grab UI or
+   canvas overlay text (selection is separate from pointer-events, so
+   pointer-events:none alone does not stop the long-press loupe) */
+#app,
+#control-panel,
+#feedback-overlay,
+#debug-overlay {
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-user-drag: none;
+}
+/* …but text entry must stay selectable: iOS refuses to focus/edit inputs
+   that inherit user-select:none */
+#app input,
+#app textarea,
+#control-panel input,
+#control-panel textarea {
+    user-select: text;
+    -webkit-user-select: text;
+}
+
 .feedback-item {
     position: absolute;
     cursor: move;
