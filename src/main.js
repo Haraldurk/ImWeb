@@ -109,6 +109,10 @@ import { perfFrame } from "./perf-logger.js";
 import { applyLayout as _applyLayout } from "./ui/layout/LayoutManager.js";
 _applyLayout();
 window.addEventListener("resize", _applyLayout);
+// Re-sync whenever the status bar's own size changes (font swap-in, button
+// wrap) — load/fonts.ready fire too early to catch late reflows
+const _sbEl = document.getElementById("status-bar");
+if (_sbEl) new ResizeObserver(_applyLayout).observe(_sbEl);
 
 
 async function main() {
