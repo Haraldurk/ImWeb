@@ -70,6 +70,12 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
   mkcert dev certificate added for `dev:https` (iPad Safari has no
   self-signed bypass) — `certs/` gitignored, root CA install documented.
   Commits `fc646a5`, `eac52a3`.
+- **Camera device select in Layers + selfie mirror** — the `camera.device`
+  param (previously registered but orphaned) now renders next to Mirror
+  Cam in the Layers section, populated from device enumeration, and is
+  the single camera-restart path (the I/O dropdown drives and follows
+  it); flipping to the front camera auto-sets Mirror Cam, back camera
+  clears it. Commit `e324bf9`.
 - **Canvas touch grammar — GestureArbitrator (Phase 3)** — new
   `src/core/GestureArbitrator.js` routes touch/pen gestures on the output
   canvas by pointer count and the new `touch.mode` SELECT param
