@@ -43,6 +43,14 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
   mobile bar and modal subtrees, killing iOS's native Save Image/Share
   menu on long-press. Desktop right-click menu unaffected.
   Commit `4975ebc`.
+- **Long-press action menu** — long-press on a state thumbnail now opens
+  a Duplicate / Clear menu instead of instantly deleting; Duplicate copies
+  the state into the next empty slot (export/import path, " copy" name
+  suffix); outside tap dismisses (capture-phase listener). Commit `a9add76`.
+- **Touch double-tap on param rows** — double-tap resets a continuous
+  param (same as desktop double-click); double-tap on a min/max range
+  field opens the inline number editor. Touch pointers only — desktop
+  dblclick behavior unchanged. Commit `cc71cdc`.
 - **Canvas touch grammar — GestureArbitrator (Phase 3)** — new
   `src/core/GestureArbitrator.js` routes touch/pen gestures on the output
   canvas by pointer count and the new `touch.mode` SELECT param
