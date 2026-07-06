@@ -51,6 +51,15 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
   param (same as desktop double-click); double-tap on a min/max range
   field opens the inline number editor. Touch pointers only — desktop
   dblclick behavior unchanged. Commit `cc71cdc`.
+- **Canvas grab takes control from auto-spin** — while spin is active the
+  rot params are ignored by SceneManager, which made 1-finger orbit
+  invisible; a Camera-mode gesture start now freezes the live mesh pose
+  into `scene3d.rot.*` (0–360-wrapped, no jump) and zeroes the spins.
+  Commit `d439457`.
+- **Opt-in HTTPS dev server** — `npm run dev:https` serves over TLS
+  (basic-ssl) so iPad Safari allows camera/mic (`getUserMedia` requires a
+  secure origin); plain `npm run dev` stays http to keep the Dev Capture
+  catcher (:5174) reachable. Commit `3020a35`.
 - **Canvas touch grammar — GestureArbitrator (Phase 3)** — new
   `src/core/GestureArbitrator.js` routes touch/pen gestures on the output
   canvas by pointer count and the new `touch.mode` SELECT param
