@@ -60,6 +60,9 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
   (basic-ssl) so iPad Safari allows camera/mic (`getUserMedia` requires a
   secure origin); plain `npm run dev` stays http to keep the Dev Capture
   catcher (:5174) reachable. Commit `3020a35`.
+- **Endless 1-finger orbit** — touch orbit wraps rotation modulo 360
+  instead of clamping at the rot param bounds, so a drag keeps spinning
+  past full turns. Commit `613af0b`.
 - **Canvas touch grammar — GestureArbitrator (Phase 3)** — new
   `src/core/GestureArbitrator.js` routes touch/pen gestures on the output
   canvas by pointer count and the new `touch.mode` SELECT param
