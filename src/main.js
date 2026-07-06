@@ -58,6 +58,7 @@ import { WarpMapEditor } from "./inputs/WarpMapEditor.js";
 import { SceneManager } from "./scene3d/SceneManager.js";
 import { Pipeline } from "./core/Pipeline.js";
 import { GestureArbitrator } from "./core/GestureArbitrator.js";
+import { MobileStatePad } from "./ui/components/MobileStatePad.js";
 import { PresetManager, openDB } from "./state/Preset.js";
 import { OSCBridge } from "./io/OSCBridge.js";
 import { MontyBridge } from "./io/MontyBridge.js";
@@ -1079,6 +1080,8 @@ async function main() {
   // LUT amount updates are read directly from ps in pipeline.render()
 
   const stateBar = new StateBar(presetMgr, scene3d);
+  const mobileStatePad = new MobileStatePad(presetMgr); // ≤900px only (Phase 4)
+  void mobileStatePad;
   const signalPath = new SignalPath({
     ps,
     pipeline,
