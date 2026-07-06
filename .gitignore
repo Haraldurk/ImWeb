@@ -239,3 +239,4 @@ imweb-dist-*.zip
 .codex/
 .deepseek/
 skills-lock.json
+certs/
