@@ -9,6 +9,15 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
 ## [Unreleased]
 
 ### Added
+- **Device motion controllers (Phase 6)** — Tilt X, Tilt Y (±90° → 0–1,
+  flat = 0.5, screen-orientation compensated) and Compass (0–360° → 0–1,
+  wraps at north) join the assignable controller list, behaving like any
+  MIDI fader or LFO (slew/tables apply). iOS sensor permission is
+  requested inline when a motion controller is assigned; the Global
+  "Enable Motion" trigger covers preset-recall cases. The
+  `deviceorientation` listener binds only while a motion mapping exists.
+  Requires HTTPS (`npm run dev:https`) — sensors are dead on plain http.
+  Commit `b2fd9b3`.
 - **Slot-based mirror: Mirror FG / Mirror BG (Phase 5, breaking)** — the
   three source toggles (Mirror Cam/Movie/Buffer) are replaced by two slot
   toggles that flip whatever occupies the Foreground/Background layer —
