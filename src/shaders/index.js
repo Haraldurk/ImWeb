@@ -1324,6 +1324,7 @@ export const COLOR_CORRECT = /* glsl */ `
   uniform float uHue;    // hue shift in turns (-0.5 to 0.5)
   uniform float uSat;    // saturation multiplier (1 = unchanged)
   uniform float uBright; // brightness multiplier (1 = unchanged)
+  uniform float uFlipH;  // 1 = horizontal mirror (layer mirror, folded in)
   varying vec2 vUv;
 
   vec3 rgb2hsv(vec3 c) {
@@ -1341,7 +1342,9 @@ export const COLOR_CORRECT = /* glsl */ `
   }
 
   void main() {
-    vec4 col = texture2D(uTexture, vUv);
+    vec2 uv = vUv;
+    if (uFlipH > 0.5) uv.x = 1.0 - uv.x;
+    vec4 col = texture2D(uTexture, uv);
     vec3 hsv = rgb2hsv(col.rgb);
     hsv.x = fract(hsv.x + uHue);
     hsv.y = clamp(hsv.y * uSat, 0.0, 1.0);

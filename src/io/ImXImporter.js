@@ -76,8 +76,8 @@ const PARAM_MAP = {
   'type@Noise':                 'noise.type',
   'density@Noise':              'noise.scale',
 
-  // ── Mirror → camera mirror ─────────────────────────────────────────────────
-  'Mirror':                     'mirror.camera',
+  // ── Mirror → FG slot mirror (ImX mirror = camera-as-foreground flip) ───────
+  'Mirror':                     'mirror.fg',
 
   // ── Zoom → feedback zoom ───────────────────────────────────────────────────
   'zoom-x@Zoom':                'feedback.zoom',
