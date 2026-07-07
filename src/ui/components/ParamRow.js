@@ -231,13 +231,16 @@ export function buildParamRow(param, contextMenu) {
     // double-tap (same grammar as the min/max field editors)
     const openValueEditor = () => {
       const input = document.createElement('input');
-      // iOS recipe: type=number summons the FULL keyboard on iOS Safari/
-      // Brave (WebKit) and blocks setRangeText. text + inputmode=decimal
-      // + pattern is the combination that reliably gets the numeric pad.
+      // iOS recipe: type=number summons the FULL keyboard on iOS WebKit
+      // and blocks setRangeText; inputmode=decimal alone is what reliably
+      // gets the decimal pad. NO pattern attribute — extra attributes
+      // feed WebKit's keyboard heuristics, and the decimal pad has no
+      // minus key anyway: negative entry goes through the ImWeb vkbd,
+      // which types directly into the focused field.
       input.type = 'text';
       input.inputMode = 'decimal';
-      input.pattern = '[0-9.\\-]*';
       input.autocomplete = 'off';
+      input.autocapitalize = 'none';
       input.enterKeyHint = 'done'; // labels the return key on the iOS pad
       input.value = param.value.toFixed(param.step ? 0 : 3);
       input.style.cssText = 'width:60px;font-size:11px;font-family:var(--mono);background:var(--bg-4);border:1px solid var(--accent);color:var(--text-0);padding:1px 3px;border-radius:3px;';
@@ -426,12 +429,13 @@ export function buildParamRow(param, contextMenu) {
         e.preventDefault();
         const current = which === 'min' ? (param.ctrlMin ?? param.min) : (param.ctrlMax ?? param.max);
         const input = document.createElement('input');
-        // Same iOS recipe as the value editor: text+inputmode gets the
-        // numeric pad; synchronous focus keeps the gesture activation
+        // Same iOS recipe as the value editor: text+inputmode=decimal, no
+        // pattern (heuristics), negatives via the vkbd; synchronous focus
+        // keeps the gesture activation
         input.type = 'text';
         input.inputMode = 'decimal';
-        input.pattern = '[0-9.\\-]*';
         input.autocomplete = 'off';
+        input.autocapitalize = 'none';
         input.enterKeyHint = 'done';
         input.value = current;
         input.style.cssText = 'width:64px;font:inherit;font-size:inherit;background:#1f1f25;color:#e0e0f0;border:1px solid #c8a020;border-radius:3px;padding:1px 4px;outline:none;';
