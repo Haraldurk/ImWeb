@@ -147,6 +147,13 @@ export function buildParamRow(param, contextMenu) {
     row.addEventListener('pointerdown', e => {
       if (e.button !== 0 || param.locked) return;
       _stopGlide(); // touching the param again always kills the physics
+      // Single-writer rule: gestures that start ON the slider belong to the
+      // native slider alone. Capturing here made the row's RELATIVE drag
+      // math fight the slider's ABSOLUTE thumb mapping (iOS drives the
+      // slider via touch events, which pointer capture does not retarget) —
+      // the param flip-flopped between the two writers while the finger
+      // held the thumb.
+      if (e.target.closest('.param-slider')) return;
       row.setPointerCapture(e.pointerId);
       _dragPid = e.pointerId;
       startX   = e.clientX;
@@ -430,7 +437,21 @@ export function buildParamRow(param, contextMenu) {
       param.value = parseFloat(slider.value);
       updateDisplay();
     });
-    binding.sync(() => { slider.value = param.value; });
+    // While the finger holds the slider it is the SOLE writer: the rAF
+    // sync writing slider.value back mid-drag yanked the thumb from under
+    // the held finger (third writer in the fight). Re-sync once on release.
+    let _sliderHeld = false;
+    slider.addEventListener('pointerdown', () => {
+      _sliderHeld = true;
+      row._stopGlide?.(); // grabbing the thumb kills any running physics
+    });
+    const _sliderRelease = () => {
+      _sliderHeld = false;
+      slider.value = param.value;
+    };
+    slider.addEventListener('pointerup', _sliderRelease);
+    slider.addEventListener('pointercancel', _sliderRelease);
+    binding.sync(() => { if (!_sliderHeld) slider.value = param.value; });
     row.appendChild(slider);
   }
 
