@@ -102,12 +102,13 @@ export function buildParamRow(param, contextMenu) {
 
   if (param.type === PARAM_TYPE.CONTINUOUS) {
     // Click+drag or slider — uses Pointer Events for mouse + touch + pen
-    let startX = 0, startVal = 0;
+    let startX = 0, startVal = 0, _dragPid = null;
     const range = param.max - param.min;
 
     row.addEventListener('pointerdown', e => {
       if (e.button !== 0 || param.locked) return;
       row.setPointerCapture(e.pointerId);
+      _dragPid = e.pointerId;
       startX   = e.clientX;
       startVal = param.value;
       e.preventDefault();
@@ -120,7 +121,17 @@ export function buildParamRow(param, contextMenu) {
       updateDisplay();
     });
 
-    row.addEventListener('pointerup', () => {});
+    row.addEventListener('pointerup', () => { _dragPid = null; });
+
+    // Browser hijacked the gesture mid-drag (panel scroll, system gesture):
+    // pointermove already wrote intermediate values — revert to the value
+    // the drag started from so an aborted drag never leaves a random one
+    row.addEventListener('pointercancel', e => {
+      if (_dragPid !== e.pointerId) return;
+      _dragPid = null;
+      param.value = startVal;
+      updateDisplay();
+    });
 
     // Alt+wheel or horizontal scroll to adjust value; plain vertical scroll scrolls the panel
     row.addEventListener('wheel', e => {
@@ -279,12 +290,16 @@ export function buildParamRow(param, contextMenu) {
 
       // Drag up/down to adjust value; double-click to type
       el.style.cursor = 'ns-resize';
-      let _rstartY = 0, _rstartVal = 0;
+      let _rstartY = 0, _rstartVal = 0, _rstartRaw = null, _rPid = null;
       el.addEventListener('pointerdown', e => {
         if (e.button !== 0) return;
         el.setPointerCapture(e.pointerId);
+        _rPid      = e.pointerId;
         _rstartY   = e.clientY;
         _rstartVal = which === 'min' ? (param.ctrlMin ?? param.min) : (param.ctrlMax ?? param.max);
+        // raw (may be null = "no override") — pointercancel restores this,
+        // so an aborted drag can't turn an unset range into a set one
+        _rstartRaw = which === 'min' ? param.ctrlMin : param.ctrlMax;
         e.preventDefault();
         e.stopPropagation();
       });
@@ -297,7 +312,17 @@ export function buildParamRow(param, contextMenu) {
         else                 { v = Math.max(v, other); param.ctrlMax = v; }
         refresh();
       });
-      el.addEventListener('pointerup', () => {});
+      el.addEventListener('pointerup', () => { _rPid = null; });
+
+      // Vertical drag here is the same gesture as panel scroll — when the
+      // browser claims it (pointercancel), restore the exact pre-drag state
+      el.addEventListener('pointercancel', e => {
+        if (_rPid !== e.pointerId) return;
+        _rPid = null;
+        if (which === 'min') param.ctrlMin = _rstartRaw;
+        else                 param.ctrlMax = _rstartRaw;
+        refresh();
+      });
 
       const openEditor = e => {
         e.stopPropagation();

@@ -48,6 +48,13 @@ body {
     width: 100%;
     height: 100%;
     overflow: hidden;
+    /* Live-performance lockdown: never let a scroll/fling chain out of the
+       document — blocks desktop two-finger swipe-back navigation and iOS
+       rubber-banding when an inner scroll region (state strip, tab content)
+       hits its end. The iOS EDGE swipe-back system gesture cannot be blocked
+       in-page; the beforeunload guard in main.js is the second line of
+       defense on browsers that honor it. */
+    overscroll-behavior: none;
     background: var(--bg-0);
     color: var(--text-0);
     font-family: var(--sans);
@@ -222,7 +229,9 @@ button {
     top: var(--status-h);
     left: 0;
     right: 0;
-    bottom: calc(var(--signal-h) + var(--state-h));
+    /* safe-area inset: 0 on desktop; on iOS the bottom bars grow by the
+       home-indicator inset, so the app area must end above them */
+    bottom: calc(var(--signal-h) + var(--state-h) + env(safe-area-inset-bottom, 0px));
     display: flex;
     gap: 0;
 }
@@ -1352,7 +1361,7 @@ body.dnd-active::after {
 
 #signal-path {
     position: fixed;
-    bottom: var(--state-h);
+    bottom: calc(var(--state-h) + env(safe-area-inset-bottom, 0px));
     left: 0;
     right: 0;
     height: var(--signal-h);
@@ -2956,7 +2965,11 @@ body.fullscreen-output #app {
 /* ── Virtual Keyboard (iPad / touch) ─────────────────────────────────── */
 #vkbd-panel {
     position: fixed;
-    bottom: 44px;
+    /* Rest ABOVE the state bar (mobile bar and desktop bar are both
+       --state-h tall at bottom:0): at the old 44px the panel's lower edge —
+       touch-action:none, cursor:move — sat on top of the state tiles and
+       swallowed their taps. Drag-to-move overrides this via left/top. */
+    bottom: calc(var(--state-h) + 8px + env(safe-area-inset-bottom, 0px));
     left: 50%;
     transform: translateX(-50%);
     z-index: 5000;
@@ -3713,7 +3726,12 @@ body.fullscreen-output #app {
         bottom: 0;
         left: 0;
         right: 0;
-        height: var(--state-h);
+        /* Clear the iOS home indicator: the system swipe-up-to-home gesture
+           zone must never overlap the Save/Clear/tile row. Controls keep
+           --state-h; the inset strip below them stays empty. Requires
+           viewport-fit=cover in the meta tag for env() to be non-zero. */
+        height: calc(var(--state-h) + env(safe-area-inset-bottom, 0px));
+        padding-bottom: env(safe-area-inset-bottom, 0px);
         z-index: 100; /* same slot as the desktop state bar */
         display: flex;
         align-items: stretch;
