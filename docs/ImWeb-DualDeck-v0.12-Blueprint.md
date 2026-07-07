@@ -1,6 +1,6 @@
-# ImWeb v0.11.0 — Dual-Deck Video Blueprint (A/B Mixing)
+# ImWeb v0.12.0 — Dual-Deck Video Blueprint (A/B Mixing)
 
-*Architectural brainstorm, 2026-07 — no code yet. Structural map for adding a
+*Architectural brainstorm, 2026-07 — no code yet. Structural map (originally drafted as v0.11; renumbered — v0.11.0 became the Touch & Ergonomics Overhaul) for adding a
 second real-time video stream for A/B crossfading, texture blending, and
 displacement masking.*
 
@@ -18,7 +18,7 @@ What ImWeb cannot do is put **two different video files** into two slots at
 once, because `MovieInput` is a singleton deck: one active `<video>`, one
 `VideoTexture`, one `movie.*` param group, one clips playlist.
 
-**Therefore v0.11 is not "add a second video pipeline" — it is "add a second
+**Therefore v0.12 is not "add a second video pipeline" — it is "add a second
 movie deck (Deck B) as one more source index, plus a dedicated crossfader."**
 The compositing machinery already exists. This reframe cuts the work by
 roughly half and keeps the signal model coherent.
@@ -127,7 +127,7 @@ Not `MovieInput` the class — `movieInput` the **integration web**. main.js
 shortcuts (`m` toggle, `Shift+1–8` clip select), BPM sync, thumbnails,
 ClipLibrary, project save/load, and the render-loop tick. Dozens of call
 sites assume THE movie. The engine won't fight this feature — **the
-integration hub will**. Budget the majority of v0.11 for main.js wiring and
+integration hub will**. Budget the majority of v0.12 for main.js wiring and
 UI mirroring, not for pipeline work (the MixBus shader is a day; the wiring
 is weeks).
 
