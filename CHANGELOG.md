@@ -6,6 +6,75 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
 
 ---
 
+## [0.11.0] — 2026-07-07 — Touch & Ergonomics Overhaul
+
+A ruthless UX audit of the touch layout ("the Grill Report") followed by
+systematic fixes: live-performance safety, main-thread performance,
+finger-sized ergonomics, touch physics, desktop canvas parity, and
+iOS-hardened precision value entry.
+
+### Added
+- **Flick momentum on param drags** — fast touch/pen drags hand residual
+  velocity to a friction glide on clean pointerup; never on pointercancel
+  (reverts), never on controller-owned params, and the loop yields the
+  instant anything else writes the value. `e218857`
+- **Touch value entry** — double-tap any continuous value field (and the
+  min/max fields) for an inline type-in editor; iOS-hardened: synchronous
+  focus inside the gesture, `type=text inputmode=decimal` for the numeric
+  pad, explicit min/max clamping, and the ImWeb virtual keyboard now types
+  directly into focused fields. `16938d8`, `dc40305`, `d53c2f6`
+- **Desktop canvas parity** — 'g' cycles Camera/Pad/Locked (3-finger-tap
+  equivalent; macOS eats trackpad 3-finger gestures); wheel/trackpad-pinch
+  zoom eases toward `scene3d.scale` with a Wheel Zoom toggle + sensitivity
+  in Global params; left-drag orbits with the same coast inertia as a touch
+  flick (shared physics via GestureArbitrator), right-drag pans.
+  `647db84`, `47aa1bd`, `c99cafa`
+- **UI chrome toggles** — version in the logo (from package.json), ◎ OSD
+  toggle ('i'), ▤ state bar toggle ('u', localStorage, auto-hidden in
+  fullscreen incl. the mobile bar), signal path hidden by default with the
+  ┄ button as show/hide (float/dock moved to Shift+P). `47aa1bd`, `b952999`
+- **Unified long-press** — one `LONG_PRESS_MS` (400ms) constant replaces
+  the fractured 220/500/600ms timings across badges, rows, and state
+  tiles. `4a384a2`
+
+### Fixed
+- **Live-performance safety (Grill Report P1)** — `overscroll-behavior:
+  none` lockdown + beforeunload guard against swipe-back killing the show;
+  `viewport-fit=cover` + safe-area insets so the mobile state bar clears
+  the iOS home indicator; pointercancel recovery reverts browser-hijacked
+  drags instead of leaving corrupted values; the virtual keyboard no longer
+  rests on top of the state tiles. `7469337`
+- **Rotation slider stutter** — a touch on the slider had three writers
+  fighting (row relative drag, native absolute slider, rAF thumb
+  write-back); slider gestures are now single-writer, and `scene3d.rot.*`
+  re-bases the mesh while auto-spin runs, so rotation is live during spin
+  (root cause of "rotation slider dead" — MasterProject states carry
+  non-zero spin). `3b2455f`, `7b10cc7`
+- **Context menu scroll safety** — a tap that stops iOS momentum scroll
+  can no longer trigger a controller assignment (150ms capture-phase click
+  guard); menu overscroll is contained. `4a384a2`
+- **Coach notification** — centered over the canvas (was on top of the
+  status bar) and transient (2.5s, was 10s). `b952999`
+- **Detached panels & floated signal path drag on touch** — mouse-only
+  drag handlers migrated to pointer events with capture and
+  `touch-action:none`. `c88b890`
+
+### Changed
+- **Coarse-pointer param rows rebuilt** — 44px min/max fields, full-height
+  badge/value hit areas (no dead stripes), 22px slider lane with a 20px
+  thumb on a slim visual track, touch-sized option button groups; labels
+  keep room ("Rotation X" fits the 300px slide-over). Desktop rules
+  untouched. `a37b0c9`, `3b2455f`, `f3e5cd8`
+
+### Performance
+- **rAF-batched param→DOM sync** — controller writes (LFO/Random/Sound at
+  60Hz) no longer fan out synchronous DOM writes per change; all bindings
+  flush once per frame. **Targeted MobileStatePad refresh** — persistent
+  index-keyed tiles replace the full innerHTML rebuild per sequencer tick;
+  hidden modal grid skipped. `e3302fc`
+
+---
+
 ## [0.10.0] — 2026-07-07 — The Touch Instrument
 
 ImWeb becomes a full touch instrument on the iPad: mode-based canvas

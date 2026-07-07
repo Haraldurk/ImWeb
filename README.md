@@ -3,7 +3,7 @@
 ![ImWeb Preview](assets/preview.png)
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
-[![Version](https://img.shields.io/badge/version-v0.10.0-brightgreen)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-v0.11.0-brightgreen)](CHANGELOG.md)
 [![Live Demo](https://img.shields.io/badge/demo-live-orange)](https://imweb.image-ine.org)
 
 **ImWeb is Image/ine — reimagined** — The legendary real-time video synthesis instrument created by Tom Demeyer and Steina Vasulka at STEIM Amsterdam, rebuilt for the modern browser and pointed toward what comes next. Free, open source, no installation required.
@@ -59,7 +59,7 @@ Firefox and Safari supported in WebGL mode with minor limitations.
 
 ---
 
-## Features (v0.10.0)
+## Features (v0.11.0)
 
 ### Input Sources
 
@@ -159,7 +159,7 @@ Right-click any parameter to assign:
 
 ### UI
 
-- Signal path display — float or dock
+- Signal path display — hidden by default; ┄ toolbar toggle; float/dock via `Shift+P`
 - Live GLSL editor — 10 built-in presets; auto-injects standard uniforms
 - First-visit onboarding overlay
 - LFO visualiser in context menu
@@ -186,6 +186,9 @@ Right-click any parameter to assign:
 | `A` | Cycle Background source |
 | `Z` | Cycle DisplaceSrc source |
 | `T` | Tap tempo |
+| `G` | Cycle canvas mode (Camera / Pad / Locked) |
+| `I` | Toggle parameter OSD |
+| `U` | Toggle state bar |
 | `?` | Keyboard help overlay |
 | `/` | Parameter search overlay |
 | `0–9` | Recall State 0–9 |
