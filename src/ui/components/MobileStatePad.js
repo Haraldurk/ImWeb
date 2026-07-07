@@ -15,6 +15,8 @@
  * button and grid — it can never show a stale state.
  */
 
+import { LONG_PRESS_MS } from '../touch.js';
+
 const STATE_COUNT = 32;
 
 export class MobileStatePad {
@@ -185,9 +187,9 @@ export class MobileStatePad {
     this._menuEl = null;
   }
 
-  /** Long-press (600ms, <10px travel) on a tile opens the action menu.
-   *  pointerup / pointercancel / movement cancels the timer, so strip
-   *  scrolling and normal taps never trigger it. */
+  /** Long-press (unified LONG_PRESS_MS, <10px travel) on a tile opens the
+   *  action menu. pointerup / pointercancel / movement cancels the timer,
+   *  so strip scrolling and normal taps never trigger it. */
   _addLongPress(el, i) {
     let timer = null, sx = 0, sy = 0;
     const cancel = () => { if (timer) { clearTimeout(timer); timer = null; } };
@@ -198,7 +200,7 @@ export class MobileStatePad {
         timer = null;
         el._lpFired = true; // swallow the click that follows finger lift
         this._openTileMenu(el, i);
-      }, 600);
+      }, LONG_PRESS_MS);
     });
     el.addEventListener('pointermove', (e) => {
       if (timer && Math.hypot(e.clientX - sx, e.clientY - sy) > 10) cancel();

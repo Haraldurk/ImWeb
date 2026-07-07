@@ -9,6 +9,7 @@ import { PARAM_TYPE } from '../../controls/ParameterSystem.js';
 import { createBinding } from '../bindings/ParamBinding.js';
 import { mkSelect as _mkSelect } from './Select.js';
 import { openCtrlPopover as _openCtrlPopover } from './CtrlPopover.js';
+import { LONG_PRESS_MS } from '../touch.js';
 
 /**
  * Touch double-tap detector (iOS doesn't synthesize dblclick reliably on
@@ -72,7 +73,7 @@ export function buildParamRow(param, contextMenu) {
     e.stopPropagation();
     _openCtrlPopover(param, ctrlEl, contextMenu?.ctrl, contextMenu?.tables);
   });
-  // Long-press (220ms) on touch devices → open controller popover
+  // Long-press on touch devices → open controller popover (unified timing)
   let _longPressTimer = null;
   ctrlEl.addEventListener('pointerdown', e => {
     _ctrlPointerType = e.pointerType;
@@ -80,7 +81,7 @@ export function buildParamRow(param, contextMenu) {
     if (e.pointerType !== 'touch' || !param.controller) return;
     _longPressTimer = setTimeout(() => {
       _openCtrlPopover(param, ctrlEl, contextMenu?.ctrl, contextMenu?.tables);
-    }, 220);
+    }, LONG_PRESS_MS);
   });
   const _cancelLongPress = () => clearTimeout(_longPressTimer);
   ctrlEl.addEventListener('pointerup',     _cancelLongPress);
@@ -349,7 +350,7 @@ export function buildParamRow(param, contextMenu) {
     contextMenu?.show(param, e.clientX, e.clientY);
   });
 
-  // Long-press (500ms) on touch → context menu + haptic; cancel on movement > 8px
+  // Long-press on touch → context menu + haptic (unified timing); cancel on movement > 8px
   let _lpTimer, _lpX = 0, _lpY = 0;
   row.addEventListener('pointerdown', e => {
     if (e.pointerType === 'mouse') return;
@@ -357,7 +358,7 @@ export function buildParamRow(param, contextMenu) {
     _lpTimer = setTimeout(() => {
       contextMenu?.show(param, _lpX, _lpY);
       navigator.vibrate?.(10);
-    }, 500);
+    }, LONG_PRESS_MS);
   });
   row.addEventListener('pointermove', e => {
     if (_lpTimer && (Math.abs(e.clientX - _lpX) > 8 || Math.abs(e.clientY - _lpY) > 8))
