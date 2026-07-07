@@ -210,26 +210,29 @@ export function buildParamRow(param, contextMenu) {
       updateDisplay();
     }, { passive: false });
 
-    // Double-click to reset
-    row.addEventListener('dblclick', () => {
+    // Double-click to reset (value column excluded: it hosts the type-in
+    // editor, and Android synthesizes dblclick from the double-tap that
+    // opens it — a reset here would clobber the fresh editor)
+    row.addEventListener('dblclick', (e) => {
+      if (e.target.closest('.param-value')) return;
       param.reset();
       updateDisplay();
     });
     // Touch equivalent: double-tap resets (range fields excluded — they
-    // have their own double-tap → min/max editor)
+    // have their own double-tap → min/max editor; the value column stops
+    // its own touch propagation, so it never reaches this)
     addDoubleTap(row, (e) => {
       if (e.target.closest('.param-range')) return;
       param.reset();
       updateDisplay();
     });
 
-    // Ctrl+click on value label → inline type-in
-    valueEl.style.cursor = 'text';
-    valueEl.addEventListener('click', e => {
-      if (!e.ctrlKey && !e.metaKey) return;
-      e.stopPropagation();
+    // Inline type-in on the value label — desktop: Ctrl+click; touch:
+    // double-tap (same grammar as the min/max field editors)
+    const openValueEditor = () => {
       const input = document.createElement('input');
       input.type  = 'number';
+      input.inputMode = 'decimal'; // numeric keypad on iOS/Android
       input.min   = param.min;
       input.max   = param.max;
       input.step  = param.step ?? 'any';
@@ -237,19 +240,39 @@ export function buildParamRow(param, contextMenu) {
       input.style.cssText = 'width:60px;font-size:11px;font-family:var(--mono);background:var(--bg-4);border:1px solid var(--accent);color:var(--text-0);padding:1px 3px;border-radius:3px;';
       valueEl.innerHTML = '';
       valueEl.appendChild(input);
-      input.focus();
-      input.select();
+      // Editor owns its pointer events — the row must not capture/drag
+      input.addEventListener('pointerdown', e2 => e2.stopPropagation());
+      // Deferred focus: on iOS a focus() inside the triggering gesture's
+      // handler can be dropped while the tap is still settling
+      setTimeout(() => { input.focus(); input.select(); }, 0);
       const commit = () => {
         const v = parseFloat(input.value);
-        if (!isNaN(v)) param.value = v;
-        updateDisplay();
+        if (!isNaN(v)) param.value = v; // setter clamps to min/max and step
+        updateDisplay(); // repaints displayValue — destroys the input
       };
       input.addEventListener('blur',    commit);
       input.addEventListener('keydown', e2 => {
-        if (e2.key === 'Enter') { commit(); }
-        if (e2.key === 'Escape') { updateDisplay(); }
+        if (e2.key === 'Enter')  { commit(); e2.stopPropagation(); }
+        if (e2.key === 'Escape') { updateDisplay(); e2.stopPropagation(); }
       });
+    };
+    valueEl.style.cursor = 'text';
+    valueEl.addEventListener('click', e => {
+      if (!e.ctrlKey && !e.metaKey) return;
+      e.stopPropagation();
+      openValueEditor();
     });
+    // Touch: the value column claims its own gestures (the row's pointer
+    // capture would otherwise swallow the pointerups the double-tap
+    // detector needs). Mouse is untouched — value-surface mouse drags
+    // still drive the row drag.
+    valueEl.addEventListener('pointerdown', e => {
+      if (e.pointerType !== 'mouse') e.stopPropagation();
+    });
+    valueEl.addEventListener('pointerup', e => {
+      if (e.pointerType !== 'mouse') e.stopPropagation();
+    });
+    addDoubleTap(valueEl, openValueEditor);
 
   } else if (param.type === PARAM_TYPE.TOGGLE) {
     const dot = document.createElement('span');
