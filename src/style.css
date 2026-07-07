@@ -2942,10 +2942,69 @@ body.fullscreen-output #app {
     }
 }
 
-/* Touch / coarse pointer — bigger tap targets */
+/* Touch / coarse pointer — bigger tap targets.
+   The desktop rules inflate the ROW to 44px but leave everything inside it
+   at mouse sizes (36px min/max columns, text-height badge, 3px slider).
+   This block rebuilds the row internals for fingers; fine-pointer devices
+   never match it, so the compact desktop layout is untouched. */
 @media (pointer: coarse) {
     .param-row {
         min-height: 44px;
+        height: auto; /* desktop fixes 28px */
+        /* 44px-wide min/max fields, wider badge and value column.
+           Fixed columns cost the label ~30px vs desktop — .param-label
+           already ellipsizes, and on phones (--ctrl-w:100vw) it regains it */
+        grid-template-columns: 1fr 56px 44px 44px 60px;
+        gap: 6px;
+    }
+    /* Slider rows: 44px control row + a 28px slider lane below it
+       (desktop is 28px + a 4px sliver) */
+    .param-row.has-slider {
+        grid-template-rows: 44px 28px;
+    }
+    /* Hit boundary = row boundary: the badge and min/max spans carry their
+       own pointer handlers, so any gap between their text box and the row
+       edge is a dead stripe that silently falls through to row value-drag.
+       Stretch them to full track height and center content with flex. */
+    .param-ctrl,
+    .param-range,
+    .param-value {
+        align-self: stretch;
+        display: inline-flex;
+        align-items: center;
+    }
+    .param-ctrl {
+        justify-content: center;
+        padding: 0 4px;
+    }
+    .param-range,
+    .param-value {
+        justify-content: flex-end; /* preserves the text-align:right look */
+    }
+    /* Slider: full 28px lane is the hit area; visuals stay slim via the
+       track pseudo-element with a 24px thumb centered on it */
+    .param-slider {
+        height: 28px;
+        background: transparent; /* desktop paints the element as the track */
+    }
+    .param-slider::-webkit-slider-runnable-track {
+        height: 8px;
+        background: var(--bg-4);
+        border-radius: 4px;
+    }
+    .param-slider::-webkit-slider-thumb {
+        width: 24px;
+        height: 24px;
+        margin-top: -8px; /* (8px track − 24px thumb) / 2 — center on track */
+    }
+    .param-slider::-moz-range-track {
+        height: 8px;
+        background: var(--bg-4);
+        border-radius: 4px;
+    }
+    .param-slider::-moz-range-thumb {
+        width: 24px;
+        height: 24px;
     }
     .tab {
         padding: 10px 12px;
