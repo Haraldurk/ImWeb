@@ -4813,7 +4813,7 @@ void main() {
       _modeOsdEl.id = "touch-mode-osd";
       document.body.appendChild(_modeOsdEl);
     }
-    _modeOsdEl.textContent = `MODE: ${String(label).toUpperCase()}`;
+    _modeOsdEl.textContent = String(label).toUpperCase();
     _modeOsdEl.classList.add("show");
     clearTimeout(_modeOsdTimer);
     _modeOsdTimer = setTimeout(() => _modeOsdEl.classList.remove("show"), 800);
@@ -4862,6 +4862,10 @@ void main() {
   // trigger is the gesture-context fallback for iOS permission when tilt
   // controllers arrive via preset recall (no assignment gesture available).
   ps.get("motion.enable")?.onTrigger(() => ctrl.requestMotionPermission());
+  // Permission outcome is otherwise invisible — flash it in the OSD so
+  // on-device debugging isn't blind (fires for Enable Motion AND inline
+  // assignment requests)
+  ctrl.onMotionPermission = (state) => showModeOSD(`MOTION: ${state}`);
   // Recalled states can restore tilt controllers wholesale — re-arm the
   // sensor listener (on iOS this stays off until Enable Motion is tapped;
   // requestMotionPermission swallows the no-gesture rejection)
@@ -4874,7 +4878,7 @@ void main() {
 
   const gestureArb = new GestureArbitrator(canvas, ps, ctrl, {
     onDoubleTap2: toggleFullscreen,
-    onModeCycled: showModeOSD, // 3-finger tap → next touch.mode + OSD flash
+    onModeCycled: (label) => showModeOSD(`MODE: ${label}`), // 3-finger tap OSD
     onPadDrive: padDrive,
     onPadRelease: padRelease,
     sceneManager: scene3d, // spin→rot handover when a grab takes control

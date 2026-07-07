@@ -399,7 +399,10 @@ export class ControllerManager {
    *  resolves immediately. Safe to call speculatively (rejections are
    *  swallowed → 'denied' until a real gesture retries). */
   async requestMotionPermission() {
-    if (typeof DeviceOrientationEvent === 'undefined') return false;
+    if (typeof DeviceOrientationEvent === 'undefined') {
+      this.onMotionPermission?.('no sensors');
+      return false;
+    }
     if (typeof DeviceOrientationEvent.requestPermission === 'function') {
       try {
         const r = await DeviceOrientationEvent.requestPermission();
@@ -411,6 +414,8 @@ export class ControllerManager {
       this._motionPermission = 'granted'; // non-iOS: no permission gate
     }
     this.armMotion();
+    console.info(`[Motion] permission: ${this._motionPermission}, listener bound: ${this._motionBound}`);
+    this.onMotionPermission?.(this._motionPermission);
     return this._motionPermission === 'granted';
   }
 
@@ -429,6 +434,10 @@ export class ControllerManager {
   }
 
   _onDeviceOrientation = (e) => {
+    if (!this._motionFirstEvent) {
+      this._motionFirstEvent = true;
+      console.info(`[Motion] first sensor event: beta=${e.beta?.toFixed(1)} gamma=${e.gamma?.toFixed(1)} alpha=${e.alpha?.toFixed(1)}`);
+    }
     // Compensate for screen orientation so Tilt X is always "toward/away
     // from me" relative to the screen being looked at — beta/gamma are
     // device-frame axes and swap when the iPad rotates to landscape.
