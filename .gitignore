@@ -238,5 +238,11 @@ imweb-dist-*.zip
 .codegraph/
 .codex/
 .deepseek/
+.opencode/
+.qwen/
+markitdown/
 skills-lock.json
 certs/
+
+# Local demo export — not for the public repo (overrides !public/assets/*.mp4)
+public/assets/imweb-demo_ALL-I.mp4
