@@ -4811,9 +4811,50 @@ void main() {
     _modeOsdTimer = setTimeout(() => _modeOsdEl.classList.remove("show"), 800);
   };
 
+  // Pad-mode crosshair — absolute X/Y reference over the canvas.
+  // Active while a pad drive is happening, parked (ghost) on release,
+  // hidden the moment touch.mode leaves Pad (any path: 3-finger tap,
+  // param row, preset recall, MIDI).
+  let _padXhair = null;
+  const _ensurePadXhair = () => {
+    if (_padXhair) return _padXhair;
+    // #output-panel is the canvas's positioned parent (position:relative);
+    // note there is no #canvas-wrap in the DOM (DebugOverlay's target)
+    const wrap = document.getElementById("output-panel");
+    if (!wrap) return null;
+    const box = document.createElement("div");
+    box.id = "pad-crosshair-container";
+    const h = document.createElement("div");
+    h.className = "pad-xhair-h";
+    const v = document.createElement("div");
+    v.className = "pad-xhair-v";
+    box.appendChild(h);
+    box.appendChild(v);
+    wrap.appendChild(box);
+    _padXhair = { box, h, v };
+    return _padXhair;
+  };
+  const padDrive = (x, y) => {
+    const xh = _ensurePadXhair();
+    if (!xh) return;
+    xh.v.style.left = (x * 100).toFixed(2) + "%";
+    xh.h.style.top = (y * 100).toFixed(2) + "%";
+    xh.box.classList.remove("hidden");
+    xh.box.classList.add("active");
+  };
+  const padRelease = () => _padXhair?.box.classList.remove("active"); // → parked ghost
+  ps.get("touch.mode")?.onChange((m) => {
+    if (Math.round(m) !== 1 && _padXhair) {
+      _padXhair.box.classList.add("hidden");
+      _padXhair.box.classList.remove("active");
+    }
+  });
+
   const gestureArb = new GestureArbitrator(canvas, ps, ctrl, {
     onDoubleTap2: toggleFullscreen,
     onModeCycled: showModeOSD, // 3-finger tap → next touch.mode + OSD flash
+    onPadDrive: padDrive,
+    onPadRelease: padRelease,
     sceneManager: scene3d, // spin→rot handover when a grab takes control
   });
   void gestureArb; // referenced by the render loop's inertia tick
