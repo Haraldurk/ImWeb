@@ -211,8 +211,9 @@ export class MobileStatePad {
   }
 
   _open() {
-    this._refresh();
+    // Unhide FIRST: _refresh skips the pad grid while the modal is hidden
     this.modalEl.classList.remove('hidden');
+    this._refresh();
   }
 
   _close() {
@@ -224,44 +225,101 @@ export class MobileStatePad {
     return state?.name || `State ${i + 1}`;
   }
 
+  /** One persistent strip tile per occupied slot, keyed by state index
+   *  (slots are nulled on clear, never spliced — Preset.removeState —
+   *  so an index-keyed tile and its captured `i` stay valid for life). */
+  _makeStripTile(i) {
+    const tile = document.createElement('button');
+    tile.className = 'msb-tile';
+    const num = document.createElement('span');
+    num.className = 'msb-tile-num';
+    num.textContent = i + 1;
+    tile.appendChild(num);
+    tile.addEventListener('click', () => {
+      if (tile._lpFired) { tile._lpFired = false; return; }
+      this.pm.recallState(i);
+    });
+    this._addLongPress(tile, i);
+    return tile;
+  }
+
   _refresh() {
     const bank = this.pm.current;
     if (!bank) return;
     const idx = bank.activeState;
 
-    // Thumbnail strip: one mini-tile per STORED state (empties skipped);
-    // newly saved states appear via the stateSaved event that calls this
-    this.stripEl.innerHTML = '';
+    // Thumbnail strip: targeted update — reuse existing tiles, touch only
+    // background-image / active class when they actually changed. The
+    // sequencer fires stateRecalled at musical rate; the old full
+    // innerHTML rebuild meant DOM teardown + thumbnail re-decode per step.
+    if (!this._tiles) this._tiles = new Map(); // state index → tile element
+    const tiles = this._tiles;
+
+    // Drop tiles whose slot was cleared (or emptied by a bank switch)
+    for (const [i, tile] of tiles) {
+      if (!bank.states[i]) { tile.remove(); tiles.delete(i); }
+    }
+
     let activeTile = null;
     bank.states.forEach((state, i) => {
       if (!state) return;
-      const tile = document.createElement('button');
-      tile.className = 'msb-tile';
-      if (state.thumbnail) tile.style.backgroundImage = `url(${state.thumbnail})`;
-      if (i === idx) { tile.classList.add('msb-tile--active'); activeTile = tile; }
-      const num = document.createElement('span');
-      num.className = 'msb-tile-num';
-      num.textContent = i + 1;
-      tile.appendChild(num);
-      tile.addEventListener('click', () => {
-        if (tile._lpFired) { tile._lpFired = false; return; }
-        this.pm.recallState(i);
-      });
-      this._addLongPress(tile, i);
-      this.stripEl.appendChild(tile);
+      let tile = tiles.get(i);
+      if (!tile) {
+        tile = this._makeStripTile(i);
+        // Insert in index order: before the lowest existing tile above i
+        let ref = null, refIdx = Infinity;
+        for (const [j, t] of tiles) {
+          if (j > i && j < refIdx) { refIdx = j; ref = t; }
+        }
+        this.stripEl.insertBefore(tile, ref);
+        tiles.set(i, tile);
+      }
+      const thumb = state.thumbnail || '';
+      if (tile._thumb !== thumb) {
+        tile._thumb = thumb;
+        tile.style.backgroundImage = thumb ? `url(${thumb})` : '';
+      }
+      const active = i === idx;
+      if (tile._active !== active) {
+        tile._active = active;
+        tile.classList.toggle('msb-tile--active', active);
+        tile.classList.remove('msb-tile--clearing'); // stale flash from an aborted clear
+      }
+      if (active) activeTile = tile;
     });
-    // Keep the active state visible in the scroll window
-    activeTile?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
 
-    // Modal grid (cheap enough to repaint even while hidden)
+    // Keep the active state visible — but scrollIntoView forces layout,
+    // so only when the active slot (or bank) actually changed
+    const activeKey = `${this.pm.currentIdx}:${idx}`;
+    if (activeKey !== this._lastActiveKey) {
+      this._lastActiveKey = activeKey;
+      activeTile?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    }
+
+    // Modal grid: skip entirely while hidden (32 pads × image + text per
+    // sequencer tick for an invisible element); _open() unhides first,
+    // then calls _refresh, so it always opens freshly painted
+    if (this.modalEl.classList.contains('hidden')) return;
     this.bankNameEl.textContent = bank.name || 'Bank';
     this.pads.forEach((pad, i) => {
       const state = bank.states[i];
-      pad.className = 'msp-pad';
-      pad.style.backgroundImage = state?.thumbnail ? `url(${state.thumbnail})` : '';
-      pad.querySelector('.msp-pad-name').textContent = state ? this._stateName(state, i) : '';
-      if (!state) pad.classList.add('msp-pad--empty');
-      if (i === idx) pad.classList.add('msp-pad--active');
+      const thumb = state?.thumbnail || '';
+      if (pad._thumb !== thumb) {
+        pad._thumb = thumb;
+        pad.style.backgroundImage = thumb ? `url(${thumb})` : '';
+      }
+      const name = state ? this._stateName(state, i) : '';
+      if (pad._name !== name) {
+        pad._name = name;
+        pad.querySelector('.msp-pad-name').textContent = name;
+      }
+      const cls = 'msp-pad'
+        + (!state ? ' msp-pad--empty' : '')
+        + (i === idx ? ' msp-pad--active' : '');
+      if (pad._cls !== cls) {
+        pad._cls = cls;
+        pad.className = cls;
+      }
     });
   }
 
