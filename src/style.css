@@ -3596,6 +3596,48 @@ body.fullscreen-output #app {
     border-color: var(--accent-dim);
 }
 
+/* ── Pad-mode crosshair (touch X/Y reference over the canvas) ───────────── */
+#pad-crosshair-container {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 40; /* above canvas, below the debug overlay (50) */
+    opacity: 0.25; /* parked ghost — anchors where params rest */
+    transition: opacity 0.3s ease;
+}
+#pad-crosshair-container.active {
+    opacity: 1;
+    transition: opacity 0.05s ease;
+}
+#pad-crosshair-container.hidden {
+    display: none;
+}
+.pad-xhair-h,
+.pad-xhair-v {
+    position: absolute;
+    background: var(--accent);
+    box-shadow: 0 0 4px rgba(0, 0, 0, 0.7); /* readable over bright video */
+}
+.pad-xhair-h {
+    left: 0;
+    right: 0;
+    height: 1px;
+    margin-top: -0.5px;
+}
+.pad-xhair-v {
+    top: 0;
+    bottom: 0;
+    width: 1px;
+    margin-left: -0.5px;
+}
+/* Belt-and-braces: desktop (fine pointer + hover) never shows it — though
+   the real guard is structural: only touch pad-drives ever create it */
+@media (hover: hover) and (pointer: fine) {
+    #pad-crosshair-container {
+        display: none;
+    }
+}
+
 /* ── Touch mode OSD (3-finger tap flash) ────────────────────────────────── */
 #touch-mode-osd {
     position: fixed;

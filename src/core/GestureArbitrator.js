@@ -48,6 +48,8 @@ export class GestureArbitrator {
     this.cm = cm;
     this.onDoubleTap2 = opts.onDoubleTap2 ?? null; // 2-finger double-tap hook
     this.onModeCycled = opts.onModeCycled ?? null; // 3-finger tap OSD hook
+    this.onPadDrive = opts.onPadDrive ?? null;     // (x, y) canvas fractions, screen-space
+    this.onPadRelease = opts.onPadRelease ?? null; // all fingers lifted in Pad mode
     this.sm = opts.sceneManager ?? null; // for spin→rot handover on grab
 
     this._pointers = new Map(); // pointerId → {x, y, sx, sy}
@@ -213,6 +215,7 @@ export class GestureArbitrator {
         this._coastVX = this._dragVX;
         this._coastVY = this._dragVY;
       }
+      if (this._mode === MODE_PAD) this.onPadRelease?.(); // crosshair → parked
       this._evalTap();
     } else if (!this._suspended) {
       this._rebaseline();
@@ -330,6 +333,10 @@ export class GestureArbitrator {
       if (type === 'mouse-x') p.setNormalized(nx);
       if (type === 'mouse-y') p.setNormalized(ny);
     });
+
+    // Crosshair overlay: screen-space fraction of the touch point — NOT the
+    // ImOs9 y-inverted param value; the crosshair sits under the finger
+    this.onPadDrive?.(nx, 1 - ny);
   }
 
   dispose() {
