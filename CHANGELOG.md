@@ -9,6 +9,11 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
 ## [Unreleased]
 
 ### Added
+- **Pad-mode crosshair (Phase 5)** — a thin accent crosshair over the
+  canvas tracks the pad X/Y touch point (1-finger or 2-finger centroid):
+  full visibility while driving, 0.25-opacity parked ghost on release,
+  hidden whenever the touch mode leaves Pad by any path. Touch devices
+  only. Commit `480b83d`.
 - **Orbit inertia (Phase 5)** — flicking a 1-finger orbit lets the scene
   coast with friction (0.92/frame, frame-rate independent) until it stops;
   holding still before lifting doesn't coast; touching the canvas while
