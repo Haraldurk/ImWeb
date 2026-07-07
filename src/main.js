@@ -4952,6 +4952,28 @@ void main() {
   //    deltas; preventDefault stops the browser page-zooming. Toggle and
   //    sensitivity live in the Global params section. When the toggle is
   //    off the event is left alone so native browser behaviour returns.
+  // Discrete wheel notches ease toward a target scale so mouse zoom feels
+  // like the continuous touch pinch. The loop yields the instant anything
+  // else writes scene3d.scale (controller, state recall, touch pinch).
+  let _zoomTarget = null, _zoomRaf = 0, _zoomExpected = null;
+  const _zoomStop = () => {
+    if (_zoomRaf) { cancelAnimationFrame(_zoomRaf); _zoomRaf = 0; }
+    _zoomTarget = null;
+    _zoomExpected = null;
+  };
+  const _zoomTick = () => {
+    _zoomRaf = 0;
+    const p = ps.get("scene3d.scale");
+    if (!p || _zoomTarget === null) return;
+    if (_zoomExpected !== null && p.value !== _zoomExpected) { _zoomStop(); return; }
+    ps.set("scene3d.scale", p.value + (_zoomTarget - p.value) * 0.25);
+    _zoomExpected = p.value; // read back (setter clamps)
+    if (Math.abs(_zoomTarget - p.value) > Math.max(0.001, p.value * 0.002)) {
+      _zoomRaf = requestAnimationFrame(_zoomTick);
+    } else {
+      _zoomStop();
+    }
+  };
   canvas.addEventListener(
     "wheel",
     (e) => {
@@ -4963,8 +4985,11 @@ void main() {
       const dy = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaY; // lines → px
       const k = e.ctrlKey ? 0.01 : 0.0015; // pinch deltas are much smaller
       // Exponential zoom: equal wheel travel = equal zoom ratio, and the
-      // scale can never cross zero; the param setter clamps to min/max
-      ps.set("scene3d.scale", p.value * Math.exp(-dy * k * sens));
+      // scale can never cross zero; clamp the target to the param range
+      const base = _zoomTarget ?? p.value;
+      _zoomTarget = Math.max(p.min, Math.min(p.max, base * Math.exp(-dy * k * sens)));
+      _zoomExpected = p.value;
+      if (!_zoomRaf) _zoomRaf = requestAnimationFrame(_zoomTick);
     },
     { passive: false },
   );
@@ -4976,6 +5001,7 @@ void main() {
   {
     const ORBIT = 0.35; // deg/px — matches GestureArbitrator's touch orbit
     const PAN = 0.01; // pos-units/px
+    const FLICK_MAX_AGE_MS = 80; // same freshness rule as the touch flick
     const wrap = (v) => ((v % 360) + 360) % 360;
     let drag = null;
     canvas.addEventListener("pointerdown", (e) => {
@@ -4983,6 +5009,9 @@ void main() {
       if ((ps.get("touch.mode")?.value ?? 2) !== 0) return; // Camera only
       if (e.button !== 0 && e.button !== 2) return;
       canvas.setPointerCapture(e.pointerId);
+      // Tactile clutch, same as touch: grabbing the canvas kills a coast
+      gestureArb._coastVX = 0;
+      gestureArb._coastVY = 0;
       // Same spin handover as a touch grab: orbiting takes control from
       // auto-spin (freezes current orientation into rot, zeroes spin)
       if (e.button === 0) gestureArb._grabSpinControl();
@@ -4994,6 +5023,8 @@ void main() {
         rotY: ps.get("scene3d.rot.y")?.value ?? 0,
         posX: ps.get("scene3d.pos.x")?.value ?? 0,
         posY: ps.get("scene3d.pos.y")?.value ?? 0,
+        vx: 0, vy: 0, lastX: e.clientX, lastY: e.clientY,
+        lastT: performance.now(),
       };
       e.preventDefault();
     });
@@ -5004,14 +5035,36 @@ void main() {
       if (drag.btn === 0) {
         ps.set("scene3d.rot.y", wrap(drag.rotY + dx * ORBIT));
         ps.set("scene3d.rot.x", wrap(drag.rotX + dy * ORBIT));
+        // Flick velocity (deg/s), same EMA smoothing as the touch orbit
+        const now = performance.now();
+        const mdt = (now - drag.lastT) / 1000;
+        if (mdt > 0 && mdt < 0.1) {
+          drag.vx = drag.vx * 0.6 + (((e.clientX - drag.lastX) * ORBIT) / mdt) * 0.4;
+          drag.vy = drag.vy * 0.6 + (((e.clientY - drag.lastY) * ORBIT) / mdt) * 0.4;
+        }
+        drag.lastX = e.clientX; drag.lastY = e.clientY; drag.lastT = now;
       } else {
         ps.set("scene3d.pos.x", drag.posX + dx * PAN);
         ps.set("scene3d.pos.y", drag.posY - dy * PAN); // screen up = +y
       }
     });
-    const endDrag = () => { drag = null; };
-    canvas.addEventListener("pointerup", endDrag);
-    canvas.addEventListener("pointercancel", endDrag);
+    canvas.addEventListener("pointerup", (e) => {
+      if (!drag) return;
+      // Release flick → hand the velocity to the arbitrator's coast state;
+      // the render loop's gestureArb.tick(dt) applies the SAME friction
+      // physics as a touch flick (mouse never populates _pointers, so the
+      // tick's touch guard cannot cancel a mouse-initiated coast).
+      if (
+        drag.btn === 0 &&
+        e.pointerType === "mouse" &&
+        performance.now() - drag.lastT < FLICK_MAX_AGE_MS
+      ) {
+        gestureArb._coastVX = drag.vx;
+        gestureArb._coastVY = drag.vy;
+      }
+      drag = null;
+    });
+    canvas.addEventListener("pointercancel", () => { drag = null; });
     // Right-drag pan needs the context menu suppressed on the canvas
     canvas.addEventListener("contextmenu", (e) => e.preventDefault());
   }
