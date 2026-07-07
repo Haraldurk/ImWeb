@@ -185,7 +185,22 @@ Claude Code edits
 
 verdict-cli runs headless Chromium. It **cannot** verify WebGL rendering,
 shader output, 3D geometry, or Hypercube edges. All visual confirmation
-requires a human in real Chrome on macOS.
+requires a human in real Chrome on macOS. Additional headless limits
+learned the hard way: no H.264 decode (movie textures are black),
+setTimeout throttled to ~600 ms (use busy-waits for gesture timing),
+rAF at ~1 fps. **Always kill leftover `chrome-headless-shell` processes
+after a verification batch** — leaked instances burn ~9 CPU cores and
+masquerade as ImWeb performance bugs.
+
+### Dev servers
+
+| Command | Protocol | Use for |
+|---------|----------|---------|
+| `npm run dev` | http :5173 | Desktop work; Dev Capture (:5174) reachable |
+| `npm run dev:https` | https :5173 | iPad sessions — camera/mic/motion need a secure origin (mkcert cert in `certs/`, regenerate on IP change — command in vite.config.js) |
+
+Only one can hold :5173 — kill the other first, or the second silently
+takes the next port and the iPad tests the wrong build.
 
 ---
 
