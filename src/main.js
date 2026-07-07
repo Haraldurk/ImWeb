@@ -108,6 +108,7 @@ import { perfFrame } from "./perf-logger.js";
 
 // _applyLayout extracted to ui/layout/LayoutManager.js (Phase 2 Task 5)
 import { applyLayout as _applyLayout } from "./ui/layout/LayoutManager.js";
+import { version as APP_VERSION } from "../package.json";
 _applyLayout();
 window.addEventListener("resize", _applyLayout);
 // Re-sync whenever the status bar's own size changes (font swap-in, button
@@ -125,6 +126,9 @@ async function main() {
   // ── 1. Canvas & renderer ──────────────────────────────────────────────────
 
   const canvas = document.getElementById("output-canvas");
+  // Logo shows the release version straight from package.json (Vite inlines it)
+  const _statusName = document.getElementById("status-name");
+  if (_statusName) _statusName.textContent = `ImWeb v${APP_VERSION}`;
   let canvasRect = canvas.getBoundingClientRect();
   window.addEventListener("resize", () => { canvasRect = canvas.getBoundingClientRect(); });
 
@@ -4374,6 +4378,32 @@ void main() {
     if (searchEl && !searchEl.contains(e.target)) closeParamSearch();
   });
 
+  // ── UI chrome toggles — OSD (param: persists, MIDI-assignable) and
+  //    state bar (plain UI preference: localStorage, never state-recalled).
+  //    Wired BEFORE the shortcut listener below: the i/u handlers reference
+  //    these, and main() awaits slow init later — keys must work the moment
+  //    the listener exists.
+  const _osdBtn = document.getElementById("btn-osd");
+  const _applyOsd = (on) => {
+    const overlay = document.getElementById("feedback-overlay");
+    if (overlay) overlay.style.display = on > 0.5 ? "" : "none";
+    _osdBtn?.classList.toggle("active", on > 0.5);
+  };
+  ps.get("global.osd")?.onChange(_applyOsd);
+  _applyOsd(ps.get("global.osd")?.value ?? 1);
+  _osdBtn?.addEventListener("click", () => ps.toggle("global.osd"));
+
+  const _stateBtn = document.getElementById("btn-statebar");
+  const _applyStatebar = (hidden) => {
+    document.body.classList.toggle("statebar-hidden", hidden);
+    _stateBtn?.classList.toggle("active", !hidden);
+    localStorage.setItem("imweb-statebar-hidden", hidden ? "1" : "0");
+  };
+  _applyStatebar(localStorage.getItem("imweb-statebar-hidden") === "1");
+  const _toggleStatebar = () =>
+    _applyStatebar(!document.body.classList.contains("statebar-hidden"));
+  _stateBtn?.addEventListener("click", _toggleStatebar);
+
   // ── Keyboard shortcuts ────────────────────────────────────────────────────
 
   window.addEventListener("keydown", (e) => {
@@ -4411,7 +4441,7 @@ void main() {
     const isLocked = ps.get("global.keylock").value > 0.5;
     if (
       isLocked &&
-      (/^[vmcbskdxhtfqazg]$/i.test(e.key) || /^Digit[0-9]$/.test(e.code))
+      (/^[vmcbskdxhtfqazgiu]$/i.test(e.key) || /^Digit[0-9]$/.test(e.code))
     )
       return;
 
@@ -4514,6 +4544,16 @@ void main() {
     if (e.key === "m" && !e.metaKey) {
       e.preventDefault();
       ps.toggle("movie.active");
+    }
+    // i = parameter OSD on/off (the yellow feedback text over the canvas)
+    if (e.key === "i" && !e.metaKey) {
+      e.preventDefault();
+      ps.toggle("global.osd");
+    }
+    // u = state bar show/hide (UI preference, not part of any state)
+    if (e.key === "u" && !e.metaKey) {
+      e.preventDefault();
+      _toggleStatebar();
     }
     // g = cycle canvas interaction mode (Camera → Pad → Locked). Desktop
     // equivalent of the 3-finger tap: trackpads never deliver 3-finger
@@ -4928,6 +4968,54 @@ void main() {
     },
     { passive: false },
   );
+
+  // ── Desktop mouse canvas grammar — Camera mode only (same gate as the
+  //    touch grammar): left-drag orbits (scene3d.rot, same deg/px as the
+  //    touch orbit), right-drag pans (scene3d.pos.x/y). Mouse-x/y
+  //    controllers keep working — they listen elsewhere.
+  {
+    const ORBIT = 0.35; // deg/px — matches GestureArbitrator's touch orbit
+    const PAN = 0.01; // pos-units/px
+    const wrap = (v) => ((v % 360) + 360) % 360;
+    let drag = null;
+    canvas.addEventListener("pointerdown", (e) => {
+      if (e.pointerType !== "mouse") return;
+      if ((ps.get("touch.mode")?.value ?? 2) !== 0) return; // Camera only
+      if (e.button !== 0 && e.button !== 2) return;
+      canvas.setPointerCapture(e.pointerId);
+      // Same spin handover as a touch grab: orbiting takes control from
+      // auto-spin (freezes current orientation into rot, zeroes spin)
+      if (e.button === 0) gestureArb._grabSpinControl();
+      drag = {
+        btn: e.button,
+        x: e.clientX,
+        y: e.clientY,
+        rotX: ps.get("scene3d.rot.x")?.value ?? 0,
+        rotY: ps.get("scene3d.rot.y")?.value ?? 0,
+        posX: ps.get("scene3d.pos.x")?.value ?? 0,
+        posY: ps.get("scene3d.pos.y")?.value ?? 0,
+      };
+      e.preventDefault();
+    });
+    canvas.addEventListener("pointermove", (e) => {
+      if (!drag || !canvas.hasPointerCapture(e.pointerId)) return;
+      const dx = e.clientX - drag.x;
+      const dy = e.clientY - drag.y;
+      if (drag.btn === 0) {
+        ps.set("scene3d.rot.y", wrap(drag.rotY + dx * ORBIT));
+        ps.set("scene3d.rot.x", wrap(drag.rotX + dy * ORBIT));
+      } else {
+        ps.set("scene3d.pos.x", drag.posX + dx * PAN);
+        ps.set("scene3d.pos.y", drag.posY - dy * PAN); // screen up = +y
+      }
+    });
+    const endDrag = () => { drag = null; };
+    canvas.addEventListener("pointerup", endDrag);
+    canvas.addEventListener("pointercancel", endDrag);
+    // Right-drag pan needs the context menu suppressed on the canvas
+    canvas.addEventListener("contextmenu", (e) => e.preventDefault());
+  }
+
 
   // ── Render loop ───────────────────────────────────────────────────────────
 

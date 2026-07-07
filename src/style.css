@@ -2504,6 +2504,20 @@ body.fullscreen-output #signal-path {
 body.fullscreen-output #state-bar {
     display: none;
 }
+body.fullscreen-output #mobile-state-bar {
+    display: none;
+}
+
+/* State bar hidden (btn-statebar / U key) — bars vanish and the layout
+   reclaims the strip: #app and #signal-path read --state-h from the
+   cascade, so a body-level 0 override moves them down automatically */
+body.statebar-hidden {
+    --state-h: 0px;
+}
+body.statebar-hidden #state-bar,
+body.statebar-hidden #mobile-state-bar {
+    display: none !important;
+}
 body.fullscreen-output #status-bar {
     display: none;
 }
