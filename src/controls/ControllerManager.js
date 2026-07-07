@@ -19,6 +19,11 @@ export class ControllerManager {
     this.midi    = null;
     this.sound   = null;
     this.mouse   = { x: 0.5, y: 0.5 };
+    // Device motion (iPad tilt/compass) — normalized like mouse.
+    // Listener binds lazily: only with permission AND a mapped param.
+    this.motion  = { tiltX: 0.5, tiltY: 0.5, compass: 0 };
+    this._motionBound = false;
+    this._motionPermission = 'unknown'; // 'unknown' | 'granted' | 'denied'
     this.modifiers = { capsLock: false, shift: false, ctrl: false, alt: false, meta: false };
 
     this._gamepadBtnPrev = []; // tracks button press edges for toggle/trigger params
@@ -146,6 +151,9 @@ export class ControllerManager {
     if (t === 'sound-high' && this.sound) return this.sound.high;
     if (t === 'mouse-x') return this.mouse.x;
     if (t === 'mouse-y') return this.mouse.y;
+    if (t === 'tilt-x') return this.motion.tiltX;
+    if (t === 'tilt-y') return this.motion.tiltY;
+    if (t === 'compass') return this.motion.compass;
     if (t === 'rand1') return this.rand[0].val;
     if (t === 'rand2') return this.rand[1].val;
     if (t === 'rand3') return this.rand[2].val;
@@ -195,6 +203,12 @@ export class ControllerManager {
     const key = `${paramId}:${xIndex}`;
     this._xLFOs.delete(key);
     p.xControllers[xIndex] = xConfig ? { ...xConfig } : null;
+
+    if (['tilt-x', 'tilt-y', 'compass'].includes(xConfig?.type)) {
+      this.requestMotionPermission(); // gesture context — see assign()
+    } else {
+      this.armMotion();
+    }
 
     if (!xConfig?.type?.startsWith('lfo-')) return;
     const lfo = new LFOController({
@@ -252,11 +266,19 @@ export class ControllerManager {
 
     if (!controllerConfig || controllerConfig.type === 'none') {
       p.controller = null;
+      this.armMotion(); // last motion mapping removed → unbind sensor
       return;
     }
 
     p.controller = { ...controllerConfig };
     const t = controllerConfig.type;
+
+    // Motion assignment happens inside a user gesture (menu click), which
+    // is exactly when iOS allows requestPermission — ask inline, then arm
+    if (t === 'tilt-x' || t === 'tilt-y' || t === 'compass') {
+      this.requestMotionPermission();
+    }
+    this.armMotion(); // also unbinds when a motion controller was replaced
 
     if (t.startsWith('lfo-')) {
       const lfo = new LFOController({
@@ -361,6 +383,82 @@ export class ControllerManager {
   }
 
   // ── Mouse ─────────────────────────────────────────────────────────────────
+
+  // ── Device motion (tilt-x / tilt-y / compass) ─────────────────────────────
+
+  /** True if any main or X-map controller uses a motion source. */
+  _motionInUse() {
+    const M = ['tilt-x', 'tilt-y', 'compass'];
+    return this.ps.getAll().some(p =>
+      (p.controller && M.includes(p.controller.type)) ||
+      (p.xControllers ?? []).some(xc => M.includes(xc.type)));
+  }
+
+  /** iOS 13+ gate. Resolves true when sensors may be read. Must be called
+   *  from a user gesture on iOS the first time; on other platforms it
+   *  resolves immediately. Safe to call speculatively (rejections are
+   *  swallowed → 'denied' until a real gesture retries). */
+  async requestMotionPermission() {
+    if (typeof DeviceOrientationEvent === 'undefined') return false;
+    if (typeof DeviceOrientationEvent.requestPermission === 'function') {
+      try {
+        const r = await DeviceOrientationEvent.requestPermission();
+        this._motionPermission = r === 'granted' ? 'granted' : 'denied';
+      } catch {
+        this._motionPermission = 'denied'; // no gesture / user dismissed
+      }
+    } else {
+      this._motionPermission = 'granted'; // non-iOS: no permission gate
+    }
+    this.armMotion();
+    return this._motionPermission === 'granted';
+  }
+
+  /** Bind/unbind the deviceorientation listener to match current mappings —
+   *  no mapped param means no listener (battery/CPU). Called after every
+   *  assignment and after preset/state recalls. */
+  armMotion() {
+    const used = this._motionInUse();
+    if (used && !this._motionBound && this._motionPermission === 'granted') {
+      window.addEventListener('deviceorientation', this._onDeviceOrientation);
+      this._motionBound = true;
+    } else if (!used && this._motionBound) {
+      window.removeEventListener('deviceorientation', this._onDeviceOrientation);
+      this._motionBound = false;
+    }
+  }
+
+  _onDeviceOrientation = (e) => {
+    // Compensate for screen orientation so Tilt X is always "toward/away
+    // from me" relative to the screen being looked at — beta/gamma are
+    // device-frame axes and swap when the iPad rotates to landscape.
+    const angle = (screen.orientation?.angle ?? window.orientation ?? 0);
+    const beta = e.beta ?? 0;   // device X tilt, -180..180
+    const gamma = e.gamma ?? 0; // device Y tilt, -90..90
+    let sx, sy;
+    switch (((angle % 360) + 360) % 360) {
+      case 90:  sx = -gamma; sy = beta;   break;
+      case 180: sx = -beta;  sy = -gamma; break;
+      case 270: sx = gamma;  sy = -beta;  break;
+      default:  sx = beta;   sy = gamma;  break;
+    }
+    // Performance range ±90° → 0..1 (flat = 0.5); compass 0-360° → 0..1
+    // (note: compass wraps at north — a mapped param jumps 1→0 there)
+    const clamp01 = (v) => Math.max(0, Math.min(1, v));
+    this.motion.tiltX = clamp01((sx + 90) / 180);
+    this.motion.tiltY = clamp01((sy + 90) / 180);
+    this.motion.compass = (((e.alpha ?? 0) % 360) + 360) % 360 / 360;
+
+    // Drive assigned params reactively (same pattern as mouse-x/y)
+    this.ps.getAll().forEach(p => {
+      if (!p.controller) return;
+      const { type, modifiers } = p.controller;
+      if (!this._checkModifiers(modifiers)) return;
+      if (type === 'tilt-x') p.setNormalized(this.motion.tiltX);
+      if (type === 'tilt-y') p.setNormalized(this.motion.tiltY);
+      if (type === 'compass') p.setNormalized(this.motion.compass);
+    });
+  };
 
   _initMouse() {
     const canvas = document.getElementById('output-canvas');

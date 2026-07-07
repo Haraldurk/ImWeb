@@ -204,6 +204,9 @@ export class Parameter {
     const labels = {
       "mouse-x": "MX",
       "mouse-y": "MY",
+      "tilt-x": "TLX",
+      "tilt-y": "TLY",
+      "compass": "CMP",
       "midi-cc": c.channel
         ? `${c.channel}:CC${c.cc ?? "?"}`
         : `CC${c.cc ?? "?"}`,
@@ -2955,6 +2958,12 @@ export function registerCoreParameters(ps) {
     type: PARAM_TYPE.SELECT,
     options: ["Camera", "Pad", "Locked"],
     value: 0,
+  });
+  ps.register({
+    id: "motion.enable",
+    label: "Enable Motion",
+    group: "global",
+    type: PARAM_TYPE.TRIGGER, // tap = user gesture → iOS sensor permission
   });
   // ── Per-layer color correction ────────────────────────────────────────────
   ps.register({
