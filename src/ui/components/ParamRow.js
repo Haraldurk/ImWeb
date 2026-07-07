@@ -105,12 +105,53 @@ export function buildParamRow(param, contextMenu) {
     let startX = 0, startVal = 0, _dragPid = null;
     const range = param.max - param.min;
 
+    // ── Flick momentum (touch/pen only) ────────────────────────────────
+    // Residual velocity from a fast drag glides the value with friction
+    // after a CLEAN pointerup. Never on pointercancel (that path reverts —
+    // the browser stole the gesture), never while a controller owns the
+    // param, and the loop yields the instant anything else writes the
+    // value (controller assigned mid-glide, state recall, automation).
+    // Velocity samples param.value itself, so drags on the slider lane
+    // (which also write the param) feed the same engine.
+    let _vel = 0, _velT = 0, _velVal = 0, _glideRaf = 0;
+
+    const _stopGlide = () => {
+      if (_glideRaf) { cancelAnimationFrame(_glideRaf); _glideRaf = 0; }
+    };
+    row._stopGlide = _stopGlide; // teardown hook for _psUnsub
+
+    const _startGlide = () => {
+      // Flick threshold ≈ a 300px/s drag; deliberate adjustments stay dry
+      if (Math.abs(_vel) < range * 1.5) return;
+      if (param.controller || param.locked) return;
+      let v = Math.max(-range * 6, Math.min(range * 6, _vel));
+      let prevT = performance.now();
+      let expected = param.value;
+      const tick = (now) => {
+        _glideRaf = 0;
+        // Yield rule: someone else wrote the param since our last write
+        if (param.value !== expected || param.controller) return;
+        const dt = Math.min((now - prevT) / 1000, 0.032); // hidden-tab resume can't jump
+        prevT = now;
+        param.value = param.value + v * dt;
+        expected = param.value; // setter clamped/stepped — read back
+        updateDisplay();
+        v *= Math.pow(0.9, dt * 60); // frame-rate-independent friction
+        if (Math.abs(v) < range * 0.05) return;                      // spent
+        if (param.value === param.min || param.value === param.max) return; // hit an edge
+        _glideRaf = requestAnimationFrame(tick);
+      };
+      _glideRaf = requestAnimationFrame(tick);
+    };
+
     row.addEventListener('pointerdown', e => {
       if (e.button !== 0 || param.locked) return;
+      _stopGlide(); // touching the param again always kills the physics
       row.setPointerCapture(e.pointerId);
       _dragPid = e.pointerId;
       startX   = e.clientX;
       startVal = param.value;
+      _vel = 0; _velT = performance.now(); _velVal = param.value;
       e.preventDefault();
     });
 
@@ -119,16 +160,33 @@ export function buildParamRow(param, contextMenu) {
       const delta = (e.clientX - startX) / 200 * range;
       param.value = startVal + delta;
       updateDisplay();
+      // EMA velocity over recent movement, in value-units/second
+      const now = performance.now();
+      const dtv = (now - _velT) / 1000;
+      if (dtv > 0.001) {
+        _vel = _vel * 0.6 + ((param.value - _velVal) / dtv) * 0.4;
+        _velT = now; _velVal = param.value;
+      }
     });
 
-    row.addEventListener('pointerup', () => { _dragPid = null; });
+    row.addEventListener('pointerup', e => {
+      const wasDrag = _dragPid === e.pointerId;
+      _dragPid = null;
+      if (!wasDrag || e.pointerType === 'mouse') return;
+      // A rested finger (no movement in the last 100ms) lifts dry —
+      // stale velocity from earlier in the gesture must not glide
+      if (performance.now() - _velT > 100) return;
+      _startGlide();
+    });
 
     // Browser hijacked the gesture mid-drag (panel scroll, system gesture):
     // pointermove already wrote intermediate values — revert to the value
-    // the drag started from so an aborted drag never leaves a random one
+    // the drag started from so an aborted drag never leaves a random one.
+    // Deliberately NO momentum here.
     row.addEventListener('pointercancel', e => {
       if (_dragPid !== e.pointerId) return;
       _dragPid = null;
+      _vel = 0;
       param.value = startVal;
       updateDisplay();
     });
@@ -270,7 +328,7 @@ export function buildParamRow(param, contextMenu) {
   // (disposer stashed on the element so callers that rebuild rows
   // repeatedly — e.g. the param search results — can avoid leaking listeners;
   // releases ALL of this row's subscriptions, not just updateDisplay)
-  row._psUnsub = () => binding.dispose();
+  row._psUnsub = () => { binding.dispose(); row._stopGlide?.(); };
   binding.sync(updateDisplay);
 
   row.appendChild(label);
