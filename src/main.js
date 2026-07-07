@@ -4858,6 +4858,20 @@ void main() {
     }
   });
 
+  // Device motion (tilt/compass controllers). The Global 'Enable Motion'
+  // trigger is the gesture-context fallback for iOS permission when tilt
+  // controllers arrive via preset recall (no assignment gesture available).
+  ps.get("motion.enable")?.onTrigger(() => ctrl.requestMotionPermission());
+  // Recalled states can restore tilt controllers wholesale — re-arm the
+  // sensor listener (on iOS this stays off until Enable Motion is tapped;
+  // requestMotionPermission swallows the no-gesture rejection)
+  const _rearmMotion = () => {
+    if (ctrl._motionPermission === "granted") ctrl.armMotion();
+    else ctrl.requestMotionPermission(); // non-iOS resolves without a gesture
+  };
+  presetMgr.addEventListener("stateRecalled", _rearmMotion);
+  presetMgr.addEventListener("presetActivated", _rearmMotion);
+
   const gestureArb = new GestureArbitrator(canvas, ps, ctrl, {
     onDoubleTap2: toggleFullscreen,
     onModeCycled: showModeOSD, // 3-finger tap → next touch.mode + OSD flash
