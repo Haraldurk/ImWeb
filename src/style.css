@@ -2517,6 +2517,16 @@ body.fullscreen-output #mobile-state-bar {
 body.statebar-hidden {
     --state-h: 0px;
 }
+
+/* Signal path hidden (btn-signal-path) — hidden by default; same
+   var-reclaim mechanism as the state bar. The :not() keeps a floating
+   panel (Shift+P) visible — floating clears the hidden state anyway. */
+body.signalpath-hidden {
+    --signal-h: 0px;
+}
+body.signalpath-hidden #signal-path:not(.sp-float-panel) {
+    display: none !important;
+}
 body.statebar-hidden #state-bar,
 body.statebar-hidden #mobile-state-bar {
     display: none !important;
@@ -2723,9 +2733,11 @@ body.fullscreen-output #app {
 
 .ai-coach-notif {
     position: fixed;
-    top: calc(var(--status-h) + 8px);
+    /* Centered over the canvas like the mode OSD — it used to sit right
+       on top of the status bar and read as toolbar clutter */
+    top: 40%;
     left: 50%;
-    transform: translateX(-50%);
+    transform: translate(-50%, -50%);
     background: var(--bg-3);
     border: 1px solid var(--accent-dim);
     border-radius: 4px;

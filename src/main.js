@@ -1206,17 +1206,33 @@ async function main() {
       _spDragging = false;
     });
 
+    // Visibility: hidden by default (the docked band read as clutter over
+    // the state bar). The toolbar icon toggles show/hide; float/dock moved
+    // to Shift+P only. Preference persists in localStorage.
+    let _spHidden = localStorage.getItem("imweb-signalpath-hidden") !== "0";
+    const _applySPHidden = () => {
+      document.body.classList.toggle("signalpath-hidden", _spHidden);
+      btn.classList.toggle("active", !_spHidden);
+      localStorage.setItem("imweb-signalpath-hidden", _spHidden ? "1" : "0");
+    };
+    _applySPHidden();
+
     btn.addEventListener("click", () => {
-      if (_spFloating) _dockSP();
-      else _floatSP();
+      if (_spFloating) { _dockSP(); _spHidden = true; } // floating → hide
+      else _spHidden = !_spHidden;
+      _applySPHidden();
     });
 
-    // Shift+P shortcut
+    // Shift+P = float/dock (floating implies visible)
     window.addEventListener("keydown", (e) => {
       if (e.shiftKey && e.key === "P" && !e.target.closest("input,textarea")) {
         e.preventDefault();
         if (_spFloating) _dockSP();
-        else _floatSP();
+        else {
+          _spHidden = false;
+          _applySPHidden();
+          _floatSP();
+        }
       }
     });
   })();
@@ -5811,12 +5827,12 @@ void main() {
     }
     _coachNotif.textContent = `⬡ ${text}`;
     _coachNotif.style.opacity = "1";
-    // Fade out after 10s — clear any pending fade so a fresh message
-    // isn't immediately hidden by a stale timer from a previous call.
+    // Crisp transient flash (was 10s — lingered over the UI). Clear any
+    // pending fade so a fresh message isn't hidden by a stale timer.
     clearTimeout(_coachNotifFadeTimer);
     _coachNotifFadeTimer = setTimeout(() => {
       _coachNotif.style.opacity = "0";
-    }, 10000);
+    }, 2500);
   }
 
   async function _runCoach() {
