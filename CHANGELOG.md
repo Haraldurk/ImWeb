@@ -9,6 +9,10 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
 ## [Unreleased]
 
 ### Added
+- **Mirror on the Background layer (Phase 5)** — Mirror Cam / Mirror
+  Movie / Mirror Buffer now flip their source in the Background slot too
+  (previously Foreground-only), so the selfie mirror works whichever
+  layer the camera occupies. Commit `b36851b`.
 - **Pad-mode crosshair (Phase 5)** — a thin accent crosshair over the
   canvas tracks the pad X/Y touch point (1-finger or 2-finger centroid):
   full visibility while driving, 0.25-opacity parked ghost on release,
