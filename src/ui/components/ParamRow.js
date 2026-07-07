@@ -231,23 +231,30 @@ export function buildParamRow(param, contextMenu) {
     // double-tap (same grammar as the min/max field editors)
     const openValueEditor = () => {
       const input = document.createElement('input');
-      input.type  = 'number';
-      input.inputMode = 'decimal'; // numeric keypad on iOS/Android
-      input.min   = param.min;
-      input.max   = param.max;
-      input.step  = param.step ?? 'any';
+      // iOS recipe: type=number summons the FULL keyboard on iOS Safari/
+      // Brave (WebKit) and blocks setRangeText. text + inputmode=decimal
+      // + pattern is the combination that reliably gets the numeric pad.
+      input.type = 'text';
+      input.inputMode = 'decimal';
+      input.pattern = '[0-9.\\-]*';
+      input.autocomplete = 'off';
+      input.enterKeyHint = 'done'; // labels the return key on the iOS pad
       input.value = param.value.toFixed(param.step ? 0 : 3);
       input.style.cssText = 'width:60px;font-size:11px;font-family:var(--mono);background:var(--bg-4);border:1px solid var(--accent);color:var(--text-0);padding:1px 3px;border-radius:3px;';
       valueEl.innerHTML = '';
       valueEl.appendChild(input);
       // Editor owns its pointer events — the row must not capture/drag
       input.addEventListener('pointerdown', e2 => e2.stopPropagation());
-      // Deferred focus: on iOS a focus() inside the triggering gesture's
-      // handler can be dropped while the tap is still settling
-      setTimeout(() => { input.focus(); input.select(); }, 0);
+      // Focus MUST be synchronous inside the triggering gesture: iOS only
+      // opens the keyboard for focus() calls made during a user event.
+      // (A deferred setTimeout focus = selection appears but no keyboard —
+      // the reported 3-tap bug.)
+      input.focus();
+      input.select();
       const commit = () => {
         const v = parseFloat(input.value);
-        if (!isNaN(v)) param.value = v; // setter clamps to min/max and step
+        // Explicit clamp — do not rely on downstream to enforce range
+        if (!isNaN(v)) param.value = Math.max(param.min, Math.min(param.max, v));
         updateDisplay(); // repaints displayValue — destroys the input
       };
       input.addEventListener('blur',    commit);
@@ -264,13 +271,15 @@ export function buildParamRow(param, contextMenu) {
     });
     // Touch: the value column claims its own gestures (the row's pointer
     // capture would otherwise swallow the pointerups the double-tap
-    // detector needs). Mouse is untouched — value-surface mouse drags
-    // still drive the row drag.
+    // detector needs) and preventDefaults so iOS never starts its native
+    // double-tap text selection on the span. The editor input's own
+    // stopPropagation shields it — caret taps inside are unaffected.
+    // Mouse is untouched — value-surface mouse drags still row-drag.
     valueEl.addEventListener('pointerdown', e => {
-      if (e.pointerType !== 'mouse') e.stopPropagation();
+      if (e.pointerType !== 'mouse') { e.stopPropagation(); e.preventDefault(); }
     });
     valueEl.addEventListener('pointerup', e => {
-      if (e.pointerType !== 'mouse') e.stopPropagation();
+      if (e.pointerType !== 'mouse') { e.stopPropagation(); e.preventDefault(); }
     });
     addDoubleTap(valueEl, openValueEditor);
 
@@ -417,14 +426,20 @@ export function buildParamRow(param, contextMenu) {
         e.preventDefault();
         const current = which === 'min' ? (param.ctrlMin ?? param.min) : (param.ctrlMax ?? param.max);
         const input = document.createElement('input');
-        input.type  = 'number';
+        // Same iOS recipe as the value editor: text+inputmode gets the
+        // numeric pad; synchronous focus keeps the gesture activation
+        input.type = 'text';
+        input.inputMode = 'decimal';
+        input.pattern = '[0-9.\\-]*';
+        input.autocomplete = 'off';
+        input.enterKeyHint = 'done';
         input.value = current;
-        input.step  = 'any';
         input.style.cssText = 'width:64px;font:inherit;font-size:inherit;background:#1f1f25;color:#e0e0f0;border:1px solid #c8a020;border-radius:3px;padding:1px 4px;outline:none;';
         el.innerHTML = '';
         el.appendChild(input);
         input.addEventListener('pointerdown', e2 => e2.stopPropagation());
-        setTimeout(() => { input.focus(); input.select(); }, 0);
+        input.focus();
+        input.select();
         const commit = () => {
           const v = parseFloat(input.value);
           if (!isNaN(v)) {
