@@ -6,7 +6,11 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
 
 ---
 
-## [Unreleased]
+## [0.10.0] — 2026-07-07 — The Touch Instrument
+
+ImWeb becomes a full touch instrument on the iPad: mode-based canvas
+gestures, a mobile performance layout, camera over trusted HTTPS, and
+the device itself as a controller.
 
 ### Added
 - **Device motion controllers (Phase 6)** — Tilt X, Tilt Y (±90° → 0–1,
