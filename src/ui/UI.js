@@ -1426,6 +1426,22 @@ export class ContextMenu {
       if (!this.el.contains(e.target)) this.hide();
     });
 
+    // Touch scroll safety — the menu is a momentum-scroll region
+    // (overflow-y:auto). Scroll-hijacked gestures are inherently safe
+    // (pointercancel suppresses the click), but on iOS a tap that STOPS a
+    // momentum scroll delivers a click to the item under the finger —
+    // which here would assign a controller. Swallow any click arriving
+    // within 150ms of scroll activity; capture phase beats item handlers.
+    this._lastScrollT = 0;
+    this.el.addEventListener('scroll',
+      () => { this._lastScrollT = performance.now(); }, { passive: true });
+    this.el.addEventListener('click', e => {
+      if (performance.now() - this._lastScrollT < 150) {
+        e.stopPropagation();
+        e.preventDefault();
+      }
+    }, true);
+
     // Controller selection
     this.el.querySelectorAll('.menu-item[data-ctrl]').forEach(btn => {
       btn.addEventListener('click', () => {

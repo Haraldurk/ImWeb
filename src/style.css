@@ -1917,10 +1917,13 @@ body.sp-floating #signal-path-docked-space {
     font-family: var(--mono);
     font-size: 12px;
     /* The controller list outgrew small screens (motion controllers) —
-       cap the height and let the list scroll with iOS momentum */
+       cap the height and let the list scroll with iOS momentum. Contain
+       the overscroll so a fling at the list edge can never chain out to
+       the page (swipe-back / rubber-band). */
     max-height: min(65vh, 560px);
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
     overflow-x: hidden;
 }
 .context-menu.hidden {
