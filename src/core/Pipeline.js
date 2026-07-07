@@ -317,7 +317,8 @@ export class Pipeline {
     // Resolve input textures
     const fgIdx  = p.get('layer.fg').value;
     const fgTex  = this._resolveSource(processedInputs, fgIdx);
-    const bgTex  = this._resolveSource(processedInputs, p.get('layer.bg').value);
+    const bgIdx  = p.get('layer.bg').value;
+    const bgTex  = this._resolveSource(processedInputs, bgIdx);
     let dsTex  = this._resolveSource(processedInputs, p.get('layer.ds').value);
 
     // Apply per-layer color correction (HSB) to FG and BG
@@ -345,20 +346,26 @@ export class Pipeline {
       correctedBG = this._pass(this.m.fade, { uTexture: correctedBG, uAmount: bgOpacity });
     }
 
-    // Apply mirror to camera, movie, or buffer source if needed
+    // Apply mirror to camera, movie, or buffer whichever layer slot they
+    // occupy (FG or BG — previously FG only). Mirrors read the RAW source
+    // texture, matching the original FG behavior: raw inputs are never
+    // ping-pong pool targets, so with only two pool targets this cannot
+    // trip the identity guard. (Known trade-off, pre-existing on FG:
+    // an active mirror bypasses that layer's colorcorrect/fade pass.)
+    const _mirrorOn = (idx) =>
+      (p.get('mirror.camera').value && idx === 0 && inputs.camera) ||
+      (p.get('movie.mirror').value && idx === 1 && inputs.movie) ||
+      (p.get('mirror.buffer').value && idx === 2 && processedInputs.buffer);
     let workingFG = correctedFG;
     let bgTexFinal = correctedBG;
-    if (p.get('mirror.camera').value && fgIdx === 0 && inputs.camera) {
+    if (_mirrorOn(fgIdx)) {
       workingFG = this._pass(this.m.mirror, {
         uTexture: fgTex, uFlipH: 1, uFlipV: 0,
       });
-    } else if (p.get('movie.mirror').value && fgIdx === 1 && inputs.movie) {
-      workingFG = this._pass(this.m.mirror, {
-        uTexture: fgTex, uFlipH: 1, uFlipV: 0,
-      });
-    } else if (p.get('mirror.buffer').value && fgIdx === 2 && processedInputs.buffer) {
-      workingFG = this._pass(this.m.mirror, {
-        uTexture: fgTex, uFlipH: 1, uFlipV: 0,
+    }
+    if (_mirrorOn(bgIdx)) {
+      bgTexFinal = this._pass(this.m.mirror, {
+        uTexture: bgTex, uFlipH: 1, uFlipV: 0,
       });
     }
 
