@@ -9,10 +9,19 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
 ## [Unreleased]
 
 ### Added
-- **Mirror on the Background layer (Phase 5)** — Mirror Cam / Mirror
-  Movie / Mirror Buffer now flip their source in the Background slot too
-  (previously Foreground-only), so the selfie mirror works whichever
-  layer the camera occupies. Commit `b36851b`.
+- **Slot-based mirror: Mirror FG / Mirror BG (Phase 5, breaking)** — the
+  three source toggles (Mirror Cam/Movie/Buffer) are replaced by two slot
+  toggles that flip whatever occupies the Foreground/Background layer —
+  any source, not just camera/movie/buffer. The flip is folded into the
+  per-layer colorcorrect pass (`uFlipH`), so mirroring costs no extra
+  render pass, cannot collide in the two-target ping-pong pool (the
+  `b36851b` regression that blanked mirrored layers), and now composes
+  with hue/sat/brightness instead of bypassing them. Selfie heuristic
+  targets whichever slot the camera occupies. Legacy mirror params stay
+  registered so old presets load, but no longer have any effect
+  (discovery: the Layers "Mirror Movie" row never worked — it was a
+  different param than the one the pipeline read). Commits `b36851b`,
+  `bbbcc9a`.
 - **Pad-mode crosshair (Phase 5)** — a thin accent crosshair over the
   canvas tracks the pad X/Y touch point (1-finger or 2-finger centroid):
   full visibility while driving, 0.25-opacity parked ghost on release,
