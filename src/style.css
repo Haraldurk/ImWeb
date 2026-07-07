@@ -3007,6 +3007,20 @@ body.fullscreen-output #app {
         width: 20px;
         height: 20px;
     }
+    /* Option button groups (blend modes, LFO shapes, …): desktop is 9px
+       text with 2px padding — mouse-only sizing. The group already
+       flex-wraps and .param-row is height:auto on coarse, so bigger
+       buttons wrap to extra lines and the row grows to fit. */
+    .param-opt-btn {
+        min-height: 36px;
+        padding: 6px 8px;
+        font-size: 11px;
+        border-radius: 3px;
+    }
+    .param-btn-group {
+        gap: 4px; /* desktop 2px — fat fingers need separation between wraps */
+        padding: 4px 0;
+    }
     .tab {
         padding: 10px 12px;
     }
