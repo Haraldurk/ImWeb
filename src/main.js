@@ -4867,11 +4867,19 @@ void main() {
   // assignment requests)
   ctrl.onMotionPermission = (state) => showModeOSD(`MOTION: ${state}`);
   // Recalled states can restore tilt controllers wholesale — re-arm the
-  // sensor listener (on iOS this stays off until Enable Motion is tapped;
-  // requestMotionPermission swallows the no-gesture rejection)
+  // sensor listener. CRITICAL: never call requestMotionPermission here on
+  // iOS — a no-gesture call at boot burns the one prompt Safari allows per
+  // page load, so the user's later Enable Motion tap resolves 'denied'
+  // instantly with no permission sheet. iOS waits for a real gesture.
   const _rearmMotion = () => {
-    if (ctrl._motionPermission === "granted") ctrl.armMotion();
-    else ctrl.requestMotionPermission(); // non-iOS resolves without a gesture
+    if (ctrl._motionPermission === "granted") {
+      ctrl.armMotion();
+    } else if (
+      typeof DeviceOrientationEvent !== "undefined" &&
+      typeof DeviceOrientationEvent.requestPermission !== "function"
+    ) {
+      ctrl.requestMotionPermission(); // non-iOS: no gesture needed, safe
+    }
   };
   presetMgr.addEventListener("stateRecalled", _rearmMotion);
   presetMgr.addEventListener("presetActivated", _rearmMotion);
