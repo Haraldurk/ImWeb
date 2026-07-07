@@ -4411,7 +4411,7 @@ void main() {
     const isLocked = ps.get("global.keylock").value > 0.5;
     if (
       isLocked &&
-      (/^[vmcbskdxhtfqaz]$/i.test(e.key) || /^Digit[0-9]$/.test(e.code))
+      (/^[vmcbskdxhtfqazg]$/i.test(e.key) || /^Digit[0-9]$/.test(e.code))
     )
       return;
 
@@ -4514,6 +4514,19 @@ void main() {
     if (e.key === "m" && !e.metaKey) {
       e.preventDefault();
       ps.toggle("movie.active");
+    }
+    // g = cycle canvas interaction mode (Camera → Pad → Locked). Desktop
+    // equivalent of the 3-finger tap: trackpads never deliver 3-finger
+    // gestures to the browser (macOS consumes them), so a key is the only
+    // desktop path. Same OSD flash as the touch cycle.
+    if (e.key === "g" && !e.metaKey) {
+      e.preventDefault();
+      const p = ps.get("touch.mode");
+      if (p) {
+        const next = (p.value + 1) % (p.options?.length ?? 3);
+        ps.set("touch.mode", next);
+        showModeOSD(`MODE: ${p.options?.[next] ?? next}`);
+      }
     }
     // q/a/z = cycle FG / BG / DS source
     if (e.key === "q" && !e.metaKey) {
@@ -4892,6 +4905,29 @@ void main() {
     sceneManager: scene3d, // spin→rot handover when a grab takes control
   });
   void gestureArb; // referenced by the render loop's inertia tick
+
+  // ── Desktop canvas zoom — wheel / trackpad pinch → scene3d.scale, the
+  //    same param the touch pinch drives. Chrome/Firefox deliver macOS
+  //    trackpad pinch as wheel events with ctrlKey set and fine-grained
+  //    deltas; preventDefault stops the browser page-zooming. Toggle and
+  //    sensitivity live in the Global params section. When the toggle is
+  //    off the event is left alone so native browser behaviour returns.
+  canvas.addEventListener(
+    "wheel",
+    (e) => {
+      if (!(ps.get("canvas.wheelZoom")?.value > 0.5)) return;
+      e.preventDefault();
+      const p = ps.get("scene3d.scale");
+      if (!p) return;
+      const sens = ps.get("canvas.wheelSens")?.value ?? 1;
+      const dy = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaY; // lines → px
+      const k = e.ctrlKey ? 0.01 : 0.0015; // pinch deltas are much smaller
+      // Exponential zoom: equal wheel travel = equal zoom ratio, and the
+      // scale can never cross zero; the param setter clamps to min/max
+      ps.set("scene3d.scale", p.value * Math.exp(-dy * k * sens));
+    },
+    { passive: false },
+  );
 
   // ── Render loop ───────────────────────────────────────────────────────────
 
