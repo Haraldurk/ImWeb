@@ -2944,6 +2944,13 @@ export function registerCoreParameters(ps) {
     value: 0,
   });
   ps.register({
+    id: "global.osd",
+    label: "Param OSD",
+    group: "global",
+    type: PARAM_TYPE.TOGGLE,
+    value: 1,
+  });
+  ps.register({
     id: "global.tableSlot",
     label: "Table Slot",
     group: "global",
