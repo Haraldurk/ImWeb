@@ -2951,16 +2951,17 @@ body.fullscreen-output #app {
     .param-row {
         min-height: 44px;
         height: auto; /* desktop fixes 28px */
-        /* 44px-wide min/max fields, wider badge and value column.
-           Fixed columns cost the label ~30px vs desktop — .param-label
-           already ellipsizes, and on phones (--ctrl-w:100vw) it regains it */
-        grid-template-columns: 1fr 56px 44px 44px 60px;
-        gap: 6px;
+        /* 44px-wide min/max fields (touch floor — do not shrink); badge
+           and value trimmed to the minimum that fits their content so the
+           label keeps enough room for "Rotation X" etc. without truncating
+           on the 300px iPad slide-over */
+        grid-template-columns: 1fr 48px 44px 44px 56px;
+        gap: 4px;
     }
-    /* Slider rows: 44px control row + a 28px slider lane below it
-       (desktop is 28px + a 4px sliver) */
+    /* Slider rows: 44px control row + a 22px slider lane below it
+       (desktop is 28px + a 4px sliver; 28px lane felt clunky on device) */
     .param-row.has-slider {
-        grid-template-rows: 44px 28px;
+        grid-template-rows: 44px 22px;
     }
     /* Hit boundary = row boundary: the badge and min/max spans carry their
        own pointer handlers, so any gap between their text box and the row
@@ -2981,30 +2982,30 @@ body.fullscreen-output #app {
     .param-value {
         justify-content: flex-end; /* preserves the text-align:right look */
     }
-    /* Slider: full 28px lane is the hit area; visuals stay slim via the
-       track pseudo-element with a 24px thumb centered on it */
+    /* Slider: full 22px lane is the hit area; visuals stay slim via the
+       track pseudo-element with a 20px thumb centered on it */
     .param-slider {
-        height: 28px;
+        height: 22px;
         background: transparent; /* desktop paints the element as the track */
     }
     .param-slider::-webkit-slider-runnable-track {
-        height: 8px;
+        height: 6px;
         background: var(--bg-4);
-        border-radius: 4px;
+        border-radius: 3px;
     }
     .param-slider::-webkit-slider-thumb {
-        width: 24px;
-        height: 24px;
-        margin-top: -8px; /* (8px track − 24px thumb) / 2 — center on track */
+        width: 20px;
+        height: 20px;
+        margin-top: -7px; /* (6px track − 20px thumb) / 2 — center on track */
     }
     .param-slider::-moz-range-track {
-        height: 8px;
+        height: 6px;
         background: var(--bg-4);
-        border-radius: 4px;
+        border-radius: 3px;
     }
     .param-slider::-moz-range-thumb {
-        width: 24px;
-        height: 24px;
+        width: 20px;
+        height: 20px;
     }
     .tab {
         padding: 10px 12px;
