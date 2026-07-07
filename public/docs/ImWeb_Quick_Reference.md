@@ -136,6 +136,9 @@ Right-click any parameter row to assign.
 | `H` | Fade to black |
 | `X` | External key toggle |
 | `T` | Tap tempo |
+| `G` | Cycle canvas mode (Camera / Pad / Locked) |
+| `I` | Parameter OSD on/off |
+| `U` | State bar show/hide |
 
 ### Navigation
 
@@ -179,9 +182,16 @@ Touch Mode (GLOBAL section) governs the canvas: **Camera / Pad / Locked**.
 
 Mobile bottom bar: `[○ Clear] [＋ Save] [state thumbnails →] [⋯ More]` —
 long-press a thumbnail for **Duplicate / Clear**; ⋯ opens the full pad
-grid. Panels: double-tap a row = reset · double-tap min/max = type value.
+grid. Panels: double-tap a row = reset · double-tap the **value** or a
+**min/max** field = type an exact number (decimal pad; the ⌨ ImWeb
+keyboard types into it too) · fast flick on a row = the value glides
+with momentum (touch it to stop) · every long-press is 400 ms.
 Camera: **⇄** flips front/back (front auto-mirrors via **Mirror FG/BG**
 in Layers — slot-based, flips whatever source occupies the layer).
+
+Desktop canvas parity (Camera mode): left-drag orbits with flick
+momentum · right-drag pans · wheel / trackpad-pinch zooms (eased;
+**Wheel Zoom** toggle + **Zoom Sens** in GLOBAL) · `G` cycles the mode.
 
 ---
 

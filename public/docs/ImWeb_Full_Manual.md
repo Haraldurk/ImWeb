@@ -84,7 +84,9 @@ Open Chrome at `localhost:5173`. On first load:
 |--------|-----|----------|
 | ↺ | — | Reset all parameters to defaults |
 | ⊟ / ⊞ | — | Collapse / expand all sections |
-| ┄ | Shift+P | Float / dock the signal path display |
+| ┄ | — | Show / hide the signal path display (hidden by default; `Shift+P` floats it) |
+| ◎ | I | Parameter OSD on/off |
+| ▤ | U | State bar show/hide |
 | FIT | — | Fit canvas to window (responsive) |
 | FAST | — | 960×540 rendering |
 | MED | — | 1280×720 rendering |
@@ -137,7 +139,9 @@ The bottom bar runs across the full width of the app and contains three zones:
 
 ### Signal Path Display
 
-Located at the bottom (docked) or floating. Shows the live routing: **FG → BG → DS → TransferMode → Displacement → WarpMap → Keyer → Blend → ColorShift → FX Chain → LUT → Interlace → Fade → Output**. Effects in the FX chain can be dragged to reorder.
+**Hidden by default** — the ┄ toolbar button shows/hides the docked band
+(the canvas reclaims the space while hidden); `Shift+P` floats it as a
+draggable window. When visible it shows the live routing: **FG → BG → DS → TransferMode → Displacement → WarpMap → Keyer → Blend → ColorShift → FX Chain → LUT → Interlace → Fade → Output**. Effects in the FX chain can be dragged to reorder.
 
 ### Parameter Rows
 
@@ -1211,7 +1215,10 @@ Click the ⊞ button in any section header to detach it as a floating panel. Dra
 |-----|--------|
 | `?` | Keyboard help overlay |
 | `/` | Parameter search |
-| `Shift+P` | Float / dock signal path |
+| `Shift+P` | Float / dock signal path (floating always shows it) |
+| `I` | Parameter OSD on/off (feedback text over the canvas) |
+| `U` | State bar show/hide (canvas reclaims the strip) |
+| `G` | Cycle canvas interaction mode (Camera / Pad / Locked) |
 | `Cmd+F` | Fullscreen |
 | `Shift+V` | Output spy toggle |
 
@@ -1425,8 +1432,29 @@ On mobile the 32-tile state bar becomes a hybrid row:
 
 - **Double-tap** a parameter row → reset to default (as desktop
   double-click)
-- **Double-tap** a min/max range field → inline number entry
-- **Long-press** a controller badge → controller settings popover
+- **Double-tap** the value field or a min/max range field → inline
+  numeric entry (iOS decimal pad; the ⌨ ImWeb virtual keyboard also
+  types directly into the focused field — use it for negative numbers,
+  which the iOS decimal pad cannot enter)
+- **Fast flick** on a parameter row → the value glides with momentum
+  and friction; touching the row again, or any controller writing the
+  parameter, stops the glide instantly. Slider drags position
+  absolutely and never glide.
+- **Long-press** a controller badge → controller settings popover;
+  long-press a row → full context menu. Every long-press in ImWeb is
+  the same 400 ms.
+
+### Desktop canvas controls (mouse / trackpad)
+
+The same grammar reaches the desktop, gated on the same Touch Mode
+(Camera mode):
+
+| Input | Action |
+|-------|--------|
+| Left-drag on canvas | Orbit the 3D scene — release with speed and it coasts with the same momentum as a touch flick |
+| Right-drag on canvas | Pan (`scene3d.pos.x/y`) |
+| Wheel / trackpad pinch | Zoom (`scene3d.scale`) — eased so notches feel continuous; **Wheel Zoom** toggle and **Zoom Sens** live in the GLOBAL section |
+| `G` key | Cycle Camera / Pad / Locked (trackpads never see 3-finger taps — macOS consumes them) |
 
 ### Camera on mobile
 
@@ -1439,5 +1467,5 @@ all cameras once permission is granted.
 
 ---
 
-*ImWeb v0.9 — H. Karlsson*
+*ImWeb v0.11 — H. Karlsson*
 *Original Image/ine: Tom Demeyer, STEIM Foundation, Amsterdam*
