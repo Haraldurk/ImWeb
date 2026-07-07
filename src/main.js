@@ -904,26 +904,32 @@ async function main() {
 
   // ── Collapsible section headers + Detach + Collapse-all ──────────────────
 
-  // Detached panel drag
+  // Detached panel drag — pointer events (mouse + touch + pen). Pointer
+  // capture keeps the drag even when the finger leaves the title bar;
+  // touch-action:none stops the browser claiming the gesture for scroll.
   function _makeDraggable(panel, handle) {
     let ox = 0,
       oy = 0,
-      dragging = false;
-    handle.addEventListener("mousedown", (e) => {
+      pid = null;
+    handle.style.touchAction = "none";
+    handle.addEventListener("pointerdown", (e) => {
       if (e.target.tagName === "BUTTON") return;
-      dragging = true;
+      handle.setPointerCapture(e.pointerId);
+      pid = e.pointerId;
       ox = e.clientX - panel.offsetLeft;
       oy = e.clientY - panel.offsetTop;
       e.preventDefault();
     });
-    window.addEventListener("mousemove", (e) => {
-      if (!dragging) return;
+    handle.addEventListener("pointermove", (e) => {
+      if (pid !== e.pointerId) return;
       panel.style.left = e.clientX - ox + "px";
       panel.style.top = e.clientY - oy + "px";
     });
-    window.addEventListener("mouseup", () => {
-      dragging = false;
-    });
+    const _endDrag = (e) => {
+      if (pid === e.pointerId) pid = null;
+    };
+    handle.addEventListener("pointerup", _endDrag);
+    handle.addEventListener("pointercancel", _endDrag);
   }
 
   // Detach a panel-section into a floating window
@@ -1169,14 +1175,23 @@ async function main() {
       spEl.style.left = rect.left + 12 + "px";
       spEl.style.top = rect.top + 12 + "px";
 
-      // Drag on title bar
-      titleBar.addEventListener("mousedown", (e) => {
+      // Drag on title bar — pointer events so it also drags on the iPad
+      titleBar.style.touchAction = "none";
+      titleBar.addEventListener("pointerdown", (e) => {
         if (e.target.tagName === "BUTTON") return;
+        titleBar.setPointerCapture(e.pointerId);
         _spDragging = true;
         _spDragOx = e.clientX - spEl.offsetLeft;
         _spDragOy = e.clientY - spEl.offsetTop;
         e.preventDefault();
       });
+      titleBar.addEventListener("pointermove", (e) => {
+        if (!_spDragging) return;
+        spEl.style.left = e.clientX - _spDragOx + "px";
+        spEl.style.top = e.clientY - _spDragOy + "px";
+      });
+      titleBar.addEventListener("pointerup", () => { _spDragging = false; });
+      titleBar.addEventListener("pointercancel", () => { _spDragging = false; });
     }
 
     function _dockSP() {
@@ -1197,14 +1212,8 @@ async function main() {
       signalPath._render();
     }
 
-    window.addEventListener("mousemove", (e) => {
-      if (!_spDragging) return;
-      spEl.style.left = e.clientX - _spDragOx + "px";
-      spEl.style.top = e.clientY - _spDragOy + "px";
-    });
-    window.addEventListener("mouseup", () => {
-      _spDragging = false;
-    });
+    // (window mousemove/mouseup fallbacks removed — the title bar owns the
+    // drag via pointer capture, which covers mouse, touch and pen)
 
     // Visibility: hidden by default (the docked band read as clutter over
     // the state bar). The toolbar icon toggles show/hide; float/dock moved
