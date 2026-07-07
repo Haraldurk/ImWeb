@@ -317,18 +317,21 @@ export class Pipeline {
     // Resolve input textures
     const fgIdx  = p.get('layer.fg').value;
     const fgTex  = this._resolveSource(processedInputs, fgIdx);
-    const bgIdx  = p.get('layer.bg').value;
-    const bgTex  = this._resolveSource(processedInputs, bgIdx);
+    const bgTex  = this._resolveSource(processedInputs, p.get('layer.bg').value);
     let dsTex  = this._resolveSource(processedInputs, p.get('layer.ds').value);
 
-    // Apply per-layer color correction (HSB) to FG and BG
+    // Per-layer color correction (HSB) + slot mirror, folded into ONE pass.
+    // Mirror is a uFlipH uniform on the colorcorrect shader: no extra
+    // ping-pong pass (the two-target pool cannot collide), and mirror
+    // composes with hue/sat/bright instead of bypassing them.
     const fgHue    = p.get('fg.hue').value    / 360;
     const fgSat    = p.get('fg.sat').value    / 100;
     const fgBright = p.get('fg.bright').value / 100;
     const fgOpacity = (p.get('fg.opacity')?.value ?? 100) / 100;
+    const fgMirror = p.get('mirror.fg')?.value ? 1 : 0;
     const fgColorChanged = fgHue !== 0 || fgSat !== 1 || fgBright !== 1;
-    let correctedFG = fgColorChanged
-      ? this._pass(this.m.colorcorrect, { uTexture: fgTex, uHue: fgHue, uSat: fgSat, uBright: fgBright })
+    let correctedFG = (fgColorChanged || fgMirror)
+      ? this._pass(this.m.colorcorrect, { uTexture: fgTex, uHue: fgHue, uSat: fgSat, uBright: fgBright, uFlipH: fgMirror })
       : fgTex;
     if (fgOpacity < 1) {
       correctedFG = this._pass(this.m.fade, { uTexture: correctedFG, uAmount: fgOpacity });
@@ -338,36 +341,17 @@ export class Pipeline {
     const bgSat    = p.get('bg.sat').value    / 100;
     const bgBright = p.get('bg.bright').value / 100;
     const bgOpacity = (p.get('bg.opacity')?.value ?? 100) / 100;
+    const bgMirror = p.get('mirror.bg')?.value ? 1 : 0;
     const bgColorChanged = bgHue !== 0 || bgSat !== 1 || bgBright !== 1;
-    let correctedBG = bgColorChanged
-      ? this._pass(this.m.colorcorrect, { uTexture: bgTex, uHue: bgHue, uSat: bgSat, uBright: bgBright })
+    let correctedBG = (bgColorChanged || bgMirror)
+      ? this._pass(this.m.colorcorrect, { uTexture: bgTex, uHue: bgHue, uSat: bgSat, uBright: bgBright, uFlipH: bgMirror })
       : bgTex;
     if (bgOpacity < 1) {
       correctedBG = this._pass(this.m.fade, { uTexture: correctedBG, uAmount: bgOpacity });
     }
 
-    // Apply mirror to camera, movie, or buffer whichever layer slot they
-    // occupy (FG or BG — previously FG only). Mirrors read the RAW source
-    // texture, matching the original FG behavior: raw inputs are never
-    // ping-pong pool targets, so with only two pool targets this cannot
-    // trip the identity guard. (Known trade-off, pre-existing on FG:
-    // an active mirror bypasses that layer's colorcorrect/fade pass.)
-    const _mirrorOn = (idx) =>
-      (p.get('mirror.camera').value && idx === 0 && inputs.camera) ||
-      (p.get('movie.mirror').value && idx === 1 && inputs.movie) ||
-      (p.get('mirror.buffer').value && idx === 2 && processedInputs.buffer);
     let workingFG = correctedFG;
     let bgTexFinal = correctedBG;
-    if (_mirrorOn(fgIdx)) {
-      workingFG = this._pass(this.m.mirror, {
-        uTexture: fgTex, uFlipH: 1, uFlipV: 0,
-      });
-    }
-    if (_mirrorOn(bgIdx)) {
-      bgTexFinal = this._pass(this.m.mirror, {
-        uTexture: bgTex, uFlipH: 1, uFlipV: 0,
-      });
-    }
 
     // Per-layer blend (BG self-process tone treatment, FG composited over BG)
     const fgBlend = Math.round(p.get('layer.fg.blend')?.value ?? 0);
@@ -945,6 +929,7 @@ export class Pipeline {
         uHue:    { value: 0 },
         uSat:    { value: 1 },
         uBright: { value: 1 },
+        uFlipH:  { value: 0 }, // layer mirror; both call sites always set it
       }),
       chromakey: this._mat(CHROMA_KEY, {
         uKeyHue:      { value: 0.33 },

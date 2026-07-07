@@ -1376,12 +1376,20 @@ async function main() {
     update(ps.get("camera.active").value);
   })();
 
+  // Selfie mirror targets the SLOT the camera currently occupies (mirror
+  // params are slot-based: mirror.fg / mirror.bg). No-op if the camera
+  // isn't on either layer.
+  const setCameraMirror = (on) => {
+    if (Math.round(ps.get("layer.fg").value) === 0) ps.set("mirror.fg", on ? 1 : 0);
+    else if (Math.round(ps.get("layer.bg").value) === 0) ps.set("mirror.bg", on ? 1 : 0);
+  };
+
   // ── Camera facing flip (mobile-only button, hidden >900px) ───────────────
   document.getElementById("btn-camera-flip")?.addEventListener("click", async () => {
     const facing = await camera3d.switchFacing();
     // Front camera mirrors by default (selfie convention) — drives the
-    // regular Mirror Cam param, so it stays user-overridable in Layers
-    ps.set("mirror.camera", facing === "user" ? 1 : 0);
+    // regular slot mirror param, so it stays user-overridable in Layers
+    setCameraMirror(facing === "user");
     console.info(`[Camera] Facing: ${facing}`);
   });
 
@@ -2506,8 +2514,8 @@ async function main() {
     // selfie mirror, back-ish names clear it, ambiguous names (incl.
     // "Default") leave the user's Mirror Cam setting alone
     const label = devParam.options?.[idx] ?? "";
-    if (/front|user|facetime|selfie/i.test(label)) ps.set("mirror.camera", 1);
-    else if (/back|rear|environment/i.test(label)) ps.set("mirror.camera", 0);
+    if (/front|user|facetime|selfie/i.test(label)) setCameraMirror(true);
+    else if (/back|rear|environment/i.test(label)) setCameraMirror(false);
 
     if (!camera3d.active) return;
     camera3d.stop();

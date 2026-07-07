@@ -1171,25 +1171,43 @@ export function registerCoreParameters(ps) {
     ps.register({ id, label, group:'particle', min:0, max:1, value:def, step:0.001 });
   }
 
-  // ── Mirror ────────────────────────────────────────────────────────────────
+  // ── Mirror (slot-based: flip whatever occupies the layer) ────────────────
+  ps.register({
+    id: "mirror.fg",
+    label: "Mirror FG",
+    group: "mirror",
+    type: PARAM_TYPE.TOGGLE,
+    value: 0,
+  });
+  ps.register({
+    id: "mirror.bg",
+    label: "Mirror BG",
+    group: "mirror",
+    type: PARAM_TYPE.TOGGLE,
+    value: 0,
+  });
+  // Legacy source-based mirrors — kept registered so old presets/projects
+  // load without errors, but no longer rendered or read by the pipeline.
+  // (mirror.movie was never read by the pipeline at all — it shadowed
+  // movie.mirror, which lived in the movie group.)
   ps.register({
     id: "mirror.camera",
-    label: "Mirror Cam",
-    group: "mirror",
+    label: "Mirror Cam (legacy)",
+    group: "mirror-legacy",
     type: PARAM_TYPE.TOGGLE,
     value: 0,
   });
   ps.register({
     id: "mirror.movie",
-    label: "Mirror Movie",
-    group: "mirror",
+    label: "Mirror Movie (legacy)",
+    group: "mirror-legacy",
     type: PARAM_TYPE.TOGGLE,
     value: 0,
   });
   ps.register({
     id: "mirror.buffer",
-    label: "Mirror Buffer",
-    group: "mirror",
+    label: "Mirror Buffer (legacy)",
+    group: "mirror-legacy",
     type: PARAM_TYPE.TOGGLE,
     value: 0,
   });
@@ -1440,8 +1458,8 @@ export function registerCoreParameters(ps) {
   }); // default muted — user opts in to audio
   ps.register({
     id: "movie.mirror",
-    label: "MirrorMovie",
-    group: "movie",
+    label: "MirrorMovie (legacy)",
+    group: "mirror-legacy", // superseded by slot-based mirror.fg/mirror.bg
     type: PARAM_TYPE.TOGGLE,
     value: 0,
   });
