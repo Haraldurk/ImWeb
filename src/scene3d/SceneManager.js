@@ -838,15 +838,27 @@ export class SceneManager {
     const spinX = p.get('scene3d.spin.x')?.value ?? 0;
     const spinY = p.get('scene3d.spin.y')?.value ?? 0;
     const spinZ = p.get('scene3d.spin.z')?.value ?? 0;
+    const rotX = p.get('scene3d.rot.x').value;
+    const rotY = p.get('scene3d.rot.y').value;
+    const rotZ = p.get('scene3d.rot.z').value;
     if (spinX !== 0 || spinY !== 0 || spinZ !== 0) {
+      // rot params stay live while spinning: a CHANGE to any rot value
+      // (slider drag, state recall, controller) re-bases the orientation
+      // and the spin keeps accumulating from there. Unchanged rot = pure
+      // accumulation, exactly the previous behaviour.
+      const lr = this._lastRot;
+      if (lr && (lr.x !== rotX || lr.y !== rotY || lr.z !== rotZ)) {
+        this.mesh.rotation.set(rotX * toRad, rotY * toRad, rotZ * toRad);
+      }
       this.mesh.rotation.x += spinX * toRad * dt;
       this.mesh.rotation.y += spinY * toRad * dt;
       this.mesh.rotation.z += spinZ * toRad * dt;
     } else {
-      this.mesh.rotation.x = p.get('scene3d.rot.x').value * toRad;
-      this.mesh.rotation.y = p.get('scene3d.rot.y').value * toRad;
-      this.mesh.rotation.z = p.get('scene3d.rot.z').value * toRad;
+      this.mesh.rotation.x = rotX * toRad;
+      this.mesh.rotation.y = rotY * toRad;
+      this.mesh.rotation.z = rotZ * toRad;
     }
+    this._lastRot = { x: rotX, y: rotY, z: rotZ };
     // Scale
     const s = p.get('scene3d.scale').value;
     const n = p.get('scene3d.norm').value;
