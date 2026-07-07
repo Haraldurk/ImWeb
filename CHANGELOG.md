@@ -17,7 +17,9 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
   "Enable Motion" trigger covers preset-recall cases. The
   `deviceorientation` listener binds only while a motion mapping exists.
   Requires HTTPS (`npm run dev:https`) — sensors are dead on plain http.
-  Commit `b2fd9b3`.
+  Commits `b2fd9b3`, `4bce2d0` (scrollable controller menu on small
+  screens; permission outcome flashed in the OSD with sensor-event
+  logging for on-device diagnosis).
 - **Slot-based mirror: Mirror FG / Mirror BG (Phase 5, breaking)** — the
   three source toggles (Mirror Cam/Movie/Buffer) are replaced by two slot
   toggles that flip whatever occupies the Foreground/Background layer —
