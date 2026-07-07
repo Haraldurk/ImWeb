@@ -21,6 +21,7 @@
 10. [Keyboard Shortcuts Reference](#10-keyboard-shortcuts-reference)
 11. [File Formats](#11-file-formats)
 12. [Performance & Troubleshooting](#12-performance--troubleshooting)
+13. [Touch & Mobile Performance](#13-touch--mobile-performance)
 
 ---
 
@@ -786,6 +787,33 @@ Modifier keys can restrict activation: hold **CapsLock / Shift / Ctrl / Alt / Cm
 
 ---
 
+#### Device Motion (iPad / mobile)
+
+The device's orientation sensors are assignable controllers — the iPad
+itself becomes a physical fader.
+
+| Type | Badge | Description |
+|------|-------|-------------|
+| Tilt X | TLX | Tilt toward/away from you; ±90° → 0–1, flat = 0.5 |
+| Tilt Y | TLY | Tilt left/right; ±90° → 0–1, flat = 0.5 |
+| Compass | CMP | Heading 0–360° → 0–1 (wraps at north — mapped value jumps there) |
+
+Axes are compensated for screen orientation, so Tilt X always means
+"toward/away" whether the device is in portrait or landscape.
+
+**iOS permission:** the first assignment (or a tap on **Enable Motion**
+in the GLOBAL section) triggers Apple's motion-access prompt — it must
+come from a touch, so if a recalled preset contains tilt controllers,
+tap **Enable Motion** once to activate them. The result is flashed
+on-screen (`MOTION: GRANTED / DENIED`). If no prompt appears, fully
+close the browser tab and reopen — iOS caches a denial per page load.
+Sensors require a **secure (https) origin**.
+
+Slew and response tables apply as with any controller — use Slew
+(~0.1 s) to tame sensor jitter.
+
+---
+
 #### MIDI
 
 | Type | Description |
@@ -1339,8 +1367,77 @@ VRAM shown in red when above 800MB.
 | Audio reactive not working | Mic permission not granted | Allow microphone in browser |
 | Movie clip won't load | Unsupported codec | Convert with `node imweb-prep.js` |
 | MoviePos scrubbing jumpy | Non-All-Intra encoding | Convert with `node imweb-prep.js` |
+| Camera won't start on iPad | Insecure (http) origin | Serve with `npm run dev:https`; trust the mkcert CA on the device |
+| Tilt/Compass give no values | iOS motion permission not granted | Tap **Enable Motion** (GLOBAL); if no prompt appears, fully close the tab and reopen |
+| Desktop framerate low on MacBook | macOS routed the browser to the integrated GPU | Disable "Automatic graphics switching" (Battery → Options), relaunch browser |
 
 ---
 
-*ImWeb v0.8.4 — H. Karlsson*
+## 13. Touch & Mobile Performance
+
+ImWeb runs as a full touch instrument on the iPad (and other tablets).
+Screens ≤900 px wide — or any large touch device up to 1366 px with no
+mouse — get a dedicated mobile layout; desktop is unchanged.
+
+### Serving to an iPad
+
+Run the dev server with `npm run dev:https` and open
+`https://<your-mac-ip>:5173` on the iPad. HTTPS is required for the
+camera, microphone, and motion sensors (install the mkcert root CA
+profile on the iPad once — no certificate warnings after that).
+Plain `npm run dev` stays http for desktop work.
+
+### Canvas touch grammar
+
+Touch behaviour on the output canvas is governed by **Touch Mode**
+(GLOBAL section: Camera / Pad / Locked):
+
+| Gesture | Camera mode | Pad mode | Locked |
+|---------|-------------|----------|--------|
+| 1-finger drag | Orbit 3D scene (endless — wraps past 360°) | Drive all mouse-X/Y-mapped params (crosshair shows the point) | — |
+| 1-finger flick | Orbit coasts with momentum; touch again to stop it | — | — |
+| 2-finger pinch | Zoom (scene scale) | Centroid drives pad | — |
+| 2-finger double-tap | Toggle fullscreen | Toggle fullscreen | Toggle fullscreen |
+| 3-finger tap | Cycle Touch Mode (flashes `MODE: …` on screen) | same | same |
+| 3+ fingers held | Clutch — all gesture output suspends | same | — |
+
+Grabbing the canvas in Camera mode takes control from auto-spin: the
+current pose freezes into the rotation params and the spins zero, so
+your finger owns the object. In Pad mode a crosshair marks the active
+X/Y point — full brightness while touching, a faint ghost where the
+values rest after release, hidden outside Pad mode.
+
+### Mobile state bar
+
+On mobile the 32-tile state bar becomes a hybrid row:
+
+`[○ Clear] [＋ Save] [ scrolling state thumbnails ] [⋯ More]`
+
+- **＋ Save** — quick-saves the current state to the next empty slot
+  (same as `Shift+S`), with auto-thumbnail
+- **○ Clear** — neutral state (same as the desktop ○ tile)
+- **Thumbnail strip** — tap to recall; the active state is ringed and
+  kept in view; **long-press a thumbnail** for Duplicate / Clear
+- **⋯ More** — opens a full-screen pad grid of all 32 states with the
+  same Save/Clear actions and long-press menu
+
+### Touch editing in the panels
+
+- **Double-tap** a parameter row → reset to default (as desktop
+  double-click)
+- **Double-tap** a min/max range field → inline number entry
+- **Long-press** a controller badge → controller settings popover
+
+### Camera on mobile
+
+The status bar gains a **⇄ flip** button (front/back camera). The front
+camera mirrors automatically (selfie convention) via the slot-based
+**Mirror FG / Mirror BG** toggles in the Layers section — mirror flips
+whatever source occupies that layer and composes with the layer's
+colour correction. The **Cam Device** dropdown (Layers section) lists
+all cameras once permission is granted.
+
+---
+
+*ImWeb v0.9 — H. Karlsson*
 *Original Image/ine: Tom Demeyer, STEIM Foundation, Amsterdam*
