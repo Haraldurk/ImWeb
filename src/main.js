@@ -6178,6 +6178,17 @@ if (window.matchMedia("(pointer: coarse)").matches) {
   }
 }
 
+// Live-performance guard: an accidental swipe-back / Cmd+W / reload mid-gig
+// kills the WebGL context and the output. Ask before leaving. Browsers only
+// show the dialog after user interaction (sticky activation), so automated
+// dev reloads before any click are unaffected. iOS Safari/WebKit ignores
+// beforeunload entirely — there the CSS overscroll-behavior lockdown is the
+// only in-page defense against gesture navigation.
+window.addEventListener("beforeunload", (e) => {
+  e.preventDefault();
+  e.returnValue = ""; // legacy Chrome requires returnValue to show the prompt
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Boot
 // ─────────────────────────────────────────────────────────────────────────────
