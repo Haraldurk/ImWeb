@@ -6282,8 +6282,36 @@ function buildVirtualKeyboard() {
       if (label.length > 2) btn.classList.add("vkbd-key-wide");
       if (key === " ") btn.classList.add("vkbd-key-xl");
       btn.addEventListener("pointerdown", (e) => {
-        e.preventDefault();
+        e.preventDefault(); // never steal focus from a field being edited
         btn.classList.add("pressed");
+        // When a text field has focus (e.g. the param value editor), TYPE
+        // into it: synthetic KeyboardEvents on document never insert text
+        // into inputs, so digits vanished and app shortcuts could fire.
+        const el = document.activeElement;
+        if (el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA")) {
+          if (key === "Enter" || key === "Escape") {
+            // route to the field's own handlers (commit / cancel)
+            el.dispatchEvent(
+              new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true }),
+            );
+          } else if (key === "Backspace") {
+            const s = el.selectionStart ?? el.value.length;
+            const en = el.selectionEnd ?? el.value.length;
+            if (s !== en) el.setRangeText("", s, en, "end");
+            else if (s > 0) el.setRangeText("", s - 1, s, "end");
+            el.dispatchEvent(new Event("input", { bubbles: true }));
+          } else if (key.length === 1) {
+            // replaces the selection (the editors open with value selected)
+            el.setRangeText(
+              key,
+              el.selectionStart ?? el.value.length,
+              el.selectionEnd ?? el.value.length,
+              "end",
+            );
+            el.dispatchEvent(new Event("input", { bubbles: true }));
+          }
+          return;
+        }
         document.dispatchEvent(
           new KeyboardEvent("keydown", {
             key,
@@ -6294,6 +6322,9 @@ function buildVirtualKeyboard() {
       });
       btn.addEventListener("pointerup", () => {
         btn.classList.remove("pressed");
+        // Typed into a focused field on pointerdown — no app-level keyup
+        const el = document.activeElement;
+        if (el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA")) return;
         document.dispatchEvent(
           new KeyboardEvent("keyup", { key, bubbles: true, cancelable: true }),
         );
