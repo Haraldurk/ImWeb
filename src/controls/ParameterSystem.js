@@ -2960,6 +2960,22 @@ export function registerCoreParameters(ps) {
     value: 0,
   });
   ps.register({
+    id: "canvas.wheelZoom",
+    label: "Wheel Zoom",
+    group: "global",
+    type: PARAM_TYPE.TOGGLE,
+    value: 1,
+  });
+  ps.register({
+    id: "canvas.wheelSens",
+    label: "Zoom Sens",
+    group: "global",
+    min: 0.1,
+    max: 3,
+    value: 1,
+    step: 0.05,
+  });
+  ps.register({
     id: "motion.enable",
     label: "Enable Motion",
     group: "global",
