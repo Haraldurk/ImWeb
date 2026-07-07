@@ -1,6 +1,6 @@
 # ImWeb — Quick Reference
 
-> Browser-based real-time video synthesis instrument · v0.8.5
+> Browser-based real-time video synthesis instrument · v0.8.9
 
 ---
 
@@ -23,7 +23,8 @@ FX Chain is **reorderable** by dragging nodes in the Signal Path display.
 | **Camera** | WebRTC, auto-starts on load (`V` to toggle) |
 | **Movie** | Up to 8 clips; drag `.mp4/.webm/.mov` onto canvas; `Shift+1–8` to select |
 | **Analog TV** | Self-contained 720x480 analog signal simulator. Currently supports 4:3 cropping and base signal color grading (hue, saturation, brightness, contrast). Routes as a standard layer source. |
-| **Stills Buffer** | 4–32 captured frames; `C` to capture; scan/blend between slots |
+| **Teletext** | Teletext input source simulating classic teletext pages; customizable page data and draw utilities; routes as WebGLRenderTarget. |
+| **Stills Buffer** | Up to 64 captured frames (configurable rows×cols grid, 1–8 each, default 4×4=16); `C` to capture; scan/blend between slots |
 | **Color** | Solid or gradient (H/V/radial); HSV + animated hue |
 | **Noise** | GPU fractal (Perlin/Voronoi/Worley/Simplex); 512×512; resolution-independent |
 | **3D Scene** | Three.js; built-in shapes + imported `.glb/.gltf/.obj/.stl/.dae`; auto-fits |
@@ -80,6 +81,8 @@ Right-click any parameter row to assign.
 | Controller | Notes |
 |------------|-------|
 | **Mouse X/Y** | Position over canvas; modifier key combos supported |
+| **Tilt X/Y** | Device tilt ±90° → 0–1, flat = 0.5 (iPad; https + Enable Motion) |
+| **Compass** | Heading 0–360° → 0–1; wraps at north |
 | **MIDI CC** | CC 0–127, channel 1–16; MIDI Learn available |
 | **MIDI Note** | Velocity → value; on/off → toggle/trigger |
 | **LFO** | Sine/Triangle/Saw/Square/S&H; free Hz or BPM-synced |
@@ -158,6 +161,27 @@ Right-click any parameter row to assign.
 | `Shift+V` | Output spy |
 | `N` | AI Narrator |
 | `P` | AI Coach |
+
+---
+
+## Touch & iPad
+
+Serve with `npm run dev:https` — camera/mic/motion need a secure origin.
+Touch Mode (GLOBAL section) governs the canvas: **Camera / Pad / Locked**.
+
+| Gesture (on canvas) | Action |
+|---------------------|--------|
+| 1-finger drag | Camera: orbit (endless, flick = momentum) · Pad: drive mouse-X/Y params (crosshair) |
+| 2-finger pinch | Camera: zoom |
+| 2-finger double-tap | Fullscreen toggle |
+| 3-finger tap | Cycle Touch Mode (OSD flash) |
+| 3+ fingers held | Clutch — suspends all gesture output |
+
+Mobile bottom bar: `[○ Clear] [＋ Save] [state thumbnails →] [⋯ More]` —
+long-press a thumbnail for **Duplicate / Clear**; ⋯ opens the full pad
+grid. Panels: double-tap a row = reset · double-tap min/max = type value.
+Camera: **⇄** flips front/back (front auto-mirrors via **Mirror FG/BG**
+in Layers — slot-based, flips whatever source occupies the layer).
 
 ---
 
@@ -256,4 +280,11 @@ Requires: **Node.js** + **FFmpeg** (`brew install ffmpeg` / `apt install ffmpeg`
 
 ---
 
-*ImWeb v0.8.5 · H. Karlsson · [Full manual →](ImWeb_Full_Manual.md)*
+## Known Issues
+
+- **Chrome 148 ANGLE/Metal backend regression (macOS)**: Vertex shader rendering is broken for Hypercube wireframe edges (`LineSegments`) and Harabara GLB model (`SkinnedMesh`).
+  - *Workaround*: Launch Chrome from the terminal with the `--use-angle=gl` flag.
+
+---
+
+*ImWeb v0.8.9 · H. Karlsson · [Full manual →](ImWeb_Full_Manual.md)*
