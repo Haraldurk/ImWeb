@@ -1,92 +1,134 @@
 # WORKFLOW.md — ImWeb Development Workflow
 
-Single canonical reference. Supersedes all previous workflow docs.
-Read before any session. Update when the workflow actually changes.
+Canonical multi-agent workflow, per the CLAUDE.md document hierarchy.
+Sessions vary in shape — **the Invariants below apply to every session;
+pick the Playbook that matches how this session is actually run.**
+Update this file only in an owner-declared consolidation session.
 
 ---
 
-## The Tool Roster
+## Invariants (every session, any shape)
 
-| Agent                 | Terminal   | Role                                                                             | Hard limits                                                                          |
-| --------------------- | ---------- | -------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
-| **Claude Chat**       | claude.ai  | Architecture, planning, cross-file reasoning, CLAUDE.md review, Obsidian updates. Has read-only MCP access to ImWeb repo — reads source files, KNOWN-ISSUES.md, docs/, and src/ directly before every prompt. | Never writes code directly to repo. Never executes terminal commands.                |
-| **Claude Code**       | Ghostty ⌘3 | Surgical JS/CSS edits, multi-file wiring, Pipeline/shader work, recon, git       | Never scopes its own tasks — receives a pre-written prompt                           |
-| **Antigravity (Agy)** | Ghostty ⌘2 | CHANGELOG.md, Quick Reference, README, all markdown/docs                         | Never touches JS; never feeds raw terminal output back to Claude Code                |
-| **Kimi K2**           | Ghostty ⌘1 | Recon, exploration, reading large files, cross-module tracing                    | Never edits. Find-only. Feed results to Claude Chat, not directly to Claude Code     |
-| **DeepSeek v4-Pro**   | Ghostty ⌘4 | Shader math, GLSL logic, algorithmic deep-dives                                  | Never edits. Consult for hard shader/math problems; route output through Claude Chat |
-| **Browser (you)**     | —          | Visual confirmation after every patch                                            | Only tool that can verify WebGL / Metal rendering                                    |
-### The Codex Review (inside Claude Code)
-
-After any core logic change and before committing, trigger the GPT-5.5 subagent:
-
-```
-/codex:review
-```
-
-- **Accept:** critical security or syntax fixes it flags
-- **Ignore:** style suggestions that conflict with existing paradigms
-- Not required for CSS-only changes or markdown edits
-
-### When to use Kimi K2.6 vs Claude Code for recon
-
-Use **Kimi K2.6** when investigation spans many files or requires reading main.js
-in full (5400+ lines). Its 262K token context handles the whole file in one pass
-and its code comprehension is strong enough to trace execution across modules.
-
-Use **Claude Code** for recon when you're about to make an edit in the same session
-— it needs to see the exact current state itself before writing a str_replace.
-
-Never feed Kimi K2.6 terminal output directly into a Claude Code prompt without
-Claude Chat reviewing and reformulating it first.
-
----
-
-## Session Open Ritual (mandatory)
-
-**In Ghostty (⌘3 — Claude Code terminal):**
+### 1. Session open
 ```bash
 git log --oneline -5
 git status
-cat KNOWN-ISSUES.md        # check active issues before touching related code
+cat KNOWN-ISSUES.md        # active issues — read before touching related code
+cat docs/LEARNED.md        # lessons — wins over CLAUDE.md on conflict
 ```
 
-**In Claude Chat (claude.ai):**
+### 2. Recon before any edit
+```bash
+grep -n "thing you're looking for" src/file.js | head -20
+wc -l src/file.js          # stale line numbers are a common failure mode
+sed -n '${start},${end}p' src/file.js
+```
+Never guess a variable name or reference. One wrong name (`this.sm` vs
+`this.extras.scene3d` vs `sceneManager`) costs an entire session loop.
 
-**1. Verify Filesystem Connection:**
-Ensure the `imweb-filesystem` MCP is live and the planner has direct
-repository access. Run the following check:
-`list /Users/haraldurkarlsson/Documents/GitHub/ImWeb/src`
-> **CRITICAL:** If this command fails, stop immediately. Reconnect the
-> filesystem integration before drafting any prompts or planning any fixes.
+### 3. One task per prompt, one agent per task
+If a task feels like it needs two prompts, it does. Split it.
+Do not duplicate work across agents.
 
-Claude Chat reads KNOWN-ISSUES.md, docs/WORKFLOW.md, and relevant src/ files
-directly via the read-only filesystem MCP — no copy-paste required.
-Run `imweb-session-open` in any Ghostty tab and paste the output into Claude Chat
-only when git log / git status context is needed for planning.
+### 4. Never stack a patch on a broken fix
+If a fix fails: `git revert` to the last clean commit, then retry from a
+clean slate.
 
-Read CLAUDE.md if the session touches architecture or introduces a new pattern.
-
----
-
-## Session Close Ritual (mandatory)
-
+### 5. Session close
 ```bash
 git log --oneline -3       # confirm commits landed
 git status                 # confirm nothing unstaged
 ```
+- New bug found → add to KNOWN-ISSUES.md Active
+- Bug fixed → move to KNOWN-ISSUES.md Resolved table (version + commit)
+- Owner correction or self-caught mistake → one line appended to docs/LEARNED.md
 
-Then, in order:
+### 6. Verification boundary
+```
+edits → verdict: DOM / console / localStorage checks (headless Chromium)
+      → human: visual confirmation in real Chrome on macOS (Metal backend)
+      → diagnosis from screenshots/logs → next patch
+      → update KNOWN-ISSUES.md if diagnosis reveals a new issue
+```
+verdict-cli **cannot** verify WebGL rendering, shader output, 3D geometry,
+or Hypercube edges. Headless limits learned the hard way: no H.264 decode
+(movie textures are black), setTimeout throttled to ~0.6–1 s observed
+(use busy-waits for gesture timing), rAF at ~1 fps.
+**Always kill leftover `chrome-headless-shell` processes after a
+verification batch** — leaked instances burn ~9 CPU cores and masquerade
+as ImWeb performance bugs.
 
-1. **KNOWN-ISSUES.md** — add any new bug found; move fixed issues to Resolved table
-2. **docs/imweb-obsidian.md** — add session log entry (date, version, what changed)
-3. **Antigravity CLI** — update CHANGELOG.md from the session commits
-4. **Antigravity CLI** — update docs/ImWeb_Quick_Reference.md if any source, effect, shortcut, or key binding changed
-5. **Todo.md** — cross off completed items, add anything deferred
+### 7. Port discipline
+| Command | Protocol | Use for |
+|---------|----------|---------|
+| `npm run dev` | http :5173 | Desktop work; Dev Capture (:5174) reachable |
+| `npm run dev:https` | https :5173 | iPad sessions — camera/mic/motion need a secure origin (mkcert cert in `certs/`, regenerate on IP change — command in vite.config.js) |
+
+Only one can hold :5173 — kill the other first, or the second silently
+takes the next port and the iPad tests the wrong build.
 
 ---
 
-## Standard Prompt Template
+## Playbook A — Solo Claude Code session
 
+Owner works directly with Claude Code (a common session shape). Claude Code
+scopes its own recon and edits, within the rules in CLAUDE.md.
+
+1. Non-trivial work goes through plan mode — present a plan, get owner
+   approval before editing.
+2. Recon is self-scoped but budgeted: max 5–10 tool calls before producing
+   code (per CLAUDE.md Editing Rules).
+3. Surgical str_replace edits only; never rewrite whole files.
+4. Run `/codex:review` before committing core logic (see Codex Review below).
+5. Commit per task with conventional messages; move to the next task.
+
+## Playbook B — Chat-orchestrated session
+
+Claude Chat plans; Claude Code executes pre-written prompts. Use for
+cross-file architecture work where the planner needs the whole-repo view.
+
+### Tool roster
+
+| Agent                 | Terminal   | Role                                                                             | Hard limits                                                                          |
+| --------------------- | ---------- | -------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| **Claude Chat**       | claude.ai  | Architecture, planning, cross-file reasoning, CLAUDE.md review, Obsidian updates. Has read-only MCP access to ImWeb repo — reads source files, KNOWN-ISSUES.md, docs/, and src/ directly before every prompt. | Never writes code directly to repo. Never executes terminal commands.                |
+| **Claude Code**       | Ghostty ⌘3 | Surgical JS/CSS edits, multi-file wiring, Pipeline/shader work, recon, git       | In this playbook, receives a pre-written prompt — does not scope its own tasks       |
+| **Antigravity (Agy)** | Ghostty ⌘2 | CHANGELOG.md, Quick Reference, README, all markdown/docs                         | Never touches JS; never feeds raw terminal output back to Claude Code                |
+| **Kimi K2.6**         | Ghostty ⌘1 | Recon, exploration, reading large files, cross-module tracing                    | Never edits. Find-only. Feed results to Claude Chat, not directly to Claude Code     |
+| **DeepSeek v4-Pro**   | Ghostty ⌘4 | Shader math, GLSL logic, algorithmic deep-dives                                  | Never edits. Consult for hard shader/math problems; route output through Claude Chat |
+| **Browser (you)**     | —          | Visual confirmation after every patch                                            | Only tool that can verify WebGL / Metal rendering                                    |
+
+Use **Kimi K2.6** when investigation spans many files or requires reading
+main.js in full (~6400 lines) — its 262K context handles the whole file in
+one pass. Use **Claude Code** for recon when it's about to edit in the same
+session — it must see the exact current state itself. Never feed Kimi
+output directly into a Claude Code prompt without Claude Chat reviewing
+and reformulating it first.
+
+### Chat session open
+1. Verify the `imweb-filesystem` MCP is live:
+   `list /Users/haraldurkarlsson/Documents/GitHub/ImWeb/src`
+   If this fails, stop — reconnect before drafting any prompts.
+2. Claude Chat reads KNOWN-ISSUES.md, docs/WORKFLOW.md, and relevant src/
+   files directly via MCP — no copy-paste. Run `imweb-session-open` in any
+   Ghostty tab and paste output only when git context is needed.
+3. Read CLAUDE.md if the session touches architecture or a new pattern.
+
+### Two-phase recon (both mandatory in this playbook)
+- **Phase 1 — Chat recon**: Chat reads target files via MCP before drafting
+  the prompt — eliminates wrong names, stale line numbers, bad assumptions.
+- **Phase 2 — Claude Code recon**: always verify the exact target block in
+  the live file before editing. HMR may have changed it since Chat read it.
+
+### Prompt relay
+Claude Chat writes the finished prompt with header `SAVE TO:
+/tmp/imweb-next-prompt.txt`. Save it (`pbpaste > /tmp/imweb-next-prompt.txt`
+or the `imweb-prompt` zsh function), review with `cat`, paste to Claude
+Code. Variable names verified by Chat via MCP are exact — the file relay
+eliminates transcription errors, the most common source of "wrong name
+costs a whole session" failures.
+
+### Standard prompt template
 ```
 EXECUTOR: Claude Code
 
@@ -112,122 +154,36 @@ AFTER:
   git commit -m "type(scope): description"
   git push
 ```
+The **Do not touch** list is not optional — it prevents scope creep.
 
-The **Do not touch** list is not optional. Naming files Claude Code must not
-touch prevents scope creep during complex sessions.
+### Chat session close (in order)
+1. KNOWN-ISSUES.md — new bugs added, fixed bugs moved to Resolved
+2. docs/imweb-obsidian.md — session log entry (date, version, what changed)
+3. Antigravity — update CHANGELOG.md from the session commits
+4. Antigravity — update docs/ImWeb_Quick_Reference.md if any source,
+   effect, shortcut, or key binding changed
+5. Todo.md — cross off completed items, add anything deferred
 
-One feature per prompt is a hard rule. If a task feels like it needs two
-prompts, it does.
-
----
-
-## Prompt Relay
-
-Claude Chat writes the finished Claude Code prompt to `/tmp/imweb-next-prompt.txt`.
-Claude Code reads it from there. No manual transcription.
-
-**Workflow:**
-1. Claude Chat plans the task and drafts the full prompt (with all variable names
-   verified via MCP recon)
-2. Claude Chat outputs the prompt with header: `SAVE TO: /tmp/imweb-next-prompt.txt`
-3. You save it: `pbpaste > /tmp/imweb-next-prompt.txt` — or use the `imweb-prompt`
-   shell function in ~/.zshrc
-4. In Ghostty ⌘3: `cat /tmp/imweb-next-prompt.txt` — review, then paste to Claude Code
-
-**Why this matters:**
-Variable names verified by Chat via MCP are exact. Transcription errors are the
-most common source of "wrong name costs a whole session" failures. The file relay
-eliminates that failure mode.
-
----
-
-## Recon Pattern
-
-Two distinct recon phases. Both are mandatory. Neither replaces the other.
-
-**Phase 1 — Claude Chat recon (before writing any prompt)**
-Claude Chat reads relevant files via the filesystem MCP before drafting a Claude Code
-prompt. This eliminates wrong variable names, stale line numbers, and bad assumptions
-from prompts before they reach Claude Code.
-
-What Chat reads: KNOWN-ISSUES.md, the target .js file (or the relevant section),
-ParameterSystem registrations, and any related module the task touches.
-
-**Phase 2 — Claude Code recon (before any str_replace edit)**
-Claude Code always verifies the exact target block in the live file before editing.
-It cannot rely on Chat's reading — HMR may have changed the file.
-
-```bash
-# 1. Find the thing
-grep -n "thing you're looking for" src/file.js | head -20
-
-# 2. Confirm file length (stale line numbers are a common failure mode)
-wc -l src/file.js
-
-# 3. Read the exact block
-sed -n '${start},${end}p' src/file.js
-```
-
-Never guess a variable name or reference. One wrong name (`this.sm` vs
-`this.extras.scene3d` vs `sceneManager`) costs an entire session loop.
-
----
-
-## Verification Boundary
-
-```
-Claude Code edits
-  → verdict: DOM / console / localStorage checks (headless Chromium)
-  → human: visual confirmation in real Chrome on macOS (Metal backend)
-  → Claude Chat: diagnosis from screenshots/logs → next patch plan
-  → update KNOWN-ISSUES.md if diagnosis reveals a new issue
-```
-
-verdict-cli runs headless Chromium. It **cannot** verify WebGL rendering,
-shader output, 3D geometry, or Hypercube edges. All visual confirmation
-requires a human in real Chrome on macOS. Additional headless limits
-learned the hard way: no H.264 decode (movie textures are black),
-setTimeout throttled to ~600 ms (use busy-waits for gesture timing),
-rAF at ~1 fps. **Always kill leftover `chrome-headless-shell` processes
-after a verification batch** — leaked instances burn ~9 CPU cores and
-masquerade as ImWeb performance bugs.
-
-### Dev servers
-
-| Command | Protocol | Use for |
-|---------|----------|---------|
-| `npm run dev` | http :5173 | Desktop work; Dev Capture (:5174) reachable |
-| `npm run dev:https` | https :5173 | iPad sessions — camera/mic/motion need a secure origin (mkcert cert in `certs/`, regenerate on IP change — command in vite.config.js) |
-
-Only one can hold :5173 — kill the other first, or the second silently
-takes the next port and the iPad tests the wrong build.
-
----
-
-## New Module Session Architecture
-
-**Session 1 — Create new files only**
-- Create new `.js` files in their target directory
-- Maximum 2 surgical str_replace edits to one existing file (e.g. SceneManager.js)
-- Do not touch main.js or UI.js
-- Commit: `feat(scope): add [module name]`
-
-**Session 2 — Wire into main.js**
-- One import, one init call, one UI tab or panel mount
-- ParameterSystem registrations for the new module
-- Commit: `feat(ui): wire [module name] panel and params`
-
-**Session 3 — Polish (if needed)**
-- Preset save/load schema additions
-- CSS/layout, edge cases, error handling
-- Commit: `fix(scope): [specific issue]`
+## Playbook C — New module pattern (recommended, not mandatory)
 
 Each session is a clean rollback point if the next one breaks something.
 
----
+- **Session 1 — Create new files only**: new `.js` files in their target
+  directory; max 2 surgical edits to one existing file (e.g. SceneManager.js);
+  do not touch main.js or UI.js. Commit: `feat(scope): add [module name]`
+- **Session 2 — Wire into main.js**: one import, one init call, one UI
+  tab/panel mount; ParameterSystem registrations.
+  Commit: `feat(ui): wire [module name] panel and params`
+- **Session 3 — Polish (if needed)**: preset save/load schema, CSS/layout,
+  edge cases. Commit: `fix(scope): [specific issue]`
 
-## Debugging Flow
+## Playbook D — Debugging flow
 
+Solo shape (default): Claude Code investigates directly — reproduce, grep,
+trace, state one way the fix could still fail (Guard Logic Rules in
+CLAUDE.md), fix, `/codex:review`, verify.
+
+Orchestrated shape (when the bug spans many modules):
 ```
 Claude Code: fails or regresses
   → Kimi K2.6: trace execution, find root cause across files
@@ -235,8 +191,33 @@ Claude Code: fails or regresses
   → Claude Code: execute fix + /codex:review
 ```
 
-For GPU/WebGL-specific failures: patch → human browser test → revert if wrong.
-Do not stack a new patch on a broken fix. git revert to last clean commit, then retry.
+For GPU/WebGL-specific failures: patch → human browser test → revert if
+wrong. Never stack a new patch on a broken fix (Invariant 4).
+
+---
+
+## Codex Review (`/codex:review`, GPT-5.5)
+
+Cross-model review — a different model family catches a different class of
+bugs than the one that wrote the code. It is a cheap extra filter, **not
+verification**: running the app, verdict checks, and human visual
+confirmation outrank any static review.
+
+- **Run it**: after any core logic change, before committing.
+- **Skip it**: CSS-only changes, markdown edits.
+- **Accept**: critical security or correctness/syntax fixes it flags.
+- **Ignore**: style suggestions that conflict with existing paradigms.
+
+---
+
+## Doc-sync cadence
+
+| When | Update |
+|---|---|
+| Every session | KNOWN-ISSUES.md, docs/LEARNED.md (if lessons), commits pushed |
+| User-facing behavior changed | CHANGELOG.md (Antigravity in Playbook B) |
+| Keys / sources / effects / shortcuts changed | docs/ImWeb_Quick_Reference.md, then `npm run sync-docs` |
+| Release / milestone close | docs/imweb-obsidian.md session log, manuals, README badge |
 
 ---
 
@@ -252,16 +233,3 @@ chore:           build, deps, config
 ```
 
 Scope examples: `ui`, `scene3d`, `shaders`, `midi`, `preset`, `inputs`, `hypercube`
-
----
-
-## The Core Discipline
-
-1. Chat never writes code directly into the repo
-2. Claude Code never scopes its own tasks — it receives a pre-written prompt
-3. Claude Code runs /codex:review before committing core logic
-4. Kimi K2.6 never edits — find and report only
-5. Antigravity never touches JS
-6. No session starts without `git log` + `git status` (Claude Code); Claude Chat
-   reads KNOWN-ISSUES.md directly via MCP before drafting any prompt
-7. No session ends without CHANGELOG, Quick Reference, and imweb-obsidian.md sync
