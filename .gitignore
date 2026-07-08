@@ -195,7 +195,6 @@ PERF-SPRINT.md
 deepseek.md
 AGENTS.md
 GEMINI.md
-KNOWN-ISSUES.md
 
 # Local dev scripts (keep locally, not for public repo)
 dev-catcher.js
