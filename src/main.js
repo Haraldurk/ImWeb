@@ -5282,9 +5282,51 @@ void main() {
     // Orbit inertia — coast + damp after a touch flick
     gestureArb.tick(dt);
 
+    // ── Idle-deck upload gating (v0.12 Step 5) ──────────────────────────────
+    // Skip the texImage2D upload for a deck that cannot contribute to this
+    // frame; playback keeps running so the deck stays cued. The MixBus shader
+    // computes mix(A, modeResult, xfade), so xfade=0 is always pure Deck A
+    // (B skippable) and xfade=1 hides Deck A only in Crossfade mode — every
+    // other mode still reads A.
+    const _gFg = ps.get("layer.fg").value;
+    const _gBg = ps.get("layer.bg").value;
+    const _gDs = ps.get("layer.ds")?.value ?? 0;
+    const _gUses = (i) => _gFg === i || _gBg === i || _gDs === i;
+    const _gTdCap = ps.get("td.enabled").value
+      ? ps.get("td.captureSource").value
+      : -1;
+    const _gMixConsumed = _gUses(26) || _gTdCap === 26; // Mix Bus routed?
+    const _gXf = ps.get("mix.xfade").value;
+    const _gMixMode = ps.get("mix.mode").value;
+    // Deck A has legacy per-frame readers outside the layer system. If any
+    // subsystem that CAN sample the Movie texture is live, keep uploading —
+    // gating must never freeze a texture someone is reading (Phase 5 lesson).
+    const _gLegacyReaders =
+      ps.get("seq1.active").value ||           // seq capture (source may be Movie)
+      ps.get("seq2.active").value ||
+      ps.get("seq3.active").value ||
+      ps.get("scene3d.active").value ||        // 3D materials / hypercube tex
+      _gUses(6) || _gUses(20) || _gTdCap === 6 || _gTdCap === 20 ||
+      _gUses(16) || _gTdCap === 16 ||          // particles (masksrc may be Movie)
+      _gUses(23) || _gTdCap === 23 ||          // analog TV (source may be Movie)
+      _gUses(21) || _gTdCap === 21 ||          // SDF (texSrc may be Movie)
+      _clipRecording;                          // ClipLib REC (source may be Mov)
+    // Deck A keeps exact v0.11 behavior (always upload while active) EXCEPT
+    // the one provably-hidden case: Mix Bus routed, Crossfade mode pinned at
+    // full B, no direct route, and no legacy reader live.
+    const _uploadA = !(
+      _gMixConsumed && _gMixMode === 0 && _gXf >= 1 &&
+      !_gUses(1) && _gTdCap !== 1 && !_gLegacyReaders
+    );
+    // Deck B is only reachable via source 25, TimeDisp capture, or the MixBus
+    // (no legacy subset list includes "Movie B" — keep it that way, or extend
+    // this gate when appending it to one).
+    const _uploadB =
+      _gUses(25) || _gTdCap === 25 || (_gMixConsumed && _gXf > 0);
+
     // Update movie clips (both decks)
-    movieInput.tick(ps, beatPhase, dt);
-    movieInputB.tick(ps, beatPhase, dt);
+    movieInput.tick(ps, beatPhase, dt, _uploadA);
+    movieInputB.tick(ps, beatPhase, dt, _uploadB);
 
     // Tick stills buffer (reads fs1 → readIndex)
     stillsBuffer.tick(ps, dt);

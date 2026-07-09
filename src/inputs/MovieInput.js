@@ -137,8 +137,11 @@ export class MovieInput {
    * @param {ParameterSystem} params
    * @param {number} beatPhase - accumulated beat counter (increases at BPM rate)
    * @param {number} dt - delta time in seconds
+   * @param {boolean} upload - false = keep playback running (cue) but skip the
+   *   texImage2D upload; the currentTime change-detection re-uploads the
+   *   first fresh frame automatically when re-enabled
    */
-  tick(params, beatPhase = 0, dt = 0.016) {
+  tick(params, beatPhase = 0, dt = 0.016, upload = true) {
     if (!this.active || this._current < 0) return;
 
     const clip = this.clips[this._current];
@@ -152,6 +155,7 @@ export class MovieInput {
     // the 'seeked' listener in addClip covers async seek completion (the
     // new frame decodes after currentTime already reads the target).
     const uploadIfNewFrame = () => {
+      if (!upload) return;
       if (v.readyState >= v.HAVE_CURRENT_DATA && v.currentTime !== clip._lastUploadT) {
         clip._lastUploadT = v.currentTime;
         clip.texture.needsUpdate = true;

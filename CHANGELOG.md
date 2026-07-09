@@ -9,6 +9,15 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
 ## [Unreleased] — v0.12 Dual-Deck A/B (in progress)
 
 ### Added
+- **Idle-deck upload gating** — a deck that provably cannot contribute to
+  the frame skips its texImage2D upload (playback keeps running for cue;
+  the currentTime change-detector re-uploads instantly on wake). Deck B
+  gates whenever nothing routes to it (source 25, TimeDisp capture, or a
+  live MixBus with xfade > 0). Deck A keeps exact v0.11 always-upload
+  behavior except the one provably-hidden case: MixBus routed, Crossfade
+  pinned at xfade = 1, no direct route, and no legacy reader live (seq
+  capture, 3D scene, particles, analog, SDF, ClipLib REC all veto the
+  gate). Single-deck performance cost returns to pre-dual-deck levels.
 - **Deck B UI + clip routing** — "Movie B" and "Mix Bus" collapsible panels
   in the Clips tab (movieB.* and mix.* param rows via the standard mapping
   system). ⇧-click a Clip Library slot or a Deck A clip, or ⇧-drop a video
