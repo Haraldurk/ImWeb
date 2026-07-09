@@ -2674,6 +2674,14 @@ async function main() {
       const devId = devParam?._deviceIds?.[Math.round(devParam.value)] ?? "";
       const ok = await camera3d.start(devId || camDeviceSel.value || null);
       if (!ok) {
+        // Surface WHY — iPad failures were invisible (param just snapped off)
+        const why = {
+          NotAllowedError: "Camera permission denied — check Settings › Safari › Camera",
+          NotReadableError: "Camera is in use by another app",
+          NotFoundError: "No camera found",
+          InsecureContext: "Camera needs HTTPS — use npm run dev:https",
+        }[camera3d.lastError] ?? `Camera failed: ${camera3d.lastError}`;
+        showToast(why);
         ps.set("camera.active", 0);
         return;
       }
@@ -3013,16 +3021,26 @@ async function main() {
 
   // Chrome desktop autoplay policy: play() on an unmuted video rejects until
   // the page has a user gesture. tick() already retries paused decks every
-  // frame (and succeeds once engagement exists); this one-time gesture hook
-  // makes the recovery immediate on the first interaction.
+  // frame (and succeeds once engagement exists); these hooks force the
+  // recovery on the first interaction of any kind, then remove themselves.
+  // NOTE: nothing plays at launch BY DESIGN — main.js forces movie.active=0
+  // on startup; a deck only plays after MovieOn is toggled.
   const _resumeDecksOnGesture = () => {
-    [movieInput, movieInputB].forEach((deck) => {
+    [
+      { deck: movieInput, speedId: "movie.speed" },
+      { deck: movieInputB, speedId: "movieB.speed" },
+    ].forEach(({ deck, speedId }) => {
       const v = deck.currentClip?.video;
-      if (deck.active && v?.paused) v.play().catch(() => {});
+      if (deck.active && v?.paused && ps.get(speedId).value > 0)
+        v.play().catch(() => {});
     });
+    document.body.removeEventListener("pointerdown", _resumeDecksOnGesture, true);
+    document.body.removeEventListener("click", _resumeDecksOnGesture, true);
+    window.removeEventListener("keydown", _resumeDecksOnGesture, true);
   };
-  window.addEventListener("pointerdown", _resumeDecksOnGesture, { once: true, capture: true });
-  window.addEventListener("keydown", _resumeDecksOnGesture, { once: true, capture: true });
+  document.body.addEventListener("pointerdown", _resumeDecksOnGesture, true);
+  document.body.addEventListener("click", _resumeDecksOnGesture, true);
+  window.addEventListener("keydown", _resumeDecksOnGesture, true);
 
   // ── Clip Library wiring ───────────────────────────────────────────────────
   let _clipRecording = false;
