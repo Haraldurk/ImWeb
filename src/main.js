@@ -879,7 +879,24 @@ async function main() {
     clipLibrary,
     movieInput,
     contextMenu,
+    { input: movieInputB, onLoad: refreshClipBStatus },
   );
+
+  /** Deck B status line in the Movie B panel (Deck B has no clip list). */
+  function refreshClipBStatus() {
+    const el = document.getElementById("clipB-status");
+    if (!el) return;
+    const n = movieInputB.clips.length;
+    if (!n) {
+      el.textContent =
+        "No clip — ⇧-click a library slot or ⇧-drop a video to load Deck B";
+      return;
+    }
+    const cur = movieInputB.currentClip;
+    const name = cur ? cur.name.replace(/\.[^/.]+$/, "") : "—";
+    const on = ps.get("movieB.active").value;
+    el.textContent = `${on ? "▶" : "⏸"} ${name} · ${n} clip${n > 1 ? "s" : ""}`;
+  }
 
   // Update model status label after drag-and-drop or button import
   function _refreshModelLabel() {
@@ -2741,7 +2758,17 @@ async function main() {
       item.appendChild(thumb);
       item.appendChild(info);
 
-      item.addEventListener("click", () => {
+      item.addEventListener("click", (e) => {
+        // ⇧-click → send this clip to Deck B (Deck A selection unchanged)
+        if (e.shiftKey) {
+          movieInputB.addClip(clip.url).then((idx) => {
+            if (idx < 0) return;
+            movieInputB.selectClip(idx);
+            ps.set("movieB.active", 1);
+            refreshClipBStatus();
+          }).catch((err) => _showClipError(err.message));
+          return;
+        }
         movieInput.selectClip(i);
         if (ps.get("movie.active").value) clip.video.play().catch(() => {});
         refreshClipsList();
@@ -2863,6 +2890,7 @@ async function main() {
   document.body.addEventListener("drop", async (e) => {
     e.preventDefault();
     document.body.classList.remove("dnd-active");
+    const dropToDeckB = e.shiftKey; // ⇧-drop routes videos to Deck B
     const files = Array.from(e.dataTransfer.files);
     // Read .imx buffers immediately before any await (DataTransfer expires after first yield)
     const imxBuffers = new Map();
@@ -2875,13 +2903,20 @@ async function main() {
         /\.(mp4|webm|mov|avi|mkv)$/i.test(file.name)
       ) {
         try {
-          await movieInput.addClip(file);
-          refreshClipsList();
-          if (movieInput.currentClip) {
-            movieInput.currentClip.video.play().catch(() => {});
-            ps.set("layer.fg", 1);
+          if (dropToDeckB) {
+            await movieInputB.addClip(file);
+            ps.set("movieB.active", 1);
+            movieInputB.currentClip?.video.play().catch(() => {});
+            refreshClipBStatus();
+          } else {
+            await movieInput.addClip(file);
+            refreshClipsList();
+            if (movieInput.currentClip) {
+              movieInput.currentClip.video.play().catch(() => {});
+              ps.set("layer.fg", 1);
+            }
+            presetMgr.setMediaRef('movie', file.name);
           }
-          presetMgr.setMediaRef('movie', file.name);
         } catch (err) {
           console.error("[DnD] video load failed:", err);
           _showClipError(err.message);
@@ -2946,6 +2981,7 @@ async function main() {
     } else if (!v && movieInputB.currentClip) {
       movieInputB.currentClip.video.pause();
     }
+    refreshClipBStatus();
   });
   ps.get("movieB.mute").onChange((v) => {
     movieInputB.clips.forEach((c) => {

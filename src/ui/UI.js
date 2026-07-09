@@ -109,6 +109,8 @@ export function buildMappingPanels(ps, contextMenu) {
     'output-params':   ps.getGroup('output').filter(p => p.id !== 'output.resolution' && p.id !== 'output.interp'),
     'buffer-controls': ps.getGroup('buffer'),
     'clip-params':     ps.getGroup('movie'),
+    'clipB-params':    ps.getGroup('movieB'),
+    'mix-params':      ps.getGroup('mix'),
     'transform-params': ps.getGroup('scene3d').filter(p => p.id.includes('rot') || p.id.includes('pos') || p.id.includes('scale') || p.id.includes('spin')),
     'camera3d-params': ps.getGroup('scene3d').filter(p => p.id.includes('cam')),
     'material-params': ps.getGroup('scene3d').filter(p => p.id.includes('mat') || p.id.includes('wire') || p.id.includes('depth')),
@@ -3236,7 +3238,7 @@ export function buildAISettingsPanel(ai, panelEl) {
  * @param {object} movieInput    MovieInput instance
  * @param {object} contextMenu   ContextMenu (for buildParamRow)
  */
-export function buildClipLibrary(ps, clipLibrary, movieInput, contextMenu) {
+export function buildClipLibrary(ps, clipLibrary, movieInput, contextMenu, deckB = null) {
   const container = document.getElementById('clip-library');
   if (!container) return { refreshClipGrid: () => {} };
   container.innerHTML = '';
@@ -3346,8 +3348,9 @@ export function buildClipLibrary(ps, clipLibrary, movieInput, contextMenu) {
       btn.className = 'clip-slot';
       btn.textContent = String(i).padStart(2, '0');
 
-      // Left-click → select + recall
-      btn.addEventListener('click', async () => {
+      // Left-click → select + recall into Deck A; Shift-click → Deck B
+      btn.addEventListener('click', async (e) => {
+        const toDeckB = e.shiftKey && deckB?.input;
         ps.set('clip.bank', bank);
         ps.set('clip.slot', i);
         const globalIdx = bank * 16 + i;
@@ -3356,9 +3359,12 @@ export function buildClipLibrary(ps, clipLibrary, movieInput, contextMenu) {
         try {
           const result = await clipLibrary.recall(globalIdx);
           if (result) {
-            const idx = await movieInput.addClip(result.blobUrl);
-            if (idx >= 0) { movieInput.selectClip(idx); ps.set('movie.active', 1); }
-            statusEl.textContent = `▶ Bank ${bank} · Slot ${String(i).padStart(2,'0')} · ${result.duration.toFixed(1)}s`;
+            const deck   = toDeckB ? deckB.input : movieInput;
+            const active = toDeckB ? 'movieB.active' : 'movie.active';
+            const idx = await deck.addClip(result.blobUrl);
+            if (idx >= 0) { deck.selectClip(idx); ps.set(active, 1); }
+            if (toDeckB) deckB.onLoad?.();
+            statusEl.textContent = `▶ Bank ${bank} · Slot ${String(i).padStart(2,'0')} · ${result.duration.toFixed(1)}s${toDeckB ? ' → Deck B' : ''}`;
           }
         } catch (err) { console.error('[ClipLib] recall failed:', err); }
         _updateSlotClasses();
