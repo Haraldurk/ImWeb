@@ -8,7 +8,20 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
 
 ## [Unreleased] — v0.12 Dual-Deck A/B (in progress)
 
+### Changed
+- **Menu restructure** — tab bar is now Mapping | Movies | 3D | Analog |
+  Draw | Project. Clips renamed Movies; Buffer content merged into Movies,
+  Text into Draw, Tables + GLSL into Project (wrapper element ids kept so
+  all existing JS keeps working).
+- **Movie B status header** — now shows the active Deck B clip's thumbnail
+  and name (▶/⏸ + clip count) instead of plain text.
+
 ### Added
+- **Desktop state-bar ＋ tile** — quick-save state to next empty slot from
+  the desktop bottom bar (same action as ⇧S / the mobile ＋ button).
+- **Autoplay recovery** — one-time first-gesture hook resumes both decks if
+  Chrome's engagement policy rejected play(); videos remain strictly
+  muted + playsinline with caught play() rejections.
 - **Deck target toggle (touch)** — "Target: A / B" segmented control in the
   Clip Library header routes tapped clips to the chosen deck, making Deck B
   loading possible on iPad without a keyboard. UI-local state (never flipped

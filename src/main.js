@@ -882,10 +882,12 @@ async function main() {
     { input: movieInputB, onLoad: refreshClipBStatus },
   );
 
-  /** Deck B status line in the Movie B panel (Deck B has no clip list). */
+  /** Deck B status in the Movie B panel: active clip thumbnail + name
+   *  (Deck B deliberately has no clip list — no duplicated DOM). */
   function refreshClipBStatus() {
     const el = document.getElementById("clipB-status");
     if (!el) return;
+    el.innerHTML = "";
     const n = movieInputB.clips.length;
     if (!n) {
       el.textContent =
@@ -893,9 +895,24 @@ async function main() {
       return;
     }
     const cur = movieInputB.currentClip;
+    el.style.display = "flex";
+    el.style.alignItems = "center";
+    el.style.gap = "8px";
+    if (cur?.thumb) {
+      const img = document.createElement("img");
+      img.src = cur.thumb;
+      img.width = 48;
+      img.height = 27;
+      img.style.cssText =
+        "object-fit:cover;border:1px solid var(--border);border-radius:2px;flex:none;";
+      el.appendChild(img);
+    }
+    const label = document.createElement("span");
     const name = cur ? cur.name.replace(/\.[^/.]+$/, "") : "—";
     const on = ps.get("movieB.active").value;
-    el.textContent = `${on ? "▶" : "⏸"} ${name} · ${n} clip${n > 1 ? "s" : ""}`;
+    label.textContent = `${on ? "▶" : "⏸"} ${name} · ${n} clip${n > 1 ? "s" : ""}`;
+    label.title = cur?.name ?? "";
+    el.appendChild(label);
   }
 
   // Update model status label after drag-and-drop or button import
