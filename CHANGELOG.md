@@ -9,6 +9,12 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
 ## [Unreleased] — v0.12 Dual-Deck A/B (in progress)
 
 ### Added
+- **Deck B UI + clip routing** — "Movie B" and "Mix Bus" collapsible panels
+  in the Clips tab (movieB.* and mix.* param rows via the standard mapping
+  system). ⇧-click a Clip Library slot or a Deck A clip, or ⇧-drop a video
+  file anywhere, to route it to Deck B; plain click/drop keeps loading
+  Deck A as before. Deck B panel shows a live status line (▶/⏸ + active
+  clip name + count).
 - **MixBus A/B engine** — new `mix.*` param group (`xfade` 0–1 default 0 =
   pure Deck A, `mode` [Crossfade/Add/Multiply/Luma Mask/Displace], `dispAmt`,
   `maskLo`, `maskHi`) driving a MIXBUS shader pass that mixes the two movie
