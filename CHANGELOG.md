@@ -9,6 +9,11 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
 ## [Unreleased] — v0.12 Dual-Deck A/B (in progress)
 
 ### Added
+- **Deck target toggle (touch)** — "Target: A / B" segmented control in the
+  Clip Library header routes tapped clips to the chosen deck, making Deck B
+  loading possible on iPad without a keyboard. UI-local state (never flipped
+  by state recall/morph), defaults to A each launch; ⇧-click remains a
+  hardware override that always routes to Deck B.
 - **Idle-deck upload gating** — a deck that provably cannot contribute to
   the frame skips its texImage2D upload (playback keeps running for cue;
   the currentTime change-detector re-uploads instantly on wake). Deck B

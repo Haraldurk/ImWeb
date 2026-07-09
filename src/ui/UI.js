@@ -3273,6 +3273,34 @@ export function buildClipLibrary(ps, clipLibrary, movieInput, contextMenu, deckB
   header.appendChild(srcSel);
   container.appendChild(header);
 
+  // ── Deck target toggle: recall routes to Deck A or Deck B ──
+  // UI-local state (NOT a param): deck routing must never be flipped by a
+  // state recall or morph. Defaults to A each launch. ⇧-click stays a
+  // hardware override that always routes to B regardless of the toggle.
+  let _targetDeckB = false;
+  const deckRow = document.createElement('div');
+  deckRow.className = 'clip-lib-bank-row';
+  const deckLabel = document.createElement('span');
+  deckLabel.textContent = 'Target:';
+  deckLabel.style.cssText = 'font-family:var(--mono);font-size:10px;color:var(--text-2);align-self:center;padding:0 4px;';
+  deckRow.appendChild(deckLabel);
+  const deckBtns = ['A', 'B'].map((name, i) => {
+    const btn = document.createElement('button');
+    btn.className = 'clip-bank-btn';
+    btn.textContent = name;
+    btn.title = `Load tapped clips into Deck ${name}`;
+    btn.addEventListener('click', () => {
+      _targetDeckB = i === 1;
+      deckBtns.forEach((b, j) => b.classList.toggle('active', (j === 1) === _targetDeckB));
+      container.dataset.deckTarget = _targetDeckB ? 'B' : 'A';
+    });
+    deckRow.appendChild(btn);
+    return btn;
+  });
+  deckBtns[0].classList.add('active');
+  container.dataset.deckTarget = 'A';
+  if (deckB?.input) container.appendChild(deckRow); // only when Deck B exists
+
   // Duration param row (reuse buildParamRow for drag/dblclick)
   const durParam = ps.get('clip.duration');
   container.appendChild(buildParamRow(durParam, contextMenu));
@@ -3348,9 +3376,10 @@ export function buildClipLibrary(ps, clipLibrary, movieInput, contextMenu, deckB
       btn.className = 'clip-slot';
       btn.textContent = String(i).padStart(2, '0');
 
-      // Left-click → select + recall into Deck A; Shift-click → Deck B
+      // Left-click → select + recall into the target deck (toggle above);
+      // ⇧-click → hardware override, always Deck B
       btn.addEventListener('click', async (e) => {
-        const toDeckB = e.shiftKey && deckB?.input;
+        const toDeckB = (e.shiftKey || _targetDeckB) && deckB?.input;
         ps.set('clip.bank', bank);
         ps.set('clip.slot', i);
         const globalIdx = bank * 16 + i;
