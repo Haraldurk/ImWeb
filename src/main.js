@@ -1862,16 +1862,41 @@ async function main() {
     _mpStatus.style.cssText = 'font-size:11px;color:var(--text-2);margin-top:8px;transition:opacity .4s;';
     _mpStatus.textContent = 'Loading MasterProject…';
     document.getElementById('onboarding-box')?.appendChild(_mpStatus);
-    try {
-      await projectFile.importFromURL('/Projects/MasterProject.imweb');
-      console.info('[ImWeb] First launch — MasterProject.imweb loaded');
-      setTimeout(() => { _mpStatus.style.opacity = '0'; }, 1000);
-    } catch (err) {
-      console.warn('[ImWeb] Could not load /Projects/MasterProject.imweb — starting blank:', err.message);
-      _mpStatus.style.color = 'var(--accent)';
-      _mpStatus.textContent = 'Could not load default project — open Project tab to restore.';
-      setTimeout(() => { _mpStatus.style.opacity = '0'; }, 3000);
-    }
+
+    const _loadMasterProject = async (attempt = 1) => {
+      try {
+        await projectFile.importFromURL('/Projects/MasterProject.imweb');
+        console.info('[ImWeb] First launch — MasterProject.imweb loaded' + (attempt > 1 ? ` (attempt ${attempt})` : ''));
+        _mpStatus.style.color = '';
+        _mpStatus.textContent = 'MasterProject loaded';
+        setTimeout(() => { _mpStatus.style.opacity = '0'; }, 1000);
+      } catch (err) {
+        if (attempt < 2) {
+          console.warn(`[ImWeb] MasterProject load attempt ${attempt} failed, retrying…`, err);
+          await new Promise(r => setTimeout(r, 800));
+          return _loadMasterProject(attempt + 1);
+        }
+        console.error('[ImWeb] MasterProject load failed after retries — starting blank:', err);
+        _mpStatus.style.opacity = '1';
+        _mpStatus.style.color = 'var(--accent)';
+        _mpStatus.textContent = '';
+        const _mpMsg = document.createElement('span');
+        _mpMsg.textContent = 'Could not load default project. ';
+        const _mpRetry = document.createElement('a');
+        _mpRetry.href = '#';
+        _mpRetry.textContent = 'Retry';
+        _mpRetry.style.cssText = 'color:var(--accent);text-decoration:underline;cursor:pointer;';
+        _mpRetry.addEventListener('click', (e) => {
+          e.preventDefault();
+          _mpStatus.textContent = 'Loading MasterProject…';
+          _mpStatus.style.color = 'var(--text-2)';
+          _loadMasterProject(1);
+        });
+        _mpStatus.appendChild(_mpMsg);
+        _mpStatus.appendChild(_mpRetry);
+      }
+    };
+    await _loadMasterProject();
   }
 
   // Click OSC indicator → prompt for WebSocket URL and connect
