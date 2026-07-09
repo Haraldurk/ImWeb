@@ -3,7 +3,7 @@
  * Cache-first strategy for app shell; network-first for anything else.
  */
 
-const CACHE = 'imweb-v0.6'; // bumped to flush caches poisoned by dev use of v0.5
+const CACHE = 'imweb-v0.7'; // bumped: sw now bypasses /Projects/ fetches (MasterProject race)
 
 const APP_SHELL = [
   '/',
@@ -34,6 +34,11 @@ self.addEventListener('fetch', e => {
   if (e.request.method !== 'GET') return;
   const url = new URL(e.request.url);
   if (url.origin !== self.location.origin) return;
+  // Bypass project files entirely — large, fetched once (first-launch
+  // MasterProject load or explicit restore), no benefit from SW caching,
+  // and routing them through an installing/activating worker risked
+  // stalling the very fetch first-launch depends on.
+  if (url.pathname.startsWith('/Projects/')) return;
 
   e.respondWith(
     caches.match(e.request).then(cached => {
