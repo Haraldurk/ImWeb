@@ -1129,6 +1129,11 @@ async function main() {
       return idx;
     });
 
+  // Desktop state-bar ＋ tile — same quick-save as ⇧S / mobile Save button
+  document
+    .getElementById("state-save-desktop")
+    ?.addEventListener("click", quickSaveState);
+
   // ≤900px / large-touch only (Phase 4)
   const mobileStatePad = new MobileStatePad(presetMgr, { onQuickSave: quickSaveState });
   void mobileStatePad;
