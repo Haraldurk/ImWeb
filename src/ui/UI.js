@@ -1434,11 +1434,19 @@ export class ContextMenu {
     // momentum scroll delivers a click to the item under the finger —
     // which here would assign a controller. Swallow any click arriving
     // within 150ms of scroll activity; capture phase beats item handlers.
+    // A normal iPad tap micro-drifts and fires scroll events DURING the tap,
+    // so gating on "scroll within 150ms of the click" swallowed every tap.
+    // Momentum can only be live BEFORE the finger lands — so sample the
+    // scroll clock at pointerdown and swallow only that case.
     this._lastScrollT = 0;
+    this._stoppedMomentum = false;
     this.el.addEventListener('scroll',
       () => { this._lastScrollT = performance.now(); }, { passive: true });
+    this.el.addEventListener('pointerdown', () => {
+      this._stoppedMomentum = performance.now() - this._lastScrollT < 100;
+    }, true);
     this.el.addEventListener('click', e => {
-      if (performance.now() - this._lastScrollT < 150) {
+      if (this._stoppedMomentum) {
         e.stopPropagation();
         e.preventDefault();
       }

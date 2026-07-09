@@ -224,10 +224,15 @@ export class MovieInput {
       if (v.paused && speed > 0) v.play().catch(() => {});
     }
 
-    // Loop boundaries — Loop mode wraps in whichever direction speed points
+    // Loop boundaries — Loop mode wraps in whichever direction speed points.
+    // Forward wrap fires a lookahead BEFORE the boundary (and on 'ended') so
+    // the seek starts while frames are still buffered — waiting for exact
+    // endT lets the decoder starve and stutters the loop point.
     v.loop = false;
     if (loopMode === 1) { // Loop
-      if (speed >= 0 && v.currentTime >= endT)   v.currentTime = startT;
+      const lookahead = Math.min(0.05, range * 0.5);
+      if (speed >= 0 && (v.ended || v.currentTime >= endT - lookahead))
+        v.currentTime = startT;
       if (speed <  0 && v.currentTime <= startT) v.currentTime = endT;
     } else if (loopMode === 2) { // Ping-pong — boundaries handled above
       // clamp to range
