@@ -191,15 +191,11 @@
                     <button class="tab active" data-tab="mapping">
                         Mapping
                     </button>
-                    <button class="tab" data-tab="buffer">Buffer</button>
+                    <button class="tab" data-tab="clips">Movies</button>
+                    <button class="tab" data-tab="scene3d">3D</button>
                     <button class="tab" data-tab="analog">Analog</button>
                     <button class="tab" data-tab="draw">Draw</button>
-                    <button class="tab" data-tab="text">Text</button>
-                    <button class="tab" data-tab="scene3d">3D</button>
-                    <button class="tab" data-tab="clips">Clips</button>
                     <button class="tab" data-tab="presets">Project</button>
-                    <button class="tab" data-tab="tables">Tables</button>
-                    <button class="tab" data-tab="glsl">GLSL</button>
                 </div>
 
                 <!-- MAPPING TAB -->
@@ -432,19 +428,6 @@
                 </div>
 
                 <!-- BUFFER TAB -->
-                <div id="tab-buffer" class="tab-content">
-                    <div class="panel-section">
-                        <div class="section-header">Stills Buffer</div>
-                        <canvas
-                            id="buffer-canvas"
-                            width="320"
-                            height="240"
-                        ></canvas>
-                        <div id="buffer-controls"></div>
-                        <div id="buffer-params"></div>
-                    </div>
-                </div>
-
                 <!-- DRAW TAB -->
                 <div id="tab-draw" class="tab-content">
                     <div class="panel-section">
@@ -475,56 +458,55 @@
                         <div class="section-header">Brush</div>
                         <div id="draw-params"></div>
                     </div>
-                </div>
-
-                <!-- TEXT TAB -->
-                <div id="tab-text" class="tab-content">
-                    <div class="panel-section">
-                        <div class="section-header">Text Layer</div>
-                        <canvas
-                            id="text-preview"
-                            width="256"
-                            height="256"
-                            style="
-                                display: block;
-                                width: 100%;
-                                image-rendering: pixelated;
-                                border: 1px solid var(--border);
-                                background: #000;
-                            "
-                        ></canvas>
-                        <textarea
-                            id="text-content"
-                            rows="4"
-                            spellcheck="false"
-                            style="
-                                width: 100%;
-                                box-sizing: border-box;
-                                margin-top: 6px;
-                                font-family: var(--mono);
-                                font-size: 12px;
-                                background: var(--bg-4);
-                                border: 1px solid var(--border);
-                                color: var(--text-1);
-                                padding: 6px;
-                                border-radius: 3px;
-                                resize: vertical;
-                            "
-                        >
+                    <!-- Text Layer (merged from former Text tab; wrapper id kept for JS) -->
+                    <div id="tab-text" class="tab-merged">
+                        <div class="panel-section">
+                            <div class="section-header">Text Layer</div>
+                            <canvas
+                                id="text-preview"
+                                width="256"
+                                height="256"
+                                style="
+                                    display: block;
+                                    width: 100%;
+                                    image-rendering: pixelated;
+                                    border: 1px solid var(--border);
+                                    background: #000;
+                                "
+                            ></canvas>
+                            <textarea
+                                id="text-content"
+                                rows="4"
+                                spellcheck="false"
+                                style="
+                                    width: 100%;
+                                    box-sizing: border-box;
+                                    margin-top: 6px;
+                                    font-family: var(--mono);
+                                    font-size: 12px;
+                                    background: var(--bg-4);
+                                    border: 1px solid var(--border);
+                                    color: var(--text-1);
+                                    padding: 6px;
+                                    border-radius: 3px;
+                                    resize: vertical;
+                                "
+                            >
 ImWeb</textarea
-                        >
-                        <div style="display: flex; gap: 6px; padding: 4px 0">
-                            <button id="btn-text-advance" class="import-btn">
-                                → Advance
-                            </button>
-                            <button id="btn-text-reset" class="import-btn">
-                                ↩ Reset
-                            </button>
+                            >
+                            <div style="display: flex; gap: 6px; padding: 4px 0">
+                                <button id="btn-text-advance" class="import-btn">
+                                    → Advance
+                                </button>
+                                <button id="btn-text-reset" class="import-btn">
+                                    ↩ Reset
+                                </button>
+                            </div>
                         </div>
-                    </div>
-                    <div class="panel-section">
-                        <div class="section-header">Style</div>
-                        <div id="text-params"></div>
+                        <div class="panel-section">
+                            <div class="section-header">Style</div>
+                            <div id="text-params"></div>
+                        </div>
                     </div>
                 </div>
 
@@ -650,6 +632,19 @@ ImWeb</textarea
                         <div class="section-header">Clip Library</div>
                         <div id="clip-library"></div>
                     </div>
+                    <!-- Stills Buffer (merged from former Buffer tab; wrapper id kept for JS) -->
+                    <div id="tab-buffer" class="tab-merged">
+                        <div class="panel-section">
+                            <div class="section-header">Stills Buffer</div>
+                            <canvas
+                                id="buffer-canvas"
+                                width="320"
+                                height="240"
+                            ></canvas>
+                            <div id="buffer-controls"></div>
+                            <div id="buffer-params"></div>
+                        </div>
+                    </div>
                 </div>
 
                 <!-- PROJECT TAB -->
@@ -729,89 +724,86 @@ ImWeb</textarea
                     <div id="state-seq-section" class="panel-section">
                         <div class="section-header">State Step Sequencer</div>
                     </div>
-                </div>
-
-                <!-- TABLES TAB -->
-                <div id="tab-tables" class="tab-content">
-                    <div class="panel-section">
-                        <div class="section-header" id="tables-section-header">
-                            Response Curves
+                    <!-- Response Curves (merged from former Tables tab; wrapper id kept for JS) -->
+                    <div id="tab-tables" class="tab-merged">
+                        <div class="panel-section">
+                            <div class="section-header" id="tables-section-header">
+                                Response Curves
+                            </div>
+                            <div id="tables-list"></div>
+                            <canvas
+                                id="table-editor"
+                                width="280"
+                                height="200"
+                            ></canvas>
                         </div>
-                        <div id="tables-list"></div>
-                        <canvas
-                            id="table-editor"
-                            width="280"
-                            height="200"
-                        ></canvas>
                     </div>
-                </div>
-
-                <!-- GLSL TAB -->
-                <div id="tab-glsl" class="tab-content">
-                    <div class="panel-section">
-                        <div class="section-header">Live GLSL Effect</div>
-                        <div
-                            style="
-                                padding: 4px 8px 0;
-                                display: flex;
-                                gap: 4px;
-                                align-items: center;
-                            "
-                        >
-                            <button
-                                id="btn-glsl-apply"
-                                class="import-btn"
-                                style="flex: 1"
-                            >
-                                ▶ Apply
-                            </button>
-                            <button id="btn-glsl-reset" class="import-btn">
-                                ↺ Reset
-                            </button>
-                            <label
+                    <!-- Live GLSL (merged from former GLSL tab; wrapper id kept for JS) -->
+                    <div id="tab-glsl" class="tab-merged">
+                        <div class="panel-section">
+                            <div class="section-header">Live GLSL Effect</div>
+                            <div
                                 style="
-                                    font-size: 10px;
-                                    color: var(--text-2);
+                                    padding: 4px 8px 0;
                                     display: flex;
-                                    align-items: center;
                                     gap: 4px;
+                                    align-items: center;
                                 "
                             >
-                                <input type="checkbox" id="glsl-auto-apply" />
-                                Auto
-                            </label>
-                        </div>
-                        <div
-                            id="glsl-error"
-                            style="
-                                padding: 4px 8px;
-                                font-size: 10px;
-                                color: #e84040;
-                                display: none;
-                                white-space: pre-wrap;
-                                font-family: monospace;
-                            "
-                        ></div>
-                        <textarea
-                            id="glsl-editor"
-                            spellcheck="false"
-                            autocomplete="off"
-                            style="
-                                display: block;
-                                width: 100%;
-                                height: 280px;
-                                resize: vertical;
-                                background: #0a0a0e;
-                                color: #c8c8d8;
-                                font-family: monospace;
-                                font-size: 11px;
-                                border: 1px solid var(--border);
-                                padding: 6px;
-                                box-sizing: border-box;
-                                outline: none;
-                                tab-size: 2;
-                            "
-                        >
+                                <button
+                                    id="btn-glsl-apply"
+                                    class="import-btn"
+                                    style="flex: 1"
+                                >
+                                    ▶ Apply
+                                </button>
+                                <button id="btn-glsl-reset" class="import-btn">
+                                    ↺ Reset
+                                </button>
+                                <label
+                                    style="
+                                        font-size: 10px;
+                                        color: var(--text-2);
+                                        display: flex;
+                                        align-items: center;
+                                        gap: 4px;
+                                    "
+                                >
+                                    <input type="checkbox" id="glsl-auto-apply" />
+                                    Auto
+                                </label>
+                            </div>
+                            <div
+                                id="glsl-error"
+                                style="
+                                    padding: 4px 8px;
+                                    font-size: 10px;
+                                    color: #e84040;
+                                    display: none;
+                                    white-space: pre-wrap;
+                                    font-family: monospace;
+                                "
+                            ></div>
+                            <textarea
+                                id="glsl-editor"
+                                spellcheck="false"
+                                autocomplete="off"
+                                style="
+                                    display: block;
+                                    width: 100%;
+                                    height: 280px;
+                                    resize: vertical;
+                                    background: #0a0a0e;
+                                    color: #c8c8d8;
+                                    font-family: monospace;
+                                    font-size: 11px;
+                                    border: 1px solid var(--border);
+                                    padding: 6px;
+                                    box-sizing: border-box;
+                                    outline: none;
+                                    tab-size: 2;
+                                "
+                            >
 // Available uniforms:
 //   sampler2D uTexture    — current frame
 //   float     uTime       — seconds
@@ -823,17 +815,18 @@ void main() {
   vec4 col = texture2D(uTexture, vUv);
   gl_FragColor = col;
 }</textarea
-                        >
-                        <!-- Param uniform binding slots -->
-                        <div
-                            id="glsl-uniforms"
-                            style="
-                                padding: 4px 8px 6px;
-                                font-family: monospace;
-                                font-size: 10px;
-                                color: var(--text-2);
-                            "
-                        ></div>
+                            >
+                            <!-- Param uniform binding slots -->
+                            <div
+                                id="glsl-uniforms"
+                                style="
+                                    padding: 4px 8px 6px;
+                                    font-family: monospace;
+                                    font-size: 10px;
+                                    color: var(--text-2);
+                                "
+                            ></div>
+                        </div>
                     </div>
                 </div>
 
