@@ -2994,6 +2994,19 @@ async function main() {
     });
   });
 
+  // Chrome desktop autoplay policy: play() on an unmuted video rejects until
+  // the page has a user gesture. tick() already retries paused decks every
+  // frame (and succeeds once engagement exists); this one-time gesture hook
+  // makes the recovery immediate on the first interaction.
+  const _resumeDecksOnGesture = () => {
+    [movieInput, movieInputB].forEach((deck) => {
+      const v = deck.currentClip?.video;
+      if (deck.active && v?.paused) v.play().catch(() => {});
+    });
+  };
+  window.addEventListener("pointerdown", _resumeDecksOnGesture, { once: true, capture: true });
+  window.addEventListener("keydown", _resumeDecksOnGesture, { once: true, capture: true });
+
   // ── Clip Library wiring ───────────────────────────────────────────────────
   let _clipRecording = false;
 
