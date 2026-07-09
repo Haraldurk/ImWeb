@@ -774,11 +774,14 @@ export class Pipeline {
   }
 
   _resolveSource(inputs, sourceIdx) {
-    const SOURCES = ['camera', 'movie', 'buffer', 'color', 'color2', 'noise', 'scene3d', 'draw', 'output', 'bg1', 'bg2', 'text', 'sound', 'delay', 'scope', 'slitscan', 'particles', 'seq1', 'seq2', 'seq3', 'depth3d', 'sdf', 'vwarp', 'analog', 'tdisp'];
+    // LOCKSTEP + APPEND-ONLY: must match SOURCES in ParameterSystem.js
+    // (registerCoreParameters) and keys in main.js _resolveLayerTex().
+    const SOURCES = ['camera', 'movie', 'buffer', 'color', 'color2', 'noise', 'scene3d', 'draw', 'output', 'bg1', 'bg2', 'text', 'sound', 'delay', 'scope', 'slitscan', 'particles', 'seq1', 'seq2', 'seq3', 'depth3d', 'sdf', 'vwarp', 'analog', 'tdisp', 'movieB'];
     const key = SOURCES[sourceIdx] ?? 'color';
 
     if (key === 'camera'  && inputs.camera)  return inputs.camera;
     if (key === 'movie'   && inputs.movie)   return inputs.movie;
+    if (key === 'movieB'  && inputs.movieB)  return inputs.movieB;
     if (key === 'buffer'  && inputs.buffer)  return inputs.buffer;
     if (key === 'scene3d' && inputs.scene3d) return inputs.scene3d;
     if (key === 'draw'    && inputs.draw)    return inputs.draw;

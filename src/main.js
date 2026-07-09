@@ -224,6 +224,9 @@ async function main() {
   await camera3d.init();
 
   const movieInput = new MovieInput();
+  const movieInputB = new MovieInput('movieB');
+  // Dev-only console access — Deck B has no UI until v0.12 Step 4
+  if (import.meta.env.DEV) window.__decks = { movieInput, movieInputB, ps };
   ctrl._movieInput = movieInput;
 
   const stillsBuffer = new StillsBuffer(renderer, W, H);
@@ -581,6 +584,7 @@ async function main() {
   })();
 
   ps.set("movie.active", 0); // always start with movie off regardless of saved preset state
+  ps.set("movieB.active", 0);
   const stepSequencer = new StepSequencer(presetMgr);
 
   // MIDI Program Change → preset recall (PC 0–127 maps to preset index)
@@ -2934,6 +2938,20 @@ async function main() {
       c.video.muted = !!v;
     });
   });
+  // Deck B mirrors of the above
+  ps.get("movieB.active").onChange((v) => {
+    movieInputB.active = !!v;
+    if (v && movieInputB.currentClip) {
+      movieInputB.currentClip.video.play().catch(() => {});
+    } else if (!v && movieInputB.currentClip) {
+      movieInputB.currentClip.video.pause();
+    }
+  });
+  ps.get("movieB.mute").onChange((v) => {
+    movieInputB.clips.forEach((c) => {
+      c.video.muted = !!v;
+    });
+  });
 
   // ── Clip Library wiring ───────────────────────────────────────────────────
   let _clipRecording = false;
@@ -3021,6 +3039,8 @@ async function main() {
 
   /** Resolve a raw layer-source index to its current texture (matches Pipeline._resolveSource). */
   function _resolveLayerTex(idx) {
+    // LOCKSTEP + APPEND-ONLY: must match SOURCES in ParameterSystem.js and
+    // the SOURCES key array in Pipeline._resolveSource().
     const keys = [
       "camera",   // 0
       "movie",    // 1
@@ -3046,12 +3066,16 @@ async function main() {
       "sdf",      // 21
       "vwarp",    // 22
       "analog",   // 23
+      "tdisp",    // 24
+      "movieB",   // 25
     ];
     const key = keys[idx];
     if (key === "camera")
       return camera3d.active ? camera3d.currentTexture : null;
     if (key === "movie")
       return movieInput.active ? movieInput.currentTexture : null;
+    if (key === "movieB")
+      return movieInputB.active ? movieInputB.currentTexture : null;
     if (key === "scene3d") return scene3d.texture;
     if (key === "draw") return drawLayer.texture;
     if (key === "buffer") return stillsBuffer.texture;
@@ -3061,6 +3085,7 @@ async function main() {
     if (key === "seq2") return seq2.texture;
     if (key === "seq3") return seq3.texture;
     if (key === "analog") return analogTV.texture;
+    if (key === "tdisp") return tdEngine.texture;
     return pipeline.prev.texture;
   }
 
@@ -5219,8 +5244,9 @@ void main() {
     // Orbit inertia — coast + damp after a touch flick
     gestureArb.tick(dt);
 
-    // Update movie clip
+    // Update movie clips (both decks)
     movieInput.tick(ps, beatPhase, dt);
+    movieInputB.tick(ps, beatPhase, dt);
 
     // Tick stills buffer (reads fs1 → readIndex)
     stillsBuffer.tick(ps, dt);
@@ -5492,6 +5518,7 @@ void main() {
     const inputs = {
       camera: camera3d.active ? camera3d.currentTexture : null,
       movie: movieInput.active ? movieInput.currentTexture : null,
+      movieB: movieInputB.active ? movieInputB.currentTexture : null,
       buffer: stillsBuffer.texture,
       buffer2: stillsBuffer.texture2,
       bg1: stillsBuffer.bgTexture(0),

@@ -6,6 +6,23 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
 
 ---
 
+## [Unreleased] — v0.12 Dual-Deck A/B (in progress)
+
+### Added
+- **Deck B movie engine (headless)** — second `MovieInput` instance driven by
+  `movieB.*` params (registered from a shared descriptor table with Deck A so
+  the two can never drift); "Movie B" appended as source index 25, selectable
+  as FG/BG/DS and everywhere the shared source list is offered. No UI yet —
+  dev console access via `window.__decks` (dev builds only). Build plan:
+  `docs/ImWeb-DualDeck-v0.12-BuildPlan.md`.
+
+### Fixed
+- `_resolveLayerTex()` source-key list was missing `tdisp` (index 24), so
+  "TimeDisp" fell through to the Output fallback in secondary lookups
+  (e.g. `td.captureSource`).
+
+---
+
 ## [0.11.0] — 2026-07-07 — Touch & Ergonomics Overhaul
 
 A ruthless UX audit of the touch layout ("the Grill Report") followed by

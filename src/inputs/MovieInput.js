@@ -15,7 +15,8 @@ import * as THREE from 'three';
 const MAX_CLIPS = 8;
 
 export class MovieInput {
-  constructor() {
+  constructor(prefix = 'movie') {
+    this.prefix   = prefix;  // param namespace: 'movie' (Deck A) or 'movieB' (Deck B)
     this.clips    = [];      // [{ name, url, video, texture, duration }]
     this.active   = false;
     this._current = -1;      // index of active clip
@@ -157,11 +158,13 @@ export class MovieInput {
       }
     };
 
+    const P = this.prefix;
+
     // BPM sync mode: lock clip position to beat phase
-    const bpmSync = params.get('movie.bpmsync')?.value;
+    const bpmSync = params.get(`${P}.bpmsync`)?.value;
     if (bpmSync) {
       const beatLenOptions = [1, 2, 4, 8, 16];
-      const beatLenIdx     = params.get('movie.bpmbeats')?.value ?? 2;
+      const beatLenIdx     = params.get(`${P}.bpmbeats`)?.value ?? 2;
       const beatLen        = beatLenOptions[beatLenIdx] ?? 4;
       const phase          = (beatPhase % beatLen) / beatLen; // 0..1
       const targetT        = phase * clip.duration;
@@ -173,15 +176,15 @@ export class MovieInput {
     }
 
     // Range bounds
-    const startT = (params.get('movie.start').value / 100) * clip.duration;
-    const endT   = (params.get('movie.end').value   / 100) * clip.duration;
+    const startT = (params.get(`${P}.start`).value / 100) * clip.duration;
+    const endT   = (params.get(`${P}.end`).value   / 100) * clip.duration;
     const range  = Math.max(endT - startT, 0.001);
 
     // ── Pos-drive mode ───────────────────────────────────────────────────────
     // When a controller (LFO, MIDI, etc.) is assigned to movie.pos, pos owns
     // the scrub entirely — speed and loop are bypassed. This is the frame-scan
     // / LFO scrub use case (independent of MovieSpeed).
-    const posParam = params.get('movie.pos');
+    const posParam = params.get(`${P}.pos`);
     if (posParam.controller) {
       if (!v.paused) v.pause();
       const targetT = startT + (posParam.value / 100) * range;
@@ -192,8 +195,8 @@ export class MovieInput {
 
     // ── Normal playback: speed + loop ────────────────────────────────────────
     // Loop mode: 0=Off, 1=Loop (bidirectional), 2=Ping-pong
-    const loopMode = params.get('movie.loop').value;
-    let speed = params.get('movie.speed').value;
+    const loopMode = params.get(`${P}.loop`).value;
+    let speed = params.get(`${P}.speed`).value;
 
     // Ping-pong: flip direction at boundaries
     if (loopMode === 2) {
