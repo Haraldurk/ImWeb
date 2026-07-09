@@ -474,6 +474,7 @@ export function registerCoreParameters(ps) {
     "Analog",   // 23
     "TimeDisp", // 24
     "Movie B",  // 25
+    "Mix Bus",  // 26
   ];
 
   ps.register({
@@ -1437,6 +1438,50 @@ export function registerCoreParameters(ps) {
     group: "mirror-legacy", // superseded by slot-based mirror.fg/mirror.bg
     type: PARAM_TYPE.TOGGLE,
     value: 0,
+  });
+
+  // ── A/B Mix Bus (dual-deck v0.12) ─────────────────────────────────────────
+  ps.register({
+    id: "mix.xfade",
+    label: "Crossfade",
+    group: "mix",
+    min: 0,
+    max: 1,
+    value: 0, // 0 = pure Deck A — old projects render identically
+    feedbackVisible: true,
+  });
+  ps.register({
+    id: "mix.mode",
+    label: "MixMode",
+    group: "mix",
+    type: PARAM_TYPE.SELECT,
+    value: 0,
+    // APPEND-ONLY: indices persisted in saved states
+    options: ["Crossfade", "Add", "Multiply", "Luma Mask", "Displace"],
+  });
+  ps.register({
+    id: "mix.dispAmt",
+    label: "MixDisp",
+    group: "mix",
+    min: 0,
+    max: 1,
+    value: 0.1,
+  });
+  ps.register({
+    id: "mix.maskLo",
+    label: "MaskLo",
+    group: "mix",
+    min: 0,
+    max: 1,
+    value: 0.25,
+  });
+  ps.register({
+    id: "mix.maskHi",
+    label: "MaskHi",
+    group: "mix",
+    min: 0,
+    max: 1,
+    value: 0.75,
   });
 
   // ── Clip Library ──────────────────────────────────────────────────────────

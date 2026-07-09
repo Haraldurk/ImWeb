@@ -1756,3 +1756,43 @@ export const VASULKA_WARP = /* glsl */ `
     gl_FragColor = col;
   }
 `;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MIXBUS — dual-deck A/B movie mix (v0.12)
+// uFG = Deck A, uBG = Deck B. uXfade 0 = pure Deck A (back-compat default),
+// 1 = full mode result. Mode list is APPEND-ONLY (persisted SELECT indices).
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const MIXBUS = /* glsl */ `
+  uniform sampler2D uFG;    // Deck A
+  uniform sampler2D uBG;    // Deck B
+  uniform int   uMode;      // 0 Crossfade, 1 Add, 2 Multiply, 3 Luma Mask, 4 Displace
+  uniform float uXfade;
+  uniform float uDispAmt;
+  uniform float uMaskLo;
+  uniform float uMaskHi;
+
+  varying vec2 vUv;
+
+  float lumaOf(vec3 c) { return dot(c, vec3(0.299, 0.587, 0.114)); }
+
+  void main() {
+    vec3 a = texture2D(uFG, vUv).rgb;
+    vec3 b = texture2D(uBG, vUv).rgb;
+
+    vec3 res = b; // 0: Crossfade
+    if (uMode == 1) {
+      res = min(a + b, 1.0);                                    // Add
+    } else if (uMode == 2) {
+      res = a * b;                                              // Multiply
+    } else if (uMode == 3) {
+      float m = smoothstep(uMaskLo, uMaskHi, lumaOf(b));        // Luma Mask
+      res = mix(a, b, m);
+    } else if (uMode == 4) {
+      float lb = lumaOf(b);                                     // Displace
+      res = texture2D(uFG, vUv + (lb - 0.5) * uDispAmt).rgb;
+    }
+
+    gl_FragColor = vec4(mix(a, res, uXfade), 1.0);
+  }
+`;
