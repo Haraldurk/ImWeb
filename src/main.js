@@ -3068,6 +3068,7 @@ async function main() {
       "analog",   // 23
       "tdisp",    // 24
       "movieB",   // 25
+      "mixbus",   // 26
     ];
     const key = keys[idx];
     if (key === "camera")
@@ -3086,6 +3087,7 @@ async function main() {
     if (key === "seq3") return seq3.texture;
     if (key === "analog") return analogTV.texture;
     if (key === "tdisp") return tdEngine.texture;
+    if (key === "mixbus") return pipeline.mixTexture;
     return pipeline.prev.texture;
   }
 

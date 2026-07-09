@@ -9,6 +9,13 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
 ## [Unreleased] — v0.12 Dual-Deck A/B (in progress)
 
 ### Added
+- **MixBus A/B engine** — new `mix.*` param group (`xfade` 0–1 default 0 =
+  pure Deck A, `mode` [Crossfade/Add/Multiply/Luma Mask/Displace], `dispAmt`,
+  `maskLo`, `maskHi`) driving a MIXBUS shader pass that mixes the two movie
+  decks into a dedicated render target ahead of layer resolution. "Mix Bus"
+  appended as source index 26 — selectable as FG/BG/DS. Pass is skipped when
+  neither deck is live; it reads only the deck textures, so no feedback
+  hazard. No UI yet (Step 4).
 - **Deck B movie engine (headless)** — second `MovieInput` instance driven by
   `movieB.*` params (registered from a shared descriptor table with Deck A so
   the two can never drift); "Movie B" appended as source index 25, selectable

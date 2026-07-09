@@ -23,7 +23,7 @@ import {
   PIXELATE, EDGE, RGBSHIFT, POSTERIZE, SOLARIZE, COLOR_CORRECT, CHROMA_KEY,
   VIGNETTE, BLOOM_EXTRACT, BLOOM_BLUR, BLOOM_COMPOSITE, KALEIDOSCOPE, PIXEL_SORT,
   FILM_GRAIN, FEEDBACK_ROTATE, QUAD_MIRROR, LEVELS, LUT3D, WHITE_BALANCE, VASULKA_WARP,
-  SHARPEN,
+  SHARPEN, MIXBUS,
 } from '../shaders/index.js';
 
 export const DEFAULT_FX_ORDER = [
@@ -221,6 +221,11 @@ export class Pipeline {
     this._bloomTargetH = this._makeTarget(hw, hh);
     this._bloomTargetV = this._makeTarget(hw, hh);
 
+    // Dedicated full-res target for the A/B MixBus — its output must survive
+    // the ping-pong pool because layer resolution reads it later in the frame
+    // (and main.js reads it for secondary lookups).
+    this._mixTarget = this._makeTarget(width, height);
+
     // Live GLSL custom effect (hot-swappable)
     this._customMat    = null;  // set by setCustomShader()
     this._customError  = null;  // last compile error string, or null
@@ -312,6 +317,24 @@ export class Pipeline {
         processedInputs = this._pInputs;
       }
       this._pInputs.buffer = blended;
+    }
+
+    // ── MixBus: A/B deck mix ─────────────────────────────────────────────────
+    // Renders into a dedicated target (survives the ping-pong pool) BEFORE
+    // layer resolution so 'Mix Bus' is selectable as FG/BG/DS this frame.
+    // Reads only the two deck textures — never its own target, so no
+    // feedback-guard is needed. Skipped when neither deck is live.
+    if (inputs.movie || inputs.movieB) {
+      const fb = this._getFallbackTexture();
+      this._passTo(this.m.mixbus, {
+        uFG:      inputs.movie  ?? fb,
+        uBG:      inputs.movieB ?? fb,
+        uMode:    p.get('mix.mode').value,
+        uXfade:   p.get('mix.xfade').value,
+        uDispAmt: p.get('mix.dispAmt').value,
+        uMaskLo:  p.get('mix.maskLo').value,
+        uMaskHi:  p.get('mix.maskHi').value,
+      }, this._mixTarget);
     }
 
     // Resolve input textures
@@ -677,6 +700,7 @@ export class Pipeline {
     const hh = Math.ceil(h / 2);
     this._bloomTargetH.setSize(hw, hh);
     this._bloomTargetV.setSize(hw, hh);
+    this._mixTarget.setSize(w, h);
     if (w !== this._lastResW || h !== this._lastResH) {
       this.m.pixelate.uniforms.uResolution.value.set(w, h);
       this.m.edge.uniforms.uResolution.value.set(w, h);
@@ -773,15 +797,21 @@ export class Pipeline {
     this.renderer.render(this._scene, this._camera);
   }
 
+  /** A/B MixBus output texture — for consumers outside render() (main.js). */
+  get mixTexture() {
+    return this._mixTarget.texture;
+  }
+
   _resolveSource(inputs, sourceIdx) {
     // LOCKSTEP + APPEND-ONLY: must match SOURCES in ParameterSystem.js
     // (registerCoreParameters) and keys in main.js _resolveLayerTex().
-    const SOURCES = ['camera', 'movie', 'buffer', 'color', 'color2', 'noise', 'scene3d', 'draw', 'output', 'bg1', 'bg2', 'text', 'sound', 'delay', 'scope', 'slitscan', 'particles', 'seq1', 'seq2', 'seq3', 'depth3d', 'sdf', 'vwarp', 'analog', 'tdisp', 'movieB'];
+    const SOURCES = ['camera', 'movie', 'buffer', 'color', 'color2', 'noise', 'scene3d', 'draw', 'output', 'bg1', 'bg2', 'text', 'sound', 'delay', 'scope', 'slitscan', 'particles', 'seq1', 'seq2', 'seq3', 'depth3d', 'sdf', 'vwarp', 'analog', 'tdisp', 'movieB', 'mixbus'];
     const key = SOURCES[sourceIdx] ?? 'color';
 
     if (key === 'camera'  && inputs.camera)  return inputs.camera;
     if (key === 'movie'   && inputs.movie)   return inputs.movie;
     if (key === 'movieB'  && inputs.movieB)  return inputs.movieB;
+    if (key === 'mixbus')                    return this._mixTarget.texture;
     if (key === 'buffer'  && inputs.buffer)  return inputs.buffer;
     if (key === 'scene3d' && inputs.scene3d) return inputs.scene3d;
     if (key === 'draw'    && inputs.draw)    return inputs.draw;
@@ -872,6 +902,13 @@ export class Pipeline {
         uResolution: { value: new THREE.Vector2(1280, 720) },
       }),
       transfermode: this._mat(TRANSFERMODE, { uMode: { value: 0 }, uBlendAmount: { value: 1.0 } }),
+      mixbus:       this._mat(MIXBUS, {
+        uMode:    { value: 0 },
+        uXfade:   { value: 0 },
+        uDispAmt: { value: 0.1 },
+        uMaskLo:  { value: 0.25 },
+        uMaskHi:  { value: 0.75 },
+      }),
       transfercopy: this._mat(TRANSFER_COPY, { uBlendAmount: { value: 1.0 } }),
       colorshift:   this._mat(COLORSHIFT,   { uShift: { value: 0 } }),
       interlace:    this._mat(INTERLACE, {
