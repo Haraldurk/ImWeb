@@ -444,6 +444,9 @@ export class ParameterSystem extends EventTarget {
 export function registerCoreParameters(ps) {
   _ps = ps;  // make ps accessible to setTableManager for global.tableSlot sync
   // ── Layer source selection ────────────────────────────────────────────────
+  // LOCKSTEP + APPEND-ONLY: this array must match the SOURCES key array in
+  // Pipeline._resolveSource() and the keys array in main.js _resolveLayerTex().
+  // Indices are persisted in saved states — append at the true end only.
   const SOURCES = [
     "Camera",   // 0
     "Movie",    // 1
@@ -470,6 +473,7 @@ export function registerCoreParameters(ps) {
     "VWarp",    // 22
     "Analog",   // 23
     "TimeDisp", // 24
+    "Movie B",  // 25
   ];
 
   ps.register({
@@ -1400,86 +1404,39 @@ export function registerCoreParameters(ps) {
   });
 
   // ── Movie / clip ──────────────────────────────────────────────────────────
-  ps.register({
-    id: "movie.active",
-    label: "MovieOn",
-    group: "movie",
-    type: PARAM_TYPE.TOGGLE,
-    value: 0,
-    feedbackVisible: true,
+  // Both decks register from one descriptor table so movie.* (Deck A) and
+  // movieB.* (Deck B) can never drift. Deck A ids/labels/groups are unchanged.
+  const MOVIE_DECK_PARAMS = [
+    { key: "active", label: "MovieOn", type: PARAM_TYPE.TOGGLE, value: 0, feedbackVisible: true },
+    { key: "speed", label: "MovieSpeed", min: -1, max: 3, value: 1, feedbackVisible: true },
+    { key: "pos", label: "MoviePos", min: 0, max: 100, value: 0, unit: "%" },
+    { key: "start", label: "MovieStart", min: 0, max: 100, value: 0, unit: "%" },
+    { key: "end", label: "MovieEnd", min: 0, max: 100, value: 100, unit: "%" },
+    { key: "loop", label: "MovieLoop", type: PARAM_TYPE.SELECT, value: 1, options: ["Off", "Loop", "Ping-pong"] },
+    // default muted — user opts in to audio
+    { key: "mute", label: "MuteMovie", type: PARAM_TYPE.TOGGLE, value: 1 },
+    { key: "bpmsync", label: "BPM Sync", type: PARAM_TYPE.TOGGLE, value: 0 },
+    { key: "bpmbeats", label: "BeatLen", type: PARAM_TYPE.SELECT, value: 2, options: ["1 beat", "2 beats", "4 beats", "8 beats", "16 beats"] },
+  ];
+  [
+    { prefix: "movie", labelSuffix: "" },
+    { prefix: "movieB", labelSuffix: " B" },
+  ].forEach(({ prefix, labelSuffix }) => {
+    MOVIE_DECK_PARAMS.forEach(({ key, label, ...rest }) => {
+      ps.register({
+        id: `${prefix}.${key}`,
+        label: label + labelSuffix,
+        group: prefix,
+        ...rest,
+      });
+    });
   });
-  ps.register({
-    id: "movie.speed",
-    label: "MovieSpeed",
-    group: "movie",
-    min: -1,
-    max: 3,
-    value: 1,
-    feedbackVisible: true,
-  });
-  ps.register({
-    id: "movie.pos",
-    label: "MoviePos",
-    group: "movie",
-    min: 0,
-    max: 100,
-    value: 0,
-    unit: "%",
-  });
-  ps.register({
-    id: "movie.start",
-    label: "MovieStart",
-    group: "movie",
-    min: 0,
-    max: 100,
-    value: 0,
-    unit: "%",
-  });
-  ps.register({
-    id: "movie.end",
-    label: "MovieEnd",
-    group: "movie",
-    min: 0,
-    max: 100,
-    value: 100,
-    unit: "%",
-  });
-  ps.register({
-    id: "movie.loop",
-    label: "MovieLoop",
-    group: "movie",
-    type: PARAM_TYPE.SELECT,
-    value: 1,
-    options: ["Off", "Loop", "Ping-pong"],
-  });
-  ps.register({
-    id: "movie.mute",
-    label: "MuteMovie",
-    group: "movie",
-    type: PARAM_TYPE.TOGGLE,
-    value: 1,
-  }); // default muted — user opts in to audio
   ps.register({
     id: "movie.mirror",
     label: "MirrorMovie (legacy)",
     group: "mirror-legacy", // superseded by slot-based mirror.fg/mirror.bg
     type: PARAM_TYPE.TOGGLE,
     value: 0,
-  });
-  ps.register({
-    id: "movie.bpmsync",
-    label: "BPM Sync",
-    group: "movie",
-    type: PARAM_TYPE.TOGGLE,
-    value: 0,
-  });
-  ps.register({
-    id: "movie.bpmbeats",
-    label: "BeatLen",
-    group: "movie",
-    type: PARAM_TYPE.SELECT,
-    value: 2,
-    options: ["1 beat", "2 beats", "4 beats", "8 beats", "16 beats"],
   });
 
   // ── Clip Library ──────────────────────────────────────────────────────────
