@@ -89,9 +89,11 @@ is the multi-week cost.** Plan accordingly.
 ## Build order (each step ships and is verifiable alone)
 
 ### Step 1 — Deck B engine, headless (no UI)
-- Parameterize `MovieInput.tick()` by param-prefix (add a `prefix = 'movie'`
-  constructor arg or `tick(params, prefix, ...)`); replace the 7 hardcoded
-  `"movie."` reads. Deck A passes `'movie'` → byte-identical behavior.
+- Parameterize `MovieInput` by param-prefix: **constructor arg** (`new
+  MovieInput('movieB')`, stored as `this.prefix`, default `'movie'`) — not a
+  `tick()` arg — so all internal reads use one source of truth and existing
+  call sites stay unchanged. Replace the 7 hardcoded `"movie."` reads in
+  `tick()`. Deck A defaults to `'movie'` → byte-identical behavior.
 - `const movieInputB = new MovieInput('movieB')` in main.js near `movieInput`;
   add `movieInputB.tick(ps, 'movieB', beatPhase, dt)` next to the existing tick
   at `main.js:5223`. Note the **capture path**: `_stepCaptureFrame()`
@@ -154,10 +156,14 @@ is the multi-week cost.** Plan accordingly.
 - Add a target-deck concept to clip loading: a deck toggle in the Clips tab +
   route `clipLibrary.recall()` (the one call site, `main.js:2966`) to the
   selected deck. Dedicate MIDI note banks to decks rather than doubling the map.
-- Persistence: `movieB.*` and `mix.*` serialize as ordinary params
-  (old files lack them → inherit defaults → **identical render**). Deck B's
-  clip/asset refs need a new project-file field — **design the serialization
-  FIRST** (per the Save/Load debugging protocol in CLAUDE.md), then the code.
+- Persistence: `movieB.*` and `mix.*` serialize as ordinary params —
+  `ps.captureState()`/`tickMorph()` iterate `ps.getAll()` with no whitelist,
+  so states, morphing, and `.imweb` save pick them up automatically (old files
+  lack them → inherit defaults → **identical render**). Deck B's loaded clip
+  needs **no new project-file field**: Deck A's clip is already excluded from
+  `.imweb` (`ProjectFile.js:14-18`, blob URLs not portable); clips persist
+  only via ClipLibrary's own IndexedDB. Deck B matches Deck A — session-only.
+  Clip-ref persistence, if ever wanted, is a separate feature for both decks.
 - **Verify:** save a project with both decks loaded + a mid-crossfade state;
   confirm round-trip. Load an old pre-v0.12 project, confirm it renders
   unchanged.
