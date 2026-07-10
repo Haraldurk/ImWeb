@@ -6,7 +6,7 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
 
 ---
 
-## [Unreleased] — v0.12 Dual-Deck A/B (in progress)
+## [0.12.0] — 2026-07-10 — Dual-Deck & Touch Polish
 
 ### Fixed
 - **iPad context-menu taps** — prompt-based assignments (LFO, Fixed, MIDI,
