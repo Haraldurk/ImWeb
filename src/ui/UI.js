@@ -1454,12 +1454,23 @@ export class ContextMenu {
 
     // Controller selection
     this.el.querySelectorAll('.menu-item[data-ctrl]').forEach(btn => {
-      // iOS Safari: the tap→click synthesis on these items proved unreliable
-      // on-device, so fire from touchend directly. Drag-guard: a scroll
-      // gesture releasing over an item must NOT assign — only a tap that
-      // moved <10px counts. preventDefault suppresses the ghost click so
-      // desktop/click and touch paths can never double-fire.
+      // iOS Safari tap handling. Items split into two classes:
+      //  - prompt items (lfo-*, fixed, midi-*, key, expr) call window.prompt(),
+      //    which iOS only authorizes from an UNTAMPERED native click —
+      //    preventDefault()+synthetic click makes prompt() return null
+      //    silently. So a valid tap must let the native click through.
+      //  - direct-assign items (sound/sensors/gamepad/none) are idempotent;
+      //    they get a short-fuse synthetic fallback in case the native click
+      //    never arrives (the Phase 11 on-device failure mode). A rare
+      //    double-fire is harmless: assign() replaces, and hide() nulls
+      //    _currentParam after the first.
+      // Drag-guard: a scroll release over an item (>10px) is not a tap; iOS
+      // sends no click after a real drag, so returning is sufficient.
+      const type = btn.dataset.ctrl;
+      const needsPrompt = type.startsWith('lfo-') ||
+        ['fixed', 'midi-cc', 'midi-note', 'key', 'expr'].includes(type);
       let _tStart = null;
+      let _fallbackTimer = null;
       btn.addEventListener('touchstart', e => {
         _tStart = { x: e.touches[0].clientX, y: e.touches[0].clientY };
       }, { passive: true });
@@ -1470,9 +1481,13 @@ export class ContextMenu {
           : Infinity;
         _tStart = null;
         if (moved > 10) return; // scroll/drag release — not a tap
-        e.preventDefault();
-        btn.click(); // run the click handler below synchronously
-      });
+        if (!needsPrompt) {
+          clearTimeout(_fallbackTimer);
+          _fallbackTimer = setTimeout(() => btn.click(), 350);
+        }
+        // no preventDefault — the native click must stay authorized
+      }, { passive: true });
+      btn.addEventListener('click', () => clearTimeout(_fallbackTimer), true);
       btn.addEventListener('click', () => {
         if (!this._currentParam) return;
         const type = btn.dataset.ctrl;
