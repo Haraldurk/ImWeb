@@ -1454,6 +1454,25 @@ export class ContextMenu {
 
     // Controller selection
     this.el.querySelectorAll('.menu-item[data-ctrl]').forEach(btn => {
+      // iOS Safari: the tap→click synthesis on these items proved unreliable
+      // on-device, so fire from touchend directly. Drag-guard: a scroll
+      // gesture releasing over an item must NOT assign — only a tap that
+      // moved <10px counts. preventDefault suppresses the ghost click so
+      // desktop/click and touch paths can never double-fire.
+      let _tStart = null;
+      btn.addEventListener('touchstart', e => {
+        _tStart = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+      }, { passive: true });
+      btn.addEventListener('touchend', e => {
+        const t = e.changedTouches[0];
+        const moved = _tStart
+          ? Math.hypot(t.clientX - _tStart.x, t.clientY - _tStart.y)
+          : Infinity;
+        _tStart = null;
+        if (moved > 10) return; // scroll/drag release — not a tap
+        e.preventDefault();
+        btn.click(); // run the click handler below synchronously
+      });
       btn.addEventListener('click', () => {
         if (!this._currentParam) return;
         const type = btn.dataset.ctrl;
