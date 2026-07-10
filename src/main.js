@@ -248,7 +248,18 @@ async function main() {
   const _tdResolveBufRes = (idx) => {
     const p = TD_BUFFER_RES[idx];
     if (p) return p;
-    return [canvas.parentElement.clientWidth || W, canvas.parentElement.clientHeight || H]; // Native
+    // Native: clamp to 1280 wide (aspect preserved). The delay ring is 120
+    // frames deep, so VRAM = w×h×4×120 — an unclamped 2000px+ desktop panel
+    // allocates >1GB and fails silently. 1280×720×4×120 ≈ 440MB is the
+    // proven-working ceiling (matches the iPad's natural CSS size).
+    let w = canvas.parentElement.clientWidth || W;
+    let h = canvas.parentElement.clientHeight || H;
+    const TD_NATIVE_MAX_W = 1280;
+    if (w > TD_NATIVE_MAX_W) {
+      h = Math.max(1, Math.round(h * (TD_NATIVE_MAX_W / w)));
+      w = TD_NATIVE_MAX_W;
+    }
+    return [w, h];
   };
   const [_tdBW, _tdBH] = _tdResolveBufRes(ps.get("td.bufferResolution").value);
   const tdEngine = new TimeDisplaceEngine(renderer, _tdBW, _tdBH, 120);

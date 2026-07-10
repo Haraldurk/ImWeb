@@ -8,6 +8,18 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
 
 ## [Unreleased] — v0.12 Dual-Deck A/B (in progress)
 
+### Fixed
+- **iPad context-menu taps** — menu items now fire from `touchend` directly
+  (with a 10px drag-guard so a scroll release never assigns); the tap→click
+  synthesis on iOS Safari proved unreliable on-device.
+- **TimeDisplace "Native" on large desktops** — Native buffer resolution is
+  clamped to 1280 wide (aspect preserved): the 120-frame delay ring
+  multiplies resolution by ~500 bytes/px, so unclamped 2000px+ panels
+  silently failed WebGL allocation.
+- **Repo hygiene** — user bank saves (`public/Projects/*.imweb` except
+  MasterProject) untracked and ignored; the broad `!public/**` gitignore
+  negation had let them slip into commits.
+
 ### Changed
 - **Menu restructure** — tab bar is now Mapping | Movies | 3D | Analog |
   Draw | Project. Clips renamed Movies; Buffer content merged into Movies,

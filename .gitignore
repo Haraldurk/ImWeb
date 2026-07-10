@@ -182,6 +182,11 @@ _imweb_ready/
 !public/**/*.webm
 !public/**
 
+# User bank/project saves must never ship — this must stay BELOW the
+# !public/** negation (later rules win). Only MasterProject is factory.
+public/Projects/*.imweb
+!public/Projects/MasterProject.imweb
+
 # Re-ignore Finder metadata inside public/ (overrides the !public/** above)
 public/.DS_Store
 public/**/.DS_Store

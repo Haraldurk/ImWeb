@@ -11,3 +11,5 @@ Entry format:
 ---
 
 ## Lessons
+
+- 2026-07-10: Never `git add -A` in this repo — check `git status` for untracked files first; the `!public/**` gitignore negation lets user bank saves slip into commits (trigger: committed and pushed Bank 1.imweb with a Phase 10 fix).
