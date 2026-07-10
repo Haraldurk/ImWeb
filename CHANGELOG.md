@@ -9,9 +9,13 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
 ## [Unreleased] — v0.12 Dual-Deck A/B (in progress)
 
 ### Fixed
-- **iPad context-menu taps** — menu items now fire from `touchend` directly
-  (with a 10px drag-guard so a scroll release never assigns); the tap→click
-  synthesis on iOS Safari proved unreliable on-device.
+- **iPad context-menu taps** — prompt-based assignments (LFO, Fixed, MIDI,
+  Key, Expr) silently failed on iOS: `preventDefault()` on touchend killed
+  the native click, and `window.prompt()` is only authorized by an
+  untampered activation. Valid taps now let the native click through;
+  direct-assign items (Sound/Gamepad/Tilt/Compass) keep a 350ms synthetic
+  fallback in case the native click never arrives. 10px drag-guard retained
+  so a scroll release never assigns.
 - **TimeDisplace "Native" on large desktops** — Native buffer resolution is
   clamped to 1280 wide (aspect preserved): the 120-frame delay ring
   multiplies resolution by ~500 bytes/px, so unclamped 2000px+ panels
