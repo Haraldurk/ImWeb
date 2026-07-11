@@ -164,6 +164,15 @@ export class MovieInput {
 
     const P = this.prefix;
 
+    // A clip without metadata yet — or a failed source — has NaN duration.
+    // startT/endT/range/targetT all derive from it, so every seek below
+    // would write a non-finite currentTime and throw, killing the render
+    // loop. Upload whatever frame exists and wait for metadata instead.
+    if (!Number.isFinite(clip.duration) || clip.duration <= 0) {
+      uploadIfNewFrame();
+      return;
+    }
+
     // BPM sync mode: lock clip position to beat phase
     const bpmSync = params.get(`${P}.bpmsync`)?.value;
     if (bpmSync) {

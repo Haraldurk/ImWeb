@@ -3003,17 +3003,22 @@ export function buildAISettingsPanel(ai, panelEl) {
   testBtn.style.marginTop = '8px';
   testBtn.addEventListener('click', async () => {
     const providerId = ai.getConfig().activeProvider;
+    // Name exactly what is being tested — provider + model from the saved
+    // config — so a mismatch with what the user thinks is in the box is
+    // immediately visible (e.g. localStorage split across dev-server ports).
+    const testedModel = ai.getConfig().providers[providerId]?.model
+      ?? PROVIDERS[providerId]?.defaultModel ?? '?';
     testBtn.disabled = true;
     testBtn.textContent = '⏳ Testing…';
     statusEl.textContent = '';
     statusEl.className = 'ai-key-status';
     try {
       await ai.testConnection();
-      statusEl.textContent = '✓ Connected';
+      statusEl.textContent = `✓ Connected — ${testedModel} @ ${providerId}`;
       statusEl.className = 'ai-key-status ok';
-      ai.setProviderTestResult(providerId, { ok: true, message: 'Connected' });
+      ai.setProviderTestResult(providerId, { ok: true, message: `Connected (${testedModel})` });
     } catch (err) {
-      statusEl.textContent = `✗ ${err.message}`;
+      statusEl.textContent = `✗ ${testedModel} @ ${providerId}: ${err.message}`;
       statusEl.className = 'ai-key-status error';
       ai.setProviderTestResult(providerId, { ok: false, message: err.message });
     } finally {
