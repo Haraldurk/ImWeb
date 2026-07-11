@@ -339,9 +339,18 @@ export class Pipeline {
 
     // Resolve input textures
     const fgIdx  = p.get('layer.fg').value;
-    const fgTex  = this._resolveSource(processedInputs, fgIdx);
-    const bgTex  = this._resolveSource(processedInputs, p.get('layer.bg').value);
+    let fgTex  = this._resolveSource(processedInputs, fgIdx);
+    let bgTex  = this._resolveSource(processedInputs, p.get('layer.bg').value);
     let dsTex  = this._resolveSource(processedInputs, p.get('layer.ds').value);
+
+    // ── Custom GLSL insert routing ────────────────────────────────────────
+    // 0 Master (post-fade, below) · 1 FG · 2 BG · 3 Displace. FG/BG inserts
+    // run before per-layer color correction, so blends and the keyer's raw
+    // key see the shader output; dsTex also feeds the ext key (uEK).
+    const glslTarget = p.get('glsl.target')?.value ?? 0;
+    if (glslTarget === 1) fgTex = this._applyCustomPass(fgTex);
+    else if (glslTarget === 2) bgTex = this._applyCustomPass(bgTex);
+    else if (glslTarget === 3) dsTex = this._applyCustomPass(dsTex);
 
     // Per-layer color correction (HSB) + slot mirror, folded into ONE pass.
     // Mirror is a uFlipH uniform on the colorcorrect shader: no extra
@@ -533,15 +542,8 @@ export class Pipeline {
       });
     }
 
-    // ── Custom GLSL pass ──────────────────────────────────────────────────
-    let customOut = faded;
-    if (this._customActive && this._customMat) {
-      this._customMat.uniforms.uTexture.value    = faded;
-      this._customMat.uniforms.uTime.value       = this._noiseTime;
-      this._customMat.uniforms.uResolution.value.set(this.width, this.height);
-      // uParam1..4 are set externally via setCustomUniforms()
-      customOut = this._pass(this._customMat, {});
-    }
+    // ── Custom GLSL pass (Master target only — inserts handled above) ─────
+    const customOut = glslTarget === 0 ? this._applyCustomPass(faded) : faded;
 
     // Final blit — optionally through bicubic interpolation
     const interpMode = p.get('output.interp').value;
@@ -572,6 +574,19 @@ export class Pipeline {
    * Update the 4 user-bindable parameter uniforms (uParam1..uParam4).
    * Called each frame from main.js with current param values.
    */
+  /**
+   * Run the custom GLSL material over a texture as an insert pass.
+   * Returns the input unchanged when the custom shader is inactive or
+   * the texture is missing. uParam1..4 arrive via setCustomUniforms().
+   */
+  _applyCustomPass(tex) {
+    if (!this._customActive || !this._customMat || !tex) return tex;
+    this._customMat.uniforms.uTexture.value = tex;
+    this._customMat.uniforms.uTime.value = this._noiseTime;
+    this._customMat.uniforms.uResolution.value.set(this.width, this.height);
+    return this._pass(this._customMat, {});
+  }
+
   setCustomUniforms(vals) {
     if (!this._customMat) return;
     for (let i = 0; i < 4; i++) {

@@ -9,6 +9,13 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
 ## [Unreleased]
 
 ### Added
+- **GLSL insert routing** — new Target selector in the GLSL section
+  routes the custom shader to Master Output (default), Foreground,
+  Background, or Displace Layer. FG/BG inserts run on the resolved
+  layer source before color correction, so blends and the keyer see
+  the shader output; the Displace target also feeds the external
+  key. `glsl.target` is a normal SELECT param — state-recallable and
+  saved in `.imweb` automatically.
 - **Live GLSL persistence** — editor source, auto-apply state, and
   active flag are saved in `.imweb` projects (additive `glsl` key;
   old files load unchanged) and restored on import, including the
