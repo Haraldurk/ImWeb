@@ -4626,10 +4626,14 @@ void main() {
       let hdr = buildGlslHeader(code);
       let err = pipeline.validateShaderSource(hdr ? `${hdr}\n${code}` : code);
       if (err) {
+        if (import.meta.env.DEV)
+          console.log(`[glsl-ai] validation error (attempt 1):\n${err}`);
         _aiSetBusy(true, "Shader failed to compile — asking AI to fix it…");
         code = await gen(promptText, code, err);
         hdr = buildGlslHeader(code);
         err = pipeline.validateShaderSource(hdr ? `${hdr}\n${code}` : code);
+        if (err && import.meta.env.DEV)
+          console.log(`[glsl-ai] validation error (after retry):\n${err}`);
       }
       return { code, err };
     }
