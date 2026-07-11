@@ -13,3 +13,4 @@ Entry format:
 ## Lessons
 
 - 2026-07-10: Never `git add -A` in this repo — check `git status` for untracked files first; the `!public/**` gitignore negation lets user bank saves slip into commits (trigger: committed and pushed Bank 1.imweb with a Phase 10 fix).
+- 2026-07-11: After npm-installing a dep, check `npm ls <pkg>` for hoisted forks (obsidian-dataview pins lishid's @codemirror/language fork) and restart the Vite dev server — its pre-bundled deps cache (node_modules/.vite) goes stale and silently mixes old/new module instances (trigger: CodeMirror highlighting produced zero token spans; parse tree was fine).

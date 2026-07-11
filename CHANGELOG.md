@@ -6,6 +6,29 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
 
 ---
 
+## [Unreleased]
+
+### Added
+- **Live GLSL persistence** — editor source, auto-apply state, and
+  active flag are saved in `.imweb` projects (additive `glsl` key;
+  old files load unchanged) and restored on import, including the
+  first-launch MasterProject load.
+- **User shader presets** — 💾 button saves the current editor code
+  as a named preset (localStorage), listed in a "— User —" group
+  appended after the built-ins.
+- **CodeMirror 6 editor** — the Live GLSL `<textarea>` is replaced
+  with a CodeMirror instance (GLSL legacy-mode highlighting, line
+  numbers, proper iPad touch editing). Tab indents, Ctrl/Cmd+Enter
+  applies, auto-apply fires on document changes.
+
+### Fixed
+- **Live GLSL compile errors no longer kill the running shader** —
+  the previous working shader keeps rendering (last-good fallback)
+  and the error panel notes it. Detection now uses a standalone
+  fragment compile with the real GLSL info log; the old link-status
+  introspection never matched in three r160, so broken shaders could
+  slip through as "success".
+
 ## [0.12.0] — 2026-07-10 — Dual-Deck & Touch Polish
 
 ### Fixed
