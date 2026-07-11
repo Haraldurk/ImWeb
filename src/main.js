@@ -4509,6 +4509,69 @@ void main() {
     glslPresetSel.addEventListener("change", _updateGlslDelVis);
     _updateGlslDelVis();
     glslSection.insertBefore(selRow, glslSection.querySelector("div"));
+
+    // ── AI shader generation — button + modal (Phase 16) ───────────────────
+    const aiRow = document.createElement("div");
+    aiRow.style.cssText = "display:flex;gap:4px;padding:2px 8px 4px;";
+    const aiBtn = document.createElement("button");
+    aiBtn.id = "btn-glsl-ai";
+    aiBtn.className = "import-btn";
+    aiBtn.textContent = "✨ Prompt AI";
+    aiBtn.style.cssText = "flex:1;min-height:32px;";
+    aiRow.appendChild(aiBtn);
+    if (uniformsEl) glslSection.insertBefore(aiRow, uniformsEl);
+    else glslSection.appendChild(aiRow);
+
+    const aiModal = document.createElement("div");
+    aiModal.id = "glsl-ai-modal";
+    aiModal.className = "hidden";
+    aiModal.innerHTML = `
+      <div id="glsl-ai-box">
+        <div id="glsl-ai-title">✨ AI Shader</div>
+        <textarea id="glsl-ai-prompt" placeholder="Describe the effect… e.g. 'kaleidoscope that pulses with the bass, trails on the beat'"></textarea>
+        <div id="glsl-ai-status" class="hidden"></div>
+        <div id="glsl-ai-actions">
+          <button id="glsl-ai-cancel" class="import-btn">Cancel</button>
+          <button id="glsl-ai-generate" class="import-btn">Generate</button>
+        </div>
+      </div>`;
+    document.body.appendChild(aiModal);
+
+    const aiPromptEl = aiModal.querySelector("#glsl-ai-prompt");
+    const aiStatusEl = aiModal.querySelector("#glsl-ai-status");
+    const aiGenBtn = aiModal.querySelector("#glsl-ai-generate");
+    const aiCancelBtn = aiModal.querySelector("#glsl-ai-cancel");
+
+    function _aiSetBusy(busy, msg) {
+      aiPromptEl.classList.toggle("hidden", busy);
+      aiGenBtn.disabled = busy;
+      aiStatusEl.className = busy ? "busy" : "hidden";
+      aiStatusEl.textContent = msg ?? "";
+    }
+    function _aiShowError(msg) {
+      aiPromptEl.classList.remove("hidden");
+      aiGenBtn.disabled = false;
+      aiStatusEl.className = "error";
+      aiStatusEl.textContent = msg;
+    }
+    function openAiModal() {
+      _aiSetBusy(false, "");
+      aiStatusEl.className = "hidden";
+      aiModal.classList.remove("hidden");
+      aiPromptEl.focus();
+    }
+    function closeAiModal() {
+      aiModal.classList.add("hidden");
+    }
+    aiBtn.addEventListener("click", openAiModal);
+    aiCancelBtn.addEventListener("click", closeAiModal);
+    aiModal.addEventListener("click", (e) => {
+      if (e.target === aiModal) closeAiModal();
+    });
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && !aiModal.classList.contains("hidden"))
+        closeAiModal();
+    });
   }
 
   // ── Record button ─────────────────────────────────────────────────────────

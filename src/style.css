@@ -4053,3 +4053,86 @@ body.fullscreen-output #app {
         text-align: left;
     }
 }
+
+/* ── GLSL AI SHADER MODAL (Phase 16) ─────────────────────────────────────── */
+#glsl-ai-modal {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.7);
+    z-index: 3100;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+#glsl-ai-modal.hidden {
+    display: none;
+}
+#glsl-ai-box {
+    background: var(--bg-2);
+    border: 1px solid var(--accent-dim);
+    border-radius: 8px;
+    box-shadow: 0 12px 48px rgba(0, 0, 0, 0.8);
+    width: 520px;
+    max-width: 92vw;
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+#glsl-ai-title {
+    font-size: 13px;
+    color: var(--accent);
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+}
+#glsl-ai-prompt {
+    width: 100%;
+    height: 110px;
+    resize: vertical;
+    background: var(--bg-1);
+    color: var(--text-1);
+    border: 1px solid var(--bg-4);
+    padding: 8px;
+    /* 16px stops iOS Safari from zooming the page on focus */
+    font-size: 16px;
+    box-sizing: border-box;
+}
+#glsl-ai-prompt.hidden {
+    display: none;
+}
+#glsl-ai-status {
+    padding: 24px 8px;
+    text-align: center;
+    color: var(--text-2);
+    font-size: 12px;
+}
+#glsl-ai-status.hidden {
+    display: none;
+}
+#glsl-ai-status.busy {
+    color: var(--accent);
+    animation: glslAiPulse 1.1s ease-in-out infinite;
+}
+#glsl-ai-status.error {
+    color: #e84040;
+    text-align: left;
+    white-space: pre-wrap;
+    font-family: monospace;
+    font-size: 10px;
+    max-height: 160px;
+    overflow: auto;
+}
+#glsl-ai-actions {
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+}
+#glsl-ai-actions button {
+    min-height: 40px;
+    min-width: 96px;
+    font-size: 13px;
+}
+@keyframes glslAiPulse {
+    0%, 100% { opacity: 0.35; }
+    50% { opacity: 1; }
+}
