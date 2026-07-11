@@ -4005,6 +4005,14 @@ export function registerCoreParameters(ps) {
     value: 0.5,
     step: 0.01,
   });
+  ps.register({
+    id: "glsl.target",
+    label: "Target",
+    group: "glsl",
+    type: PARAM_TYPE.SELECT,
+    options: ["Master", "Foreground", "Background", "Displace"], // append-only
+    value: 0,
+  }); // insert-routing stage for the custom shader
 
   // ── Projection Mapping (corner-pin for second screen output) ──────────────
   ps.register({

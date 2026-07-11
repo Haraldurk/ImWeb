@@ -4106,10 +4106,10 @@ void main() {
       changes: { from: 0, to: glslView.state.doc.length, insert: text },
     });
 
-  // ── GLSL param uniform slots (uParam1..uParam4) ───────────────────────────
+  // ── GLSL routing target + param uniform slots (uParam1..uParam4) ──────────
   const uniformsEl = document.getElementById("glsl-uniforms");
   if (uniformsEl) {
-    ["glsl.param1", "glsl.param2", "glsl.param3", "glsl.param4"].forEach(
+    ["glsl.target", "glsl.param1", "glsl.param2", "glsl.param3", "glsl.param4"].forEach(
       (id) => {
         const p = ps.get(id);
         if (p) uniformsEl.appendChild(buildParamRow(p, contextMenu));
