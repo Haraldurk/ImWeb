@@ -142,7 +142,10 @@ async function callAnthropic(pcfg, system, user, maxTokens) {
     const e = await res.json().catch(() => ({}));
     throw new Error(e.error?.message ?? `Anthropic error ${res.status}`);
   }
-  return (await res.json()).content?.[0]?.text ?? '';
+  // Models with adaptive thinking (Sonnet 5, Opus 4.7+) return a thinking
+  // block FIRST — content[0].text is undefined there. Find the text block.
+  const content = (await res.json()).content ?? [];
+  return content.find((b) => b.type === 'text')?.text ?? '';
 }
 
 async function callGemini(pcfg, system, user, maxTokens) {
@@ -159,7 +162,9 @@ async function callGemini(pcfg, system, user, maxTokens) {
     const e = await res.json().catch(() => ({}));
     throw new Error(e.error?.message ?? `Gemini error ${res.status}`);
   }
-  return (await res.json()).candidates?.[0]?.content?.parts?.[0]?.text ?? '';
+  return ((await res.json()).candidates?.[0]?.content?.parts ?? [])
+    .map((p) => p.text ?? '')
+    .join('');
 }
 
 async function callOpenAI(pcfg, system, user, maxTokens) {
@@ -532,7 +537,9 @@ export async function generateShader(description, priorCode = null, priorError =
   const user = priorError
     ? `Your previous shader failed to compile.\nCompiler error:\n${priorError}\n\nBroken code:\n${priorCode}\n\nOutput ONLY the corrected COMPLETE shader (same rules) for the original request: "${description}". Do not explain the fix, do not quote the broken lines — code only.`
     : `Write a shader: "${description}"`;
-  const raw = await _call(SHADER_SYSTEM, user, 2000);
+  // Generous budget: on adaptive-thinking models (Sonnet 5, Opus 4.7+)
+  // max_tokens covers thinking + code, and complex shaders think a lot
+  const raw = await _call(SHADER_SYSTEM, user, 4000);
   // DEV-only ground truth for diagnosing extraction/model misbehaviour —
   // filter the console with [glsl-ai]
   if (import.meta.env?.DEV) {
