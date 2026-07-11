@@ -9,6 +9,15 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
 ## [Unreleased]
 
 ### Added
+- **📄 New blank shader** button and a hidden "Custom" dropdown state
+  for unsaved/AI-generated code; no-key AI generation errors now offer
+  a 🔑 button that opens AI Settings with the key field focused.
+
+### Fixed
+- **AI shader prompt hardening** — models no longer instructed-around:
+  declaring contract uniforms (which breaks the auto-injected header on
+  qualifier variants) and WebGL 2.0 syntax are now explicitly forbidden
+  in a CRITICAL RULES section.
 - **AI shader generation (✨ Prompt AI)** — describe an effect in
   natural language and the configured AI provider (AI tab) writes the
   GLSL. The system prompt embeds the full VJ uniform contract; the

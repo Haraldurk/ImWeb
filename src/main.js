@@ -4640,11 +4640,26 @@ void main() {
         closeAiModal();
         applyGLSL();
       } catch (e) {
-        const msg =
-          e?.message === "no-key"
-            ? "No API key configured — set one in the AI tab."
-            : `Generation failed: ${e?.message ?? e}`;
-        _aiShowError(msg);
+        if (e?.message === "no-key") {
+          _aiShowError(
+            "No API key configured for the active AI provider.\n",
+          );
+          const fixBtn = document.createElement("button");
+          fixBtn.className = "import-btn";
+          fixBtn.textContent = "🔑 Open AI Settings";
+          fixBtn.style.cssText = "margin-top:8px;min-height:40px;";
+          fixBtn.addEventListener("click", (ev) => {
+            // the panel has a document-level click-outside close
+            ev.stopPropagation();
+            closeAiModal();
+            const aiPanel = document.getElementById("ai-settings-panel");
+            aiPanel?.classList.remove("hidden");
+            aiPanel?.querySelector(".ai-key-input")?.focus();
+          });
+          aiStatusEl.appendChild(fixBtn);
+        } else {
+          _aiShowError(`Generation failed: ${e?.message ?? e}`);
+        }
       }
     });
 
