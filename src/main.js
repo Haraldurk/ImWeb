@@ -25,6 +25,11 @@
  */
 
 import * as THREE from "three";
+import { EditorView, basicSetup } from "codemirror";
+import { keymap } from "@codemirror/view";
+import { indentWithTab } from "@codemirror/commands";
+import { StreamLanguage } from "@codemirror/language";
+import { shader as glslMode } from "@codemirror/legacy-modes/mode/clike";
 import {
   ParameterSystem,
   registerCoreParameters,
@@ -4013,11 +4018,74 @@ async function main() {
 
   // ── Live GLSL Editor ──────────────────────────────────────────────────────
 
-  const glslEditor = document.getElementById("glsl-editor");
+  const glslEditorHost = document.getElementById("glsl-editor");
   const glslError = document.getElementById("glsl-error");
   const glslApply = document.getElementById("btn-glsl-apply");
   const glslReset = document.getElementById("btn-glsl-reset");
   const glslAuto = document.getElementById("glsl-auto-apply");
+
+  // Default doc (moved here from the old <textarea> markup)
+  const GLSL_DEFAULT_DOC = `// Available uniforms:
+//   sampler2D uTexture    — current frame
+//   float     uTime       — seconds
+//   vec2      uResolution
+//   varying vec2 vUv      — 0..1 UV coords
+//   float uParam1..uParam4 — bind any param in the slots below
+
+void main() {
+  vec4 col = texture2D(uTexture, vUv);
+  gl_FragColor = col;
+}`;
+
+  // CodeMirror 6 editor — replaces the old <textarea> (iPad-friendly)
+  const glslTheme = EditorView.theme(
+    {
+      "&": {
+        backgroundColor: "#0a0a0e",
+        color: "#c8c8d8",
+        fontSize: "11px",
+        height: "280px",
+      },
+      ".cm-scroller": { fontFamily: "monospace", overflow: "auto" },
+      "&.cm-focused": { outline: "none" },
+      ".cm-gutters": {
+        backgroundColor: "var(--bg-2)",
+        color: "var(--text-2)",
+        border: "none",
+      },
+      ".cm-activeLine": { backgroundColor: "rgba(200,160,32,0.06)" },
+      ".cm-activeLineGutter": { backgroundColor: "rgba(200,160,32,0.10)" },
+      ".cm-cursor": { borderLeftColor: "var(--accent)" },
+    },
+    { dark: true },
+  );
+
+  const glslView = glslEditorHost
+    ? new EditorView({
+        doc: GLSL_DEFAULT_DOC,
+        parent: glslEditorHost,
+        extensions: [
+          // Custom keymap first — earlier extensions win, and basicSetup's
+          // default keymap also binds Mod-Enter (insertBlankLine).
+          keymap.of([
+            indentWithTab,
+            { key: "Mod-Enter", run: () => (applyGLSL(), true) },
+          ]),
+          basicSetup,
+          StreamLanguage.define(glslMode),
+          glslTheme,
+          EditorView.updateListener.of((u) => {
+            if (u.docChanged && glslAuto?.checked) applyGLSL();
+          }),
+        ],
+      })
+    : null;
+
+  const getGlslSource = () => (glslView ? glslView.state.doc.toString() : "");
+  const setGlslSource = (text) =>
+    glslView?.dispatch({
+      changes: { from: 0, to: glslView.state.doc.length, insert: text },
+    });
 
   // ── GLSL param uniform slots (uParam1..uParam4) ───────────────────────────
   const uniformsEl = document.getElementById("glsl-uniforms");
@@ -4031,7 +4099,7 @@ async function main() {
   }
 
   function applyGLSL() {
-    const src = glslEditor?.value;
+    const src = getGlslSource();
     if (!src) return;
     // Prepend all standard pipeline uniform declarations if absent,
     // so preset shaders don't need to redeclare them.
@@ -4068,38 +4136,18 @@ async function main() {
     if (glslAuto) glslAuto.checked = false;
   });
 
-  glslEditor?.addEventListener("input", () => {
-    if (glslAuto?.checked) applyGLSL();
-  });
-
-  // Tab key inserts two spaces in the editor
-  glslEditor?.addEventListener("keydown", (e) => {
-    if (e.key === "Tab") {
-      e.preventDefault();
-      const s = glslEditor.selectionStart;
-      const v = glslEditor.value;
-      glslEditor.value =
-        v.slice(0, s) + "  " + v.slice(glslEditor.selectionEnd);
-      glslEditor.selectionStart = glslEditor.selectionEnd = s + 2;
-      if (glslAuto?.checked) applyGLSL();
-    }
-    // Ctrl+Enter / Cmd+Enter = apply
-    if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
-      e.preventDefault();
-      applyGLSL();
-    }
-  });
+  // Tab / Ctrl+Enter / auto-apply are handled by CodeMirror extensions
+  // (indentWithTab, Mod-Enter keymap, updateListener) — see glslView above.
 
   // ── Project persistence hook (.imweb `glsl` key) ──────────────────────────
   projectFile.extras.glsl = {
     capture: () => ({
-      source: glslEditor?.value ?? "",
+      source: getGlslSource(),
       autoApply: !!glslAuto?.checked,
       active: !!pipeline._customActive,
     }),
     restore: (d) => {
-      if (glslEditor && typeof d.source === "string")
-        glslEditor.value = d.source;
+      if (typeof d.source === "string") setGlslSource(d.source);
       if (glslAuto) glslAuto.checked = !!d.autoApply;
       if (d.active && d.source) applyGLSL();
       else if (!d.active) pipeline.disableCustomShader();
@@ -4330,8 +4378,8 @@ void main() {
     const code = v.startsWith("user:")
       ? _loadUserGlsl()[v.slice(5)]
       : GLSL_PRESETS[v];
-    if (code && glslEditor) {
-      glslEditor.value = code;
+    if (code) {
+      setGlslSource(code);
       if (glslAuto?.checked) applyGLSL();
     }
     _updateGlslParamLabels(v);
@@ -4360,7 +4408,7 @@ void main() {
     glslSaveBtn.textContent = "💾";
     glslSaveBtn.title = "Save current code as user preset";
     glslSaveBtn.addEventListener("click", () => {
-      const src = glslEditor?.value;
+      const src = getGlslSource();
       if (!src) return;
       const name = prompt("Preset name:");
       if (!name) return;

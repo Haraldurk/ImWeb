@@ -784,38 +784,16 @@ ImWeb</textarea
                                     font-family: monospace;
                                 "
                             ></div>
-                            <textarea
+                            <!-- CodeMirror 6 mounts here (default doc set in main.js) -->
+                            <div
                                 id="glsl-editor"
-                                spellcheck="false"
-                                autocomplete="off"
                                 style="
                                     display: block;
                                     width: 100%;
-                                    height: 280px;
-                                    resize: vertical;
-                                    background: #0a0a0e;
-                                    color: #c8c8d8;
-                                    font-family: monospace;
-                                    font-size: 11px;
                                     border: 1px solid var(--border);
-                                    padding: 6px;
                                     box-sizing: border-box;
-                                    outline: none;
-                                    tab-size: 2;
                                 "
-                            >
-// Available uniforms:
-//   sampler2D uTexture    — current frame
-//   float     uTime       — seconds
-//   vec2      uResolution
-//   varying vec2 vUv      — 0..1 UV coords
-//   float uParam1..uParam4 — bind any param in the slots below
-
-void main() {
-  vec4 col = texture2D(uTexture, vUv);
-  gl_FragColor = col;
-}</textarea
-                            >
+                            ></div>
                             <!-- Param uniform binding slots -->
                             <div
                                 id="glsl-uniforms"
