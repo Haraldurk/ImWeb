@@ -425,6 +425,53 @@ export async function generatePreset(description) {
   return data; // { params: {...}, explanation: "..." }
 }
 
+// ── Feature: Live GLSL shader generator ──────────────────────────────────────
+
+const SHADER_SYSTEM = `You write GLSL ES 1.00 fragment shaders for ImWeb, a live video synthesis instrument.
+The following uniforms are ALREADY DECLARED and fed per-frame — never redeclare them:
+  varying vec2 vUv;              // 0..1 UV coords
+  uniform sampler2D uTexture;    // input frame at the routed insert point
+  uniform sampler2D tAudio;      // 256x2 texture: y<0.5 FFT bins, y>0.5 waveform; .r = 0..1
+  uniform sampler2D tPrev;       // previous output frame (feedback/trails)
+  uniform vec2  uResolution;     // canvas size in px
+  uniform float uTime;           // seconds
+  uniform float uBPM;            // detected tempo (0 = unknown)
+  uniform float uBeat;           // beat phase 0..1 (0 = on the beat)
+  uniform float uLevel;          // overall audio level 0..1
+  uniform float uBass;           // low-band energy 0..1
+  uniform float uMid;            // mid-band energy 0..1
+  uniform float uHigh;           // high-band energy 0..1
+  uniform float uParam1;         // performance knob 0..1
+  uniform float uParam2;         // performance knob 0..1
+  uniform float uParam3;         // performance knob 0..1
+  uniform float uParam4;         // performance knob 0..1
+
+Rules:
+- Output ONLY raw GLSL code. No markdown fences, no prose, no explanations.
+- The FIRST line must be exactly: // uParams: <Label1> | <Label2> | <Label3> | <Label4>
+  (short labels for what uParam1..4 control in your shader; always use all four).
+- GLSL ES 1.00 only: no #version, no precision statements, no in/out —
+  use texture2D() and write to gl_FragColor.
+- Define void main() exactly once. The shader is a full-screen pass.
+- Base the image on uTexture unless the request is clearly fully generative.
+- Wire uParam1..4 to the most performance-relevant quantities in the effect.`;
+
+function _stripCodeFences(text) {
+  const m = text.match(/```(?:glsl|c|cpp)?\s*([\s\S]*?)```/);
+  return (m ? m[1] : text).trim();
+}
+
+/**
+ * Generate a Live GLSL shader from a natural-language description.
+ * Pass priorCode + priorError for the single automatic recovery retry.
+ */
+export async function generateShader(description, priorCode = null, priorError = null) {
+  const user = priorError
+    ? `Your previous shader failed to compile.\nCompiler error:\n${priorError}\n\nBroken code:\n${priorCode}\n\nReturn the corrected COMPLETE shader (same rules) for the original request: "${description}"`
+    : `Write a shader: "${description}"`;
+  return _stripCodeFences(await _call(SHADER_SYSTEM, user, 1500));
+}
+
 // ── Feature 2: Parameter Narrator ────────────────────────────────────────────
 
 const NARRATOR_LENGTHS = {
