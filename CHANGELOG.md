@@ -17,9 +17,10 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
   as a named preset (localStorage), listed in a "— User —" group
   appended after the built-ins.
 - **CodeMirror 6 editor** — the Live GLSL `<textarea>` is replaced
-  with a CodeMirror instance (GLSL legacy-mode highlighting, line
-  numbers, proper iPad touch editing). Tab indents, Ctrl/Cmd+Enter
-  applies, auto-apply fires on document changes.
+  with a CodeMirror instance (lang-cpp grammar with a custom dark
+  highlight style, line numbers, proper iPad touch editing). Tab
+  indents, Ctrl/Cmd+Enter applies, auto-apply fires on document
+  changes.
 
 ### Fixed
 - **Live GLSL compile errors no longer kill the running shader** —

@@ -14,7 +14,7 @@
     "install-hooks": "bash scripts/install-hooks.sh"
   },
   "dependencies": {
-    "@codemirror/legacy-modes": "^6.5.3",
+    "@codemirror/lang-cpp": "^6.0.3",
     "codemirror": "^6.0.2",
     "cors": "^2.8.6",
     "express": "^5.2.1",
