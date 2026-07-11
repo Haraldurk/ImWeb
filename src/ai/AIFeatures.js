@@ -532,7 +532,17 @@ export async function generateShader(description, priorCode = null, priorError =
   const user = priorError
     ? `Your previous shader failed to compile.\nCompiler error:\n${priorError}\n\nBroken code:\n${priorCode}\n\nOutput ONLY the corrected COMPLETE shader (same rules) for the original request: "${description}". Do not explain the fix, do not quote the broken lines — code only.`
     : `Write a shader: "${description}"`;
-  return extractGlsl(await _call(SHADER_SYSTEM, user, 2000));
+  const raw = await _call(SHADER_SYSTEM, user, 2000);
+  // DEV-only ground truth for diagnosing extraction/model misbehaviour —
+  // filter the console with [glsl-ai]
+  if (import.meta.env?.DEV) {
+    console.log(`[glsl-ai] raw response${priorError ? ' (retry)' : ''}:\n${raw}`);
+  }
+  const code = extractGlsl(raw);
+  if (import.meta.env?.DEV) {
+    console.log(`[glsl-ai] extracted:\n${code}`);
+  }
+  return code;
 }
 
 // ── Feature 2: Parameter Narrator ────────────────────────────────────────────
