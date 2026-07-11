@@ -538,10 +538,19 @@ export async function generateShader(description, priorCode = null, priorError =
   if (import.meta.env?.DEV) {
     console.log(`[glsl-ai] raw response${priorError ? ' (retry)' : ''}:\n${raw}`);
   }
+  // Providers throw on HTTP errors, but a 200 with an unexpected shape
+  // (content filter, exhausted quota, wrong model) falls back to '' —
+  // never feed that to the GLSL compiler as a phantom 'Missing main()'.
+  if (!raw?.trim()) {
+    throw new Error(
+      'Empty response from the AI provider — check the model name, quota, or content filters.',
+    );
+  }
   const code = extractGlsl(raw);
   if (import.meta.env?.DEV) {
     console.log(`[glsl-ai] extracted:\n${code}`);
   }
+  if (!code) throw new Error('The AI response contained no usable code.');
   return code;
 }
 
