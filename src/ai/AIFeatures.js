@@ -476,8 +476,23 @@ Rules:
  * Exported for headless tests.
  */
 export function extractGlsl(text) {
-  const fence = text.match(/```[\w-]*[ \t]*\r?\n?([\s\S]*?)```/);
-  if (fence) return fence[1].trim();
+  // All fenced blocks (any language tag). Retry replies often quote the
+  // broken excerpt in a fence BEFORE the corrected shader, so prefer the
+  // block that defines main(), then the longest — never blindly the first.
+  const blocks = [...text.matchAll(/```[\w-]*[ \t]*\r?\n?([\s\S]*?)```/g)]
+    .map((m) => m[1].trim())
+    .filter(Boolean);
+  if (blocks.length) {
+    const withMain = blocks.filter((b) => /void\s+main\s*\(/.test(b));
+    const pool = withMain.length ? withMain : blocks;
+    return pool.reduce((a, b) => (b.length > a.length ? b : a), '');
+  }
+  // Unclosed fence (response truncated mid-code): take everything after it
+  const open = text.match(/```[\w-]*[ \t]*\r?\n?/);
+  if (open) {
+    const after = text.slice(open.index + open[0].length).trim();
+    if (after) return after;
+  }
   const start = text.search(
     /^[ \t]*(\/\/\s*uParams:|#define\b|precision\b|uniform\b|varying\b|const\b|(?:float|vec[234]|mat[234]|int)\s+\w+\s*\(|void\s+main\b)/m,
   );
@@ -493,9 +508,9 @@ export function extractGlsl(text) {
  */
 export async function generateShader(description, priorCode = null, priorError = null) {
   const user = priorError
-    ? `Your previous shader failed to compile.\nCompiler error:\n${priorError}\n\nBroken code:\n${priorCode}\n\nReturn the corrected COMPLETE shader (same rules) for the original request: "${description}"`
+    ? `Your previous shader failed to compile.\nCompiler error:\n${priorError}\n\nBroken code:\n${priorCode}\n\nOutput ONLY the corrected COMPLETE shader (same rules) for the original request: "${description}". Do not explain the fix, do not quote the broken lines — code only.`
     : `Write a shader: "${description}"`;
-  return extractGlsl(await _call(SHADER_SYSTEM, user, 1500));
+  return extractGlsl(await _call(SHADER_SYSTEM, user, 2000));
 }
 
 // ── Feature 2: Parameter Narrator ────────────────────────────────────────────
