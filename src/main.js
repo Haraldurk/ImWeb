@@ -78,6 +78,7 @@ import {
   setApiKey,
   clearApiKey,
   generatePreset,
+  generateShader,
   narrateState,
   buildStateSnapshot,
   coachSuggestion,
@@ -4126,12 +4127,10 @@ void main() {
     );
   }
 
-  function applyGLSL() {
-    const src = getGlslSource();
-    if (!src) return;
-    // Prepend the standardized VJ uniform contract if absent, so shaders
-    // (and the future AI) never need to redeclare it.
-    const header = [
+  // Build the standardized VJ uniform header for a shader source —
+  // declarations already present in the source are skipped.
+  function buildGlslHeader(src) {
+    return [
       ["varying vec2 vUv", "varying vec2 vUv;"],
       ["uniform sampler2D uTexture", "uniform sampler2D uTexture;"],
       ["uniform sampler2D tAudio", "uniform sampler2D tAudio;"],
@@ -4152,6 +4151,12 @@ void main() {
       .map(([probe, decl]) => (src.includes(probe) ? "" : decl))
       .filter(Boolean)
       .join("\n");
+  }
+
+  function applyGLSL() {
+    const src = getGlslSource();
+    if (!src) return;
+    const header = buildGlslHeader(src);
     const fullSrc = header ? `${header}\n${src}` : src;
     const err = pipeline.setCustomShader(fullSrc);
     if (glslError) {
@@ -4211,8 +4216,11 @@ void main() {
     "uParam4",
   ];
 
+  // Accepts a preset name (META lookup) or a labels array (AI-generated)
   function _updateGlslParamLabels(presetName) {
-    const labels = GLSL_PRESET_META[presetName] ?? GLSL_PARAM_DEFAULT_LABELS;
+    const labels = Array.isArray(presetName)
+      ? [...presetName, ...GLSL_PARAM_DEFAULT_LABELS].slice(0, 4)
+      : (GLSL_PRESET_META[presetName] ?? GLSL_PARAM_DEFAULT_LABELS);
     labels.forEach((lbl, i) => {
       const el = uniformsEl?.querySelector(
         `[data-param-id="glsl.param${i + 1}"] .param-label`,
@@ -4563,6 +4571,54 @@ void main() {
     function closeAiModal() {
       aiModal.classList.add("hidden");
     }
+    // '// uParams: A | B | C | D' metadata line → knob labels
+    function _parseAiLabels(code) {
+      const m = code.match(/^\s*\/\/\s*uParams:\s*(.+)$/m);
+      if (!m) return null;
+      const labels = m[1].split("|").map((s) => s.trim()).filter(Boolean);
+      return labels.length ? labels.slice(0, 4) : null;
+    }
+
+    // Generate → validate (standalone compile) → ONE auto-retry with the
+    // compiler error → inject. DEV hook __glslAIGenerate lets headless
+    // tests stub the provider call.
+    async function _runAiGeneration(promptText) {
+      const gen =
+        (import.meta.env.DEV && window.__glslAIGenerate) || generateShader;
+      let code = await gen(promptText);
+      let hdr = buildGlslHeader(code);
+      let err = pipeline.validateShaderSource(hdr ? `${hdr}\n${code}` : code);
+      if (err) {
+        _aiSetBusy(true, "Shader failed to compile — asking AI to fix it…");
+        code = await gen(promptText, code, err);
+        hdr = buildGlslHeader(code);
+        err = pipeline.validateShaderSource(hdr ? `${hdr}\n${code}` : code);
+      }
+      return { code, err };
+    }
+
+    aiGenBtn.addEventListener("click", async () => {
+      const promptText = aiPromptEl.value.trim();
+      if (!promptText) return;
+      _aiSetBusy(true, "Generating shader…");
+      try {
+        const { code } = await _runAiGeneration(promptText);
+        // Inject even if the retry still errors — the editor error panel
+        // and last-good fallback handle it non-destructively.
+        setGlslSource(code);
+        const labels = _parseAiLabels(code);
+        if (labels) _updateGlslParamLabels(labels);
+        closeAiModal();
+        applyGLSL();
+      } catch (e) {
+        const msg =
+          e?.message === "no-key"
+            ? "No API key configured — set one in the AI tab."
+            : `Generation failed: ${e?.message ?? e}`;
+        _aiShowError(msg);
+      }
+    });
+
     aiBtn.addEventListener("click", openAiModal);
     aiCancelBtn.addEventListener("click", closeAiModal);
     aiModal.addEventListener("click", (e) => {

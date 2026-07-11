@@ -9,6 +9,13 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
 ## [Unreleased]
 
 ### Added
+- **AI shader generation (✨ Prompt AI)** — describe an effect in
+  natural language and the configured AI provider (AI tab) writes the
+  GLSL. The system prompt embeds the full VJ uniform contract; the
+  result is compile-checked before it reaches the editor, with one
+  automatic AI repair attempt on compiler errors. Generated shaders
+  name their own uParam1–4 knob labels via metadata. Touch-friendly
+  modal with pulsing progress and inline error reporting.
 - **VJ uniform contract for Live GLSL** — custom shaders now receive
   `tAudio` (256×2 FFT + waveform DataTexture), `tPrev` (previous
   output frame for feedback/trails), `uBPM`/`uBeat` (beat phase 0..1

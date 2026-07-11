@@ -617,24 +617,30 @@ export class Pipeline {
     }
   }
 
+  /**
+   * Deterministic standalone fragment compile check — returns the GLSL
+   * info log string on failure, null when the source compiles. Does not
+   * touch the active custom material. (The renderer.compile/link-status
+   * introspection in setCustomShader is unreliable — three r160 stores
+   * WebGLShader objects, not source strings, in renderer.info.programs.)
+   */
+  validateShaderSource(fragmentSrc) {
+    const gl = this.renderer.getContext();
+    const test = gl.createShader(gl.FRAGMENT_SHADER);
+    gl.shaderSource(test, 'precision highp float;\n' + fragmentSrc);
+    gl.compileShader(test);
+    const compiled = gl.getShaderParameter(test, gl.COMPILE_STATUS);
+    const log = compiled ? null
+      : (gl.getShaderInfoLog(test) || 'Shader compile failed');
+    gl.deleteShader(test);
+    return log;
+  }
+
   setCustomShader(fragmentSrc) {
-    // Deterministic syntax check: compile the fragment source standalone.
-    // (The renderer.compile/link-status introspection below is unreliable —
-    // three r160 stores WebGLShader objects, not source strings, in
-    // renderer.info.programs, so bad shaders can slip through as "success".)
-    {
-      const gl = this.renderer.getContext();
-      const test = gl.createShader(gl.FRAGMENT_SHADER);
-      gl.shaderSource(test, 'precision highp float;\n' + fragmentSrc);
-      gl.compileShader(test);
-      const compiled = gl.getShaderParameter(test, gl.COMPILE_STATUS);
-      const log = compiled ? null
-        : (gl.getShaderInfoLog(test) || 'Shader compile failed');
-      gl.deleteShader(test);
-      if (!compiled) {
-        this._customError = log;
-        return this._customError;
-      }
+    const preErr = this.validateShaderSource(fragmentSrc);
+    if (preErr) {
+      this._customError = preErr;
+      return this._customError;
     }
 
     // Build a test material to detect compile errors via WebGL
