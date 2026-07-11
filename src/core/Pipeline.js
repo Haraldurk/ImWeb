@@ -230,6 +230,9 @@ export class Pipeline {
     this._customMat    = null;  // set by setCustomShader()
     this._customError  = null;  // last compile error string, or null
     this._customActive = false; // whether to run the custom pass
+    this._vj           = null;  // per-frame VJ data from setCustomVJ()
+    this._vjBlackTex   = new THREE.DataTexture(new Uint8Array([0, 0, 0, 255]), 1, 1);
+    this._vjBlackTex.needsUpdate = true; // tAudio fallback when sound is off
 
     // 3D LUT colour grade
     this._lutTex    = null;   // THREE.DataTexture
@@ -581,10 +584,27 @@ export class Pipeline {
    */
   _applyCustomPass(tex) {
     if (!this._customActive || !this._customMat || !tex) return tex;
-    this._customMat.uniforms.uTexture.value = tex;
-    this._customMat.uniforms.uTime.value = this._noiseTime;
-    this._customMat.uniforms.uResolution.value.set(this.width, this.height);
+    const u = this._customMat.uniforms;
+    u.uTexture.value = tex;
+    u.uTime.value = this._noiseTime;
+    u.uResolution.value.set(this.width, this.height);
+    // VJ contract — tPrev is always the previous final output frame;
+    // audio values fall back to black/0 when sound is off (guards keep
+    // pre-contract materials from older sessions working)
+    if (u.tPrev)  u.tPrev.value  = this.prev.texture;
+    if (u.tAudio) u.tAudio.value = this._vj?.audio ?? this._vjBlackTex;
+    if (u.uBPM)   u.uBPM.value   = this._vj?.bpm   ?? 0;
+    if (u.uBeat)  u.uBeat.value  = this._vj?.beat  ?? 0;
+    if (u.uLevel) u.uLevel.value = this._vj?.level ?? 0;
+    if (u.uBass)  u.uBass.value  = this._vj?.bass  ?? 0;
+    if (u.uMid)   u.uMid.value   = this._vj?.mid   ?? 0;
+    if (u.uHigh)  u.uHigh.value  = this._vj?.high  ?? 0;
     return this._pass(this._customMat, {});
+  }
+
+  /** Per-frame VJ data for the custom shader: { audio, bpm, beat, level, bass, mid, high } */
+  setCustomVJ(vj) {
+    this._vj = vj;
   }
 
   setCustomUniforms(vals) {
@@ -627,6 +647,15 @@ export class Pipeline {
         uParam2:     { value: 0 },
         uParam3:     { value: 0 },
         uParam4:     { value: 0 },
+        // VJ uniform contract — fed per-frame in _applyCustomPass()
+        tAudio:      { value: this._vjBlackTex },
+        tPrev:       { value: null },
+        uBPM:        { value: 0 },
+        uBeat:       { value: 0 },
+        uLevel:      { value: 0 },
+        uBass:       { value: 0 },
+        uMid:        { value: 0 },
+        uHigh:       { value: 0 },
       },
       vertexShader:   VERT,
       fragmentShader: fragmentSrc,

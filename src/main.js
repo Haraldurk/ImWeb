@@ -456,6 +456,10 @@ async function main() {
   const pipeline = new Pipeline(renderer, W, H);
   // Dev-only console access for headless verification (verdict-cli)
   if (import.meta.env.DEV) window.__pipeline = pipeline;
+  // VJ contract audio texture (256x2: FFT row + waveform row), lazily
+  // created in the tick loop once sound is enabled
+  let _vjAudioTex = null;
+  let _vjAudioData = null;
 
   // Default startup state: FG=Color, BG=Color, DS=Noise; movie off until user clicks MovieOn
   ps.set("layer.fg", 3); // Color
@@ -4026,12 +4030,17 @@ async function main() {
   const glslAuto = document.getElementById("glsl-auto-apply");
 
   // Default doc (moved here from the old <textarea> markup)
-  const GLSL_DEFAULT_DOC = `// Available uniforms:
-//   sampler2D uTexture    — current frame
-//   float     uTime       — seconds
-//   vec2      uResolution
-//   varying vec2 vUv      — 0..1 UV coords
-//   float uParam1..uParam4 — bind any param in the slots below
+  const GLSL_DEFAULT_DOC = `// VJ uniform contract (auto-declared — just use them):
+//   varying vec2 vUv        — 0..1 UV coords
+//   sampler2D uTexture      — input at the routed insert point
+//   sampler2D tAudio        — 256x2: y<0.5 FFT bins, y>0.5 waveform; .r = 0..1
+//   sampler2D tPrev         — previous output frame (feedback/trails)
+//   vec2  uResolution       — canvas size in px
+//   float uTime             — seconds
+//   float uBPM              — detected tempo (0 = unknown; enable Sound)
+//   float uBeat             — beat phase 0..1 (0 = on the beat)
+//   float uLevel/uBass/uMid/uHigh — audio levels 0..1
+//   float uParam1..uParam4  — performance knobs (bind any controller below)
 
 void main() {
   vec4 col = texture2D(uTexture, vUv);
@@ -4120,19 +4129,27 @@ void main() {
   function applyGLSL() {
     const src = getGlslSource();
     if (!src) return;
-    // Prepend all standard pipeline uniform declarations if absent,
-    // so preset shaders don't need to redeclare them.
+    // Prepend the standardized VJ uniform contract if absent, so shaders
+    // (and the future AI) never need to redeclare it.
     const header = [
-      src.includes("varying vec2 vUv") ? "" : "varying vec2 vUv;",
-      src.includes("uniform sampler2D uTexture")
-        ? ""
-        : "uniform sampler2D uTexture;",
-      src.includes("uniform float uTime") ? "" : "uniform float uTime;",
-      src.includes("uniform float uParam1") ? "" : "uniform float uParam1;",
-      src.includes("uniform float uParam2") ? "" : "uniform float uParam2;",
-      src.includes("uniform float uParam3") ? "" : "uniform float uParam3;",
-      src.includes("uniform float uParam4") ? "" : "uniform float uParam4;",
+      ["varying vec2 vUv", "varying vec2 vUv;"],
+      ["uniform sampler2D uTexture", "uniform sampler2D uTexture;"],
+      ["uniform sampler2D tAudio", "uniform sampler2D tAudio;"],
+      ["uniform sampler2D tPrev", "uniform sampler2D tPrev;"],
+      ["uniform vec2 uResolution", "uniform vec2 uResolution;"],
+      ["uniform float uTime", "uniform float uTime;"],
+      ["uniform float uBPM", "uniform float uBPM;"],
+      ["uniform float uBeat", "uniform float uBeat;"],
+      ["uniform float uLevel", "uniform float uLevel;"],
+      ["uniform float uBass", "uniform float uBass;"],
+      ["uniform float uMid", "uniform float uMid;"],
+      ["uniform float uHigh", "uniform float uHigh;"],
+      ["uniform float uParam1", "uniform float uParam1;"],
+      ["uniform float uParam2", "uniform float uParam2;"],
+      ["uniform float uParam3", "uniform float uParam3;"],
+      ["uniform float uParam4", "uniform float uParam4;"],
     ]
+      .map(([probe, decl]) => (src.includes(probe) ? "" : decl))
       .filter(Boolean)
       .join("\n");
     const fullSrc = header ? `${header}\n${src}` : src;
@@ -4184,6 +4201,7 @@ void main() {
   const GLSL_PRESET_META = {
     Reef: ["Speed ×2", "WaveAmp ×0.8", "Density ×2", "ColorShift ×2π"],
     Tunnel: ["Speed (-1..+1)", "Dir X", "Zoom (1–8×)", "Width"],
+    "Audio React": ["Bass Zoom", "Beat Flash", "FFT Bars", "Trails"],
   };
 
   const GLSL_PARAM_DEFAULT_LABELS = [
@@ -4351,6 +4369,29 @@ void main() {
 
   vec3 c = max(o, 0.0);
   gl_FragColor = vec4(c / (c + 50.0), 1.0);
+}`,
+    "Audio React": `// Needs Sound enabled (Ctrl panel) — demonstrates the VJ contract
+void main() {
+  // bass-driven zoom pump
+  vec2 c = (vUv - 0.5) / (1.0 + uBass * 0.2 * uParam1) + 0.5;
+  vec4 col = texture2D(uTexture, c);
+
+  // FFT bars along the bottom edge
+  float fft = texture2D(tAudio, vec2(vUv.x, 0.25)).r;
+  float bars = step(vUv.y, fft * 0.3) * uParam3;
+
+  // flash decaying over each beat
+  float flash = (1.0 - uBeat) * (uBPM > 0.0 ? 1.0 : 0.0) * uParam2;
+
+  vec3 rgb = col.rgb
+    + flash * vec3(0.9, 0.7, 0.2)
+    + bars * vec3(0.2, 0.9, 0.4);
+
+  // feedback trails from the previous frame
+  vec3 prev = texture2D(tPrev, vUv).rgb;
+  rgb = mix(rgb, max(rgb, prev * 0.955), uParam4);
+
+  gl_FragColor = vec4(rgb, col.a);
 }`,
   };
 
@@ -5880,6 +5921,40 @@ void main() {
       ps.get("glsl.param3")?.normalized ?? 0,
       ps.get("glsl.param4")?.normalized ?? 0,
     ]);
+
+    // VJ uniform contract — fill tAudio + beat/levels for the custom shader.
+    // Gated on an active shader so it costs nothing otherwise; sound buffers
+    // are refreshed by ctrl.tick() each frame (ControllerManager:133).
+    if (pipeline._customActive) {
+      const snd = ctrl.sound;
+      if (snd) {
+        if (!_vjAudioData) {
+          _vjAudioData = new Uint8Array(256 * 2);
+          _vjAudioTex = new THREE.DataTexture(
+            _vjAudioData, 256, 2, THREE.RedFormat, THREE.UnsignedByteType,
+          );
+        }
+        for (let i = 0; i < 256; i++) {
+          _vjAudioData[i] = snd.freqBuf[i]; // row 0: FFT bins
+          // row 1: waveform, 512 float samples decimated to 256 bytes
+          const w = (snd.timeBuf[i * 2] * 0.5 + 0.5) * 255;
+          _vjAudioData[256 + i] = w < 0 ? 0 : w > 255 ? 255 : w;
+        }
+        _vjAudioTex.needsUpdate = true;
+        const bd = snd.beatDetector;
+        const bpm = bd?.bpm ?? 0;
+        const beat = bpm > 0 && bd._lastBeat > 0
+          ? ((snd.ctx.currentTime - bd._lastBeat) * bpm / 60) % 1
+          : 0;
+        pipeline.setCustomVJ({
+          audio: _vjAudioTex, bpm, beat,
+          level: Math.min(1, snd.level * 4),
+          bass: snd.bass, mid: snd.mid, high: snd.high,
+        });
+      } else {
+        pipeline.setCustomVJ(null);
+      }
+    }
 
     // Run compositing pipeline
     if (!strobeFreeze) {
