@@ -28,8 +28,9 @@ import * as THREE from "three";
 import { EditorView, basicSetup } from "codemirror";
 import { keymap } from "@codemirror/view";
 import { indentWithTab } from "@codemirror/commands";
-import { StreamLanguage } from "@codemirror/language";
-import { shader as glslMode } from "@codemirror/legacy-modes/mode/clike";
+import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
+import { tags as hlTags } from "@lezer/highlight";
+import { cpp } from "@codemirror/lang-cpp";
 import {
   ParameterSystem,
   registerCoreParameters,
@@ -4037,6 +4038,21 @@ void main() {
   gl_FragColor = col;
 }`;
 
+  // Explicit dark highlight style — defaultHighlightStyle is tuned for
+  // light backgrounds and rendered unreadably on the #0a0a0e editor.
+  const glslHighlight = HighlightStyle.define([
+    { tag: hlTags.keyword, color: "#c586c0" },
+    { tag: [hlTags.typeName, hlTags.standard(hlTags.typeName)], color: "#4ec9b0" },
+    { tag: hlTags.number, color: "#b5cea8" },
+    { tag: hlTags.comment, color: "#6a9955", fontStyle: "italic" },
+    { tag: hlTags.string, color: "#ce9178" },
+    { tag: [hlTags.operator, hlTags.punctuation], color: "#d4d4d4" },
+    { tag: hlTags.variableName, color: "#9cdcfe" },
+    { tag: hlTags.definition(hlTags.variableName), color: "#9cdcfe" },
+    { tag: hlTags.function(hlTags.variableName), color: "#dcdcaa" },
+    { tag: hlTags.processingInstruction, color: "#c586c0" },
+  ]);
+
   // CodeMirror 6 editor — replaces the old <textarea> (iPad-friendly)
   const glslTheme = EditorView.theme(
     {
@@ -4072,7 +4088,8 @@ void main() {
             { key: "Mod-Enter", run: () => (applyGLSL(), true) },
           ]),
           basicSetup,
-          StreamLanguage.define(glslMode),
+          cpp(),
+          syntaxHighlighting(glslHighlight),
           glslTheme,
           EditorView.updateListener.of((u) => {
             if (u.docChanged && glslAuto?.checked) applyGLSL();
