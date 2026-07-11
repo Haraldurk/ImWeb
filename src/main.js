@@ -4128,27 +4128,36 @@ void main() {
   }
 
   // Build the standardized VJ uniform header for a shader source —
-  // declarations already present in the source are skipped.
+  // declarations already present in the source are skipped. Probes are
+  // regexes tolerant of extra whitespace and precision qualifiers
+  // (lowp/mediump/highp), so pasted ShaderToy-style declarations don't
+  // end up duplicated. Comments are stripped before probing so a
+  // commented-out declaration can't suppress the injection.
   function buildGlslHeader(src) {
+    const code = src.replace(/\/\/.*$/gm, "").replace(/\/\*[\s\S]*?\*\//g, "");
+    const u = (type, name) =>
+      new RegExp(
+        `uniform\\s+(?:lowp\\s+|mediump\\s+|highp\\s+)?${type}\\s+${name}\\b`,
+      );
     return [
-      ["varying vec2 vUv", "varying vec2 vUv;"],
-      ["uniform sampler2D uTexture", "uniform sampler2D uTexture;"],
-      ["uniform sampler2D tAudio", "uniform sampler2D tAudio;"],
-      ["uniform sampler2D tPrev", "uniform sampler2D tPrev;"],
-      ["uniform vec2 uResolution", "uniform vec2 uResolution;"],
-      ["uniform float uTime", "uniform float uTime;"],
-      ["uniform float uBPM", "uniform float uBPM;"],
-      ["uniform float uBeat", "uniform float uBeat;"],
-      ["uniform float uLevel", "uniform float uLevel;"],
-      ["uniform float uBass", "uniform float uBass;"],
-      ["uniform float uMid", "uniform float uMid;"],
-      ["uniform float uHigh", "uniform float uHigh;"],
-      ["uniform float uParam1", "uniform float uParam1;"],
-      ["uniform float uParam2", "uniform float uParam2;"],
-      ["uniform float uParam3", "uniform float uParam3;"],
-      ["uniform float uParam4", "uniform float uParam4;"],
+      [/varying\s+(?:lowp\s+|mediump\s+|highp\s+)?vec2\s+vUv\b/, "varying vec2 vUv;"],
+      [u("sampler2D", "uTexture"), "uniform sampler2D uTexture;"],
+      [u("sampler2D", "tAudio"), "uniform sampler2D tAudio;"],
+      [u("sampler2D", "tPrev"), "uniform sampler2D tPrev;"],
+      [u("vec2", "uResolution"), "uniform vec2 uResolution;"],
+      [u("float", "uTime"), "uniform float uTime;"],
+      [u("float", "uBPM"), "uniform float uBPM;"],
+      [u("float", "uBeat"), "uniform float uBeat;"],
+      [u("float", "uLevel"), "uniform float uLevel;"],
+      [u("float", "uBass"), "uniform float uBass;"],
+      [u("float", "uMid"), "uniform float uMid;"],
+      [u("float", "uHigh"), "uniform float uHigh;"],
+      [u("float", "uParam1"), "uniform float uParam1;"],
+      [u("float", "uParam2"), "uniform float uParam2;"],
+      [u("float", "uParam3"), "uniform float uParam3;"],
+      [u("float", "uParam4"), "uniform float uParam4;"],
     ]
-      .map(([probe, decl]) => (src.includes(probe) ? "" : decl))
+      .map(([probe, decl]) => (probe.test(code) ? "" : decl))
       .filter(Boolean)
       .join("\n");
   }
