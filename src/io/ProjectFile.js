@@ -122,6 +122,7 @@ export class ProjectFile {
       drawData,
       stills:       stillsMetadata,
       scene3d:      scene3dMetadata,
+      glsl:         this.extras.glsl ? this.extras.glsl.capture() : null,
     };
   }
 
@@ -264,6 +265,14 @@ export class ProjectFile {
       await this.extras.scene3d.loadModelFromUrl(data.scene3d.modelAsset);
     } else if (data.scene3d?.modelName && !data.scene3d?.modelAsset) {
       console.info(`[Project] Session uses 3D model: ${data.scene3d.modelName}. Please re-import if not already loaded.`);
+    }
+
+    // Live GLSL editor state — the GLSL UI hook registers after the
+    // first-launch MasterProject import, so stash the data if it isn't
+    // wired yet; the GLSL block picks up pendingGlsl on registration.
+    if (data.glsl) {
+      if (this.extras.glsl) this.extras.glsl.restore(data.glsl);
+      else this.pendingGlsl = data.glsl;
     }
 
     return data._name ?? data.name ?? 'project';

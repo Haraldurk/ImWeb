@@ -1911,6 +1911,8 @@ async function main() {
     scene3d: scene3d,
     seqBuffers: [seq1, seq2, seq3],
   });
+  // Dev-only console access for headless verification (verdict-cli)
+  if (import.meta.env.DEV) window.__projectFile = projectFile;
 
   // ── First-ever launch: load MasterProject from server ─────────────────────
   if (presetMgr._firstLaunch) {
@@ -4088,6 +4090,27 @@ async function main() {
     }
   });
 
+  // ── Project persistence hook (.imweb `glsl` key) ──────────────────────────
+  projectFile.extras.glsl = {
+    capture: () => ({
+      source: glslEditor?.value ?? "",
+      autoApply: !!glslAuto?.checked,
+      active: !!pipeline._customActive,
+    }),
+    restore: (d) => {
+      if (glslEditor && typeof d.source === "string")
+        glslEditor.value = d.source;
+      if (glslAuto) glslAuto.checked = !!d.autoApply;
+      if (d.active && d.source) applyGLSL();
+      else if (!d.active) pipeline.disableCustomShader();
+    },
+  };
+  // First-launch MasterProject import runs before this hook registers
+  if (projectFile.pendingGlsl) {
+    projectFile.extras.glsl.restore(projectFile.pendingGlsl);
+    projectFile.pendingGlsl = null;
+  }
+
   // Built-in GLSL shader presets
   // Per-preset parameter label metadata — 4 labels matching uParam1..4 slots.
   // Presets not listed here show generic uParam1–4 labels.
@@ -4273,13 +4296,45 @@ void main() {
     o.textContent = name;
     glslPresetSel.appendChild(o);
   });
+
+  // User shader presets — localStorage, appended after built-ins.
+  // Option values are prefixed "user:" so they can never shadow a built-in.
+  const GLSL_USER_KEY = "imweb.glslUserPresets";
+  const _loadUserGlsl = () => {
+    try {
+      return JSON.parse(localStorage.getItem(GLSL_USER_KEY) ?? "{}");
+    } catch {
+      return {};
+    }
+  };
+  let _glslUserGroup = null;
+  function _rebuildUserGlslOptions() {
+    _glslUserGroup?.remove();
+    _glslUserGroup = null;
+    const names = Object.keys(_loadUserGlsl());
+    if (!names.length) return;
+    _glslUserGroup = document.createElement("optgroup");
+    _glslUserGroup.label = "— User —";
+    names.forEach((n) => {
+      const o = document.createElement("option");
+      o.value = `user:${n}`;
+      o.textContent = n;
+      _glslUserGroup.appendChild(o);
+    });
+    glslPresetSel.appendChild(_glslUserGroup);
+  }
+  _rebuildUserGlslOptions();
+
   glslPresetSel.addEventListener("change", () => {
-    const code = GLSL_PRESETS[glslPresetSel.value];
+    const v = glslPresetSel.value;
+    const code = v.startsWith("user:")
+      ? _loadUserGlsl()[v.slice(5)]
+      : GLSL_PRESETS[v];
     if (code && glslEditor) {
       glslEditor.value = code;
       if (glslAuto?.checked) applyGLSL();
     }
-    _updateGlslParamLabels(glslPresetSel.value);
+    _updateGlslParamLabels(v);
   });
 
   // Apply labels for the initially-selected preset
@@ -4298,6 +4353,24 @@ void main() {
       "font-size:11px;color:var(--text-2);white-space:nowrap;";
     selRow.appendChild(lbl);
     selRow.appendChild(glslPresetSel);
+
+    // Save current editor code as a recallable user preset
+    const glslSaveBtn = document.createElement("button");
+    glslSaveBtn.className = "import-btn";
+    glslSaveBtn.textContent = "💾";
+    glslSaveBtn.title = "Save current code as user preset";
+    glslSaveBtn.addEventListener("click", () => {
+      const src = glslEditor?.value;
+      if (!src) return;
+      const name = prompt("Preset name:");
+      if (!name) return;
+      const user = _loadUserGlsl();
+      user[name] = src;
+      localStorage.setItem(GLSL_USER_KEY, JSON.stringify(user));
+      _rebuildUserGlslOptions();
+      glslPresetSel.value = `user:${name}`;
+    });
+    selRow.appendChild(glslSaveBtn);
     glslSection.insertBefore(selRow, glslSection.querySelector("div"));
   }
 
