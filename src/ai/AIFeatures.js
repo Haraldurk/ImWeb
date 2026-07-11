@@ -465,9 +465,26 @@ Rules:
 - Base the image on uTexture unless the request is clearly fully generative.
 - Wire uParam1..4 to the most performance-relevant quantities in the effect.`;
 
-function _stripCodeFences(text) {
-  const m = text.match(/```(?:glsl|c|cpp)?\s*([\s\S]*?)```/);
-  return (m ? m[1] : text).trim();
+/**
+ * Extract GLSL from a model response, discarding conversational text.
+ * 1. Fenced block (any language tag) → contents of the first block.
+ * 2. Unfenced → slice from the first code-looking line (// uParams:,
+ *    #define, uniform/varying/const, a function definition, or void main)
+ *    to the last closing brace, dropping prose before and after.
+ * 3. Nothing code-looking at all → the trimmed response (compile check
+ *    downstream reports the real error).
+ * Exported for headless tests.
+ */
+export function extractGlsl(text) {
+  const fence = text.match(/```[\w-]*[ \t]*\r?\n?([\s\S]*?)```/);
+  if (fence) return fence[1].trim();
+  const start = text.search(
+    /^[ \t]*(\/\/\s*uParams:|#define\b|precision\b|uniform\b|varying\b|const\b|(?:float|vec[234]|mat[234]|int)\s+\w+\s*\(|void\s+main\b)/m,
+  );
+  if (start === -1) return text.trim();
+  const body = text.slice(start);
+  const lastBrace = body.lastIndexOf('}');
+  return (lastBrace === -1 ? body : body.slice(0, lastBrace + 1)).trim();
 }
 
 /**
@@ -478,7 +495,7 @@ export async function generateShader(description, priorCode = null, priorError =
   const user = priorError
     ? `Your previous shader failed to compile.\nCompiler error:\n${priorError}\n\nBroken code:\n${priorCode}\n\nReturn the corrected COMPLETE shader (same rules) for the original request: "${description}"`
     : `Write a shader: "${description}"`;
-  return _stripCodeFences(await _call(SHADER_SYSTEM, user, 1500));
+  return extractGlsl(await _call(SHADER_SYSTEM, user, 1500));
 }
 
 // ── Feature 2: Parameter Narrator ────────────────────────────────────────────
