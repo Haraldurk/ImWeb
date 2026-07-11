@@ -476,30 +476,52 @@ Rules:
  * Exported for headless tests.
  */
 export function extractGlsl(text) {
-  // All fenced blocks (any language tag). Retry replies often quote the
-  // broken excerpt in a fence BEFORE the corrected shader, so prefer the
-  // block that defines main(), then the longest — never blindly the first.
+  const hasMain = (s) => /void\s+main\s*\(/.test(s);
+  const longest = (arr) => arr.reduce((a, b) => (b.length > a.length ? b : a), '');
+  // Distinguishes real split-off code (starts with a comment, directive, or
+  // top-level declaration/definition) from quoted mid-expression excerpts
+  const looksTopLevel = (b) =>
+    /^[ \t]*(\/\/|\/\*|#|precision\b|uniform\b|varying\b|const\b|struct\b|(?:float|vec[234]|mat[234]|int)\s+\w+\s*\(|void\s+\w+)/.test(b);
+
   const blocks = [...text.matchAll(/```[\w-]*[ \t]*\r?\n?([\s\S]*?)```/g)]
     .map((m) => m[1].trim())
     .filter(Boolean);
+
+  let candidate = null;
   if (blocks.length) {
-    const withMain = blocks.filter((b) => /void\s+main\s*\(/.test(b));
-    const pool = withMain.length ? withMain : blocks;
-    return pool.reduce((a, b) => (b.length > a.length ? b : a), '');
+    const withMain = blocks.filter(hasMain);
+    // Several complete shaders (model offered variants): take the longest
+    if (withMain.length > 1) return longest(withMain);
+    if (withMain.length === 1) {
+      // One main() — stitch in sibling blocks that look like top-level
+      // code (models split helpers and main across fences with prose
+      // between), but never quoted mid-expression excerpts
+      return blocks
+        .filter((b) => b === withMain[0] || looksTopLevel(b))
+        .join('\n');
+    }
+    candidate = longest(blocks); // fences present, but no main() anywhere
+  } else {
+    // Unclosed fence (response truncated mid-code): take everything after it
+    const open = text.match(/```[\w-]*[ \t]*\r?\n?/);
+    if (open) candidate = text.slice(open.index + open[0].length).trim() || null;
   }
-  // Unclosed fence (response truncated mid-code): take everything after it
-  const open = text.match(/```[\w-]*[ \t]*\r?\n?/);
-  if (open) {
-    const after = text.slice(open.index + open[0].length).trim();
-    if (after) return after;
-  }
+  if (candidate && hasMain(candidate)) return candidate;
+
+  // Heuristic slice over the raw text — may recover a main() that sat
+  // outside the fences; strip any stray fence-marker lines it swallows
   const start = text.search(
     /^[ \t]*(\/\/\s*uParams:|#define\b|precision\b|uniform\b|varying\b|const\b|(?:float|vec[234]|mat[234]|int)\s+\w+\s*\(|void\s+main\b)/m,
   );
-  if (start === -1) return text.trim();
-  const body = text.slice(start);
-  const lastBrace = body.lastIndexOf('}');
-  return (lastBrace === -1 ? body : body.slice(0, lastBrace + 1)).trim();
+  if (start !== -1) {
+    const body = text.slice(start);
+    const lastBrace = body.lastIndexOf('}');
+    const sliced = (lastBrace === -1 ? body : body.slice(0, lastBrace + 1))
+      .replace(/^[ \t]*```.*$/gm, '')
+      .trim();
+    if (hasMain(sliced) || !candidate) return sliced;
+  }
+  return candidate ?? text.trim();
 }
 
 /**
