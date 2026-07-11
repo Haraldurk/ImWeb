@@ -9,6 +9,15 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
 ## [Unreleased]
 
 ### Added
+- **VJ uniform contract for Live GLSL** — custom shaders now receive
+  `tAudio` (256×2 FFT + waveform DataTexture), `tPrev` (previous
+  output frame for feedback/trails), `uBPM`/`uBeat` (beat phase 0..1
+  from the BeatDetector), and `uLevel`/`uBass`/`uMid`/`uHigh` audio
+  bands. The full contract is auto-injected as a header (including
+  the previously missing `uResolution`), documented in the editor's
+  default doc, and degrades gracefully when Sound is off (black
+  tAudio, zeroed values). New built-in preset **Audio React**
+  demonstrates bass zoom, beat flash, FFT bars, and trails.
 - **GLSL insert routing** — new Target selector in the GLSL section
   routes the custom shader to Master Output (default), Foreground,
   Background, or Displace Layer. FG/BG inserts run on the resolved
