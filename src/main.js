@@ -448,6 +448,8 @@ async function main() {
   // ── 5. Pipeline ───────────────────────────────────────────────────────────
 
   const pipeline = new Pipeline(renderer, W, H);
+  // Dev-only console access for headless verification (verdict-cli)
+  if (import.meta.env.DEV) window.__pipeline = pipeline;
 
   // Default startup state: FG=Color, BG=Color, DS=Noise; movie off until user clicks MovieOn
   ps.set("layer.fg", 3); // Color
@@ -4048,7 +4050,11 @@ async function main() {
     const err = pipeline.setCustomShader(fullSrc);
     if (glslError) {
       glslError.style.display = err ? "block" : "none";
-      glslError.textContent = err ?? "";
+      glslError.textContent = err
+        ? pipeline._customActive
+          ? `${err} — previous shader still running`
+          : err
+        : "";
     }
   }
 
