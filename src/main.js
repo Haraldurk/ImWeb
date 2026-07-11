@@ -4406,12 +4406,21 @@ void main() {
   const glslPresetSel = document.createElement("select");
   glslPresetSel.style.cssText =
     "font-size:11px;background:var(--bg-4);border:1px solid var(--border);color:var(--text-1);padding:2px 4px;flex:1;";
+  // Hidden 'Custom' entry — selected when the editor holds unsaved/blank/
+  // AI-generated code that matches no preset
+  const glslCustomOpt = document.createElement("option");
+  glslCustomOpt.value = "__custom";
+  glslCustomOpt.textContent = "Custom";
+  glslCustomOpt.disabled = true;
+  glslCustomOpt.hidden = true;
+  glslPresetSel.appendChild(glslCustomOpt);
   Object.keys(GLSL_PRESETS).forEach((name) => {
     const o = document.createElement("option");
     o.value = name;
     o.textContent = name;
     glslPresetSel.appendChild(o);
   });
+  glslPresetSel.value = "Passthrough";
 
   // User shader presets — localStorage, appended after built-ins.
   // Option values are prefixed "user:" so they can never shadow a built-in.
@@ -4469,6 +4478,25 @@ void main() {
       "font-size:11px;color:var(--text-2);white-space:nowrap;";
     selRow.appendChild(lbl);
     selRow.appendChild(glslPresetSel);
+
+    // Blank-slate boilerplate for the 📄 New button
+    const GLSL_BLANK_DOC = `// uParams: uParam1 | uParam2 | uParam3 | uParam4
+
+void main() {
+  gl_FragColor = texture2D(uTexture, vUv);
+}`;
+    const glslNewBtn = document.createElement("button");
+    glslNewBtn.className = "import-btn";
+    glslNewBtn.textContent = "📄";
+    glslNewBtn.title = "New blank shader";
+    glslNewBtn.style.cssText = "min-width:32px;min-height:28px;";
+    glslNewBtn.addEventListener("click", () => {
+      setGlslSource(GLSL_BLANK_DOC);
+      glslPresetSel.value = "__custom";
+      // change handler resets knob labels + delete-button visibility
+      glslPresetSel.dispatchEvent(new Event("change"));
+    });
+    selRow.appendChild(glslNewBtn);
 
     // Save current editor code as a recallable user preset
     const glslSaveBtn = document.createElement("button");
@@ -4606,6 +4634,7 @@ void main() {
         // Inject even if the retry still errors — the editor error panel
         // and last-good fallback handle it non-destructively.
         setGlslSource(code);
+        glslPresetSel.value = "__custom"; // generated code is unsaved
         const labels = _parseAiLabels(code);
         if (labels) _updateGlslParamLabels(labels);
         closeAiModal();
