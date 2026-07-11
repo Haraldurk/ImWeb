@@ -583,6 +583,25 @@ export class Pipeline {
   }
 
   setCustomShader(fragmentSrc) {
+    // Deterministic syntax check: compile the fragment source standalone.
+    // (The renderer.compile/link-status introspection below is unreliable —
+    // three r160 stores WebGLShader objects, not source strings, in
+    // renderer.info.programs, so bad shaders can slip through as "success".)
+    {
+      const gl = this.renderer.getContext();
+      const test = gl.createShader(gl.FRAGMENT_SHADER);
+      gl.shaderSource(test, 'precision highp float;\n' + fragmentSrc);
+      gl.compileShader(test);
+      const compiled = gl.getShaderParameter(test, gl.COMPILE_STATUS);
+      const log = compiled ? null
+        : (gl.getShaderInfoLog(test) || 'Shader compile failed');
+      gl.deleteShader(test);
+      if (!compiled) {
+        this._customError = log;
+        return this._customError;
+      }
+    }
+
     // Build a test material to detect compile errors via WebGL
     const mat = new THREE.ShaderMaterial({
       uniforms: {
@@ -631,8 +650,10 @@ export class Pipeline {
       if (err !== 0) throw new Error(`WebGL error ${err} — check shader syntax`);
     } catch (e) {
       mat.dispose();
-      this._customError  = e.message;
-      this._customActive = false;
+      // Last-good fallback: keep the previous shader running on compile
+      // failure — report the error but leave _customActive/_customMat as-is.
+      if (this._customMat) this._quad.material = this._customMat;
+      this._customError = e.message;
       return this._customError;
     }
 
