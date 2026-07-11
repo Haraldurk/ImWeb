@@ -24,8 +24,8 @@ export const PROVIDERS = {
     keyUrl:      'https://console.anthropic.com/settings/keys',
     keyUrlLabel: 'Get API key →',
     keyPlaceholder: 'sk-ant-…',
-    models:      ['claude-opus-4-6', 'claude-sonnet-4-6', 'claude-haiku-4-5-20251001'],
-    defaultModel:'claude-sonnet-4-6',
+    models:      ['claude-sonnet-5', 'claude-opus-4-8', 'claude-haiku-4-5', 'claude-opus-4-6', 'claude-sonnet-4-6'],
+    defaultModel:'claude-sonnet-5',
     needsKey:    true,
   },
   gemini: {
