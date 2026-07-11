@@ -15,7 +15,11 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
   first-launch MasterProject load.
 - **User shader presets** — 💾 button saves the current editor code
   as a named preset (localStorage), listed in a "— User —" group
-  appended after the built-ins.
+  appended after the built-ins. A ✕ button (visible only while a
+  user preset is selected) deletes it and falls back to Passthrough.
+- **Resizable GLSL editor** — the editor container has a vertical
+  resize handle again (like the old textarea); CodeMirror fills the
+  container height and scrolls internally.
 - **CodeMirror 6 editor** — the Live GLSL `<textarea>` is replaced
   with a CodeMirror instance (lang-cpp grammar with a custom dark
   highlight style, line numbers, proper iPad touch editing). Tab

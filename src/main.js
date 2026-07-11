@@ -4056,11 +4056,13 @@ void main() {
   // CodeMirror 6 editor — replaces the old <textarea> (iPad-friendly)
   const glslTheme = EditorView.theme(
     {
+      // Fill the host div — its inline height + resize:vertical handle
+      // (index.html) let the user drag the editor taller/shorter.
       "&": {
         backgroundColor: "#0a0a0e",
         color: "#c8c8d8",
         fontSize: "11px",
-        height: "280px",
+        height: "100%",
       },
       ".cm-scroller": { fontFamily: "monospace", overflow: "auto" },
       "&.cm-focused": { outline: "none" },
@@ -4434,8 +4436,37 @@ void main() {
       localStorage.setItem(GLSL_USER_KEY, JSON.stringify(user));
       _rebuildUserGlslOptions();
       glslPresetSel.value = `user:${name}`;
+      // Refills the editor with the identical just-saved source (harmless)
+      // and keeps the delete button's visibility in sync.
+      glslPresetSel.dispatchEvent(new Event("change"));
     });
     selRow.appendChild(glslSaveBtn);
+
+    // Delete the selected user preset — only visible for '— User —' entries
+    const glslDelBtn = document.createElement("button");
+    glslDelBtn.className = "import-btn";
+    glslDelBtn.textContent = "✕";
+    glslDelBtn.title = "Delete selected user preset";
+    glslDelBtn.style.cssText = "min-width:32px;min-height:28px;display:none;";
+    glslDelBtn.addEventListener("click", () => {
+      const v = glslPresetSel.value;
+      if (!v.startsWith("user:")) return;
+      const user = _loadUserGlsl();
+      delete user[v.slice(5)];
+      localStorage.setItem(GLSL_USER_KEY, JSON.stringify(user));
+      _rebuildUserGlslOptions();
+      glslPresetSel.value = "Passthrough";
+      glslPresetSel.dispatchEvent(new Event("change"));
+    });
+    selRow.appendChild(glslDelBtn);
+
+    const _updateGlslDelVis = () => {
+      glslDelBtn.style.display = glslPresetSel.value.startsWith("user:")
+        ? ""
+        : "none";
+    };
+    glslPresetSel.addEventListener("change", _updateGlslDelVis);
+    _updateGlslDelVis();
     glslSection.insertBefore(selRow, glslSection.querySelector("div"));
   }
 
