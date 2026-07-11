@@ -446,12 +446,21 @@ The following uniforms are ALREADY DECLARED and fed per-frame — never redeclar
   uniform float uParam3;         // performance knob 0..1
   uniform float uParam4;         // performance knob 0..1
 
+CRITICAL RULES — violating any of these breaks the instrument:
+- DO NOT declare uniforms or varyings (uTexture, uTime, vUv, tAudio, tPrev,
+  uResolution, uBPM, uBeat, uLevel, uBass, uMid, uHigh, uParam1..4, etc.).
+  They are injected automatically by the engine. Redeclaring them — with or
+  without precision qualifiers — causes duplicate-declaration compile errors.
+  Start your code directly with the // uParams: line followed by
+  void main() { ... } (helper functions before main() are allowed).
+- Strictly WebGL 1.0 / GLSL ES 1.00: use gl_FragColor and texture2D().
+  NEVER use #version, precision statements, in/out qualifiers, texture(),
+  fragColor, or any WebGL 2.0 / GLSL ES 3.00 syntax.
+- Output ONLY raw GLSL code. NO markdown, NO backticks, no prose.
+
 Rules:
-- Output ONLY raw GLSL code. No markdown fences, no prose, no explanations.
 - The FIRST line must be exactly: // uParams: <Label1> | <Label2> | <Label3> | <Label4>
   (short labels for what uParam1..4 control in your shader; always use all four).
-- GLSL ES 1.00 only: no #version, no precision statements, no in/out —
-  use texture2D() and write to gl_FragColor.
 - Define void main() exactly once. The shader is a full-screen pass.
 - Base the image on uTexture unless the request is clearly fully generative.
 - Wire uParam1..4 to the most performance-relevant quantities in the effect.`;
