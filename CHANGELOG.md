@@ -28,6 +28,17 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
   `g` key, or a 3-finger tap; a crosshair cursor marks the mode, and
   leaving it restores the previous mode. Camera orbit/pan and pad
   gestures are untouched in their own modes.
+- **Stroke looper** — a 4-slot looper pedal for drawing. Record
+  strokes (pointer or LFO/MIDI-driven alike) into a slot, stop to
+  loop them back as ghost strokes while drawing new ones live; slots
+  free-run at independent lengths and speeds (10–400%), so loops
+  polyrhythm against each other. Rec/Play/Clear/Speed are params
+  (`Loop1Rec` … `Loop4Speed`) — assign MIDI pads for hands-on
+  looping; a compact transport strip lives in the Draw tab. Brush
+  size/color/opacity (and pen pressure) are baked into each recorded
+  point, so playback ignores later pen changes. Combine with DrawFade
+  for drawings that animate as they decay and repaint each cycle.
+  Loop data saves/loads with `.imweb` project files.
 - **GLSL preset MIDI recall (`glsl.preset`)** — the Live GLSL preset
   list (built-ins + saved user presets) is now a SELECT parameter with
   a standard controller badge next to the preset dropdown. Assign
