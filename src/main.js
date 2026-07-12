@@ -3324,7 +3324,10 @@ async function main() {
     let _drawEraseBackup = 0;
     let _activePenId = null; // shared across draw surfaces
 
-    const attachDrawSurface = (el) => {
+    // gate: optional () => bool — when given, new strokes only start while
+    // it returns true (used by the main canvas, active only in Draw mode).
+    // Move/up stay ungated so a mode change mid-stroke still ends cleanly.
+    const attachDrawSurface = (el, gate) => {
       el.style.touchAction = "none";
       let strokeErase = false;
       let activeId = null; // single stroke at a time per surface
@@ -3348,6 +3351,7 @@ async function main() {
       };
 
       el.addEventListener("pointerdown", (e) => {
+        if (gate && !gate()) return;
         if (e.pointerType === "touch" && _activePenId !== null) return; // palm
         if (activeId !== null) return;
         if (e.pointerType === "pen") _activePenId = e.pointerId;
@@ -3468,6 +3472,32 @@ async function main() {
         ps.get("draw.fade").value > 0 ? "var(--accent)" : "";
     });
     drawControls.appendChild(btnFade);
+
+    // Canvas draw mode toggle — enters/leaves touch.mode "Draw" (index 3);
+    // remembers the previous mode so leaving restores it. The 'g' key and
+    // 3-finger tap cycle through Draw too — border syncs on any path.
+    const btnCanvas = document.createElement("button");
+    btnCanvas.className = "import-btn";
+    btnCanvas.textContent = "⊕ Canvas";
+    btnCanvas.title =
+      "Draw directly on the output canvas (Draw interaction mode; 'g' key cycles modes)";
+    let _preDrawMode = 0;
+    btnCanvas.addEventListener("click", () => {
+      const p = ps.get("touch.mode");
+      if (!p) return;
+      if (p.value === 3) {
+        ps.set("touch.mode", _preDrawMode);
+      } else {
+        _preDrawMode = p.value;
+        ps.set("touch.mode", 3);
+      }
+      showModeOSD(`MODE: ${p.options?.[p.value] ?? p.value}`);
+    });
+    ps.get("touch.mode")?.onChange((m) => {
+      btnCanvas.style.borderColor =
+        Math.round(m) === 3 ? "var(--accent)" : "";
+    });
+    drawControls.appendChild(btnCanvas);
   }
 
   // ── Text tab UI ───────────────────────────────────────────────────────────
@@ -5707,6 +5737,8 @@ void main() {
       _padXhair.box.classList.add("hidden");
       _padXhair.box.classList.remove("active");
     }
+    // Draw mode gets a crosshair so it's obvious the canvas is a brush
+    canvas.style.cursor = Math.round(m) === 3 ? "crosshair" : "";
   });
 
   // Device motion (tilt/compass controllers). The Global 'Enable Motion'
@@ -5866,6 +5898,17 @@ void main() {
     // Right-drag pan needs the context menu suppressed on the canvas
     canvas.addEventListener("contextmenu", (e) => e.preventDefault());
   }
+
+  // ── Draw-on-canvas (touch.mode 3 "Draw") — paint directly on the output.
+  //    Same pointer grammar as the Draw panel preview (pressure, coalesced
+  //    events, palm rejection); straight rect mapping — the draw texture is
+  //    sampled stretched over the output, so strokes land under the pointer.
+  //    Camera/pad grammars gate on their own indices, so mode 3 is theirs
+  //    to ignore and ours to claim.
+  drawLayer.attachDrawSurface?.(
+    canvas,
+    () => (ps.get("touch.mode")?.value ?? 2) === 3,
+  );
 
 
   // ── Render loop ───────────────────────────────────────────────────────────
