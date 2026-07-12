@@ -3522,6 +3522,32 @@ async function main() {
     });
     drawControls.appendChild(btnCanvas);
 
+    // Synthesis crossover shortcuts — the pipeline already routes any
+    // source into the displacement pass (uDS) and the keyer's external
+    // key (uEK) via layer.ds; these one-shot setters just point it at
+    // Draw (SOURCES index 7). They overwrite a previous DisplaceSrc
+    // choice by design.
+    const btnWarp = document.createElement("button");
+    btnWarp.className = "import-btn";
+    btnWarp.textContent = "⇢ Warp";
+    btnWarp.title =
+      "Drawing displaces the video (DisplaceSrc → Draw; nudges Displace amount if 0)";
+    btnWarp.addEventListener("click", () => {
+      ps.set("layer.ds", 7); // Draw
+      if (!(ps.get("displace.amount")?.value > 0)) ps.set("displace.amount", 20);
+    });
+    const btnKey = document.createElement("button");
+    btnKey.className = "import-btn";
+    btnKey.textContent = "⇢ Key";
+    btnKey.title =
+      "Drawing luminance keys FG over BG (DisplaceSrc → Draw; keyer + ext key on)";
+    btnKey.addEventListener("click", () => {
+      ps.set("layer.ds", 7); // Draw
+      ps.set("keyer.active", 1);
+      ps.set("keyer.extkey", 1);
+    });
+    drawControls.append(btnWarp, btnKey);
+
     // Stroke looper transport — 4 slots × Rec/Play/Clear. Buttons drive the
     // drawloop{n}.* params so MIDI/keyboard paths stay identical.
     const loopStrip = document.createElement("div");
@@ -6208,6 +6234,15 @@ void main() {
     strokeLooper.tick(dt);
     // Tick draw layer (paints to canvas texture based on draw.* params)
     drawLayer.tick(ps);
+
+    // Strokes → particles: while ink lands (live/param strokes, not loop
+    // playback) the pen drives the particle emitter. Both axes are y-up
+    // 0–100, so it's a straight copy; last writer wins if a controller is
+    // also assigned to the emit params.
+    if ((ps.get("draw.toParticles")?.value ?? 0) > 0.5 && drawLayer.strokeActive) {
+      ps.set("particle.emitx", ps.get("draw.x").value);
+      ps.set("particle.emity", ps.get("draw.y").value);
+    }
 
     // Tick text layer (updates text rendering based on text.* params)
     textLayer.tick(ps, dt);

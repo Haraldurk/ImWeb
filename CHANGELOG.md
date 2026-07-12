@@ -39,6 +39,12 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
   point, so playback ignores later pen changes. Combine with DrawFade
   for drawings that animate as they decay and repaint each cycle.
   Loop data saves/loads with `.imweb` project files.
+- **Draw ↔ synthesis crossovers** — `StrokeEmit` toggle makes the pen
+  drive the particle emitter while drawing (strokes trail particles);
+  ⇢ Warp and ⇢ Key buttons in the Draw tab route the drawing into
+  the existing displacement pass and external-key input (one-click
+  `DisplaceSrc → Draw` setups — the pipeline already supported any
+  source there, including Draw).
 - **GLSL preset MIDI recall (`glsl.preset`)** — the Live GLSL preset
   list (built-ins + saved user presets) is now a SELECT parameter with
   a standard controller badge next to the preset dropdown. Assign
