@@ -259,6 +259,10 @@ export class Parameter {
       "monty-confidence": "MC",
       "monty-pe": "MP",
     };
+    if (c.type.startsWith('stroke-')) {
+      const parts = c.type.split('-');
+      return `S${parts[1] ?? '?'}${(parts[2] ?? 'x').toUpperCase()}`;
+    }
     return labels[c.type] ?? c.type.toUpperCase().slice(0, 4);
   }
 
@@ -270,6 +274,7 @@ export class Parameter {
     if (t.startsWith("mouse")) return "mouse";
     if (t.startsWith("sound")) return "sound";
     if (t.startsWith("monty")) return "monty";
+    if (t.startsWith("stroke")) return "stroke";
     return "assigned";
   }
 

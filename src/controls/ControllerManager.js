@@ -43,6 +43,11 @@ export class ControllerManager {
     this.exprs = new Map();
     this._exprTime = 0; // cumulative time in seconds
 
+    // Stroke-controller drivers (stroke→LFO): 1 playhead per assignment,
+    // reads StrokeLooper slot data, outputs x or y normalized 0-1.
+    this.strokes       = new Map();   // paramId → { slot, axis, rate, playhead, _idx }
+    this._strokeLooper = null;
+
     // External Mapping (controller-of-controller)
     // xLFOs keyed by `${paramId}:${xIndex}`
     this._xLFOs = new Map();
@@ -64,6 +69,7 @@ export class ControllerManager {
   }
 
   setMontySignal(signal) { this._montySignal = signal; }
+  setStrokeLooper(looper) { this._strokeLooper = looper; }
 
   // ── Frame tick ────────────────────────────────────────────────────────────
 
@@ -128,6 +134,29 @@ export class ControllerManager {
         }
       }
     });
+
+    // Tick stroke controllers (independent playhead per assignment,
+    // reading StrokeLooper slot points, outputting x or y 0-1).
+    if (this._strokeLooper) {
+      this.strokes.forEach((s, paramId) => {
+        const slot = this._strokeLooper.slots[s.slot];
+        if (!slot || !slot.length || !slot.points.length) return;
+        s.playhead += dt * s.rate;
+        // wrap at slot length; reset idx when wrapped
+        if (s.playhead >= slot.length) {
+          s.playhead = s.playhead % slot.length;
+          s._idx = 0;
+        }
+        // scan forward to find the last point ≤ playhead
+        let val = null;
+        while (s._idx < slot.points.length && slot.points[s._idx].t <= s.playhead) {
+          val = slot.points[s._idx][s.axis];
+          s._idx++;
+        }
+        // hold last known value; no points yet → neutral 0.5
+        if (val !== null) this.ps.setNormalized(paramId, val);
+      });
+    }
 
     // Update sound controller if active
     if (this.sound) this.sound.tick();
@@ -324,6 +353,19 @@ export class ControllerManager {
       } catch (e) {
         console.warn(`[Expr] Compile error for ${paramId}: ${e.message}`);
       }
+    } else if (t.startsWith('stroke-')) {
+      // stroke-{slot}-{axis}  e.g. stroke-1-x, stroke-4-y
+      const parts = t.split('-');
+      const slot  = Math.max(0, Math.min(3, (parseInt(parts[1]) || 1) - 1));
+      const axis  = parts[2] === 'y' ? 'y' : 'x';
+      const prev  = this.strokes.get(paramId);
+      this.strokes.set(paramId, {
+        slot,
+        axis,
+        rate:     prev?.rate ?? 1,
+        playhead: 0,
+        _idx:     0,
+      });
     } else if (t === 'sound' || t === 'sound-bass' || t === 'sound-mid' || t === 'sound-high') {
       this.enableSound(); // lazy-init audio input on first assignment
     }
@@ -334,6 +376,7 @@ export class ControllerManager {
     this.lfos.delete(paramId);
     this.randoms.delete(paramId);
     this.exprs.delete(paramId);
+    this.strokes.delete(paramId);
   }
 
   /** Remove every controller assignment from every parameter. Called on reset. */
