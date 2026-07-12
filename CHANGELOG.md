@@ -6,65 +6,75 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
 
 ---
 
-## [Unreleased]
+## [Unreleased] — The Live GLSL Overhaul (Phases 13–20)
 
 ### Added
-- **📄 New blank shader** button and a hidden "Custom" dropdown state
-  for unsaved/AI-generated code; no-key AI generation errors now offer
-  a 🔑 button that opens AI Settings with the key field focused.
-
-### Fixed
-- **AI shader prompt hardening** — models no longer instructed-around:
-  declaring contract uniforms (which breaks the auto-injected header on
-  qualifier variants) and WebGL 2.0 syntax are now explicitly forbidden
-  in a CRITICAL RULES section.
 - **AI shader generation (✨ Prompt AI)** — describe an effect in
-  natural language and the configured AI provider (AI tab) writes the
-  GLSL. The system prompt embeds the full VJ uniform contract; the
-  result is compile-checked before it reaches the editor, with one
-  automatic AI repair attempt on compiler errors. Generated shaders
-  name their own uParam1–4 knob labels via metadata. Touch-friendly
-  modal with pulsing progress and inline error reporting.
+  natural language and the configured AI provider (AI panel) writes
+  the GLSL. The system prompt embeds the full VJ uniform contract;
+  the result is compile-checked before it reaches the editor, with
+  one automatic AI repair attempt on compiler errors. Generated
+  shaders name their own uParam1–4 knob labels via metadata.
+  Touch-friendly modal with pulsing progress and inline errors;
+  no-key errors offer a 🔑 button that opens AI Settings with the
+  key field focused.
 - **VJ uniform contract for Live GLSL** — custom shaders now receive
   `tAudio` (256×2 FFT + waveform DataTexture), `tPrev` (previous
   output frame for feedback/trails), `uBPM`/`uBeat` (beat phase 0..1
   from the BeatDetector), and `uLevel`/`uBass`/`uMid`/`uHigh` audio
   bands. The full contract is auto-injected as a header (including
-  the previously missing `uResolution`), documented in the editor's
-  default doc, and degrades gracefully when Sound is off (black
-  tAudio, zeroed values). New built-in preset **Audio React**
-  demonstrates bass zoom, beat flash, FFT bars, and trails.
-- **GLSL insert routing** — new Target selector in the GLSL section
-  routes the custom shader to Master Output (default), Foreground,
-  Background, or Displace Layer. FG/BG inserts run on the resolved
-  layer source before color correction, so blends and the keyer see
-  the shader output; the Displace target also feeds the external
-  key. `glsl.target` is a normal SELECT param — state-recallable and
-  saved in `.imweb` automatically.
+  the previously missing `uResolution`) and degrades gracefully when
+  Sound is off. New built-in preset **Audio React** demonstrates
+  bass zoom, beat flash, FFT bars, and trails.
+- **GLSL insert routing** — new Target selector routes the custom
+  shader to Master Output (default), Foreground, Background, or
+  Displace Layer. FG/BG inserts run on the resolved layer source
+  before color correction, so blends and the keyer see the shader
+  output. `glsl.target` is a normal SELECT param — state-recallable
+  and saved in `.imweb` automatically.
 - **Live GLSL persistence** — editor source, auto-apply state, and
   active flag are saved in `.imweb` projects (additive `glsl` key;
-  old files load unchanged) and restored on import, including the
-  first-launch MasterProject load.
-- **User shader presets** — 💾 button saves the current editor code
-  as a named preset (localStorage), listed in a "— User —" group
-  appended after the built-ins. A ✕ button (visible only while a
-  user preset is selected) deletes it and falls back to Passthrough.
-- **Resizable GLSL editor** — the editor container has a vertical
-  resize handle again (like the old textarea); CodeMirror fills the
-  container height and scrolls internally.
+  old files load unchanged) and restored on import.
+- **User shader presets** — 💾 saves the current editor code as a
+  named preset (localStorage, "— User —" group), 📄 clears to a
+  blank boilerplate with a hidden "Custom" dropdown state, ✕ deletes
+  the selected user preset and falls back to Passthrough.
 - **CodeMirror 6 editor** — the Live GLSL `<textarea>` is replaced
-  with a CodeMirror instance (lang-cpp grammar with a custom dark
-  highlight style, line numbers, proper iPad touch editing). Tab
-  indents, Ctrl/Cmd+Enter applies, auto-apply fires on document
-  changes.
+  with a CodeMirror instance (lang-cpp grammar, custom dark highlight
+  style, line numbers, proper iPad touch editing, vertical resize
+  handle). Tab indents, Ctrl/Cmd+Enter applies, auto-apply fires on
+  document changes.
 
 ### Fixed
 - **Live GLSL compile errors no longer kill the running shader** —
-  the previous working shader keeps rendering (last-good fallback)
-  and the error panel notes it. Detection now uses a standalone
-  fragment compile with the real GLSL info log; the old link-status
-  introspection never matched in three r160, so broken shaders could
-  slip through as "success".
+  last-good fallback keeps the previous shader rendering while the
+  error panel reports the real GLSL info log (the old link-status
+  introspection never matched in three r160, letting broken shaders
+  slip through as "success").
+- **AI response handling hardened end-to-end** — thinking-first
+  responses from adaptive-thinking models (claude-sonnet-5, Opus
+  4.7+) are parsed correctly (the text block is found, not assumed
+  at position 0); fenced/unfenced/split/truncated model output is
+  extracted robustly (quoted excerpts never win over the real
+  shader); empty provider responses abort with a clear message
+  instead of feeding the compiler a phantom "Missing main()"; the
+  CRITICAL RULES system prompt forbids uniform redeclaration and
+  WebGL 2.0 syntax; DEV-only `[glsl-ai]` console logging records raw
+  response → extraction → compile errors for ground-truth debugging.
+- **GLSL header injection is qualifier-proof** — regex probes
+  (tolerating `lowp`/`mediump`/`highp` and extra whitespace, tested
+  against comment-stripped source) replace the brittle substring
+  checks, so pasted ShaderToy-style declarations are no longer
+  double-injected.
+- **MovieInput NaN crash** — seeks no longer write a non-finite
+  `currentTime` (and kill the render loop) when a clip's metadata
+  hasn't loaded or its source failed.
+- **AI connection test names what it tested** — "✓ Connected —
+  <model> @ <provider>", exposing saved-config mismatches; Anthropic
+  model list updated to current IDs (claude-sonnet-5 default,
+  claude-opus-4-8, claude-haiku-4-5).
+- **GLSL preset-row buttons pushed off-panel** — the preset select
+  now shrinks properly (`min-width:0`) so 📄/💾/✕ stay visible.
 
 ## [0.12.0] — 2026-07-10 — Dual-Deck & Touch Polish
 
