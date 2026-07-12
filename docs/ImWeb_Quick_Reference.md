@@ -118,6 +118,21 @@ Right-click any parameter row to assign.
 
 ---
 
+## Live GLSL (Project tab)
+
+| Control | Action |
+|---------|--------|
+| **Apply** / Ctrl+Enter | Compile the editor code (errors never kill the running shader) |
+| **Auto** | Recompile on every keystroke |
+| **✨ Prompt AI** | Natural-language shader generation (needs API key in AI panel) |
+| **📄 / 💾 / ✕** | New blank · save as named user preset · delete user preset |
+| **Target** | Insert point: Master / Foreground / Background / Displace |
+| **uParam1–4** | Performance knobs — controller-assignable, AI names the labels |
+
+Auto-declared uniforms: `uTexture` `tAudio` (FFT+waveform) `tPrev` (feedback) `uResolution` `uTime` `uBPM` `uBeat` `uLevel` `uBass` `uMid` `uHigh` `uParam1..4` `vUv`. GLSL ES 1.00 — `texture2D()`, `gl_FragColor`.
+
+---
+
 ## Keyboard Shortcuts
 
 ### Performance

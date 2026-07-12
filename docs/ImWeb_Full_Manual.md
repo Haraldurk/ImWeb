@@ -1156,11 +1156,31 @@ Each step recalls a preset. Useful for rhythmic pattern-based switching.
 
 ---
 
-### GLSL Shader Editor
+### Live GLSL Effect
 
-Live-edit fragment shaders. Changes compile in real-time. 10 built-in example shaders included (click to load). Errors are shown in the editor panel.
+Live-code fragment shaders in a CodeMirror editor (syntax highlighting, line numbers, iPad-friendly, resizable via the drag handle). **Apply** (or Ctrl/Cmd+Enter) compiles; **Auto** recompiles on every keystroke. A compile error never interrupts the output — the previous working shader keeps running and the error (with line numbers) shows above the editor.
 
-Shaders read from `tDiffuse` (or named uniforms) and write to `gl_FragColor`. Added to the pipeline via the custom shader slot.
+**✨ Prompt AI** — describe an effect in natural language ("kaleidoscope that pulses with the bass") and the configured AI provider (AI panel, ⚙) writes the shader. Generated code is compile-checked before it reaches the editor, with one automatic repair round-trip on errors, and names its own knob labels.
+
+**Presets** — the dropdown holds the built-ins plus your saved shaders. **📄** clears to a blank boilerplate, **💾** saves the current code under a custom name (browser localStorage, listed under "— User —"), **✕** deletes the selected user preset. The loaded shader, Auto state, and routing target are also saved in `.imweb` project files.
+
+**Target routing** — run the shader as an insert on **Master** output (default), **Foreground**, **Background**, or the **Displace** layer source. Routing is a normal parameter: state-recallable and controller-assignable.
+
+**The VJ uniform contract** — auto-declared, just use them:
+
+| Uniform | Meaning |
+|---|---|
+| `vec2 vUv` | 0..1 UV coordinates (varying) |
+| `sampler2D uTexture` | input frame at the routed insert point |
+| `sampler2D tAudio` | 256×2 texture: y<0.5 FFT bins, y>0.5 waveform; read `.r` |
+| `sampler2D tPrev` | previous output frame — feedback and trails |
+| `vec2 uResolution` | canvas size in pixels |
+| `float uTime` | seconds |
+| `float uBPM` / `uBeat` | detected tempo / beat phase 0..1 (0 = on the beat) |
+| `float uLevel` `uBass` `uMid` `uHigh` | audio levels 0..1 (enable Sound) |
+| `float uParam1..4` | performance knobs — bind any controller to the sliders below the editor |
+
+Write GLSL ES 1.00 (`texture2D()`, `gl_FragColor`). Pasted ShaderToy-style declarations with precision qualifiers are detected and not double-injected. The **Audio React** built-in preset demonstrates bass zoom, beat flash, FFT bars, and tPrev trails.
 
 ---
 
