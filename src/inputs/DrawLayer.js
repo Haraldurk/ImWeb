@@ -145,6 +145,7 @@ export class DrawLayer {
     const ny = 1 - (ps.get('draw.y').value / 100); // flip Y
 
     // ── Fade / decay ──────────────────────────────────────────────────────
+    let dirty = false;
     const fade = ps.get('draw.fade')?.value ?? 0;
     if (fade > 0) {
       // Apply fade every frame: draw a semi-transparent black rectangle
@@ -155,6 +156,7 @@ export class DrawLayer {
       this.ctx.fillStyle = '#000000';
       this.ctx.fillRect(0, 0, SIZE, SIZE);
       this.ctx.globalAlpha = 1;
+      dirty = true;
     }
 
     // ── Param-driven drawing (LFO/MIDI/Automation on draw.x/draw.y) ──────
@@ -187,10 +189,14 @@ export class DrawLayer {
         if (this.onSegment) this.onSegment(raw, pt);
       }
       this._queue.length = 0;
+      dirty = true;
     }
 
     this.strokeActive = liveInk || this.liveStroke;
-    this.texture.needsUpdate = true;
+    // Only upload the texture to GPU when something actually changed.
+    // Before this guard, needsUpdate fired every frame — 1MB GPU upload
+    // at 60fps tanked iPad to 39-42fps.
+    if (dirty || this.liveStroke) this.texture.needsUpdate = true;
   }
 
   /**
