@@ -4413,8 +4413,10 @@ void main() {
   };
 
   const glslPresetSel = document.createElement("select");
+  // min-width:0 lets flex shrink the select below its content width —
+  // without it the New/Save/Delete buttons get pushed past the panel edge
   glslPresetSel.style.cssText =
-    "font-size:11px;background:var(--bg-4);border:1px solid var(--border);color:var(--text-1);padding:2px 4px;flex:1;";
+    "font-size:11px;background:var(--bg-4);border:1px solid var(--border);color:var(--text-1);padding:2px 4px;flex:1;min-width:0;";
   // Hidden 'Custom' entry — selected when the editor holds unsaved/blank/
   // AI-generated code that matches no preset
   const glslCustomOpt = document.createElement("option");
