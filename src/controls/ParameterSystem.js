@@ -126,7 +126,12 @@ export class Parameter {
     if (this.type === PARAM_TYPE.TOGGLE) {
       this.value = applied > 0.5 ? 1 : 0;
     } else if (this.type === PARAM_TYPE.SELECT) {
-      this.value = Math.round(applied * ((this.options?.length ?? 1) - 1));
+      // ctrlMin/ctrlMax clamp the controller sweep to an index sub-range
+      // (re-clamped to the live list length — options can shrink at runtime)
+      const last = (this.options?.length ?? 1) - 1;
+      const lo = Math.max(0, Math.min(last, Math.round(this.ctrlMin ?? 0)));
+      const hi = Math.max(lo, Math.min(last, Math.round(this.ctrlMax ?? last)));
+      this.value = lo + Math.round(applied * (hi - lo));
     } else {
       const lo = this.ctrlMin ?? this.min;
       const hi = this.ctrlMax ?? this.max;

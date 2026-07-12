@@ -4582,6 +4582,93 @@ void main() {
       glslPresetParam.onChange(_refreshGlslBadge);
       _refreshGlslBadge();
       selRow.appendChild(glslCtrlBadge);
+
+      // Min / Max recall-range fields — clamp the controller sweep to an
+      // index sub-range of the preset list (ctrlMin/ctrlMax, same contract
+      // and drag/dblclick grammar as ParamRow range fields; persisted via
+      // serializeControllers). Tooltip shows the preset name at the index.
+      const _mkGlslRange = (which) => {
+        const p = glslPresetParam;
+        const el = document.createElement("span");
+        el.className = "param-range";
+        el.style.cssText =
+          "cursor:ns-resize;user-select:none;font-size:10px;flex:0 0 auto;";
+        const last = () => (p.options?.length ?? 1) - 1;
+        const cur = () =>
+          which === "min"
+            ? Math.round(p.ctrlMin ?? 0)
+            : Math.round(p.ctrlMax ?? last());
+        const refresh = () => {
+          el.textContent = cur();
+          el.title = `Recall ${which}: ${p.options?.[Math.min(cur(), last())] ?? ""}`;
+          el.classList.toggle(
+            "overridden",
+            (which === "min" ? p.ctrlMin : p.ctrlMax) !== null,
+          );
+        };
+        const commit = (v) => {
+          if (isNaN(v)) return refresh();
+          v = Math.max(0, Math.min(last(), Math.round(v)));
+          const other =
+            which === "min"
+              ? Math.round(p.ctrlMax ?? last())
+              : Math.round(p.ctrlMin ?? 0);
+          if (which === "min") p.ctrlMin = Math.min(v, other);
+          else p.ctrlMax = Math.max(v, other);
+          refresh();
+        };
+        let _startY = 0, _startVal = 0, _startRaw = null, _pid = null;
+        el.addEventListener("pointerdown", (e) => {
+          if (e.button !== 0) return;
+          el.setPointerCapture(e.pointerId);
+          _pid = e.pointerId;
+          _startY = e.clientY;
+          _startVal = cur();
+          _startRaw = which === "min" ? p.ctrlMin : p.ctrlMax; // null = unset
+          e.preventDefault();
+          e.stopPropagation();
+        });
+        el.addEventListener("pointermove", (e) => {
+          if (!el.hasPointerCapture(e.pointerId)) return;
+          // ~10px per index; Shift = 1px per index for fast sweeps
+          const step = e.shiftKey ? 1 : 0.1;
+          commit(_startVal + (_startY - e.clientY) * step);
+        });
+        el.addEventListener("pointerup", () => { _pid = null; });
+        el.addEventListener("pointercancel", (e) => {
+          if (_pid !== e.pointerId) return;
+          _pid = null;
+          if (which === "min") p.ctrlMin = _startRaw;
+          else p.ctrlMax = _startRaw;
+          refresh();
+        });
+        el.addEventListener("dblclick", (e) => {
+          e.stopPropagation();
+          e.preventDefault();
+          const input = document.createElement("input");
+          input.type = "text";
+          input.inputMode = "numeric";
+          input.value = cur();
+          input.style.cssText =
+            "width:32px;font:inherit;font-size:inherit;background:#1f1f25;color:#e0e0f0;border:1px solid #c8a020;border-radius:3px;padding:1px 4px;outline:none;";
+          el.innerHTML = "";
+          el.appendChild(input);
+          input.addEventListener("pointerdown", (e2) => e2.stopPropagation());
+          input.focus();
+          input.select();
+          input.addEventListener("blur", () => commit(parseFloat(input.value)));
+          input.addEventListener("keydown", (e2) => {
+            if (e2.key === "Enter") { commit(parseFloat(input.value)); e2.stopPropagation(); }
+            if (e2.key === "Escape") { refresh(); e2.stopPropagation(); }
+          });
+        });
+        // Options rebuilds change the list length — keep display clamped
+        glslPresetParam.onChange(refresh);
+        refresh();
+        return el;
+      };
+      selRow.appendChild(_mkGlslRange("min"));
+      selRow.appendChild(_mkGlslRange("max"));
     }
 
     selRow.appendChild(glslPresetSel);
