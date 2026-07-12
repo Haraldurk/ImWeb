@@ -58,6 +58,14 @@ or Hypercube edges. Headless limits learned the hard way: no H.264 decode
 verification batch** — leaked instances burn ~9 CPU cores and masquerade
 as ImWeb performance bugs.
 
+Browser-automation checks in real Chrome have their own trap: an occluded
+or backgrounded tab freezes rAF entirely, which halts the render loop AND
+all controller ticks (LFO/Random/etc.) — sweep tests silently show nothing
+while the code is fine. Check the app's FPS readout first; 0 fps means the
+tab isn't really visible. Also: controller assignment via the context menu
+uses blocking `prompt()` dialogs for most types — **Random** is the one
+type assignable without a prompt, so use it for automated controller tests.
+
 ### 7. Port discipline
 | Command | Protocol | Use for |
 |---------|----------|---------|
@@ -66,6 +74,13 @@ as ImWeb performance bugs.
 
 Only one can hold :5173 — kill the other first, or the second silently
 takes the next port and the iPad tests the wrong build.
+
+localStorage (GLSL user presets, AI keys/config) is **per-origin**, and a
+different port is a different origin. Data saved on :5173 is invisible on
+:5174 or a `vite preview` on :4173 — "my presets are gone" almost always
+means "wrong port". Recovery/audit if genuinely needed: grep Chrome's
+leveldb (`~/Library/Application Support/Google/Chrome/Default/Local
+Storage/leveldb`) for the key — old segments retain deleted values.
 
 ---
 

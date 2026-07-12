@@ -7,6 +7,18 @@ When an issue is fixed, move it to the Resolved table with version and commit.
 
 ## Active
 
+### xController override re-applies response table (double-shaping)
+**Symptom:** a param with both a table and an xController gets the curve
+applied twice on the override write — response feels steeper than the curve.
+**Cause:** since 5a3cd15 table resolution lives in `Parameter.setNormalized`;
+the xController path (ControllerManager ~:188) re-writes through it after the
+primary controller already shaped the value.
+**Status:** edge case, low priority; fix would pass an explicit no-table
+sentinel from the xController write.
+**Related files:** src/controls/ParameterSystem.js, src/controls/ControllerManager.js
+
+---
+
 ### VasulkaWarp architecture (design decision pending, not a crash bug)
 **Current state:** VasulkaWarp.js and `vwarp.*` params exist and run; feature
 intentionally hidden from UI pending architecture decision
