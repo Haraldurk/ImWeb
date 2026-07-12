@@ -3316,39 +3316,83 @@ async function main() {
     drawLayer.canvas.id = "draw-preview";
     drawLayer.canvas.style.cssText =
       "display:block;width:100%;image-rendering:pixelated;border:1px solid var(--border);background:#000;";
-    // Allow mouse drawing directly on the preview canvas
-    const setDrawPos = (e) => {
-      const r = drawLayer.canvas.getBoundingClientRect();
-      ps.set("draw.x", ((e.clientX - r.left) / r.width) * 100);
-      ps.set("draw.y", (1 - (e.clientY - r.top) / r.height) * 100);
-    };
-
+    // Pointer drawing on the preview canvas (mouse / pen / touch).
+    // Pen pressure flows into the DrawLayer point queue via queuePoint;
+    // coalesced events keep fast strokes smooth; a touch contact is rejected
+    // while a pen is down (palm rejection).
     let _drawPenBackup = 0;
     let _drawEraseBackup = 0;
+    let _activePenId = null; // shared across draw surfaces
 
-    drawLayer.canvas.addEventListener("mousedown", (e) => {
-      setDrawPos(e);
-      if (e.button === 0) {
-        // left = pen
-        _drawPenBackup = ps.get("draw.pensize").value;
-        if (!_drawPenBackup) ps.set("draw.pensize", 8);
-        ps.set("draw.erasesize", 0);
-      } else if (e.button === 2) {
-        // right = erase
-        _drawEraseBackup = ps.get("draw.erasesize").value;
-        if (!_drawEraseBackup) ps.set("draw.erasesize", 20);
-        ps.set("draw.pensize", 0);
-      }
-    });
-    drawLayer.canvas.addEventListener("mousemove", (e) => {
-      if (e.buttons) setDrawPos(e);
-    });
-    drawLayer.canvas.addEventListener("mouseup", () => {
-      ps.set("draw.pensize", _drawPenBackup || 0);
-      ps.set("draw.erasesize", _drawEraseBackup || 0);
-      _drawPenBackup = _drawEraseBackup = 0;
-    });
-    drawLayer.canvas.addEventListener("contextmenu", (e) => e.preventDefault());
+    const attachDrawSurface = (el) => {
+      el.style.touchAction = "none";
+      let strokeErase = false;
+      let activeId = null; // single stroke at a time per surface
+
+      const setDrawPos = (e) => {
+        const r = el.getBoundingClientRect();
+        ps.set("draw.x", ((e.clientX - r.left) / r.width) * 100);
+        ps.set("draw.y", (1 - (e.clientY - r.top) / r.height) * 100);
+      };
+      const queuePt = (e, start = false) => {
+        const r = el.getBoundingClientRect();
+        drawLayer.queuePoint({
+          x: (e.clientX - r.left) / r.width,
+          y: (e.clientY - r.top) / r.height,
+          // mouse reports pressure 0.5 while pressed — treat as full
+          pressure: e.pointerType === "mouse" ? 1 : e.pressure || 1,
+          erase: strokeErase,
+          start,
+          origin: "live",
+        });
+      };
+
+      el.addEventListener("pointerdown", (e) => {
+        if (e.pointerType === "touch" && _activePenId !== null) return; // palm
+        if (activeId !== null) return;
+        if (e.pointerType === "pen") _activePenId = e.pointerId;
+        activeId = e.pointerId;
+        el.setPointerCapture(e.pointerId);
+        // right mouse button or pen barrel button = erase
+        strokeErase = e.button === 2 || (e.buttons & 2) !== 0;
+        setDrawPos(e);
+        if (strokeErase) {
+          _drawEraseBackup = ps.get("draw.erasesize").value;
+          if (!_drawEraseBackup) ps.set("draw.erasesize", 20);
+          ps.set("draw.pensize", 0);
+        } else {
+          _drawPenBackup = ps.get("draw.pensize").value;
+          if (!_drawPenBackup) ps.set("draw.pensize", 8);
+          ps.set("draw.erasesize", 0);
+        }
+        drawLayer.liveStroke = true;
+        queuePt(e, true);
+        e.preventDefault();
+      });
+      el.addEventListener("pointermove", (e) => {
+        if (e.pointerId !== activeId || !e.buttons) return;
+        const events = e.getCoalescedEvents?.() ?? [e];
+        for (const ce of events) queuePt(ce);
+        setDrawPos(e); // keep params coherent for readouts/Automation
+      });
+      const endStroke = (e) => {
+        if (e.pointerType === "pen" && _activePenId === e.pointerId)
+          _activePenId = null;
+        if (e.pointerId !== activeId) return;
+        activeId = null;
+        drawLayer.liveStroke = false;
+        ps.set("draw.pensize", _drawPenBackup || 0);
+        ps.set("draw.erasesize", _drawEraseBackup || 0);
+        _drawPenBackup = _drawEraseBackup = 0;
+      };
+      el.addEventListener("pointerup", endStroke);
+      el.addEventListener("pointercancel", endStroke);
+      el.addEventListener("contextmenu", (e) => e.preventDefault());
+    };
+
+    attachDrawSurface(drawLayer.canvas);
+    // Reusable for other draw surfaces (main-canvas draw mode)
+    drawLayer.attachDrawSurface = attachDrawSurface;
   }
 
   // Draw controls — Clear, Pen, Erase, Color picker, Fade toggle
