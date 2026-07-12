@@ -9,6 +9,14 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
 ## [Unreleased] — The Live GLSL Overhaul (Phases 13–20)
 
 ### Added
+- **GLSL preset MIDI recall (`glsl.preset`)** — the Live GLSL preset
+  list (built-ins + saved user presets) is now a SELECT parameter with
+  a standard controller badge next to the preset dropdown. Assign
+  MIDI CC/Note, LFO, Random, Key, or OSC via right-click (ctrl+click /
+  touch long-press) to recall shaders live; controller-driven recalls
+  always compile, regardless of the Auto checkbox. Options stay in
+  sync as user presets are saved/deleted. Excluded from Display State
+  capture (the index would drift as the user preset list changes).
 - **AI shader generation (✨ Prompt AI)** — describe an effect in
   natural language and the configured AI provider (AI panel) writes
   the GLSL. The system prompt embeds the full VJ uniform contract;
