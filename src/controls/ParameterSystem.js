@@ -4013,6 +4013,17 @@ export function registerCoreParameters(ps) {
     options: ["Master", "Foreground", "Background", "Displace"], // append-only
     value: 0,
   }); // insert-routing stage for the custom shader
+  ps.register({
+    id: "glsl.preset",
+    label: "GLSL Preset",
+    // group 'global' → excluded from Display State capture: the value is an
+    // index into a user-editable preset list, so saved states would drift
+    // when presets are added/removed. Recall is controller-driven instead.
+    group: "global",
+    type: PARAM_TYPE.SELECT,
+    options: ["Passthrough"], // placeholder — main.js syncs to the GLSL preset list
+    value: 0,
+  });
 
   // ── Projection Mapping (corner-pin for second screen output) ──────────────
   ps.register({

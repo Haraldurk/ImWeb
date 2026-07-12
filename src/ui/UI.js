@@ -120,7 +120,9 @@ export function buildMappingPanels(ps, contextMenu) {
     'fg-params':       ps.getGroup('fg'),
     'bg-params':       ps.getGroup('bg'),
     'effect-params':   ps.getGroup('effect'),
-    'global-params':       ps.getGroup('global'),
+    // glsl.preset is global-group only to escape state capture — its row
+    // (badge + dropdown) lives in the GLSL panel, built in main.js
+    'global-params':       ps.getGroup('global').filter(p => p.id !== 'glsl.preset'),
     // particle-params rendered separately below (legacy + v2 split)
     // 'particle-params': ps.getGroup('particle'),
     'sdf-params':          ps.getGroup('sdf'),

@@ -107,6 +107,8 @@ import {
   buildPaletteSection,
   buildAnalogPresetBar,
 } from "./ui/UI.js";
+import { openCtrlPopover } from "./ui/components/CtrlPopover.js";
+import { LONG_PRESS_MS } from "./ui/touch.js";
 import { perfFrame } from "./perf-logger.js";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -4443,8 +4445,27 @@ void main() {
       return {};
     }
   };
+  // glsl.preset param mirror — flat ordered list of dropdown option values
+  // (built-ins then "user:"-prefixed, __custom excluded) so the SELECT index
+  // maps 1:1 onto the dropdown. Kept in sync wherever the dropdown is rebuilt.
+  const glslPresetParam = ps.get("glsl.preset");
+  let glslPresetIndex = [];
+  function _syncGlslPresetParam() {
+    glslPresetIndex = [
+      ...Object.keys(GLSL_PRESETS),
+      ...Object.keys(_loadUserGlsl()).map((n) => `user:${n}`),
+    ];
+    if (!glslPresetParam) return;
+    glslPresetParam.options = glslPresetIndex.map((v) =>
+      v.startsWith("user:") ? v.slice(5) : v,
+    );
+    // Re-run the setter so a value beyond the shrunk list re-clamps
+    glslPresetParam.value = glslPresetParam.value;
+  }
+
   let _glslUserGroup = null;
   function _rebuildUserGlslOptions() {
+    _syncGlslPresetParam();
     _glslUserGroup?.remove();
     _glslUserGroup = null;
     const names = Object.keys(_loadUserGlsl());
@@ -4471,6 +4492,24 @@ void main() {
       if (glslAuto?.checked) applyGLSL();
     }
     _updateGlslParamLabels(v);
+    // Mirror into glsl.preset so badge/controller state stays consistent.
+    // __custom → -1 → skipped; equal values are a no-op in the param setter,
+    // so the param→dropdown→param round trip can't loop.
+    const idx = glslPresetIndex.indexOf(v);
+    if (idx >= 0) ps.set("glsl.preset", idx);
+  });
+
+  // Controller-driven preset recall (MIDI CC/Note, LFO, Random, OSC…).
+  // Reuses the manual dropdown path via a synthetic change event, then
+  // compiles unconditionally — a performance recall that silently doesn't
+  // take effect would read as broken. (Manual path keeps its Auto gate;
+  // Auto ON means applyGLSL runs twice here, a harmless recompile.)
+  glslPresetParam?.onChange((v) => {
+    const name = glslPresetIndex[Math.round(v)];
+    if (!name || glslPresetSel.value === name) return; // dropdown-originated set
+    glslPresetSel.value = name;
+    glslPresetSel.dispatchEvent(new Event("change"));
+    applyGLSL();
   });
 
   // Apply labels for the initially-selected preset
@@ -4487,7 +4526,64 @@ void main() {
     lbl.textContent = "Preset:";
     lbl.style.cssText =
       "font-size:11px;color:var(--text-2);white-space:nowrap;";
+    // Row-level assignment menu (badge popover can only EDIT a controller,
+    // not change/remove its type — same split as ParamRow's row contextmenu)
+    if (ps.get("glsl.preset")) {
+      lbl.addEventListener("contextmenu", (e) => {
+        e.preventDefault();
+        contextMenu?.show(ps.get("glsl.preset"), e.clientX, e.clientY);
+      });
+    }
     selRow.appendChild(lbl);
+
+    // Controller badge for glsl.preset — same interaction grammar as the
+    // ParamRow badge: right-click / ctrl+click / touch long-press. With no
+    // controller it opens the assignment context menu; with one assigned it
+    // opens the settings popover.
+    if (glslPresetParam) {
+      const glslCtrlBadge = document.createElement("span");
+      glslCtrlBadge.style.flex = "0 0 auto";
+      const _refreshGlslBadge = () => {
+        glslCtrlBadge.className = `param-ctrl ${glslPresetParam.controllerClass}`;
+        glslCtrlBadge.textContent = glslPresetParam.controllerLabel;
+      };
+      const _openGlslBadgeMenu = (x, y) => {
+        if (glslPresetParam.controller)
+          openCtrlPopover(
+            glslPresetParam,
+            glslCtrlBadge,
+            contextMenu?.ctrl,
+            contextMenu?.tables,
+          );
+        else contextMenu?.show(glslPresetParam, x, y);
+      };
+      glslCtrlBadge.addEventListener("contextmenu", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        _openGlslBadgeMenu(e.clientX, e.clientY);
+      });
+      glslCtrlBadge.addEventListener("click", (e) => {
+        if (!e.ctrlKey && !e.metaKey) return;
+        e.preventDefault();
+        e.stopPropagation();
+        _openGlslBadgeMenu(e.clientX, e.clientY);
+      });
+      let _glslBadgeLp = null;
+      glslCtrlBadge.addEventListener("pointerdown", (e) => {
+        if (e.pointerType !== "touch") return;
+        const { clientX: x, clientY: y } = e;
+        _glslBadgeLp = setTimeout(() => _openGlslBadgeMenu(x, y), LONG_PRESS_MS);
+      });
+      ["pointerup", "pointercancel", "pointermove"].forEach((ev) =>
+        glslCtrlBadge.addEventListener(ev, () => clearTimeout(_glslBadgeLp)),
+      );
+      // Value writes AND ContextMenu's post-assign notify() land here,
+      // keeping the badge label/class current (same channel ParamRow uses)
+      glslPresetParam.onChange(_refreshGlslBadge);
+      _refreshGlslBadge();
+      selRow.appendChild(glslCtrlBadge);
+    }
+
     selRow.appendChild(glslPresetSel);
 
     // Blank-slate boilerplate for the 📄 New button
