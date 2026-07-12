@@ -2549,6 +2549,24 @@ export function registerCoreParameters(ps) {
     group: "draw",
     type: PARAM_TYPE.TRIGGER,
   });
+  ps.register({
+    id: "draw.pressure.size",
+    label: "PressSize",
+    group: "draw",
+    min: 0,
+    max: 100,
+    value: 100,
+    unit: "%",
+  }); // pen pressure → brush size amount; 0 = ignore pressure
+  ps.register({
+    id: "draw.pressure.opacity",
+    label: "PressOpacity",
+    group: "draw",
+    min: 0,
+    max: 100,
+    value: 0,
+    unit: "%",
+  }); // pen pressure → stroke opacity amount
 
   // ── Text ──────────────────────────────────────────────────────────────────
   ps.register({

@@ -9,6 +9,17 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
 ## [Unreleased] — The Live GLSL Overhaul (Phases 13–20)
 
 ### Added
+- **Pen-ready drawing (Pointer Events + pressure)** — the Draw preview
+  canvas now uses Pointer Events: Apple Pencil / stylus pressure
+  modulates brush size and opacity via two new params (`PressSize`,
+  default 100%, and `PressOpacity`, default 0%; set to 0 to ignore
+  pressure). Fast strokes stay smooth via coalesced events (no more
+  dot quantization), palm touches are rejected while a pen is in
+  contact, and the pen barrel button (or right mouse button) erases.
+  Param-driven drawing (LFO/MIDI/Automation on DrawX/DrawY) is
+  unchanged. DrawLayer gains a shared point-queue/`drawSegment` path
+  that live input, param drawing, and future stroke playback all
+  render through.
 - **GLSL preset MIDI recall (`glsl.preset`)** — the Live GLSL preset
   list (built-ins + saved user presets) is now a SELECT parameter with
   a standard controller badge next to the preset dropdown. Assign
