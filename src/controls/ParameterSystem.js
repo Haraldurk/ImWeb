@@ -2567,6 +2567,13 @@ export function registerCoreParameters(ps) {
     value: 0,
     unit: "%",
   }); // pen pressure → stroke opacity amount
+  ps.register({
+    id: "draw.toParticles",
+    label: "StrokeEmit",
+    group: "draw",
+    type: PARAM_TYPE.TOGGLE,
+    value: 0,
+  }); // pen position drives particle.emitx/emity while ink lands
 
   // ── Draw stroke looper (4 slots — see src/inputs/StrokeLooper.js) ─────────
   for (let n = 1; n <= 4; n++) {
