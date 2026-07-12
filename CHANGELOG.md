@@ -17,6 +17,12 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
   always compile, regardless of the Auto checkbox. Options stay in
   sync as user presets are saved/deleted. Excluded from Display State
   capture (the index would drift as the user preset list changes).
+- **Recall range for GLSL presets (and all SELECT params)** — SELECT
+  parameters now honor `ctrlMin`/`ctrlMax`, clamping the controller
+  sweep to an index sub-range. The GLSL preset row gains min/max
+  fields (drag or double-click to edit, same grammar as param rows;
+  tooltip shows the preset name at each index) so MIDI/LFO recall can
+  cycle just a chosen slice of the preset list.
 - **AI shader generation (✨ Prompt AI)** — describe an effect in
   natural language and the configured AI provider (AI panel) writes
   the GLSL. The system prompt embeds the full VJ uniform contract;
