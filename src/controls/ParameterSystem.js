@@ -2568,6 +2568,38 @@ export function registerCoreParameters(ps) {
     unit: "%",
   }); // pen pressure → stroke opacity amount
 
+  // ── Draw stroke looper (4 slots — see src/inputs/StrokeLooper.js) ─────────
+  for (let n = 1; n <= 4; n++) {
+    ps.register({
+      id: `drawloop${n}.rec`,
+      label: `Loop${n}Rec`,
+      group: "draw",
+      type: PARAM_TYPE.TRIGGER,
+    }); // press = arm+record, press again = stop+play (one MIDI pad drives it)
+    ps.register({
+      id: `drawloop${n}.play`,
+      label: `Loop${n}Play`,
+      group: "draw",
+      type: PARAM_TYPE.TOGGLE,
+      value: 0,
+    });
+    ps.register({
+      id: `drawloop${n}.clear`,
+      label: `Loop${n}Clear`,
+      group: "draw",
+      type: PARAM_TYPE.TRIGGER,
+    });
+    ps.register({
+      id: `drawloop${n}.speed`,
+      label: `Loop${n}Speed`,
+      group: "draw",
+      min: 10,
+      max: 400,
+      value: 100,
+      unit: "%",
+    });
+  }
+
   // ── Text ──────────────────────────────────────────────────────────────────
   ps.register({
     id: "text.size",

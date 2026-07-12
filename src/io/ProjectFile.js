@@ -25,7 +25,7 @@ export class ProjectFile {
    * @param {object} ps           ParameterSystem
    * @param {object} presetMgr    PresetManager
    * @param {object} tableManager TableManager (optional)
-   * @param {object} extras       Extra save/restore hooks: { warpEditor, drawLayer, stillsBuffer, scene3d }
+   * @param {object} extras       Extra save/restore hooks: { warpEditor, drawLayer, strokeLooper, stillsBuffer, scene3d }
    */
   constructor(ps, presetMgr, tableManager, extras = {}) {
     this.ps      = ps;
@@ -75,6 +75,12 @@ export class ProjectFile {
       drawData = this.extras.drawLayer.canvas.toDataURL('image/png');
     }
 
+    // Stroke looper slots (vector point data — KBs, safe for JSON)
+    let strokeLoops = null;
+    if (this.extras.strokeLooper) {
+      strokeLoops = this.extras.strokeLooper.serialize();
+    }
+
     // StillsBuffer metadata (thumbnails + protection)
     // We don't save full-res frames to JSON as it would be too large (>100MB)
     let stillsMetadata = null;
@@ -120,6 +126,7 @@ export class ProjectFile {
       warpMap,
       warpSlots,
       drawData,
+      strokeLoops,
       stills:       stillsMetadata,
       scene3d:      scene3dMetadata,
       glsl:         this.extras.glsl ? this.extras.glsl.capture() : null,
@@ -227,6 +234,12 @@ export class ProjectFile {
       img.onerror = () => resolve(); // continue anyway
       img.src = data.drawData;
     }) : Promise.resolve();
+
+    // Restore stroke looper slots (playback stays stopped; play params
+    // arrive via the param snapshot restore)
+    if (data.strokeLoops && this.extras.strokeLooper) {
+      this.extras.strokeLooper.restore(data.strokeLoops);
+    }
 
     // Restore StillsBuffer metadata
     const stillsPromises = [];

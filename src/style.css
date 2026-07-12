@@ -4136,3 +4136,31 @@ body.fullscreen-output #app {
     0%, 100% { opacity: 0.35; }
     50% { opacity: 1; }
 }
+
+/* ── Draw stroke looper transport (Draw tab, #draw-controls) ─────────── */
+#drawloop-strip {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    width: 100%;
+    margin-top: 4px;
+}
+.drawloop-row {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+.drawloop-label {
+    color: var(--text-2);
+    font-size: 10px;
+    width: 18px;
+    flex: none;
+}
+.drawloop-rec.recording {
+    border-color: #d04040 !important;
+    color: #d04040;
+    animation: drawloopRecPulse 1s ease-in-out infinite;
+}
+@keyframes drawloopRecPulse {
+    50% { opacity: 0.4; }
+}

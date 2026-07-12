@@ -58,6 +58,7 @@ import { TeletextSource } from "./inputs/TeletextSource.js";
 import { registerTeletextParams } from "./inputs/TeletextParams.js";
 import { buildTeletextUI } from "./inputs/TeletextUI.js";
 import { DrawLayer } from "./inputs/DrawLayer.js";
+import { StrokeLooper, LOOP_SLOTS } from "./inputs/StrokeLooper.js";
 import { TextLayer } from "./inputs/TextLayer.js";
 import { buildWarpMaps } from "./inputs/WarpMaps.js";
 import { WarpMapEditor } from "./inputs/WarpMapEditor.js";
@@ -290,6 +291,7 @@ async function main() {
   const warpEditor = new WarpMapEditor(); // interactive editor → warpMaps[8] (Custom)
   warpMaps.push(warpEditor.texture); // index 9 in SELECT = warpMaps[8]
   const drawLayer = new DrawLayer();
+  const strokeLooper = new StrokeLooper(drawLayer, ps);
   const textLayer = new TextLayer();
 
   const scene3d = new SceneManager(renderer, W, H);
@@ -1920,6 +1922,7 @@ async function main() {
   const projectFile = new ProjectFile(ps, presetMgr, tableManager, {
     warpEditor,
     drawLayer,
+    strokeLooper,
     stillsBuffer,
     scene3d: scene3d,
     seqBuffers: [seq1, seq2, seq3],
@@ -3269,6 +3272,26 @@ async function main() {
   // Draw layer triggers
   ps.get("draw.clear").onTrigger(() => drawLayer.clear());
 
+  // Stroke looper transport params (MIDI-pad friendly: rec is a toggle-style
+  // trigger — arm/record, press again to stop+play)
+  for (let n = 1; n <= LOOP_SLOTS; n++) {
+    ps.get(`drawloop${n}.rec`).onTrigger(() => strokeLooper.toggleRecord(n - 1));
+    ps.get(`drawloop${n}.clear`).onTrigger(() => strokeLooper.clear(n - 1));
+    ps.get(`drawloop${n}.play`).onChange((v) =>
+      strokeLooper.setPlaying(n - 1, v > 0.5),
+    );
+  }
+  // Keep the play param in sync when the looper changes state internally
+  // (rec-stop auto-plays, clear stops). setPlaying no-ops on equal state,
+  // so this cannot loop with the onChange above.
+  strokeLooper.onSlotChange = (i) => {
+    const slot = strokeLooper.slots[i];
+    const p = ps.get(`drawloop${i + 1}.play`);
+    if (p && (p.value > 0.5) !== slot.playing) {
+      ps.set(`drawloop${i + 1}.play`, slot.playing ? 1 : 0);
+    }
+  };
+
   // Text layer triggers
   ps.get("text.advance").onTrigger(() => textLayer.advance());
 
@@ -3498,6 +3521,57 @@ async function main() {
         Math.round(m) === 3 ? "var(--accent)" : "";
     });
     drawControls.appendChild(btnCanvas);
+
+    // Stroke looper transport — 4 slots × Rec/Play/Clear. Buttons drive the
+    // drawloop{n}.* params so MIDI/keyboard paths stay identical.
+    const loopStrip = document.createElement("div");
+    loopStrip.id = "drawloop-strip";
+    for (let n = 1; n <= LOOP_SLOTS; n++) {
+      const row = document.createElement("div");
+      row.className = "drawloop-row";
+      const lab = document.createElement("span");
+      lab.className = "drawloop-label";
+      lab.textContent = `L${n}`;
+      const bRec = document.createElement("button");
+      bRec.className = "import-btn drawloop-rec";
+      bRec.textContent = "●";
+      bRec.title = `Record loop ${n} (press again to stop & play)`;
+      bRec.addEventListener("click", () => ps.trigger(`drawloop${n}.rec`));
+      const bPlay = document.createElement("button");
+      bPlay.className = "import-btn drawloop-play";
+      bPlay.textContent = "▶";
+      bPlay.title = `Play / stop loop ${n}`;
+      bPlay.addEventListener("click", () => {
+        const p = ps.get(`drawloop${n}.play`);
+        ps.set(`drawloop${n}.play`, p.value > 0.5 ? 0 : 1);
+      });
+      const bClear = document.createElement("button");
+      bClear.className = "import-btn";
+      bClear.textContent = "✕";
+      bClear.title = `Clear loop ${n}`;
+      bClear.addEventListener("click", () => ps.trigger(`drawloop${n}.clear`));
+      row.append(lab, bRec, bPlay, bClear);
+      loopStrip.appendChild(row);
+    }
+    drawControls.appendChild(loopStrip);
+
+    // Reflect looper state on the buttons on any path (MIDI, param row,
+    // project load) — chain the param-sync hook wired at the trigger block
+    const _syncLoopUI = (i) => {
+      const slot = strokeLooper.slots[i];
+      const row = loopStrip.children[i];
+      row
+        .querySelector(".drawloop-rec")
+        .classList.toggle("recording", slot.recording);
+      row.querySelector(".drawloop-play").style.borderColor = slot.playing
+        ? "var(--accent)"
+        : "";
+    };
+    const _prevSlotCb = strokeLooper.onSlotChange;
+    strokeLooper.onSlotChange = (i) => {
+      _prevSlotCb?.(i);
+      _syncLoopUI(i);
+    };
   }
 
   // ── Text tab UI ───────────────────────────────────────────────────────────
@@ -6129,6 +6203,9 @@ void main() {
       autoCapTimer = 0;
     }
 
+    // Tick stroke looper first so due loop points land in the draw layer's
+    // point queue and render this same frame
+    strokeLooper.tick(dt);
     // Tick draw layer (paints to canvas texture based on draw.* params)
     drawLayer.tick(ps);
 

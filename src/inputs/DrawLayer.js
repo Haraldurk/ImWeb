@@ -35,9 +35,7 @@ export class DrawLayer {
     this.texture.minFilter = THREE.LinearFilter;
     this.texture.magFilter = THREE.LinearFilter;
 
-    // Stroke state
-    this._lastX     = null;
-    this._lastY     = null;
+    // Stroke state (param-driven chain continuity)
     this._wasActive = false;
 
     // Pre-allocated fade rect (avoid per-frame object creation)
@@ -113,6 +111,8 @@ export class DrawLayer {
     let style;
     if (erase) {
       style = 'rgba(0,0,0,1)';
+    } else if (raw.style) {
+      style = raw.style; // pre-resolved CSS color (loop playback)
     } else if (raw.color) {
       style = _hsvToHsl(raw.color.h, raw.color.s, raw.color.v);
     } else {
@@ -144,9 +144,6 @@ export class DrawLayer {
     const nx = ps.get('draw.x').value / 100;
     const ny = 1 - (ps.get('draw.y').value / 100); // flip Y
 
-    const cx = nx * SIZE;
-    const cy = ny * SIZE;
-
     // ── Fade / decay ──────────────────────────────────────────────────────
     const fade = ps.get('draw.fade')?.value ?? 0;
     if (fade > 0) {
@@ -160,82 +157,39 @@ export class DrawLayer {
       this.ctx.globalAlpha = 1;
     }
 
-    // ── Queued points (pointer input / loop playback) ────────────────────
-    const drained = this._queue.length;
-    if (drained > 0) {
+    // ── Param-driven drawing (LFO/MIDI/Automation on draw.x/draw.y) ──────
+    //    Queued like pointer input — one shared render path with its own
+    //    'param' segment chain, so it coexists with loop playback.
+    //    Suppressed while a pointer stroke is in progress (liveStroke
+    //    varies with pointer state) so pointer strokes don't double-draw
+    //    through their own draw.x/draw.y writes.
+    const isActive = (penSize > 0 || eraseSize > 0) && !this.liveStroke;
+    if (isActive) {
+      this.queuePoint({
+        x: nx,
+        y: ny,
+        erase: eraseSize > 0 && !(penSize > 0),
+        start: !this._wasActive,
+        origin: 'param',
+      });
+    }
+    this._wasActive = isActive;
+
+    // ── Drain point queue (live pointers, param drawing, loop playback) ──
+    let liveInk = false;
+    if (this._queue.length > 0) {
       for (const raw of this._queue) {
         const pt   = this._resolve(raw, ps);
         const prev = pt.start ? null : (this._prevByOrigin[pt.origin] ?? null);
         this.drawSegment(pt, prev);
         this._prevByOrigin[pt.origin] = pt;
+        if (!pt.origin.startsWith('loop')) liveInk = true;
         if (this.onSegment) this.onSegment(raw, pt);
       }
       this._queue.length = 0;
-      // Reset the param path's stroke chain so it can't connect a stale
-      // point to the next param-driven stroke, and skip it this frame
-      // (drained > 0 varies per frame — live guard against double-draw).
-      this._lastX = null;
-      this._lastY = null;
-      this._wasActive = false;
-      this.strokeActive = true;
-      this.texture.needsUpdate = true;
-      return;
     }
 
-    // ── Brush stroke (param-driven fallback: LFO/MIDI/Automation on
-    //    draw.x/draw.y keeps drawing exactly as before). Suppressed while a
-    //    pointer stroke is in progress (liveStroke varies with pointer state)
-    //    so a held-still pen doesn't stamp unpressured dots. ────────────────
-    const isPen    = penSize   > 0;
-    const isErase  = eraseSize > 0;
-    const isActive = (isPen || isErase) && !this.liveStroke;
-
-    if (isActive) {
-      const ctx = this.ctx;
-      const rawSize = isPen ? penSize : eraseSize;
-      const lineW   = Math.max(1, rawSize * SIZE / 100);
-
-      ctx.globalCompositeOperation = isErase ? 'destination-out' : 'source-over';
-      ctx.globalAlpha = isPen ? (ps.get('draw.opacity')?.value ?? 100) / 100 : 1;
-
-      if (isPen) {
-        // Build HSL color from draw.color params
-        const h = ps.get('draw.color.h')?.value ?? 0;
-        const s = ps.get('draw.color.s')?.value ?? 0;
-        const v = ps.get('draw.color.v')?.value ?? 100;
-        ctx.strokeStyle = _hsvToHsl(h, s, v);
-        ctx.fillStyle   = ctx.strokeStyle;
-      } else {
-        ctx.strokeStyle = 'rgba(0,0,0,1)';
-        ctx.fillStyle   = 'rgba(0,0,0,1)';
-      }
-
-      ctx.lineWidth = lineW;
-      ctx.lineCap   = 'round';
-      ctx.lineJoin  = 'round';
-
-      ctx.beginPath();
-      if (this._lastX !== null && this._wasActive) {
-        ctx.moveTo(this._lastX, this._lastY);
-        ctx.lineTo(cx, cy);
-        ctx.stroke();
-      } else {
-        ctx.arc(cx, cy, lineW / 2, 0, Math.PI * 2);
-        ctx.fill();
-      }
-
-      ctx.globalAlpha = 1;
-      ctx.globalCompositeOperation = 'source-over';
-
-      this._lastX = cx;
-      this._lastY = cy;
-    } else {
-      this._lastX = null;
-      this._lastY = null;
-    }
-
-    this._wasActive = isActive;
-    this.strokeActive = isActive || this.liveStroke;
+    this.strokeActive = liveInk || this.liveStroke;
     this.texture.needsUpdate = true;
   }
 
