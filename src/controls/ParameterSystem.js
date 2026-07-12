@@ -24,6 +24,23 @@ export function setTableManager(tm) {
   tm.addEventListener('change', syncSlot);
 }
 
+// Resolve a param's assigned response table (by name, or via the shared
+// global.tableSlot index for 'global'). Lives at module level so BOTH write
+// paths shape values identically: ParameterSystem.setNormalized and direct
+// p.setNormalized() calls (MIDI, mouse, sound, tilt, gamepad, fixed…) —
+// the latter used to skip tables entirely.
+function _resolveTable(param) {
+  if (!param.table || !_tableManager) return null;
+  if (param.table === 'global') {
+    const slotP = _ps?.params.get('global.tableSlot');
+    const idx   = slotP ? Math.round(slotP.value) : 0;
+    const names = _tableManager.getNames();
+    const name  = names[Math.max(0, Math.min(idx, names.length - 1))];
+    return name ? _tableManager.get(name) : null;
+  }
+  return _tableManager.get(param.table);
+}
+
 export const PARAM_TYPE = {
   CONTINUOUS: "continuous", // floating point in [min, max]
   TOGGLE: "toggle", // 0 | 1
@@ -122,7 +139,9 @@ export class Parameter {
    */
   setNormalized(n, table = null) {
     let applied = this.invert ? 1 - n : n;
-    if (table) applied = table.apply(applied);
+    // No explicit table from the caller → self-resolve the assigned one
+    const t = table ?? _resolveTable(this);
+    if (t) applied = t.apply(applied);
     if (this.type === PARAM_TYPE.TOGGLE) {
       this.value = applied > 0.5 ? 1 : 0;
     } else if (this.type === PARAM_TYPE.SELECT) {
@@ -357,21 +376,8 @@ export class ParameterSystem extends EventTarget {
   setNormalized(id, n, table = null) {
     const p = this.params.get(id);
     if (!p) return;
-    // Resolve table by name if the param has one assigned and none provided directly
-    let resolved = table;
-    if (!resolved && p.table && _tableManager) {
-      if (p.table === 'global') {
-        // Follow global.tableSlot index
-        const slotP = this.params.get('global.tableSlot');
-        const idx   = slotP ? Math.round(slotP.value) : 0;
-        const names = _tableManager.getNames();
-        const name  = names[Math.max(0, Math.min(idx, names.length - 1))];
-        resolved = name ? _tableManager.get(name) : null;
-      } else {
-        resolved = _tableManager.get(p.table);
-      }
-    }
-    p.setNormalized(n, resolved);
+    // Table resolution happens inside Parameter.setNormalized (_resolveTable)
+    p.setNormalized(n, table);
   }
 
   toggle(id) {

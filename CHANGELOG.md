@@ -60,6 +60,13 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
   document changes.
 
 ### Fixed
+- **Response tables now apply to every controller type** — MIDI CC,
+  MIDI note velocity, mouse, tilt/compass, Wacom pressure, sound
+  bands, gamepad, key, and fixed controllers wrote parameters through
+  a path that skipped the assigned table entirely; only LFO and
+  Random were shaped. Table resolution (including the "global" slot)
+  now lives inside `Parameter.setNormalized`, so all write paths
+  behave identically.
 - **Live GLSL compile errors no longer kill the running shader** —
   last-good fallback keeps the previous shader rendering while the
   error panel reports the real GLSL info log (the old link-status
