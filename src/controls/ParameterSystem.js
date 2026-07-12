@@ -2994,7 +2994,10 @@ export function registerCoreParameters(ps) {
     label: "Touch Mode",
     group: "global",
     type: PARAM_TYPE.SELECT,
-    options: ["Camera", "Pad", "Locked"],
+    // Append-only: camera/pad grammars gate on exact indices, and the
+    // g-key / 3-finger cyclers use options.length — "Draw" (3) is inert
+    // to them and routes canvas pointers to the DrawLayer instead.
+    options: ["Camera", "Pad", "Locked", "Draw"],
     value: 0,
   });
   ps.register({

@@ -20,6 +20,14 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
   unchanged. DrawLayer gains a shared point-queue/`drawSegment` path
   that live input, param drawing, and future stroke playback all
   render through.
+- **Draw on the output canvas** — a new "Draw" canvas interaction
+  mode (Touch Mode index 3, joining Camera/Pad/Locked) routes canvas
+  pointers straight to the draw layer: paint at full scale over the
+  live composite with the same pressure/palm-rejection grammar as the
+  panel preview. Toggle via the ⊕ Canvas button in the Draw tab, the
+  `g` key, or a 3-finger tap; a crosshair cursor marks the mode, and
+  leaving it restores the previous mode. Camera orbit/pan and pad
+  gestures are untouched in their own modes.
 - **GLSL preset MIDI recall (`glsl.preset`)** — the Live GLSL preset
   list (built-ins + saved user presets) is now a SELECT parameter with
   a standard controller badge next to the preset dropdown. Assign
