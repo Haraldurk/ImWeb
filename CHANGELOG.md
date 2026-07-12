@@ -45,6 +45,14 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
   the existing displacement pass and external-key input (one-click
   `DisplaceSrc → Draw` setups — the pipeline already supported any
   source there, including Draw).
+- **Stroke→LFO controller driver** — recorded stroke loops can now
+  drive any continuous parameter as an LFO-like modulation source. Assign
+  via the controller context menu: `Stroke L1 X` … `Stroke L4 Y` read the
+  X or Y position from the corresponding Stroke Looper slot at an
+  independent playhead with configurable rate (0.1–10×). The same slot
+  can drive multiple params at different rates and axes — four draw loops
+  become four freely-routable modulation lanes. Edit slot, axis, and rate
+  in the controller popover (right-click the badge).
 - **GLSL preset MIDI recall (`glsl.preset`)** — the Live GLSL preset
   list (built-ins + saved user presets) is now a SELECT parameter with
   a standard controller badge next to the preset dropdown. Assign

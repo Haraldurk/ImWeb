@@ -292,6 +292,7 @@ async function main() {
   warpMaps.push(warpEditor.texture); // index 9 in SELECT = warpMaps[8]
   const drawLayer = new DrawLayer();
   const strokeLooper = new StrokeLooper(drawLayer, ps);
+  ctrl.setStrokeLooper(strokeLooper); // stroke→LFO controller driver
   const textLayer = new TextLayer();
 
   const scene3d = new SceneManager(renderer, W, H);

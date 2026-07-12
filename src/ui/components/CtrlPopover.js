@@ -246,6 +246,54 @@ export function openCtrlPopover(param, anchorEl, ctrl, tables) {
     exprInput.addEventListener('pointerdown', e => e.stopPropagation());
     popover.appendChild(makeRow('Expr', exprInput));
     setTimeout(() => exprInput.focus(), 0);
+
+  } else if (t.startsWith('stroke-')) {
+    const parts = t.split('-');
+    const slot  = parseInt(parts[1]) || 1;
+    const axis  = parts[2] === 'y' ? 'y' : 'x';
+
+    // Slot selector (1-4)
+    const slotSel = document.createElement('select');
+    slotSel.style.cssText = 'font-size:10px;font-family:var(--mono);background:var(--bg-4);border:1px solid var(--border);color:var(--text-1);padding:1px 2px;border-radius:2px;';
+    for (let n = 1; n <= 4; n++) {
+      const opt = document.createElement('option');
+      opt.value = n; opt.textContent = `Slot ${n}`;
+      if (n === slot) opt.selected = true;
+      slotSel.appendChild(opt);
+    }
+    slotSel.addEventListener('change', () => {
+      const newType = `stroke-${slotSel.value}-${axis}`;
+      c.type = newType;
+      param.controller = { ...c };
+      if (ctrl) ctrl.assign(param.id, { type: newType, rate: c.rate ?? 1 });
+    });
+    popover.appendChild(makeRow('Slot', slotSel));
+
+    // Axis toggle (X / Y)
+    const axisBtn = document.createElement('button');
+    axisBtn.style.cssText = 'font-size:10px;font-family:var(--mono);background:var(--bg-4);border:1px solid var(--border);color:var(--text-1);padding:1px 6px;border-radius:2px;cursor:pointer;';
+    axisBtn.textContent = axis.toUpperCase();
+    axisBtn.addEventListener('click', () => {
+      const newAxis = axis === 'x' ? 'y' : 'x';
+      const newType = `stroke-${slot}-${newAxis}`;
+      c.type = newType;
+      param.controller = { ...c };
+      if (ctrl) ctrl.assign(param.id, { type: newType, rate: c.rate ?? 1 });
+    });
+    popover.appendChild(makeRow('Axis', axisBtn));
+
+    // Rate (playhead multiplier, 0.1–10, default 1)
+    popover.appendChild(makeRow('Rate', makeDragNum(
+      () => c.rate ?? 1,
+      v  => {
+        v = Math.max(0.1, Math.min(10, v));
+        c.rate = v;
+        // update driver state live
+        const s = ctrl?.strokes?.get(param.id);
+        if (s) s.rate = v;
+      },
+      { decimals: 2, fineStep: 0.1, coarseStep: 1 }
+    )));
   }
 
   // ── Shared rows (all controller types) ───────────────────────────────────
