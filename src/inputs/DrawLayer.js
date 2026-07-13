@@ -60,6 +60,7 @@ export class DrawLayer {
     this._inkCacheCtx    = this._inkCache.getContext('2d', { willReadFrequently: false });
     this._inkCacheDirty  = true;   // force first snapshot
     this._lastVideoTime  = -1;     // skip duplicate video decodes (camera=30fps, rAF=60fps)
+    this._inkFrameCount  = 0;      // fallback: update at least every 2nd frame
   }
 
   /**
@@ -236,8 +237,15 @@ export class DrawLayer {
         // are ~30fps but rAF ticks at 60fps — decoding the same frame twice
         // wastes GPU time and stalls the render loop on iOS. currentTime
         // advances only when a decoded frame is presented.
-        if (v.videoWidth > 0 && v.videoHeight > 0 && v.currentTime !== this._lastVideoTime) {
-          this._lastVideoTime = v.currentTime;
+        // iOS Safari may not advance currentTime for MediaStream videos;
+        // fall back to updating every 2nd rAF tick (~30fps) when the clock
+        // appears stuck so the cache doesn't go stale permanently.
+        this._inkFrameCount++;
+        const newFrame = v.currentTime !== this._lastVideoTime;
+        const staleEnough = this._inkFrameCount >= 2;
+        if (v.videoWidth > 0 && v.videoHeight > 0 && (newFrame || staleEnough)) {
+          if (newFrame) this._lastVideoTime = v.currentTime;
+          this._inkFrameCount = 0;
           const cw = 256, ch = Math.round(256 * (v.videoHeight / v.videoWidth));
           if (this._inkCache.width !== cw || this._inkCache.height !== ch) {
             this._inkCache.width = cw; this._inkCache.height = ch;
