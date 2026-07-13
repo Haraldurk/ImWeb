@@ -6233,6 +6233,21 @@ void main() {
     // Tick stroke looper first so due loop points land in the draw layer's
     // point queue and render this same frame
     strokeLooper.tick(dt);
+
+    // Video-as-ink: route the current InkSource selection to a live <video>
+    // element. Camera and Movie both expose their video element; other
+    // sources (Noise, Scene3D, SDF…) have no DOM video and fall back to
+    // solid colour.
+    const inkSrc = ps.get("draw.inkSource")?.value ?? 0;
+    drawLayer.inkSource = inkSrc;
+    if (inkSrc === 1) {
+      drawLayer.inkVideo = camera3d.video;
+    } else if (inkSrc === 2) {
+      drawLayer.inkVideo = movieInput.currentClip?.video ?? null;
+    } else {
+      drawLayer.inkVideo = null;
+    }
+
     // Tick draw layer (paints to canvas texture based on draw.* params)
     drawLayer.tick(ps);
 
