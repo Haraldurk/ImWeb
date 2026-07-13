@@ -61,6 +61,13 @@ export class DrawLayer {
     this._inkCacheDirty  = true;   // force first snapshot
     this._lastVideoTime  = -1;     // skip duplicate video decodes (camera=30fps, rAF=60fps)
     this._inkFrameCount  = 0;      // fallback: update at least every 2nd frame
+
+    // Brush-shaped mask for ink stamping — ctx.clip() ignores lineWidth/
+    // lineCap on an open moveTo+lineTo path (it has zero fill area), so
+    // continuation segments need a real filled/stroked mask instead.
+    this._inkMask    = document.createElement('canvas');
+    this._inkMask.width = this._inkMask.height = SIZE;
+    this._inkMaskCtx = this._inkMask.getContext('2d');
   }
 
   /**
@@ -91,37 +98,57 @@ export class DrawLayer {
     // the first frame arrives, and Safari may need the element in the DOM.
     const cacheReady = useInk && this._inkCache.width > 0 && this._inkCache.height > 0;
 
-    // Video-as-ink: clip the brush shape and stamp the cached video frame
-    // through it. The clip() path never paints visible pixels (no stroke/fill
-    // beforehand), so a failed drawImage just leaves the canvas unchanged
-    // instead of leaving white ghost strokes.
+    // Video-as-ink: paint the brush shape into a mask canvas (fill/stroke,
+    // which DO respect lineWidth/lineCap — unlike ctx.clip() on an open
+    // path), then stamp the cached frame through it via 'source-in' so
+    // only the brush-shaped area keeps ink. A failed drawImage still just
+    // leaves the mask/canvas unchanged instead of leaving white ghost
+    // strokes.
     if (cacheReady) {
-      ctx.save();
-      ctx.globalAlpha = pt.alpha;
-      ctx.beginPath();
+      const mctx = this._inkMaskCtx;
+      const minX = Math.max(0, Math.min(prev ? prev.cx : pt.cx, pt.cx) - pt.lineW / 2 - 1);
+      const minY = Math.max(0, Math.min(prev ? prev.cy : pt.cy, pt.cy) - pt.lineW / 2 - 1);
+      const maxX = Math.min(SIZE, Math.max(prev ? prev.cx : pt.cx, pt.cx) + pt.lineW / 2 + 1);
+      const maxY = Math.min(SIZE, Math.max(prev ? prev.cy : pt.cy, pt.cy) + pt.lineW / 2 + 1);
+      mctx.clearRect(minX, minY, maxX - minX, maxY - minY);
+      mctx.globalCompositeOperation = 'source-over';
+      mctx.fillStyle = mctx.strokeStyle = '#fff';
+      mctx.beginPath();
       if (prev) {
-        ctx.moveTo(prev.cx, prev.cy);
-        ctx.lineTo(pt.cx, pt.cy);
-        ctx.lineWidth = pt.lineW;
-        ctx.lineCap = 'round';
-        ctx.lineJoin = 'round';
+        mctx.moveTo(prev.cx, prev.cy);
+        mctx.lineTo(pt.cx, pt.cy);
+        mctx.lineWidth = pt.lineW;
+        mctx.lineCap = 'round';
+        mctx.lineJoin = 'round';
+        mctx.stroke();
       } else {
-        ctx.arc(pt.cx, pt.cy, pt.lineW / 2, 0, Math.PI * 2);
+        mctx.arc(pt.cx, pt.cy, pt.lineW / 2, 0, Math.PI * 2);
+        mctx.fill();
       }
-      ctx.clip(); // clip region IS the brush shape — no visible paint yet
 
       // The cache canvas covers the full video frame mapped to the draw
-      // area, so we just blit a brush-sized patch from the matching spot.
+      // area, so we just blit a brush-sized patch from the matching spot,
+      // kept only where the mask above is opaque.
+      mctx.globalCompositeOperation = 'source-in';
       const cw = this._inkCache.width;
       const ch = this._inkCache.height;
       const stampW = Math.max(4, (pt.lineW / SIZE) * cw);
       const stampH = Math.max(4, (pt.lineW / SIZE) * ch);
       const sx = Math.max(0, Math.min(cw - stampW, (pt.cx / SIZE) * cw - stampW / 2));
       const sy = Math.max(0, Math.min(ch - stampH, (pt.cy / SIZE) * ch - stampH / 2));
-      ctx.drawImage(
+      mctx.drawImage(
         this._inkCache,
         sx, sy, stampW, stampH,
         pt.cx - pt.lineW / 2, pt.cy - pt.lineW / 2, pt.lineW, pt.lineW,
+      );
+      mctx.globalCompositeOperation = 'source-over';
+
+      ctx.save();
+      ctx.globalAlpha = pt.alpha;
+      ctx.drawImage(
+        this._inkMask,
+        minX, minY, maxX - minX, maxY - minY,
+        minX, minY, maxX - minX, maxY - minY,
       );
       ctx.restore();
       return;
@@ -217,6 +244,29 @@ export class DrawLayer {
       dirty = true;
     }
 
+    // ── Param-driven drawing (LFO/MIDI/Automation on draw.x/draw.y) ──────
+    //    Queued like pointer input — one shared render path with its own
+    //    'param' segment chain, so it coexists with loop playback.
+    //    Suppressed while a pointer stroke is in progress (liveStroke
+    //    varies with pointer state) so pointer strokes don't double-draw
+    //    through their own draw.x/draw.y writes.
+    //    Queued BEFORE the ink-source cache block below so a param-driven
+    //    point about to land this frame is visible to that block's
+    //    "will anything be drawn?" check — queuing it after left the ink
+    //    cache always empty for every param-driven stroke (cacheReady
+    //    stayed false and drawSegment silently fell back to solid color).
+    const isActive = (penSize > 0 || eraseSize > 0) && !this.liveStroke;
+    if (isActive) {
+      this.queuePoint({
+        x: nx,
+        y: ny,
+        erase: eraseSize > 0 && !(penSize > 0),
+        start: !this._wasActive,
+        origin: 'param',
+      });
+    }
+    this._wasActive = isActive;
+
     // ── Ink source frame cache ──────────────────────────────────────────
     // 0=Color (no cache), 1–3=Video (snapshot <video>), 4=Noise (random),
     // 5=Output (cache filled by main.js from Three.js canvas before tick).
@@ -285,24 +335,6 @@ export class DrawLayer {
         this._inkCache.width = SIZE; this._inkCache.height = SIZE;
       }
     }
-
-    // ── Param-driven drawing (LFO/MIDI/Automation on draw.x/draw.y) ──────
-    //    Queued like pointer input — one shared render path with its own
-    //    'param' segment chain, so it coexists with loop playback.
-    //    Suppressed while a pointer stroke is in progress (liveStroke
-    //    varies with pointer state) so pointer strokes don't double-draw
-    //    through their own draw.x/draw.y writes.
-    const isActive = (penSize > 0 || eraseSize > 0) && !this.liveStroke;
-    if (isActive) {
-      this.queuePoint({
-        x: nx,
-        y: ny,
-        erase: eraseSize > 0 && !(penSize > 0),
-        start: !this._wasActive,
-        origin: 'param',
-      });
-    }
-    this._wasActive = isActive;
 
     // ── Drain point queue (live pointers, param drawing, loop playback) ──
     let liveInk = false;
