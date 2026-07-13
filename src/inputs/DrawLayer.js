@@ -210,37 +210,46 @@ export class DrawLayer {
       dirty = true;
     }
 
-    // ── Video-as-ink frame cache ──────────────────────────────────────────
-    // Snapshot the video element to a small offscreen canvas once per frame.
-    // Every point in the queue then stamps from this cheap bitmap instead of
-    // triggering N video decodes. The canvas is sized to match the draw area
-    // so coordinate mapping is 1:1 — no per-point scaling math needed.
-    if (this.inkSource > 0 && this.inkVideo) {
+    // ── Ink source frame cache ──────────────────────────────────────────
+    // 0=Color (no cache), 1–3=Video (snapshot <video>), 4=Noise (random),
+    // 5=Output (cache filled by main.js from Three.js canvas before tick).
+    const inkSrc = this.inkSource;
+    if (inkSrc === 0) {
+      if (this._inkCache.width > 0) this._inkCache.width = this._inkCache.height = 0;
+
+    } else if (inkSrc <= 3 && this.inkVideo) {
       const v = this.inkVideo;
-      // iOS Safari may not deliver frames to drawImage unless the video is
-      // in the DOM — append it once, hidden, on first use.
-      if (!v.parentNode) {
-        v.style.display = 'none';
-        document.body.appendChild(v);
-      }
+      if (!v.parentNode) { v.style.display = 'none'; document.body.appendChild(v); }
       if (v.videoWidth > 0 && v.videoHeight > 0) {
-        const cw = SIZE;
-        const ch = Math.round(SIZE * (v.videoHeight / v.videoWidth));
+        const cw = SIZE, ch = Math.round(SIZE * (v.videoHeight / v.videoWidth));
         if (this._inkCache.width !== cw || this._inkCache.height !== ch) {
-          this._inkCache.width  = cw;
-          this._inkCache.height = ch;
+          this._inkCache.width = cw; this._inkCache.height = ch;
         }
-        // Draw the full video frame into the cache, covering the draw area.
-        // We use the cache's own dimensions as the source rect so the video
-        // is squashed/stretched to fill the cache — then drawSegment samples
-        // from the cache at the pen position.
         this._inkCacheCtx.drawImage(v, 0, 0, cw, ch);
         this._inkCacheDirty = false;
       }
-    } else {
-      // Ink source turned off — release cache memory
-      if (this._inkCache.width > 0) {
-        this._inkCache.width = this._inkCache.height = 0;
+
+    } else if (inkSrc === 4) {
+      // Noise — random grayscale static, regenerated every frame
+      const cw = SIZE, ch = SIZE;
+      if (this._inkCache.width !== cw || this._inkCache.height !== ch) {
+        this._inkCache.width = cw; this._inkCache.height = ch;
+      }
+      const img = this._inkCacheCtx.createImageData(cw, ch);
+      const d = img.data;
+      for (let i = 0; i < d.length; i += 4) {
+        const v = Math.random() * 255 | 0;
+        d[i] = d[i + 1] = d[i + 2] = v;
+        d[i + 3] = 255;
+      }
+      this._inkCacheCtx.putImageData(img, 0, 0);
+      this._inkCacheDirty = false;
+
+    } else if (inkSrc === 5) {
+      // Output — cache filled externally by main.js (snapshot of Three.js
+      // canvas from the previous frame). Just ensure correct size.
+      if (this._inkCache.width !== SIZE || this._inkCache.height !== SIZE) {
+        this._inkCache.width = SIZE; this._inkCache.height = SIZE;
       }
     }
 
