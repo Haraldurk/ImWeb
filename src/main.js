@@ -6234,18 +6234,31 @@ void main() {
     // point queue and render this same frame
     strokeLooper.tick(dt);
 
-    // Video-as-ink: route the current InkSource selection to a live <video>
-    // element. Camera and Movie both expose their video element; other
-    // sources (Noise, Scene3D, SDF…) have no DOM video and fall back to
-    // solid colour.
+    // ── Ink source routing ──────────────────────────────────────────────
+    // 0=Color  1=Camera  2=Movie  3=MovieB  4=Noise (in DrawLayer)
+    // 5=Output (snapshot Three.js canvas from previous frame)
     const inkSrc = ps.get("draw.inkSource")?.value ?? 0;
     drawLayer.inkSource = inkSrc;
     if (inkSrc === 1) {
       drawLayer.inkVideo = camera3d.video;
     } else if (inkSrc === 2) {
       drawLayer.inkVideo = movieInput.currentClip?.video ?? null;
+    } else if (inkSrc === 3) {
+      drawLayer.inkVideo = movieInputB.currentClip?.video ?? null;
     } else {
       drawLayer.inkVideo = null;
+    }
+
+    // Output ink: snapshot the Three.js canvas from the PREVIOUS frame
+    // into the draw layer's ink cache. This avoids a feedback loop (the
+    // current draw texture hasn't been composited yet). preserveDrawing-
+    // Buffer is true so the canvas content survives frame to frame.
+    if (inkSrc === 5 && drawLayer._inkCache) {
+      const c = drawLayer._inkCache;
+      if (c.width > 0) {
+        const cc = drawLayer._inkCacheCtx;
+        cc.drawImage(canvas, 0, 0, c.width, c.height);
+      }
     }
 
     // Tick draw layer (paints to canvas texture based on draw.* params)

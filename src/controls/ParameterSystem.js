@@ -2559,9 +2559,11 @@ export function registerCoreParameters(ps) {
     label: "InkSource",
     group: "draw",
     type: PARAM_TYPE.SELECT,
-    options: ["Color", "Camera", "Movie"],
+    options: ["Color", "Camera", "Movie", "MovieB", "Noise", "Output"],
     value: 0,
-  }); // brush stamps video pixels instead of solid color (Camera/Movie)
+  }); // brush stamps source pixels instead of solid color;
+      // Camera/Movie/MovieB use video elements, Noise generates random
+      // static, Output snapshots the previous composite frame
   ps.register({
     id: "draw.pressure.size",
     label: "PressSize",
