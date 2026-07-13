@@ -56,9 +56,10 @@ export class DrawLayer {
     // Video-as-ink frame cache: snapshot the video to a small offscreen
     // canvas once per frame so every point in the queue reuses one cheap
     // bitmap instead of triggering N expensive video decodes.
-    this._inkCache     = document.createElement('canvas');
-    this._inkCacheCtx  = this._inkCache.getContext('2d', { willReadFrequently: false });
-    this._inkCacheDirty = true;  // force first snapshot
+    this._inkCache       = document.createElement('canvas');
+    this._inkCacheCtx    = this._inkCache.getContext('2d', { willReadFrequently: false });
+    this._inkCacheDirty  = true;   // force first snapshot
+    this._lastVideoTime  = -1;     // skip duplicate video decodes (camera=30fps, rAF=60fps)
   }
 
   /**
@@ -231,17 +232,19 @@ export class DrawLayer {
       if (hasWork && this.inkVideo) {
         const v = this.inkVideo;
         if (!v.parentNode) { v.style.display = 'none'; document.body.appendChild(v); }
-        if (v.videoWidth > 0 && v.videoHeight > 0) {
-          const cw = 256, ch = Math.round(256 * (v.videoHeight / v.videoWidth));
+        // Only snapshot when a NEW video frame is available. Camera feeds
+        // are ~30fps but rAF ticks at 60fps — decoding the same frame twice
+        // wastes GPU time and stalls the render loop on iOS. currentTime
+        // advances only when a decoded frame is presented.
+        if (v.videoWidth > 0 && v.videoHeight > 0 && v.currentTime !== this._lastVideoTime) {
+          this._lastVideoTime = v.currentTime;
+          const cw = 128, ch = Math.round(128 * (v.videoHeight / v.videoWidth));
           if (this._inkCache.width !== cw || this._inkCache.height !== ch) {
             this._inkCache.width = cw; this._inkCache.height = ch;
           }
           this._inkCacheCtx.drawImage(v, 0, 0, cw, ch);
           this._inkCacheDirty = false;
         }
-        // If the video isn't ready, keep the last valid cache frame —
-        // zeroing it would make drawSegment fall through to solid colour
-        // and cause visible flickering.
       }
 
     } else if (inkSrc === 4) {
