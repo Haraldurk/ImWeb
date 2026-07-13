@@ -213,41 +213,58 @@ export class DrawLayer {
     // ── Ink source frame cache ──────────────────────────────────────────
     // 0=Color (no cache), 1–3=Video (snapshot <video>), 4=Noise (random),
     // 5=Output (cache filled by main.js from Three.js canvas before tick).
+    //
+    // Only fill the cache when points will actually be drawn this frame —
+    // `drawImage(video)` at 60fps with a 720p+ source kills iPad framerate
+    // and the flickering comes from falling through to solid-colour when
+    // the video frame momentarily isn't ready.
     const inkSrc = this.inkSource;
+
     if (inkSrc === 0) {
       if (this._inkCache.width > 0) this._inkCache.width = this._inkCache.height = 0;
 
-    } else if (inkSrc <= 3 && this.inkVideo) {
-      const v = this.inkVideo;
-      if (!v.parentNode) { v.style.display = 'none'; document.body.appendChild(v); }
-      if (v.videoWidth > 0 && v.videoHeight > 0) {
-        const cw = SIZE, ch = Math.round(SIZE * (v.videoHeight / v.videoWidth));
-        if (this._inkCache.width !== cw || this._inkCache.height !== ch) {
-          this._inkCache.width = cw; this._inkCache.height = ch;
+    } else if (inkSrc <= 3) {
+      // Video sources — only snapshot when the queue has points (or a
+      // pointer is down and points are about to land). Half-resolution
+      // cache (256px wide) — plenty for brush stamps, half the GPU cost.
+      const hasWork = this._queue.length > 0 || this.liveStroke;
+      if (hasWork && this.inkVideo) {
+        const v = this.inkVideo;
+        if (!v.parentNode) { v.style.display = 'none'; document.body.appendChild(v); }
+        if (v.videoWidth > 0 && v.videoHeight > 0) {
+          const cw = 256, ch = Math.round(256 * (v.videoHeight / v.videoWidth));
+          if (this._inkCache.width !== cw || this._inkCache.height !== ch) {
+            this._inkCache.width = cw; this._inkCache.height = ch;
+          }
+          this._inkCacheCtx.drawImage(v, 0, 0, cw, ch);
+          this._inkCacheDirty = false;
         }
-        this._inkCacheCtx.drawImage(v, 0, 0, cw, ch);
-        this._inkCacheDirty = false;
+        // If the video isn't ready, keep the last valid cache frame —
+        // zeroing it would make drawSegment fall through to solid colour
+        // and cause visible flickering.
       }
 
     } else if (inkSrc === 4) {
-      // Noise — random grayscale static, regenerated every frame
-      const cw = SIZE, ch = SIZE;
-      if (this._inkCache.width !== cw || this._inkCache.height !== ch) {
-        this._inkCache.width = cw; this._inkCache.height = ch;
+      // Noise — only regenerate when points are landing
+      if (this._queue.length > 0 || this.liveStroke) {
+        const cw = 256, ch = 256;
+        if (this._inkCache.width !== cw || this._inkCache.height !== ch) {
+          this._inkCache.width = cw; this._inkCache.height = ch;
+        }
+        const img = this._inkCacheCtx.createImageData(cw, ch);
+        const d = img.data;
+        for (let i = 0; i < d.length; i += 4) {
+          const v = Math.random() * 255 | 0;
+          d[i] = d[i + 1] = d[i + 2] = v;
+          d[i + 3] = 255;
+        }
+        this._inkCacheCtx.putImageData(img, 0, 0);
+        this._inkCacheDirty = false;
       }
-      const img = this._inkCacheCtx.createImageData(cw, ch);
-      const d = img.data;
-      for (let i = 0; i < d.length; i += 4) {
-        const v = Math.random() * 255 | 0;
-        d[i] = d[i + 1] = d[i + 2] = v;
-        d[i + 3] = 255;
-      }
-      this._inkCacheCtx.putImageData(img, 0, 0);
-      this._inkCacheDirty = false;
 
     } else if (inkSrc === 5) {
-      // Output — cache filled externally by main.js (snapshot of Three.js
-      // canvas from the previous frame). Just ensure correct size.
+      // Output — filled by main.js from previous frame's Three.js canvas.
+      // Keep SIZE×SIZE for 1:1 mapping with the draw area.
       if (this._inkCache.width !== SIZE || this._inkCache.height !== SIZE) {
         this._inkCache.width = SIZE; this._inkCache.height = SIZE;
       }
