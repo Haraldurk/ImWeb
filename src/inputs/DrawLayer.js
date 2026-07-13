@@ -50,6 +50,8 @@ export class DrawLayer {
     this.strokeActive  = false;  // true while any ink landed this frame
     this.liveStroke    = false;  // set by pointer handlers while a pointer is down;
                                  // suppresses the param fallback between pointer events
+    this.inkVideo      = null;   // <video> element for Camera/Movie ink source
+    this.inkSource     = 0;      // draw.inkSource value (0=Color, 1=Camera, 2=Movie)
   }
 
   /**
@@ -70,6 +72,55 @@ export class DrawLayer {
    */
   drawSegment(pt, prev) {
     const ctx = this.ctx;
+    const video = (!pt.erase && this.inkSource > 0) ? this.inkVideo : null;
+
+    // When using a video ink source AND the video is ready, the brush
+    // path acts as a stencil: clip to the brush shape, then stamp video
+    // pixels through it. Erasing always uses solid black regardless.
+    if (video && video.readyState >= 2) {
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.globalAlpha = pt.alpha;
+      ctx.save();
+      ctx.beginPath();
+      if (prev) {
+        ctx.moveTo(prev.cx, prev.cy);
+        ctx.lineTo(pt.cx, pt.cy);
+      } else {
+        ctx.arc(pt.cx, pt.cy, pt.lineW / 2, 0, Math.PI * 2);
+      }
+      // Round-cap strokes: thicken the stencil so it fully contains the
+      // line geometry — clip() with a stroked path only clips the stroke
+      // itself. Fill the equivalent shape instead.
+      ctx.lineWidth = pt.lineW;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      ctx.strokeStyle = '#fff';
+      ctx.stroke();
+      ctx.clip();
+
+      // Map draw-space position to video pixel coordinates.
+      // The draw canvas is SIZE×SIZE; the video is video.videoWidth ×
+      // video.videoHeight. We stamp a region proportional to the brush
+      // size so that small brushes capture a tight crop and large brushes
+      // spread a wider area of the video frame.
+      const vw = video.videoWidth;
+      const vh = video.videoHeight;
+      const stampW = Math.max(1, (pt.lineW / SIZE) * vw);
+      const stampH = Math.max(1, (pt.lineW / SIZE) * vh);
+      const sx = Math.max(0, Math.min(vw - stampW, (pt.cx / SIZE) * vw - stampW / 2));
+      const sy = Math.max(0, Math.min(vh - stampH, (pt.cy / SIZE) * vh - stampH / 2));
+      ctx.drawImage(
+        video,
+        sx, sy, stampW, stampH,
+        pt.cx - pt.lineW / 2, pt.cy - pt.lineW / 2, pt.lineW, pt.lineW,
+      );
+      ctx.restore();
+      ctx.globalAlpha = 1;
+      ctx.globalCompositeOperation = 'source-over';
+      return;
+    }
+
+    // Solid-color brush (original path)
     ctx.globalCompositeOperation = pt.erase ? 'destination-out' : 'source-over';
     ctx.globalAlpha = pt.erase ? 1 : pt.alpha;
     ctx.strokeStyle = pt.style;

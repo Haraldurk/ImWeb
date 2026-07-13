@@ -2555,6 +2555,14 @@ export function registerCoreParameters(ps) {
     type: PARAM_TYPE.TRIGGER,
   });
   ps.register({
+    id: "draw.inkSource",
+    label: "InkSource",
+    group: "draw",
+    type: PARAM_TYPE.SELECT,
+    options: ["Color", "Camera", "Movie"],
+    value: 0,
+  }); // brush stamps video pixels instead of solid color (Camera/Movie)
+  ps.register({
     id: "draw.pressure.size",
     label: "PressSize",
     group: "draw",
