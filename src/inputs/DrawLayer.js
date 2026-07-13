@@ -81,7 +81,12 @@ export class DrawLayer {
    */
   drawSegment(pt, prev) {
     const ctx = this.ctx;
-    const useInk = !pt.erase && this.inkSource > 0 && this.inkVideo;
+    // Video sources (1-3) need a live <video> to sample; Noise (4) and
+    // Output (5) fill the cache themselves and don't use inkVideo at all —
+    // gating on inkVideo for those meant they never used the cache and
+    // silently fell back to solid color.
+    const isVideoSrc = this.inkSource >= 1 && this.inkSource <= 3;
+    const useInk = !pt.erase && this.inkSource > 0 && (!isVideoSrc || this.inkVideo);
     // Check the cached canvas has real pixel data — videoWidth is 0 until
     // the first frame arrives, and Safari may need the element in the DOM.
     const cacheReady = useInk && this._inkCache.width > 0 && this._inkCache.height > 0;
