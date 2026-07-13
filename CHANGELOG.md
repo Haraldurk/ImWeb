@@ -53,6 +53,13 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
   can drive multiple params at different rates and axes — four draw loops
   become four freely-routable modulation lanes. Edit slot, axis, and rate
   in the controller popover (right-click the badge).
+- **Video-as-ink drawing** — `InkSource` SELECT (Color / Camera / Movie /
+  MovieB / Noise / Output) lets you paint with live source pixels instead
+  of a solid colour. Camera and Movie stamp video frames through the
+  brush shape; Noise generates random greyscale static each frame; Output
+  snapshots the previous composite (any source routed through FG) — paint
+  with the whole pipeline. A per-frame cache canvas avoids expensive
+  per-point video decodes. Works on iPad via HTTPS.
 - **GLSL preset MIDI recall (`glsl.preset`)** — the Live GLSL preset
   list (built-ins + saved user presets) is now a SELECT parameter with
   a standard controller badge next to the preset dropdown. Assign
