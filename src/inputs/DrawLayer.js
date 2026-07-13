@@ -108,8 +108,8 @@ export class DrawLayer {
       // area, so we just blit a brush-sized patch from the matching spot.
       const cw = this._inkCache.width;
       const ch = this._inkCache.height;
-      const stampW = Math.max(1, (pt.lineW / SIZE) * cw);
-      const stampH = Math.max(1, (pt.lineW / SIZE) * ch);
+      const stampW = Math.max(4, (pt.lineW / SIZE) * cw);
+      const stampH = Math.max(4, (pt.lineW / SIZE) * ch);
       const sx = Math.max(0, Math.min(cw - stampW, (pt.cx / SIZE) * cw - stampW / 2));
       const sy = Math.max(0, Math.min(ch - stampH, (pt.cy / SIZE) * ch - stampH / 2));
       ctx.drawImage(
@@ -238,7 +238,7 @@ export class DrawLayer {
         // advances only when a decoded frame is presented.
         if (v.videoWidth > 0 && v.videoHeight > 0 && v.currentTime !== this._lastVideoTime) {
           this._lastVideoTime = v.currentTime;
-          const cw = 128, ch = Math.round(128 * (v.videoHeight / v.videoWidth));
+          const cw = 256, ch = Math.round(256 * (v.videoHeight / v.videoWidth));
           if (this._inkCache.width !== cw || this._inkCache.height !== ch) {
             this._inkCache.width = cw; this._inkCache.height = ch;
           }
