@@ -3550,49 +3550,76 @@ async function main() {
     drawControls.append(btnWarp, btnKey);
 
     // Stroke looper transport — 4 slots × Rec/Play/Clear. Buttons drive the
-    // drawloop{n}.* params so MIDI/keyboard paths stay identical.
+    // drawloop{n}.* params so MIDI/keyboard paths stay identical. Built via
+    // a shared row-factory so the sidebar strip and the floating popup
+    // (below) render identical controls without duplicating the wiring.
+    const _buildLoopRows = (container) => {
+      const rows = [];
+      for (let n = 1; n <= LOOP_SLOTS; n++) {
+        const row = document.createElement("div");
+        row.className = "drawloop-row";
+        const lab = document.createElement("span");
+        lab.className = "drawloop-label";
+        lab.textContent = `L${n}`;
+        const bRec = document.createElement("button");
+        bRec.className = "import-btn drawloop-rec";
+        bRec.textContent = "●";
+        bRec.title = `Record loop ${n} (press again to stop & play)`;
+        bRec.addEventListener("click", () => ps.trigger(`drawloop${n}.rec`));
+        const bPlay = document.createElement("button");
+        bPlay.className = "import-btn drawloop-play";
+        bPlay.textContent = "▶";
+        bPlay.title = `Play / stop loop ${n}`;
+        bPlay.addEventListener("click", () => {
+          const p = ps.get(`drawloop${n}.play`);
+          ps.set(`drawloop${n}.play`, p.value > 0.5 ? 0 : 1);
+        });
+        const bClear = document.createElement("button");
+        bClear.className = "import-btn";
+        bClear.textContent = "✕";
+        bClear.title = `Clear loop ${n}`;
+        bClear.addEventListener("click", () => ps.trigger(`drawloop${n}.clear`));
+        row.append(lab, bRec, bPlay, bClear);
+        container.appendChild(row);
+        rows.push(row);
+      }
+      return rows;
+    };
+
     const loopStrip = document.createElement("div");
     loopStrip.id = "drawloop-strip";
-    for (let n = 1; n <= LOOP_SLOTS; n++) {
-      const row = document.createElement("div");
-      row.className = "drawloop-row";
-      const lab = document.createElement("span");
-      lab.className = "drawloop-label";
-      lab.textContent = `L${n}`;
-      const bRec = document.createElement("button");
-      bRec.className = "import-btn drawloop-rec";
-      bRec.textContent = "●";
-      bRec.title = `Record loop ${n} (press again to stop & play)`;
-      bRec.addEventListener("click", () => ps.trigger(`drawloop${n}.rec`));
-      const bPlay = document.createElement("button");
-      bPlay.className = "import-btn drawloop-play";
-      bPlay.textContent = "▶";
-      bPlay.title = `Play / stop loop ${n}`;
-      bPlay.addEventListener("click", () => {
-        const p = ps.get(`drawloop${n}.play`);
-        ps.set(`drawloop${n}.play`, p.value > 0.5 ? 0 : 1);
-      });
-      const bClear = document.createElement("button");
-      bClear.className = "import-btn";
-      bClear.textContent = "✕";
-      bClear.title = `Clear loop ${n}`;
-      bClear.addEventListener("click", () => ps.trigger(`drawloop${n}.clear`));
-      row.append(lab, bRec, bPlay, bClear);
-      loopStrip.appendChild(row);
-    }
     drawControls.appendChild(loopStrip);
+    const sidebarLoopRows = _buildLoopRows(loopStrip);
 
-    // Reflect looper state on the buttons on any path (MIDI, param row,
-    // project load) — chain the param-sync hook wired at the trigger block
+    // Floating popup — same rec/play/clear transport, shown only while
+    // drawing directly on the main canvas (⊕ Canvas mode), where the side
+    // panel's strip is out of reach. Bottom-left keeps it clear of a
+    // right-handed pen/mouse working the canvas.
+    const loopPopup = document.createElement("div");
+    loopPopup.id = "drawloop-popup";
+    const loopPopupLabel = document.createElement("div");
+    loopPopupLabel.className = "drawloop-popup-label";
+    loopPopupLabel.textContent = "LOOP";
+    loopPopup.appendChild(loopPopupLabel);
+    document.body.appendChild(loopPopup);
+    const popupLoopRows = _buildLoopRows(loopPopup);
+    ps.get("touch.mode")?.onChange((m) => {
+      loopPopup.classList.toggle("show", Math.round(m) === 3);
+    });
+
+    // Reflect looper state on both sets of buttons on any path (MIDI, param
+    // row, project load) — chain the param-sync hook wired at the trigger
+    // block
     const _syncLoopUI = (i) => {
       const slot = strokeLooper.slots[i];
-      const row = loopStrip.children[i];
-      row
-        .querySelector(".drawloop-rec")
-        .classList.toggle("recording", slot.recording);
-      row.querySelector(".drawloop-play").style.borderColor = slot.playing
-        ? "var(--accent)"
-        : "";
+      for (const row of [sidebarLoopRows[i], popupLoopRows[i]]) {
+        row
+          .querySelector(".drawloop-rec")
+          .classList.toggle("recording", slot.recording);
+        row.querySelector(".drawloop-play").style.borderColor = slot.playing
+          ? "var(--accent)"
+          : "";
+      }
     };
     const _prevSlotCb = strokeLooper.onSlotChange;
     strokeLooper.onSlotChange = (i) => {
