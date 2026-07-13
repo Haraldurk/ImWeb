@@ -52,6 +52,13 @@ export class DrawLayer {
                                  // suppresses the param fallback between pointer events
     this.inkVideo      = null;   // <video> element for Camera/Movie ink source
     this.inkSource     = 0;      // draw.inkSource value (0=Color, 1=Camera, 2=Movie)
+
+    // Video-as-ink frame cache: snapshot the video to a small offscreen
+    // canvas once per frame so every point in the queue reuses one cheap
+    // bitmap instead of triggering N expensive video decodes.
+    this._inkCache     = document.createElement('canvas');
+    this._inkCacheCtx  = this._inkCache.getContext('2d', { willReadFrequently: false });
+    this._inkCacheDirty = true;  // force first snapshot
   }
 
   /**
@@ -72,51 +79,44 @@ export class DrawLayer {
    */
   drawSegment(pt, prev) {
     const ctx = this.ctx;
-    const video = (!pt.erase && this.inkSource > 0) ? this.inkVideo : null;
+    const useInk = !pt.erase && this.inkSource > 0 && this.inkVideo;
+    // Check the cached canvas has real pixel data — videoWidth is 0 until
+    // the first frame arrives, and Safari may need the element in the DOM.
+    const cacheReady = useInk && this._inkCache.width > 0 && this._inkCache.height > 0;
 
-    // When using a video ink source AND the video is ready, the brush
-    // path acts as a stencil: clip to the brush shape, then stamp video
-    // pixels through it. Erasing always uses solid black regardless.
-    if (video && video.readyState >= 2) {
-      ctx.globalCompositeOperation = 'source-over';
-      ctx.globalAlpha = pt.alpha;
+    // Video-as-ink: clip the brush shape and stamp the cached video frame
+    // through it. The clip() path never paints visible pixels (no stroke/fill
+    // beforehand), so a failed drawImage just leaves the canvas unchanged
+    // instead of leaving white ghost strokes.
+    if (cacheReady) {
       ctx.save();
+      ctx.globalAlpha = pt.alpha;
       ctx.beginPath();
       if (prev) {
         ctx.moveTo(prev.cx, prev.cy);
         ctx.lineTo(pt.cx, pt.cy);
+        ctx.lineWidth = pt.lineW;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
       } else {
         ctx.arc(pt.cx, pt.cy, pt.lineW / 2, 0, Math.PI * 2);
       }
-      // Round-cap strokes: thicken the stencil so it fully contains the
-      // line geometry — clip() with a stroked path only clips the stroke
-      // itself. Fill the equivalent shape instead.
-      ctx.lineWidth = pt.lineW;
-      ctx.lineCap = 'round';
-      ctx.lineJoin = 'round';
-      ctx.strokeStyle = '#fff';
-      ctx.stroke();
-      ctx.clip();
+      ctx.clip(); // clip region IS the brush shape — no visible paint yet
 
-      // Map draw-space position to video pixel coordinates.
-      // The draw canvas is SIZE×SIZE; the video is video.videoWidth ×
-      // video.videoHeight. We stamp a region proportional to the brush
-      // size so that small brushes capture a tight crop and large brushes
-      // spread a wider area of the video frame.
-      const vw = video.videoWidth;
-      const vh = video.videoHeight;
-      const stampW = Math.max(1, (pt.lineW / SIZE) * vw);
-      const stampH = Math.max(1, (pt.lineW / SIZE) * vh);
-      const sx = Math.max(0, Math.min(vw - stampW, (pt.cx / SIZE) * vw - stampW / 2));
-      const sy = Math.max(0, Math.min(vh - stampH, (pt.cy / SIZE) * vh - stampH / 2));
+      // The cache canvas covers the full video frame mapped to the draw
+      // area, so we just blit a brush-sized patch from the matching spot.
+      const cw = this._inkCache.width;
+      const ch = this._inkCache.height;
+      const stampW = Math.max(1, (pt.lineW / SIZE) * cw);
+      const stampH = Math.max(1, (pt.lineW / SIZE) * ch);
+      const sx = Math.max(0, Math.min(cw - stampW, (pt.cx / SIZE) * cw - stampW / 2));
+      const sy = Math.max(0, Math.min(ch - stampH, (pt.cy / SIZE) * ch - stampH / 2));
       ctx.drawImage(
-        video,
+        this._inkCache,
         sx, sy, stampW, stampH,
         pt.cx - pt.lineW / 2, pt.cy - pt.lineW / 2, pt.lineW, pt.lineW,
       );
       ctx.restore();
-      ctx.globalAlpha = 1;
-      ctx.globalCompositeOperation = 'source-over';
       return;
     }
 
@@ -208,6 +208,40 @@ export class DrawLayer {
       this.ctx.fillRect(0, 0, SIZE, SIZE);
       this.ctx.globalAlpha = 1;
       dirty = true;
+    }
+
+    // ── Video-as-ink frame cache ──────────────────────────────────────────
+    // Snapshot the video element to a small offscreen canvas once per frame.
+    // Every point in the queue then stamps from this cheap bitmap instead of
+    // triggering N video decodes. The canvas is sized to match the draw area
+    // so coordinate mapping is 1:1 — no per-point scaling math needed.
+    if (this.inkSource > 0 && this.inkVideo) {
+      const v = this.inkVideo;
+      // iOS Safari may not deliver frames to drawImage unless the video is
+      // in the DOM — append it once, hidden, on first use.
+      if (!v.parentNode) {
+        v.style.display = 'none';
+        document.body.appendChild(v);
+      }
+      if (v.videoWidth > 0 && v.videoHeight > 0) {
+        const cw = SIZE;
+        const ch = Math.round(SIZE * (v.videoHeight / v.videoWidth));
+        if (this._inkCache.width !== cw || this._inkCache.height !== ch) {
+          this._inkCache.width  = cw;
+          this._inkCache.height = ch;
+        }
+        // Draw the full video frame into the cache, covering the draw area.
+        // We use the cache's own dimensions as the source rect so the video
+        // is squashed/stretched to fill the cache — then drawSegment samples
+        // from the cache at the pen position.
+        this._inkCacheCtx.drawImage(v, 0, 0, cw, ch);
+        this._inkCacheDirty = false;
+      }
+    } else {
+      // Ink source turned off — release cache memory
+      if (this._inkCache.width > 0) {
+        this._inkCache.width = this._inkCache.height = 0;
+      }
     }
 
     // ── Param-driven drawing (LFO/MIDI/Automation on draw.x/draw.y) ──────
