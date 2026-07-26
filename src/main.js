@@ -6137,22 +6137,40 @@ void main() {
     // Orbit inertia — coast + damp after a touch flick
     gestureArb.tick(dt);
 
-    // ── Idle-deck upload gating (v0.12 Step 5) ──────────────────────────────
-    // Skip the texImage2D upload for a deck that cannot contribute to this
-    // frame; playback keeps running so the deck stays cued. The MixBus shader
-    // computes mix(A, modeResult, xfade), so xfade=0 is always pure Deck A
-    // (B skippable) and xfade=1 hides Deck A only in Crossfade mode — every
-    // other mode still reads A.
-    const _gFg = ps.get("layer.fg").value;
-    const _gBg = ps.get("layer.bg").value;
-    const _gDs = ps.get("layer.ds")?.value ?? 0;
-    const _gUses = (i) => _gFg === i || _gBg === i || _gDs === i;
-    const _gTdCap = ps.get("td.enabled").value
+    // ── Source consumption analysis (Phase 23 Step 2) ───────────────────────
+    // THE single "is source index i consumed this frame?" test. Every
+    // on-demand tick gate and upload gate below uses it. A source is consumed
+    // when a layer routes it, TimeDisplace captures it, or a live MixBus
+    // input selects it. Adding a new consumer means extending THIS function,
+    // not copying the pattern a seventh time.
+    const _cFg = ps.get("layer.fg").value;
+    const _cBg = ps.get("layer.bg").value;
+    const _cDs = ps.get("layer.ds")?.value ?? 0;
+    const _cTd = ps.get("td.enabled").value
       ? ps.get("td.captureSource").value
       : -1;
-    const _gMixConsumed = _gUses(26) || _gTdCap === 26; // Mix Bus routed?
+    // Is the MixBus output itself read? Deliberately NOT a function of
+    // mix.srcA/srcB: a bus feeding only itself is not a reason to render it,
+    // and testing them here would make _srcUsed self-referential.
+    const _mixbusNeeded = _cFg === 26 || _cBg === 26 || _cDs === 26 || _cTd === 26;
+    const _cMixA = ps.get("mix.srcA").value;
+    const _cMixB = ps.get("mix.srcB").value;
     const _gXf = ps.get("mix.xfade").value;
     const _gMixMode = ps.get("mix.mode").value;
+    // Which bus inputs can actually reach the output? MIXBUS computes
+    // mix(a, modeResult, xfade): xfade=0 is pure srcA (srcB hidden), and
+    // Crossfade pinned at 1 is pure srcB (srcA hidden) — every other mode
+    // still reads srcA. Same reasoning as the v0.12 deck gate, generalized
+    // off the deck identities.
+    const _mixAOn = _mixbusNeeded && !(_gMixMode === 0 && _gXf >= 1);
+    const _mixBOn = _mixbusNeeded && _gXf > 0;
+    const _srcUsed = (i) =>
+      _cFg === i || _cBg === i || _cDs === i || _cTd === i ||
+      (_mixAOn && _cMixA === i) || (_mixBOn && _cMixB === i);
+
+    // ── Idle-deck upload gating (v0.12 Step 5) ──────────────────────────────
+    // Skip the texImage2D upload for a deck that cannot contribute to this
+    // frame; playback keeps running so the deck stays cued.
     // Deck A has legacy per-frame readers outside the layer system. If any
     // subsystem that CAN sample the Movie texture is live, keep uploading —
     // gating must never freeze a texture someone is reading (Phase 5 lesson).
@@ -6161,23 +6179,21 @@ void main() {
       ps.get("seq2.active").value ||
       ps.get("seq3.active").value ||
       ps.get("scene3d.active").value ||        // 3D materials / hypercube tex
-      _gUses(6) || _gUses(20) || _gTdCap === 6 || _gTdCap === 20 ||
-      _gUses(16) || _gTdCap === 16 ||          // particles (masksrc may be Movie)
-      _gUses(23) || _gTdCap === 23 ||          // analog TV (source may be Movie)
-      _gUses(21) || _gTdCap === 21 ||          // SDF (texSrc may be Movie)
+      _srcUsed(6) || _srcUsed(20) ||
+      _srcUsed(16) ||                          // particles (masksrc may be Movie)
+      _srcUsed(23) ||                          // analog TV (source may be Movie)
+      _srcUsed(21) ||                          // SDF (texSrc may be Movie)
       _clipRecording;                          // ClipLib REC (source may be Mov)
     // Deck A keeps exact v0.11 behavior (always upload while active) EXCEPT
-    // the one provably-hidden case: Mix Bus routed, Crossfade mode pinned at
-    // full B, no direct route, and no legacy reader live.
-    const _uploadA = !(
-      _gMixConsumed && _gMixMode === 0 && _gXf >= 1 &&
-      !_gUses(1) && _gTdCap !== 1 && !_gLegacyReaders
-    );
-    // Deck B is only reachable via source 25, TimeDisp capture, or the MixBus
-    // (no legacy subset list includes "Movie B" — keep it that way, or extend
-    // this gate when appending it to one).
-    const _uploadB =
-      _gUses(25) || _gTdCap === 25 || (_gMixConsumed && _gXf > 0);
+    // the provably-hidden case: the Mix Bus is the only consumer and the mix
+    // cannot show Movie this frame. The `|| !_mixbusNeeded` term preserves
+    // that conservatism verbatim — when no bus is live, Deck A always
+    // uploads, exactly as before.
+    const _uploadA = _srcUsed(1) || _gLegacyReaders || !_mixbusNeeded;
+    // Deck B is only reachable via source 25, TimeDisp capture, or a MixBus
+    // input (no legacy subset list includes "Movie B" — keep it that way, or
+    // extend _gLegacyReaders when appending it to one).
+    const _uploadB = _srcUsed(25);
 
     // Update movie clips (both decks)
     movieInput.tick(ps, beatPhase, dt, _uploadA);
@@ -6339,9 +6355,8 @@ void main() {
 
     // td.captureSource may point at a conditionally-ticked generator (Noise, 3D Scene,
     // 3D Depth, SDF, Analog, Particles) that would otherwise stay null/stale unless a
-    // layer also displays it. Force those generators to tick when TD is capturing from
-    // them — mirrors the layer.fg/bg/ds gating each one already uses below.
-    const _tdCap = ps.get("td.enabled").value ? ps.get("td.captureSource").value : -1;
+    // layer also displays it. A MixBus input can now do the same. Both cases are
+    // folded into _srcUsed() above — the local _tdCap copy it replaced is gone.
     // td.mode === "Noise" (6) drives the per-pixel delay map from the Noise
     // generator's output — force Noise to tick even if no layer uses it.
     const TD_MODE_NOISE = 6;
@@ -6362,7 +6377,7 @@ void main() {
       vectorscope.texture, // 10 Vectorscope
     ];
     const PARTICLE_IDX = 16;
-    const _particlesUsed = ps.get("layer.fg").value === PARTICLE_IDX || ps.get("layer.bg").value === PARTICLE_IDX || (ps.get("layer.ds")?.value ?? 0) === PARTICLE_IDX || _tdCap === PARTICLE_IDX;
+    const _particlesUsed = _srcUsed(PARTICLE_IDX);
     if (_particlesUsed) {
       particles.tick(ps, dt, _pmSrcMap[ps.get("particle.masksrc").value] ?? null);
     }
@@ -6386,12 +6401,12 @@ void main() {
           ? _resolveLayerTex(_sdfSrcToLayerIdx[_sdfRefIdx])
           : null;
     const SDF_IDX = 21;
-    const _sdfUsed = ps.get("layer.fg").value === SDF_IDX || ps.get("layer.bg").value === SDF_IDX || (ps.get("layer.ds")?.value ?? 0) === SDF_IDX || _tdCap === SDF_IDX;
+    const _sdfUsed = _srcUsed(SDF_IDX);
     if (_sdfUsed) sdfGen.tick(ps, dt, _sdfTex, _sdfRef);
 
     // Analog TV — on-demand rendering (source index 23)
     const ANALOG_IDX = 23;
-    const _analogUsed = ps.get("layer.fg").value === ANALOG_IDX || ps.get("layer.bg").value === ANALOG_IDX || (ps.get("layer.ds")?.value ?? 0) === ANALOG_IDX || _tdCap === ANALOG_IDX;
+    const _analogUsed = _srcUsed(ANALOG_IDX);
     const _analogSrcIdx = _analogUsed ? ps.get("analog.sourceType").value : -1;
     if (_analogUsed) {
       const ANALOG_SRC_MAP    = [0, 1, 2, 5, 6, 7, 8]; // Camera=0, Movie=1, Buffer=2, Noise=5, 3D=6, Draw=7, Output=8
@@ -6417,7 +6432,7 @@ void main() {
 
     // Generate noise only when a layer is using it as a source (512×512 dedicated target)
     const NOISE_IDX = 5;
-    const _noiseUsed = ps.get("layer.fg").value === NOISE_IDX || ps.get("layer.bg").value === NOISE_IDX || (ps.get("layer.ds")?.value ?? 0) === NOISE_IDX || _analogSrcIdx === 3 || ps.get('scene3d.mat.texsrc')?.value === 6 || _tdCap === NOISE_IDX || _tdModeNoise;
+    const _noiseUsed = _srcUsed(NOISE_IDX) || _analogSrcIdx === 3 || ps.get('scene3d.mat.texsrc')?.value === 6 || _tdModeNoise;
     const _scene3dNoise = ps.get('scene3d.mat.texsrc')?.value === 6;
     const _noiseScale = ps.get('noise.scale')?.value ?? 8;
     const _seamlessPeriod = _scene3dNoise
@@ -6459,21 +6474,15 @@ void main() {
     // Render 3D scene if active OR used as a layer source
     const SCENE3D_IDX = 6; // index in SOURCES array
     const DEPTH3D_IDX = 20; // index in SOURCES array
-    const depthUsed =
-      ps.get("layer.fg").value === DEPTH3D_IDX ||
-      ps.get("layer.bg").value === DEPTH3D_IDX ||
-      ps.get("layer.ds").value === DEPTH3D_IDX ||
-      _tdCap === DEPTH3D_IDX;
+    const depthUsed = _srcUsed(DEPTH3D_IDX);
     // Auto-enable depth pass when the depth3d source is routed
     if (depthUsed && !ps.get("scene3d.depth.active").value) {
       ps.set("scene3d.depth.active", 1);
     }
     const scene3dNeeded =
       ps.get("scene3d.active").value ||
-      ps.get("layer.fg").value === SCENE3D_IDX ||
-      ps.get("layer.bg").value === SCENE3D_IDX ||
-      ps.get("layer.ds").value === SCENE3D_IDX ||
-      depthUsed || _analogSrcIdx === 4 || _tdCap === SCENE3D_IDX;
+      _srcUsed(SCENE3D_IDX) ||
+      depthUsed || _analogSrcIdx === 4;
     // scene3d.getHypercube()?.setInstancerTexture(pipeline.prev.texture); — removed: SceneManager now owns instancer texture via _adoptMesh
     renderer.info.autoReset = false;
     renderer.info.reset();
@@ -6518,6 +6527,9 @@ void main() {
       seq2: seq2.texture,
       seq3: seq3.texture,
       warpMaps,
+      // Not a texture — the MixBus render gate. Computed here because the
+      // consumption analysis (layers + TimeDisplace) lives in main.js.
+      mixbusNeeded: _mixbusNeeded,
     };
 
     // Stroboscope: on "off" phase, freeze output (skip pipeline, blit prev)
