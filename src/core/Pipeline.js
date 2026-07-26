@@ -25,6 +25,10 @@ import {
   FILM_GRAIN, FEEDBACK_ROTATE, QUAD_MIRROR, LEVELS, LUT3D, WHITE_BALANCE, VASULKA_WARP,
   SHARPEN, MIXBUS,
 } from '../shaders/index.js';
+import { SOURCE_KEYS } from '../controls/ParameterSystem.js';
+
+/** Mix bus param prefixes, index-aligned to MIXBUS_IDX (source 26/27/28). */
+const MIX_PREFIX = ['mix', 'mix2', 'mix3'];
 
 export const DEFAULT_FX_ORDER = [
   // VasulkaWarp — hidden, experimental, architecture unresolved. See dev notes.
@@ -221,10 +225,17 @@ export class Pipeline {
     this._bloomTargetH = this._makeTarget(hw, hh);
     this._bloomTargetV = this._makeTarget(hw, hh);
 
-    // Dedicated full-res target for the A/B MixBus — its output must survive
-    // the ping-pong pool because layer resolution reads it later in the frame
-    // (and main.js reads it for secondary lookups).
-    this._mixTarget = this._makeTarget(width, height);
+    // Mix buses ×3 — dedicated full-res targets, outside the ping-pong pool
+    // because layer resolution reads them later in the frame (and main.js
+    // reads them for secondary lookups).
+    //
+    // Each bus is DOUBLE-BUFFERED. The back buffer holds last frame's output,
+    // which is what lets a bus be read by itself (or by an earlier bus)
+    // without sampling the texture currently being written — the WebGL
+    // feedback hazard. Allocated lazily: a project that never routes a bus
+    // pays no VRAM, which matters at 2 targets × 3 buses × full res.
+    this._mixRT  = [null, null, null]; // each: [RenderTarget, RenderTarget]
+    this._mixCur = [0, 0, 0];          // buffer index holding the LATEST output
 
     // Live GLSL custom effect (hot-swappable)
     this._customMat    = null;  // set by setCustomShader()
@@ -322,39 +333,39 @@ export class Pipeline {
       this._pInputs.buffer = blended;
     }
 
-    // ── MixBus: free-source A/B mix (Phase 23 Step 2) ────────────────────────
-    // Renders into a dedicated target (survives the ping-pong pool) BEFORE
-    // layer resolution so 'Mix Bus' is selectable as FG/BG/DS this frame.
-    // mix.srcA/srcB select ANY source — resolved through the same
-    // _resolveSource() the layers use, so the bus is a real graph node.
+    // ── Mix buses ×3 (Phase 23 Steps 2 & 4) ──────────────────────────────────
+    // Rendered in evaluation order 1 → 2 → 3, BEFORE layer resolution, so any
+    // bus is selectable as FG/BG/DS this frame. srcA/srcB select ANY source,
+    // resolved through the same _resolveSource() the layers use, so a bus is a
+    // real graph node rather than a hardwired deck crossfader.
     //
-    // Gated on inputs.mixbusNeeded (main.js consumption analysis), NOT on
-    // input presence. The old `inputs.movie || inputs.movieB` test would be
-    // actively wrong here: mixing Camera against Noise with no movie loaded
-    // must still render.
-    if (inputs.mixbusNeeded) {
-      const fb = this._getFallbackTexture();
-      // Self-feedback guard — identity check on the target texture, never a
-      // timing flag (flags depend on call order; identity depends on values).
-      // Sampling _mixTarget while writing it is undefined behaviour in WebGL,
-      // so a bus input pointing at the bus itself reads the previous
-      // composite instead. NOTE: this is self-read substitution, not a true
-      // one-frame-behind read of the bus — that needs a second target and is
-      // deferred to the multi-bus step.
-      const safeSrc = (idx) => {
-        const tex = this._resolveSource(processedInputs, idx);
-        if (tex === this._mixTarget.texture) return this.prev.texture ?? fb;
-        return tex ?? fb;
-      };
+    // Gated per bus on inputs.mixbusNeeded[k] (main.js consumption analysis),
+    // NOT on input presence: mixing Camera against Noise with no movie loaded
+    // must still render, so the old `inputs.movie || inputs.movieB` test would
+    // have been actively wrong here.
+    //
+    // Each pass writes the BACK buffer and flips _mixCur only afterwards. One
+    // rule falls out of that, with no special cases and no feedback flag:
+    //   • a later bus reading an earlier one → THIS frame (it already flipped)
+    //   • an earlier bus reading a later one → LAST frame
+    //   • a bus reading ITSELF               → LAST frame
+    // The self case is safe because the sampled texture is physically a
+    // different target from the one being written.
+    for (let k = 0; k < MIX_PREFIX.length; k++) {
+      if (!inputs.mixbusNeeded?.[k]) continue;
+      const pfx = MIX_PREFIX[k];
+      const rt  = this._ensureMixRT(k);          // before _resolveSource: a
+      const dst = rt[this._mixCur[k] ^ 1];       // self-read needs the pair
       this._passTo(this.m.mixbus, {
-        uFG:      safeSrc(p.get('mix.srcA').value),
-        uBG:      safeSrc(p.get('mix.srcB').value),
-        uMode:    p.get('mix.mode').value,
-        uXfade:   p.get('mix.xfade').value,
-        uDispAmt: p.get('mix.dispAmt').value,
-        uMaskLo:  p.get('mix.maskLo').value,
-        uMaskHi:  p.get('mix.maskHi').value,
-      }, this._mixTarget);
+        uFG:      this._resolveSource(processedInputs, p.get(`${pfx}.srcA`).value),
+        uBG:      this._resolveSource(processedInputs, p.get(`${pfx}.srcB`).value),
+        uMode:    p.get(`${pfx}.mode`).value,
+        uXfade:   p.get(`${pfx}.xfade`).value,
+        uDispAmt: p.get(`${pfx}.dispAmt`).value,
+        uMaskLo:  p.get(`${pfx}.maskLo`).value,
+        uMaskHi:  p.get(`${pfx}.maskHi`).value,
+      }, dst);
+      this._mixCur[k] ^= 1;
     }
 
     // Resolve input textures
@@ -788,7 +799,7 @@ export class Pipeline {
     const hh = Math.ceil(h / 2);
     this._bloomTargetH.setSize(hw, hh);
     this._bloomTargetV.setSize(hw, hh);
-    this._mixTarget.setSize(w, h);
+    this._mixRT.forEach(rt => rt && rt.forEach(t => t.setSize(w, h)));
     if (w !== this._lastResW || h !== this._lastResH) {
       this.m.pixelate.uniforms.uResolution.value.set(w, h);
       this.m.edge.uniforms.uResolution.value.set(w, h);
@@ -885,23 +896,42 @@ export class Pipeline {
     this.renderer.render(this._scene, this._camera);
   }
 
-  /** A/B MixBus output texture — for consumers outside render() (main.js). */
+  /** Allocate a mix bus's double buffer on first use. */
+  _ensureMixRT(k) {
+    if (!this._mixRT[k]) {
+      this._mixRT[k] = [
+        this._makeTarget(this.width, this.height),
+        this._makeTarget(this.width, this.height),
+      ];
+    }
+    return this._mixRT[k];
+  }
+
+  /**
+   * Latest output texture of mix bus k (0-based). Falls back to the blank
+   * texture when the bus has never rendered, so routing to an idle bus is
+   * black rather than undefined.
+   */
+  mixTextureAt(k) {
+    const rt = this._mixRT[k];
+    return rt ? rt[this._mixCur[k]].texture : this._getFallbackTexture();
+  }
+
+  /** Mix bus 1 output — back-compat accessor for main.js. */
   get mixTexture() {
-    return this._mixTarget.texture;
+    return this.mixTextureAt(0);
   }
 
   _resolveSource(inputs, sourceIdx) {
-    // LOCKSTEP + APPEND-ONLY: must match SOURCE_KEYS in ParameterSystem.js
-    // (the canonical SOURCE_DEFS list) and the keys in main.js
-    // _resolveLayerTex(). These two are the last remaining hand-copies —
-    // fold them into SOURCE_KEYS when the MixBus rethink touches them.
-    const SOURCES = ['camera', 'movie', 'buffer', 'color', 'color2', 'noise', 'scene3d', 'draw', 'output', 'bg1', 'bg2', 'text', 'sound', 'delay', 'scope', 'slitscan', 'particles', 'seq1', 'seq2', 'seq3', 'depth3d', 'sdf', 'vwarp', 'analog', 'tdisp', 'movieB', 'mixbus'];
-    const key = SOURCES[sourceIdx] ?? 'color';
+    // Derived from the canonical SOURCE_DEFS list — no hand-copy to drift.
+    const key = SOURCE_KEYS[sourceIdx] ?? 'color';
 
     if (key === 'camera'  && inputs.camera)  return inputs.camera;
     if (key === 'movie'   && inputs.movie)   return inputs.movie;
     if (key === 'movieB'  && inputs.movieB)  return inputs.movieB;
-    if (key === 'mixbus')                    return this._mixTarget.texture;
+    if (key === 'mixbus')                    return this.mixTextureAt(0);
+    if (key === 'mixbus2')                   return this.mixTextureAt(1);
+    if (key === 'mixbus3')                   return this.mixTextureAt(2);
     if (key === 'buffer'  && inputs.buffer)  return inputs.buffer;
     if (key === 'scene3d' && inputs.scene3d) return inputs.scene3d;
     if (key === 'draw'    && inputs.draw)    return inputs.draw;
