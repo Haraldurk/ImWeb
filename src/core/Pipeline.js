@@ -874,8 +874,10 @@ export class Pipeline {
   }
 
   _resolveSource(inputs, sourceIdx) {
-    // LOCKSTEP + APPEND-ONLY: must match SOURCES in ParameterSystem.js
-    // (registerCoreParameters) and keys in main.js _resolveLayerTex().
+    // LOCKSTEP + APPEND-ONLY: must match SOURCE_KEYS in ParameterSystem.js
+    // (the canonical SOURCE_DEFS list) and the keys in main.js
+    // _resolveLayerTex(). These two are the last remaining hand-copies —
+    // fold them into SOURCE_KEYS when the MixBus rethink touches them.
     const SOURCES = ['camera', 'movie', 'buffer', 'color', 'color2', 'noise', 'scene3d', 'draw', 'output', 'bg1', 'bg2', 'text', 'sound', 'delay', 'scope', 'slitscan', 'particles', 'seq1', 'seq2', 'seq3', 'depth3d', 'sdf', 'vwarp', 'analog', 'tdisp', 'movieB', 'mixbus'];
     const key = SOURCES[sourceIdx] ?? 'color';
 

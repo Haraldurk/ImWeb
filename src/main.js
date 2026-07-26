@@ -35,6 +35,7 @@ import {
   ParameterSystem,
   registerCoreParameters,
   setTableManager,
+  SOURCE_KEYS,
 } from "./controls/ParameterSystem.js";
 import { tableManager } from "./state/TableManager.js";
 import { ControllerManager } from "./controls/ControllerManager.js";
@@ -247,14 +248,10 @@ async function main() {
   // Time-Displace buffer resolution (decoupled from display). Index → [w,h];
   // null = Native (live display size). Mirrors RENDER_RESOLUTIONS.
   const TD_BUFFER_RES = [[320, 240], [640, 360], [640, 480], null];
-  // td.captureSource → inputs key, mirroring the Layers SOURCES list (index-aligned).
-  // null = Output (pipeline.prev.texture, resolved separately — not part of `inputs`).
-  const TD_CAPTURE_KEYS = [
-    'camera', 'movie', 'buffer', 'color', 'color2', 'noise', 'scene3d', 'draw',
-    null, 'bg1', 'bg2', 'text', 'sound', 'delay',
-    'scope', 'slitscan', 'particles', 'seq1', 'seq2', 'seq3', 'depth3d', 'sdf',
-    'vwarp', 'analog', 'tdisp',
-  ];
+  // td.captureSource → inputs key. Derived from SOURCE_KEYS (the canonical
+  // list in ParameterSystem.js) — never hand-copied. The old hardcoded copy
+  // had 25 entries against a 27-entry SOURCES, so selecting Movie B (25) or
+  // Mix Bus (26) resolved to undefined and captured nothing.
   const _tdResolveBufRes = (idx) => {
     const p = TD_BUFFER_RES[idx];
     if (p) return p;
@@ -3160,8 +3157,10 @@ async function main() {
 
   /** Resolve a raw layer-source index to its current texture (matches Pipeline._resolveSource). */
   function _resolveLayerTex(idx) {
-    // LOCKSTEP + APPEND-ONLY: must match SOURCES in ParameterSystem.js and
-    // the SOURCES key array in Pipeline._resolveSource().
+    // LOCKSTEP + APPEND-ONLY: must match SOURCE_KEYS in ParameterSystem.js
+    // (the canonical SOURCE_DEFS list) and the key array in
+    // Pipeline._resolveSource(). These two are the last remaining hand-copies
+    // — fold them into SOURCE_KEYS when the MixBus rethink touches them.
     const keys = [
       "camera",   // 0
       "movie",    // 1
@@ -6580,16 +6579,20 @@ void main() {
     // Capture output into video delay ring buffer
     videoDelay.capture(pipeline.prev.texture);
 
-    // Time-Displacement Engine — ring WRITE. captureSource mirrors the Layers
-    // SOURCES list (TD_CAPTURE_KEYS, index-aligned). Most sources resolve via
-    // `inputs` (already built above for pipeline.render this frame); "Output"
-    // reads pipeline.prev.texture (post-composite feedback); "TimeDisp" reads
-    // TD's own output (recursive echo) — both deliberate self-feedback. Write
-    // runs here (after render) so Output/inputs reflect this frame's composite.
+    // Time-Displacement Engine — ring WRITE. captureSource indexes the
+    // canonical SOURCE_KEYS list. Most sources resolve via `inputs` (already
+    // built above for pipeline.render this frame); "Output" reads
+    // pipeline.prev.texture (post-composite feedback); "Mix Bus" reads the
+    // MixBus target; "TimeDisp" reads TD's own output (recursive echo) — all
+    // deliberate self-feedback. Write runs here (after render) so
+    // Output/inputs reflect this frame's composite.
     // Conditionally-ticked sources (3D Scene, 3D Depth, SDF, Analog) are null
     // unless a layer also uses them this frame — capture() no-ops on null.
-    const _tdKey = TD_CAPTURE_KEYS[ps.get("td.captureSource").value];
-    const _tdSrc = _tdKey === null ? pipeline.prev.texture : (inputs[_tdKey] ?? null);
+    const _tdKey = SOURCE_KEYS[ps.get("td.captureSource").value];
+    const _tdSrc =
+      _tdKey === "output" ? pipeline.prev.texture :
+      _tdKey === "mixbus" ? pipeline.mixTexture   :
+      (inputs[_tdKey] ?? null);
     if (ps.get('td.enabled').value) tdEngine.capture(_tdSrc);
 
     // Vasulka Warp — DEPRECATED: superseded by SequenceBuffer timewarp mode.

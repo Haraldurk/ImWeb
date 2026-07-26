@@ -14,6 +14,8 @@
  *   buildActivitySnapshot                  — pure state helpers
  */
 
+import { SOURCES } from '../controls/ParameterSystem.js';
+
 // ── Provider definitions ──────────────────────────────────────────────────────
 
 export const PROVIDERS = {
@@ -582,12 +584,11 @@ export async function narrateState(stateSnapshot, length = 'medium') {
   return _call(narratorSystem(length), `Current signal path: ${stateSnapshot}`, cfg.maxTokens);
 }
 
-// Must mirror the SOURCES options array registered for layer.fg/bg/ds in
-// ParameterSystem.js — a stale copy here previously caused the Narrator to
-// describe the wrong source entirely (e.g. "Noise" reported as "3D").
-const SOURCE_NAMES = ['Camera','Movie','Buffer','Color','Color2','Noise','3D Scene','Draw','Output',
-  'BG1','BG2','Text','Sound','Delay','Scope','SlitScan','Particles','Seq1','Seq2','Seq3',
-  '3D Depth','SDF','VWarp','Analog','TimeDisp'];
+// Imported, not copied. A hand-copy here drifted twice: once causing the
+// Narrator to describe the wrong source entirely (e.g. "Noise" reported as
+// "3D"), and again at 25 entries against a 27-entry list, so any layer routed
+// to Movie B or Mix Bus was narrated as '?'.
+const SOURCE_NAMES = SOURCES;
 
 // Adds a short, source-specific detail (e.g. which noise type or 3D geometry
 // is active) so the Narrator can describe what's actually on screen, not just
