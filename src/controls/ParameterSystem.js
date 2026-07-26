@@ -1478,7 +1478,30 @@ export function registerCoreParameters(ps) {
     value: 0,
   });
 
-  // ── A/B Mix Bus (dual-deck v0.12) ─────────────────────────────────────────
+  // ── A/B Mix Bus (dual-deck v0.12; free sources Phase 23 Step 2) ───────────
+  // srcA/srcB select ANY source, not just the two movie decks. Defaults 1
+  // (Movie) and 25 (Movie B) reproduce the old hardwiring exactly, so every
+  // existing project renders identically.
+  // Deliberately group "mix", NOT "global": these ARE captured by Display
+  // States. Unlike glsl.preset (an index into a user-editable list), the
+  // source list is append-only and not user-editable, so the indices cannot
+  // drift out from under a saved state.
+  ps.register({
+    id: "mix.srcA",
+    label: "MixSrcA",
+    group: "mix",
+    type: PARAM_TYPE.SELECT,
+    value: 1, // Movie (Deck A)
+    options: SOURCES,
+  });
+  ps.register({
+    id: "mix.srcB",
+    label: "MixSrcB",
+    group: "mix",
+    type: PARAM_TYPE.SELECT,
+    value: 25, // Movie B (Deck B)
+    options: SOURCES,
+  });
   ps.register({
     id: "mix.xfade",
     label: "Crossfade",

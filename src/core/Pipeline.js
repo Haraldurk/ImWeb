@@ -322,16 +322,33 @@ export class Pipeline {
       this._pInputs.buffer = blended;
     }
 
-    // ── MixBus: A/B deck mix ─────────────────────────────────────────────────
+    // ── MixBus: free-source A/B mix (Phase 23 Step 2) ────────────────────────
     // Renders into a dedicated target (survives the ping-pong pool) BEFORE
     // layer resolution so 'Mix Bus' is selectable as FG/BG/DS this frame.
-    // Reads only the two deck textures — never its own target, so no
-    // feedback-guard is needed. Skipped when neither deck is live.
-    if (inputs.movie || inputs.movieB) {
+    // mix.srcA/srcB select ANY source — resolved through the same
+    // _resolveSource() the layers use, so the bus is a real graph node.
+    //
+    // Gated on inputs.mixbusNeeded (main.js consumption analysis), NOT on
+    // input presence. The old `inputs.movie || inputs.movieB` test would be
+    // actively wrong here: mixing Camera against Noise with no movie loaded
+    // must still render.
+    if (inputs.mixbusNeeded) {
       const fb = this._getFallbackTexture();
+      // Self-feedback guard — identity check on the target texture, never a
+      // timing flag (flags depend on call order; identity depends on values).
+      // Sampling _mixTarget while writing it is undefined behaviour in WebGL,
+      // so a bus input pointing at the bus itself reads the previous
+      // composite instead. NOTE: this is self-read substitution, not a true
+      // one-frame-behind read of the bus — that needs a second target and is
+      // deferred to the multi-bus step.
+      const safeSrc = (idx) => {
+        const tex = this._resolveSource(processedInputs, idx);
+        if (tex === this._mixTarget.texture) return this.prev.texture ?? fb;
+        return tex ?? fb;
+      };
       this._passTo(this.m.mixbus, {
-        uFG:      inputs.movie  ?? fb,
-        uBG:      inputs.movieB ?? fb,
+        uFG:      safeSrc(p.get('mix.srcA').value),
+        uBG:      safeSrc(p.get('mix.srcB').value),
         uMode:    p.get('mix.mode').value,
         uXfade:   p.get('mix.xfade').value,
         uDispAmt: p.get('mix.dispAmt').value,
