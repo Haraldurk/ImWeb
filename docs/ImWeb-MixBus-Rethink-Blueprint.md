@@ -220,6 +220,16 @@ sources → combine → process → out. The tabs should say the same thing.
 | **Draw** | unchanged (Draw Layer · Brush · Text Layer · Style) |
 | **Project** | Project · AI · Banks · States · State Step Sequencer · Tables |
 
+One wrinkle on the **Output** tab: the existing "Output" section is
+deliberately `display: none` (`index.html:346`) — its comment records that
+Resolution moved to the camera header row and Interpolation is param-only —
+while `#output-params` is still populated at `src/ui/UI.js:109`, and
+`output.*` params additionally leak into the `blend` group. So an Output tab
+would be built from Projection Mapping, Global/BPM and the *relocated*
+resolution control, not by un-hiding that section. Decide deliberately
+whether to resurrect it or delete it; do not un-hide it by accident while
+moving blocks.
+
 **3D, Analog and Draw stay top-level because they are large source editors,
 not because they are a different taxonomic kind.** Writing that down is the
 point of this paragraph — otherwise the next person "fixes" it by folding
@@ -238,7 +248,66 @@ Mitigation: a visual separator in the tab bar between the flow tabs
 Project), rather than a second row. If the off-screen scroll proves bad in
 hand-held use, fold **Output** into **Project** for 7.
 
-### 3d. Naming fixes
+There is no mobile-specific section list to keep in sync: the panel content
+is identical on both, and mobile differs only in that `#control-panel`
+becomes a slide-over drawer (`src/style.css:2953-2998`) and the state bar
+swaps to `MobileStatePad`. One restructure covers both.
+
+### 3d. What a restructure actually costs — less than it looks
+
+**Section labels and order live entirely in hand-written HTML.** JS only
+*fills* pre-existing containers by id. `buildMappingPanels()`
+(`src/ui/UI.js:99-146`) is a container-id → parameter-list map with **no
+labels and no ordering in it at all**:
+
+```js
+'mix-params':      ps.getGroup('mix'),
+'delay-params':    ps.getGroup('delay'),
+'tdisp-params':    ps.getGroup('td'),
+```
+
+So regrouping tabs is mostly moving `.panel-section` blocks between
+`.tab-content` divs in `index.html`, and renaming is editing
+`.section-header` text. The JS map only needs touching if container ids
+change — and they need not.
+
+Two landmines make it less free than that:
+
+**1. `_collapseToLayers()` matches the section title by literal string.**
+`src/main.js:1099`:
+
+```js
+const isLayers = title === "Layers";
+```
+
+On startup (`:5794`) and on reset-all (`:1117`) every section is collapsed
+*except* the one whose first text node is exactly `"Layers"`. Rename that
+header and the app boots with everything collapsed, silently. The proposal
+in §3b keeps "Layers" as a section name, so it survives — but this must be
+stated, because a restructure is exactly when someone decides "Layers"
+should become "Routing".
+
+The accordion wiring itself is safe: it is a DOM sweep over
+`.section-header` (`src/main.js:1055-1076`), not a registry, so moved and
+renamed sections keep working. Sections created *after* that sweep wire
+their own handler — the runtime-injected **"I / O"** block
+(`src/main.js:2411-2431`, prepended at `:2615`) and the **Hypercube** panel
+(`src/main.js:879-893`) are built in JS, not HTML, so they must be moved in
+JS if their tab changes.
+
+**2. The tab *buttons* and the tab *content divs* are in different DOM
+order.** Buttons read Mapping · Movies · 3D · Analog · Draw · Project;
+the divs are ordered mapping, draw, scene3d, clips, presets, analog
+(`index.html:202, 432, 514, 550, 651, 816`). Harmless — `.active` class
+toggling does not care — but it makes the file misleading to read, and a
+restructure is the moment to make the two agree.
+
+Also worth cleaning while in there: `.tab-merged` (`index.html:462, 636,
+728, 742`) has **zero CSS rules and zero JS references**. Only the wrapper
+`id`s are still used (`src/main.js:3849, 4721`). It is a scar from four
+former tabs that were merged; the class can go.
+
+### 3e. Naming fixes
 
 | Now | Proposed | Why |
 |---|---|---|
@@ -248,6 +317,17 @@ hand-held use, fold **Output** into **Project** for 7.
 | "ColorSrc 1&2" | "Color / Gradient" | says what it is |
 | "Sequences" | "Frame Sequences" | it is the seq1/2/3 buffers, not a step sequencer — and "State Step Sequencer" exists elsewhere |
 | "Global / BPM / Morph" | split | three unrelated things: BPM belongs with transport, Morph with States |
+| "SDF / Metaballs" | "Metaballs" | "SDF" is a rendering technique, not a function — and it collides with the 3D tab's own "Metaballs" section (`#blob-params`), which is a *different* subsystem. Disambiguate both. |
+| "Particles / GPU Engine" | "Particles" | "GPU Engine" is implementation detail |
+| `Response Curves "Tables"` | "Response Curves" | the label literally contains scare-quotes (`index.html:730-732`) |
+| "Camera" (3D tab) | "3D Camera" | "Camera" already means the webcam in the toolbar and in Layers (`camera.device`). Two different things, same word, two tabs. |
+| "LUT / Colour Grade" | pick one spelling | four colour-related sections exist ("Layer Color", "Palette", "ColorSrc 1&2", "LUT / Colour Grade") across two spellings |
+
+Also unresolved, and larger than a rename: **"Time Displace" mode 0/1 *is*
+slit-scan** (`src/ui/UI.js:164-171`), yet a separate "Slit Scan" section
+exists with its own `slitscan.*` namespace. Two sections, overlapping
+function. Not in scope here — flagging it so the Sources tab does not
+enshrine the duplication.
 
 **Avoid "Deck A / Deck B."** DJ vocabulary is the framing that produced the
 hardwired mixer in the first place. ImWeb's lineage is Image/ine, not CDJs.
@@ -346,8 +426,10 @@ parameters rather than as a routing structure.
    consumption test + self-feedback identity check + extend the
    conditionally-ticked predicates (§1c). Verify `MasterProject.imweb`
    renders identically.
-3. **Panel restructure and renames** (§3). Pure UI/labels — no param ids, no
-   source reordering. Ships independently of 2.
+3. **Panel restructure and renames** (§3). Pure HTML/labels — no param ids,
+   no source reordering, and `buildMappingPanels()` needs no edit if
+   container ids are preserved. Ships independently of 2. Keep the "Layers"
+   header string, or fix `_collapseToLayers()` in the same commit.
 4. **Buses 2 and 3** — descriptor loop, two appended source indices, two
    targets, generalised `_gUses`. Document the evaluation-order rule in the
    Mix panel.
