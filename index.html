@@ -188,368 +188,19 @@
             <!-- RIGHT: Control panels -->
             <div id="control-panel">
                 <div id="tab-bar">
-                    <button class="tab active" data-tab="mapping">
-                        Mapping
-                    </button>
-                    <button class="tab" data-tab="clips">Movies</button>
-                    <button class="tab" data-tab="scene3d">3D</button>
+                    <button class="tab active" data-tab="sources">Sources</button>
+                    <button class="tab" data-tab="mix">Mix</button>
+                    <button class="tab" data-tab="effects">Effects</button>
+                    <button class="tab" data-tab="output">Output</button>
+                    <button class="tab tab-sep" data-tab="scene3d">3D</button>
                     <button class="tab" data-tab="analog">Analog</button>
                     <button class="tab" data-tab="draw">Draw</button>
                     <button class="tab" data-tab="presets">Project</button>
                 </div>
-
-                <!-- MAPPING TAB -->
-                <div id="tab-mapping" class="tab-content active">
+                <!-- SOURCES TAB -->
+                <div id="tab-sources" class="tab-content active">
                     <div class="panel-section">
-                        <div class="section-header">Layers</div>
-                        <div id="layer-params"></div>
-                        <div id="mirror-params"></div>
-                    </div>
-                    <div class="panel-section">
-                        <div class="section-header">Keyer</div>
-                        <div style="display: flex; gap: 8px; padding: 4px 10px">
-                            <label
-                                style="
-                                    font-size: 11px;
-                                    color: var(--text-2);
-                                    display: flex;
-                                    align-items: center;
-                                    gap: 4px;
-                                "
-                            >
-                                Chroma
-                                <input
-                                    type="color"
-                                    id="chroma-picker"
-                                    value="#00ff00"
-                                    title="Pick chroma key colour"
-                                />
-                            </label>
-                        </div>
-                        <div id="keyer-params"></div>
-                    </div>
-                    <div class="panel-section">
-                        <div class="section-header">Displacement</div>
-                        <div id="displace-params"></div>
-                    </div>
-                    <div class="panel-section">
-                        <div class="section-header">Projection Mapping</div>
-                        <div id="projmap-params"></div>
-                        <div style="display: flex; gap: 4px; padding: 4px 10px">
-                            <button
-                                id="btn-projmap-reset"
-                                class="import-btn"
-                                title="Reset all corners to canvas edges"
-                            >
-                                ↺ Reset Corners
-                            </button>
-                        </div>
-                    </div>
-                    <div class="panel-section">
-                        <div class="section-header">
-                            Displacement Map Editor
-                        </div>
-                        <div id="warp-editor-container"></div>
-                    </div>
-                    <div class="panel-section">
-                        <div class="section-header">Blend &amp; Feedback</div>
-                        <div id="blend-params"></div>
-                    </div>
-                    <div class="panel-section">
-                        <div class="section-header">ColorSrc 1&amp;2</div>
-                        <div id="color-params"></div>
-                    </div>
-                    <div class="panel-section">
-                        <div class="section-header">Palette</div>
-                        <div id="palette-params"></div>
-                    </div>
-                    <div class="panel-section">
-                        <div class="section-header">Noise</div>
-                        <div id="noise-params-top"></div>
-                        <div id="noise-color-swatches" style="display: flex; gap: 8px; padding: 4px 10px">
-                            <label
-                                style="
-                                    font-size: 11px;
-                                    color: var(--text-2);
-                                    display: flex;
-                                    align-items: center;
-                                    gap: 4px;
-                                "
-                            >
-                                Color 1
-                                <input
-                                    type="color"
-                                    id="noise-color1-picker"
-                                    value="#ffffff"
-                                    title="Noise color 1"
-                                />
-                            </label>
-                            <label
-                                style="
-                                    font-size: 11px;
-                                    color: var(--text-2);
-                                    display: flex;
-                                    align-items: center;
-                                    gap: 4px;
-                                "
-                            >
-                                Color 2
-                                <input
-                                    type="color"
-                                    id="noise-color2-picker"
-                                    value="#000000"
-                                    title="Noise color 2"
-                                />
-                            </label>
-                        </div>
-                        <div id="noise-params"></div>
-                    </div>
-                    <div class="panel-section">
-                        <div class="section-header">Layer Color</div>
-                        <div id="fg-params"></div>
-                        <div id="bg-params"></div>
-                    </div>
-                    <div class="panel-section">
-                        <div class="section-header">Effects</div>
-                        <div id="effect-params"></div>
-                    </div>
-                    <div class="panel-section">
-                        <div class="section-header">LUT / Colour Grade</div>
-                        <div
-                            style="
-                                display: flex;
-                                gap: 4px;
-                                padding: 4px 10px;
-                                flex-wrap: wrap;
-                                align-items: center;
-                            "
-                        >
-                            <button id="btn-load-lut" class="import-btn">
-                                ⬆ Load .cube
-                            </button>
-                            <button id="btn-clear-lut" class="import-btn">
-                                ✕ Clear LUT
-                            </button>
-                            <span
-                                id="lut-name"
-                                style="
-                                    font-size: 10px;
-                                    color: var(--text-2);
-                                    margin-left: 4px;
-                                "
-                                >No LUT</span
-                            >
-                        </div>
-                        <div id="lut-params"></div>
-                    </div>
-                    <!-- Output section hidden: Resolution moved to camera header row; Interpolation hidden (advanced/param only) -->
-                    <div class="panel-section" style="display: none">
-                        <div class="section-header">Output</div>
-                        <div id="output-params"></div>
-                    </div>
-                    <div class="panel-section">
-                        <div class="section-header">Global / BPM / Morph</div>
-                        <div id="global-params"></div>
-                    </div>
-                    <div class="panel-section">
-                        <div class="section-header">Particles / GPU Engine</div>
-                        <div style="display: flex; gap: 8px; padding: 4px 10px">
-                            <label
-                                style="
-                                    font-size: 11px;
-                                    color: var(--text-2);
-                                    display: flex;
-                                    align-items: center;
-                                    gap: 4px;
-                                "
-                            >
-                                Col 1
-                                <input
-                                    type="color"
-                                    id="particle-col1-picker"
-                                    value="#1a33cc"
-                                    title="Particle color 1"
-                                />
-                            </label>
-                            <label
-                                style="
-                                    font-size: 11px;
-                                    color: var(--text-2);
-                                    display: flex;
-                                    align-items: center;
-                                    gap: 4px;
-                                "
-                            >
-                                Col 2
-                                <input
-                                    type="color"
-                                    id="particle-col2-picker"
-                                    value="#ff4d1a"
-                                    title="Particle color 2"
-                                />
-                            </label>
-                        </div>
-                        <div id="particle-params"></div>
-                    </div>
-                    <div class="panel-section">
-                        <div class="section-header">SDF / Metaballs</div>
-                        <div id="sdf-params"></div>
-                    </div>
-                    <div class="panel-section">
-                        <div class="section-header">Video Delay</div>
-                        <div id="delay-params"></div>
-                    </div>
-                    <div class="panel-section">
-                        <div class="section-header">Time Displace</div>
-                        <div id="tdisp-params"></div>
-                    </div>
-                    <!-- VasulkaWarp — hidden, experimental, architecture unresolved. See dev notes. -->
-                    <!-- <div class="panel-section">
-          <div class="section-header">Vasulka Warp</div>
-          <div id="vasulka-params"></div>
-        </div> -->
-                    <div class="panel-section">
-                        <div class="section-header">Vectorscope</div>
-                        <div id="vectorscope-params"></div>
-                    </div>
-                    <div class="panel-section">
-                        <div class="section-header">Slit Scan</div>
-                        <div id="slitscan-params"></div>
-                    </div>
-                    <!-- VasulkaWarp — hidden, experimental, architecture unresolved. See dev notes. -->
-                    <!-- <div class="panel-section">
-          <div class="section-header">Vasulka Warp</div>
-          <div id="vwarp-params"></div>
-        </div> -->
-                    <div class="panel-section">
-                        <div class="section-header">Sequences</div>
-                        <div id="seq-params"></div>
-                    </div>
-                </div>
-
-                <!-- BUFFER TAB -->
-                <!-- DRAW TAB -->
-                <div id="tab-draw" class="tab-content">
-                    <div class="panel-section">
-                        <div class="section-header">Draw Layer</div>
-                        <canvas
-                            id="draw-preview"
-                            width="256"
-                            height="256"
-                            style="
-                                display: block;
-                                width: 100%;
-                                image-rendering: pixelated;
-                                border: 1px solid var(--border);
-                                background: #000;
-                            "
-                        ></canvas>
-                        <div
-                            id="draw-controls"
-                            style="
-                                display: flex;
-                                gap: 6px;
-                                padding: 8px 0 4px;
-                                flex-wrap: wrap;
-                            "
-                        ></div>
-                    </div>
-                    <div class="panel-section">
-                        <div class="section-header">Brush</div>
-                        <div id="draw-params"></div>
-                    </div>
-                    <!-- Text Layer (merged from former Text tab; wrapper id kept for JS) -->
-                    <div id="tab-text" class="tab-merged">
-                        <div class="panel-section">
-                            <div class="section-header">Text Layer</div>
-                            <canvas
-                                id="text-preview"
-                                width="256"
-                                height="256"
-                                style="
-                                    display: block;
-                                    width: 100%;
-                                    image-rendering: pixelated;
-                                    border: 1px solid var(--border);
-                                    background: #000;
-                                "
-                            ></canvas>
-                            <textarea
-                                id="text-content"
-                                rows="4"
-                                spellcheck="false"
-                                style="
-                                    width: 100%;
-                                    box-sizing: border-box;
-                                    margin-top: 6px;
-                                    font-family: var(--mono);
-                                    font-size: 12px;
-                                    background: var(--bg-4);
-                                    border: 1px solid var(--border);
-                                    color: var(--text-1);
-                                    padding: 6px;
-                                    border-radius: 3px;
-                                    resize: vertical;
-                                "
-                            >
-ImWeb</textarea
-                            >
-                            <div style="display: flex; gap: 6px; padding: 4px 0">
-                                <button id="btn-text-advance" class="import-btn">
-                                    → Advance
-                                </button>
-                                <button id="btn-text-reset" class="import-btn">
-                                    ↩ Reset
-                                </button>
-                            </div>
-                        </div>
-                        <div class="panel-section">
-                            <div class="section-header">Style</div>
-                            <div id="text-params"></div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- 3D SCENE TAB -->
-                <div id="tab-scene3d" class="tab-content">
-                    <div class="panel-section">
-                        <div class="section-header">Geometry</div>
-                        <div id="geometry-controls"></div>
-                    </div>
-                    <div class="panel-section">
-                        <div class="section-header">Transform</div>
-                        <div id="transform-params"></div>
-                    </div>
-                    <div class="panel-section">
-                        <div class="section-header">Camera</div>
-                        <div id="camera3d-params"></div>
-                    </div>
-                    <div class="panel-section">
-                        <div class="section-header">Material</div>
-                        <div id="material-params"></div>
-                    </div>
-                    <div class="panel-section">
-                        <div class="section-header">Lights</div>
-                        <div id="lights-params"></div>
-                    </div>
-                    <div class="panel-section">
-                        <div class="section-header">Cloner</div>
-                        <div id="cloner-params"></div>
-                    </div>
-                    <div class="panel-section">
-                        <div class="section-header">Metaballs</div>
-                        <div id="blob-params"></div>
-                    </div>
-                    <div class="panel-section">
-                        <div class="section-header">Import Model</div>
-                        <div id="model-import"></div>
-                    </div>
-                </div>
-
-                <!-- CLIPS TAB -->
-                <div id="tab-clips" class="tab-content">
-                    <div class="panel-section">
-                        <div class="section-header">Movie Clips</div>
+                        <div class="section-header">Movie A</div>
                         <div
                             style="
                                 display: flex;
@@ -625,6 +276,211 @@ ImWeb</textarea
                         <div id="clipB-params"></div>
                     </div>
                     <div class="panel-section">
+                        <div class="section-header">Clip Library</div>
+                        <div id="clip-library"></div>
+                    </div>
+                    <!-- Stills Buffer (merged from former Buffer tab; wrapper id kept for JS) -->
+                    <div id="tab-buffer">
+                        <div class="panel-section">
+                            <div class="section-header">Stills Buffer</div>
+                            <canvas
+                                id="buffer-canvas"
+                                width="320"
+                                height="240"
+                            ></canvas>
+                            <div id="buffer-controls"></div>
+                            <div id="buffer-params"></div>
+                        </div>
+                    </div>
+                    <div class="panel-section">
+                        <div class="section-header">Color / Gradient</div>
+                        <div id="color-params"></div>
+                    </div>
+                    <div class="panel-section">
+                        <div class="section-header">Palette</div>
+                        <div id="palette-params"></div>
+                    </div>
+                    <div class="panel-section">
+                        <div class="section-header">Noise</div>
+                        <div id="noise-params-top"></div>
+                        <div id="noise-color-swatches" style="display: flex; gap: 8px; padding: 4px 10px">
+                            <label
+                                style="
+                                    font-size: 11px;
+                                    color: var(--text-2);
+                                    display: flex;
+                                    align-items: center;
+                                    gap: 4px;
+                                "
+                            >
+                                Color 1
+                                <input
+                                    type="color"
+                                    id="noise-color1-picker"
+                                    value="#ffffff"
+                                    title="Noise color 1"
+                                />
+                            </label>
+                            <label
+                                style="
+                                    font-size: 11px;
+                                    color: var(--text-2);
+                                    display: flex;
+                                    align-items: center;
+                                    gap: 4px;
+                                "
+                            >
+                                Color 2
+                                <input
+                                    type="color"
+                                    id="noise-color2-picker"
+                                    value="#000000"
+                                    title="Noise color 2"
+                                />
+                            </label>
+                        </div>
+                        <div id="noise-params"></div>
+                    </div>
+                    <!-- Text Layer (merged from former Text tab; wrapper id kept for JS) -->
+                    <div id="tab-text">
+                        <div class="panel-section">
+                            <div class="section-header">Text Layer</div>
+                            <canvas
+                                id="text-preview"
+                                width="256"
+                                height="256"
+                                style="
+                                    display: block;
+                                    width: 100%;
+                                    image-rendering: pixelated;
+                                    border: 1px solid var(--border);
+                                    background: #000;
+                                "
+                            ></canvas>
+                            <textarea
+                                id="text-content"
+                                rows="4"
+                                spellcheck="false"
+                                style="
+                                    width: 100%;
+                                    box-sizing: border-box;
+                                    margin-top: 6px;
+                                    font-family: var(--mono);
+                                    font-size: 12px;
+                                    background: var(--bg-4);
+                                    border: 1px solid var(--border);
+                                    color: var(--text-1);
+                                    padding: 6px;
+                                    border-radius: 3px;
+                                    resize: vertical;
+                                "
+                            >
+ImWeb</textarea
+                            >
+                            <div style="display: flex; gap: 6px; padding: 4px 0">
+                                <button id="btn-text-advance" class="import-btn">
+                                    → Advance
+                                </button>
+                                <button id="btn-text-reset" class="import-btn">
+                                    ↩ Reset
+                                </button>
+                            </div>
+                        </div>
+                        <div class="panel-section">
+                            <div class="section-header">Style</div>
+                            <div id="text-params"></div>
+                        </div>
+                    </div>
+                    <div class="panel-section">
+                        <div class="section-header">Video Delay</div>
+                        <div id="delay-params"></div>
+                    </div>
+                    <div class="panel-section">
+                        <div class="section-header">Time Displace</div>
+                        <div id="tdisp-params"></div>
+                    </div>
+                    <div class="panel-section">
+                        <div class="section-header">Slit Scan</div>
+                        <div id="slitscan-params"></div>
+                    </div>
+                    <div class="panel-section">
+                        <div class="section-header">Vectorscope</div>
+                        <div id="vectorscope-params"></div>
+                    </div>
+                    <!-- VasulkaWarp — DEFERRED (2026-07-26, Phase 23 Step 3).
+                         Hidden, experimental, architecture unresolved; superseded
+                         by SequenceBuffer timewarp mode. The live vwarp.* render
+                         path in main.js is deprecated-but-load-bearing until that
+                         mode is stable — do not remove it with this markup.
+                         A duplicate block for the older vasulka.* namespace was
+                         deleted here; this vwarp.* one is the surviving copy.
+                    <div class="panel-section">
+                      <div class="section-header">Vasulka Warp</div>
+                      <div id="vwarp-params"></div>
+                    </div>
+                    -->
+                    <div class="panel-section">
+                        <div class="section-header">Frame Sequences</div>
+                        <div id="seq-params"></div>
+                    </div>
+                    <div class="panel-section">
+                        <div class="section-header">Particles</div>
+                        <div style="display: flex; gap: 8px; padding: 4px 10px">
+                            <label
+                                style="
+                                    font-size: 11px;
+                                    color: var(--text-2);
+                                    display: flex;
+                                    align-items: center;
+                                    gap: 4px;
+                                "
+                            >
+                                Col 1
+                                <input
+                                    type="color"
+                                    id="particle-col1-picker"
+                                    value="#1a33cc"
+                                    title="Particle color 1"
+                                />
+                            </label>
+                            <label
+                                style="
+                                    font-size: 11px;
+                                    color: var(--text-2);
+                                    display: flex;
+                                    align-items: center;
+                                    gap: 4px;
+                                "
+                            >
+                                Col 2
+                                <input
+                                    type="color"
+                                    id="particle-col2-picker"
+                                    value="#ff4d1a"
+                                    title="Particle color 2"
+                                />
+                            </label>
+                        </div>
+                        <div id="particle-params"></div>
+                    </div>
+                    <div class="panel-section">
+                        <div class="section-header">Metaballs</div>
+                        <div id="sdf-params"></div>
+                    </div>
+                </div>
+                <!-- MIX TAB -->
+                <div id="tab-mix" class="tab-content">
+                    <div class="panel-section">
+                        <div class="section-header">Layers</div>
+                        <div id="layer-params"></div>
+                        <div id="mirror-params"></div>
+                    </div>
+                    <div class="panel-section">
+                        <div class="section-header">Layer Color</div>
+                        <div id="fg-params"></div>
+                        <div id="bg-params"></div>
+                    </div>
+                    <div class="panel-section">
                         <div class="section-header">Mix 1</div>
                         <div id="mix-params"></div>
                     </div>
@@ -640,24 +496,274 @@ ImWeb</textarea
                         <div id="mix3-params"></div>
                     </div>
                     <div class="panel-section">
-                        <div class="section-header">Clip Library</div>
-                        <div id="clip-library"></div>
+                        <div class="section-header">Keyer</div>
+                        <div style="display: flex; gap: 8px; padding: 4px 10px">
+                            <label
+                                style="
+                                    font-size: 11px;
+                                    color: var(--text-2);
+                                    display: flex;
+                                    align-items: center;
+                                    gap: 4px;
+                                "
+                            >
+                                Chroma
+                                <input
+                                    type="color"
+                                    id="chroma-picker"
+                                    value="#00ff00"
+                                    title="Pick chroma key colour"
+                                />
+                            </label>
+                        </div>
+                        <div id="keyer-params"></div>
                     </div>
-                    <!-- Stills Buffer (merged from former Buffer tab; wrapper id kept for JS) -->
-                    <div id="tab-buffer" class="tab-merged">
+                    <div class="panel-section">
+                        <div class="section-header">Displacement</div>
+                        <div id="displace-params"></div>
+                    </div>
+                    <div class="panel-section">
+                        <div class="section-header">
+                            Displacement Map Editor
+                        </div>
+                        <div id="warp-editor-container"></div>
+                    </div>
+                </div>
+                <!-- EFFECTS TAB -->
+                <div id="tab-effects" class="tab-content">
+                    <div class="panel-section">
+                        <div class="section-header">Blend &amp; Feedback</div>
+                        <div id="blend-params"></div>
+                    </div>
+                    <div class="panel-section">
+                        <div class="section-header">Effects</div>
+                        <div id="effect-params"></div>
+                    </div>
+                    <div class="panel-section">
+                        <div class="section-header">LUT / Colour Grade</div>
+                        <div
+                            style="
+                                display: flex;
+                                gap: 4px;
+                                padding: 4px 10px;
+                                flex-wrap: wrap;
+                                align-items: center;
+                            "
+                        >
+                            <button id="btn-load-lut" class="import-btn">
+                                ⬆ Load .cube
+                            </button>
+                            <button id="btn-clear-lut" class="import-btn">
+                                ✕ Clear LUT
+                            </button>
+                            <span
+                                id="lut-name"
+                                style="
+                                    font-size: 10px;
+                                    color: var(--text-2);
+                                    margin-left: 4px;
+                                "
+                                >No LUT</span
+                            >
+                        </div>
+                        <div id="lut-params"></div>
+                    </div>
+                    <!-- Live GLSL (merged from former GLSL tab; wrapper id kept for JS) -->
+                    <div id="tab-glsl">
                         <div class="panel-section">
-                            <div class="section-header">Stills Buffer</div>
-                            <canvas
-                                id="buffer-canvas"
-                                width="320"
-                                height="240"
-                            ></canvas>
-                            <div id="buffer-controls"></div>
-                            <div id="buffer-params"></div>
+                            <div class="section-header">Live GLSL Effect</div>
+                            <div
+                                style="
+                                    padding: 4px 8px 0;
+                                    display: flex;
+                                    gap: 4px;
+                                    align-items: center;
+                                "
+                            >
+                                <button
+                                    id="btn-glsl-apply"
+                                    class="import-btn"
+                                    style="flex: 1"
+                                >
+                                    ▶ Apply
+                                </button>
+                                <button id="btn-glsl-reset" class="import-btn">
+                                    ↺ Reset
+                                </button>
+                                <label
+                                    style="
+                                        font-size: 10px;
+                                        color: var(--text-2);
+                                        display: flex;
+                                        align-items: center;
+                                        gap: 4px;
+                                    "
+                                >
+                                    <input type="checkbox" id="glsl-auto-apply" />
+                                    Auto
+                                </label>
+                            </div>
+                            <div
+                                id="glsl-error"
+                                style="
+                                    padding: 4px 8px;
+                                    font-size: 10px;
+                                    color: #e84040;
+                                    display: none;
+                                    white-space: pre-wrap;
+                                    font-family: monospace;
+                                "
+                            ></div>
+                            <!-- CodeMirror 6 mounts here (default doc set in main.js) -->
+                            <div
+                                id="glsl-editor"
+                                style="
+                                    display: block;
+                                    width: 100%;
+                                    height: 280px;
+                                    min-height: 120px;
+                                    resize: vertical;
+                                    overflow: hidden;
+                                    border: 1px solid var(--border);
+                                    box-sizing: border-box;
+                                "
+                            ></div>
+                            <!-- Param uniform binding slots -->
+                            <div
+                                id="glsl-uniforms"
+                                style="
+                                    padding: 4px 8px 6px;
+                                    font-family: monospace;
+                                    font-size: 10px;
+                                    color: var(--text-2);
+                                "
+                            ></div>
                         </div>
                     </div>
                 </div>
-
+                <!-- OUTPUT TAB -->
+                <div id="tab-output" class="tab-content">
+                    <!-- Output section hidden: Resolution moved to camera header row; Interpolation hidden (advanced/param only) -->
+                    <div class="panel-section" style="display: none">
+                        <div class="section-header">Output</div>
+                        <div id="output-params"></div>
+                    </div>
+                    <div class="panel-section">
+                        <div class="section-header">Projection Mapping</div>
+                        <div id="projmap-params"></div>
+                        <div style="display: flex; gap: 4px; padding: 4px 10px">
+                            <button
+                                id="btn-projmap-reset"
+                                class="import-btn"
+                                title="Reset all corners to canvas edges"
+                            >
+                                ↺ Reset Corners
+                            </button>
+                        </div>
+                    </div>
+                    <div class="panel-section">
+                        <div class="section-header">Global / BPM / Morph</div>
+                        <div id="global-params"></div>
+                    </div>
+                </div>
+                <!-- 3D TAB -->
+                <div id="tab-scene3d" class="tab-content">
+                    <div class="panel-section">
+                        <div class="section-header">Geometry</div>
+                        <div id="geometry-controls"></div>
+                    </div>
+                    <div class="panel-section">
+                        <div class="section-header">Transform</div>
+                        <div id="transform-params"></div>
+                    </div>
+                    <div class="panel-section">
+                        <div class="section-header">3D Camera</div>
+                        <div id="camera3d-params"></div>
+                    </div>
+                    <div class="panel-section">
+                        <div class="section-header">Material</div>
+                        <div id="material-params"></div>
+                    </div>
+                    <div class="panel-section">
+                        <div class="section-header">Lights</div>
+                        <div id="lights-params"></div>
+                    </div>
+                    <div class="panel-section">
+                        <div class="section-header">Cloner</div>
+                        <div id="cloner-params"></div>
+                    </div>
+                    <div class="panel-section">
+                        <div class="section-header">Metaballs</div>
+                        <div id="blob-params"></div>
+                    </div>
+                    <div class="panel-section">
+                        <div class="section-header">Import Model</div>
+                        <div id="model-import"></div>
+                    </div>
+                </div>
+                <!-- ANALOG TAB -->
+                <div id="tab-analog" class="tab-content">
+                    <div id="analog-preset-bar"></div>
+                    <div class="panel-section">
+                        <div class="section-header">Source &amp; Crop</div>
+                        <div id="analog-source-params"></div>
+                    </div>
+                    <div class="panel-section" id="teletext-section" style="display:none">
+                        <div class="section-header">Teletext ▸ page navigation</div>
+                        <div id="teletext-params"></div>
+                    </div>
+                    <div class="panel-section">
+                        <div class="section-header">Signal</div>
+                        <div id="analog-signal-params"></div>
+                    </div>
+                    <div class="panel-section">
+                        <div class="section-header">CRT Screen</div>
+                        <div id="analog-crt-params"></div>
+                    </div>
+                    <div class="panel-section">
+                        <div class="section-header">RF Interference</div>
+                        <div id="analog-rf-params"></div>
+                    </div>
+                    <div class="panel-section">
+                        <div class="section-header">Composite</div>
+                        <div id="analog-composite-params"></div>
+                    </div>
+                    <div class="panel-section">
+                        <div class="section-header">Tuner</div>
+                        <div id="analog-tuner-params"></div>
+                    </div>
+                </div>
+                <!-- DRAW TAB -->
+                <div id="tab-draw" class="tab-content">
+                    <div class="panel-section">
+                        <div class="section-header">Draw Layer</div>
+                        <canvas
+                            id="draw-preview"
+                            width="256"
+                            height="256"
+                            style="
+                                display: block;
+                                width: 100%;
+                                image-rendering: pixelated;
+                                border: 1px solid var(--border);
+                                background: #000;
+                            "
+                        ></canvas>
+                        <div
+                            id="draw-controls"
+                            style="
+                                display: flex;
+                                gap: 6px;
+                                padding: 8px 0 4px;
+                                flex-wrap: wrap;
+                            "
+                        ></div>
+                    </div>
+                    <div class="panel-section">
+                        <div class="section-header">Brush</div>
+                        <div id="draw-params"></div>
+                    </div>
+                </div>
                 <!-- PROJECT TAB -->
                 <div id="tab-presets" class="tab-content">
                     <!-- 1. PROJECT — file I/O only -->
@@ -736,10 +842,10 @@ ImWeb</textarea
                         <div class="section-header">State Step Sequencer</div>
                     </div>
                     <!-- Response Curves (merged from former Tables tab; wrapper id kept for JS) -->
-                    <div id="tab-tables" class="tab-merged">
+                    <div id="tab-tables">
                         <div class="panel-section">
                             <div class="section-header" id="tables-section-header">
-                                Response Curves "Tables"
+                                Response Curves
                             </div>
                             <div id="tables-list"></div>
                             <canvas
@@ -748,111 +854,6 @@ ImWeb</textarea
                                 height="200"
                             ></canvas>
                         </div>
-                    </div>
-                    <!-- Live GLSL (merged from former GLSL tab; wrapper id kept for JS) -->
-                    <div id="tab-glsl" class="tab-merged">
-                        <div class="panel-section">
-                            <div class="section-header">Live GLSL Effect</div>
-                            <div
-                                style="
-                                    padding: 4px 8px 0;
-                                    display: flex;
-                                    gap: 4px;
-                                    align-items: center;
-                                "
-                            >
-                                <button
-                                    id="btn-glsl-apply"
-                                    class="import-btn"
-                                    style="flex: 1"
-                                >
-                                    ▶ Apply
-                                </button>
-                                <button id="btn-glsl-reset" class="import-btn">
-                                    ↺ Reset
-                                </button>
-                                <label
-                                    style="
-                                        font-size: 10px;
-                                        color: var(--text-2);
-                                        display: flex;
-                                        align-items: center;
-                                        gap: 4px;
-                                    "
-                                >
-                                    <input type="checkbox" id="glsl-auto-apply" />
-                                    Auto
-                                </label>
-                            </div>
-                            <div
-                                id="glsl-error"
-                                style="
-                                    padding: 4px 8px;
-                                    font-size: 10px;
-                                    color: #e84040;
-                                    display: none;
-                                    white-space: pre-wrap;
-                                    font-family: monospace;
-                                "
-                            ></div>
-                            <!-- CodeMirror 6 mounts here (default doc set in main.js) -->
-                            <div
-                                id="glsl-editor"
-                                style="
-                                    display: block;
-                                    width: 100%;
-                                    height: 280px;
-                                    min-height: 120px;
-                                    resize: vertical;
-                                    overflow: hidden;
-                                    border: 1px solid var(--border);
-                                    box-sizing: border-box;
-                                "
-                            ></div>
-                            <!-- Param uniform binding slots -->
-                            <div
-                                id="glsl-uniforms"
-                                style="
-                                    padding: 4px 8px 6px;
-                                    font-family: monospace;
-                                    font-size: 10px;
-                                    color: var(--text-2);
-                                "
-                            ></div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- ANALOG TAB -->
-                <div id="tab-analog" class="tab-content">
-                    <div id="analog-preset-bar"></div>
-                    <div class="panel-section">
-                        <div class="section-header">Source &amp; Crop</div>
-                        <div id="analog-source-params"></div>
-                    </div>
-                    <div class="panel-section" id="teletext-section" style="display:none">
-                        <div class="section-header">Teletext ▸ page navigation</div>
-                        <div id="teletext-params"></div>
-                    </div>
-                    <div class="panel-section">
-                        <div class="section-header">Signal</div>
-                        <div id="analog-signal-params"></div>
-                    </div>
-                    <div class="panel-section">
-                        <div class="section-header">CRT Screen</div>
-                        <div id="analog-crt-params"></div>
-                    </div>
-                    <div class="panel-section">
-                        <div class="section-header">RF Interference</div>
-                        <div id="analog-rf-params"></div>
-                    </div>
-                    <div class="panel-section">
-                        <div class="section-header">Composite</div>
-                        <div id="analog-composite-params"></div>
-                    </div>
-                    <div class="panel-section">
-                        <div class="section-header">Tuner</div>
-                        <div id="analog-tuner-params"></div>
                     </div>
                 </div>
             </div>
