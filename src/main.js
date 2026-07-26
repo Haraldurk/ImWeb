@@ -36,6 +36,7 @@ import {
   registerCoreParameters,
   setTableManager,
   SOURCE_KEYS,
+  MIXBUS_IDX,
 } from "./controls/ParameterSystem.js";
 import { tableManager } from "./state/TableManager.js";
 import { ControllerManager } from "./controls/ControllerManager.js";
@@ -3157,40 +3158,8 @@ async function main() {
 
   /** Resolve a raw layer-source index to its current texture (matches Pipeline._resolveSource). */
   function _resolveLayerTex(idx) {
-    // LOCKSTEP + APPEND-ONLY: must match SOURCE_KEYS in ParameterSystem.js
-    // (the canonical SOURCE_DEFS list) and the key array in
-    // Pipeline._resolveSource(). These two are the last remaining hand-copies
-    // — fold them into SOURCE_KEYS when the MixBus rethink touches them.
-    const keys = [
-      "camera",   // 0
-      "movie",    // 1
-      "buffer",   // 2
-      "color",    // 3
-      "color2",   // 4
-      "noise",    // 5
-      "scene3d",  // 6
-      "draw",     // 7
-      "output",   // 8
-      "bg1",      // 9
-      "bg2",      // 10
-      "text",     // 11
-      "sound",    // 12
-      "delay",    // 13
-      "scope",    // 14
-      "slitscan", // 15
-      "particles",// 16
-      "seq1",     // 17
-      "seq2",     // 18
-      "seq3",     // 19
-      "depth3d",  // 20
-      "sdf",      // 21
-      "vwarp",    // 22
-      "analog",   // 23
-      "tdisp",    // 24
-      "movieB",   // 25
-      "mixbus",   // 26
-    ];
-    const key = keys[idx];
+    // Derived from the canonical SOURCE_DEFS list — no hand-copy to drift.
+    const key = SOURCE_KEYS[idx];
     if (key === "camera")
       return camera3d.active ? camera3d.currentTexture : null;
     if (key === "movie")
@@ -3207,7 +3176,9 @@ async function main() {
     if (key === "seq3") return seq3.texture;
     if (key === "analog") return analogTV.texture;
     if (key === "tdisp") return tdEngine.texture;
-    if (key === "mixbus") return pipeline.mixTexture;
+    if (key === "mixbus") return pipeline.mixTextureAt(0);
+    if (key === "mixbus2") return pipeline.mixTextureAt(1);
+    if (key === "mixbus3") return pipeline.mixTextureAt(2);
     return pipeline.prev.texture;
   }
 
@@ -6137,36 +6108,58 @@ void main() {
     // Orbit inertia — coast + damp after a touch flick
     gestureArb.tick(dt);
 
-    // ── Source consumption analysis (Phase 23 Step 2) ───────────────────────
+    // ── Source consumption analysis (Phase 23 Steps 2 & 4) ──────────────────
     // THE single "is source index i consumed this frame?" test. Every
     // on-demand tick gate and upload gate below uses it. A source is consumed
-    // when a layer routes it, TimeDisplace captures it, or a live MixBus
+    // when a layer routes it, TimeDisplace captures it, or a LIVE mix bus
     // input selects it. Adding a new consumer means extending THIS function,
-    // not copying the pattern a seventh time.
+    // not copying the pattern again.
     const _cFg = ps.get("layer.fg").value;
     const _cBg = ps.get("layer.bg").value;
     const _cDs = ps.get("layer.ds")?.value ?? 0;
     const _cTd = ps.get("td.enabled").value
       ? ps.get("td.captureSource").value
       : -1;
-    // Is the MixBus output itself read? Deliberately NOT a function of
-    // mix.srcA/srcB: a bus feeding only itself is not a reason to render it,
-    // and testing them here would make _srcUsed self-referential.
-    const _mixbusNeeded = _cFg === 26 || _cBg === 26 || _cDs === 26 || _cTd === 26;
-    const _cMixA = ps.get("mix.srcA").value;
-    const _cMixB = ps.get("mix.srcB").value;
-    const _gXf = ps.get("mix.xfade").value;
-    const _gMixMode = ps.get("mix.mode").value;
-    // Which bus inputs can actually reach the output? MIXBUS computes
-    // mix(a, modeResult, xfade): xfade=0 is pure srcA (srcB hidden), and
-    // Crossfade pinned at 1 is pure srcB (srcA hidden) — every other mode
-    // still reads srcA. Same reasoning as the v0.12 deck gate, generalized
-    // off the deck identities.
-    const _mixAOn = _mixbusNeeded && !(_gMixMode === 0 && _gXf >= 1);
-    const _mixBOn = _mixbusNeeded && _gXf > 0;
+    const _direct = (i) => _cFg === i || _cBg === i || _cDs === i || _cTd === i;
+
+    // Per-bus inputs. Which one can actually reach the bus output? MIXBUS
+    // computes mix(a, modeResult, xfade): xfade=0 is pure srcA (srcB hidden),
+    // and Crossfade pinned at 1 is pure srcB (srcA hidden) — every other mode
+    // still reads srcA. Same reasoning as the v0.12 deck gate, generalized off
+    // the deck identities.
+    const _bus = MIXBUS_IDX.map((idx, k) => {
+      const pfx = ["mix", "mix2", "mix3"][k];
+      const xf = ps.get(`${pfx}.xfade`).value;
+      const md = ps.get(`${pfx}.mode`).value;
+      return {
+        idx,
+        srcA: ps.get(`${pfx}.srcA`).value,
+        srcB: ps.get(`${pfx}.srcB`).value,
+        aReaches: !(md === 0 && xf >= 1),
+        bReaches: xf > 0,
+        needed: false,
+      };
+    });
+    // A bus is needed if a layer/TimeDisplace reads it, OR if a bus that is
+    // itself needed reads it. That is transitive in both directions (a later
+    // bus reads an earlier one this frame; an earlier bus reads a later one
+    // one frame behind — both are real consumers), so iterate to a fixpoint.
+    // Three nodes ⇒ three passes is provably enough. A bus feeding only
+    // itself never becomes needed, which is what we want: it costs nothing.
+    _bus.forEach((b) => { b.needed = _direct(b.idx); });
+    for (let pass = 0; pass < _bus.length; pass++) {
+      _bus.forEach((b) => {
+        if (!b.needed) return;
+        _bus.forEach((t) => {
+          if ((b.aReaches && b.srcA === t.idx) || (b.bReaches && b.srcB === t.idx)) t.needed = true;
+        });
+      });
+    }
+    const _mixbusNeeded = _bus.map((b) => b.needed);
+
     const _srcUsed = (i) =>
-      _cFg === i || _cBg === i || _cDs === i || _cTd === i ||
-      (_mixAOn && _cMixA === i) || (_mixBOn && _cMixB === i);
+      _direct(i) ||
+      _bus.some((b) => b.needed && ((b.aReaches && b.srcA === i) || (b.bReaches && b.srcB === i)));
 
     // ── Idle-deck upload gating (v0.12 Step 5) ──────────────────────────────
     // Skip the texImage2D upload for a deck that cannot contribute to this
@@ -6185,11 +6178,12 @@ void main() {
       _srcUsed(21) ||                          // SDF (texSrc may be Movie)
       _clipRecording;                          // ClipLib REC (source may be Mov)
     // Deck A keeps exact v0.11 behavior (always upload while active) EXCEPT
-    // the provably-hidden case: the Mix Bus is the only consumer and the mix
-    // cannot show Movie this frame. The `|| !_mixbusNeeded` term preserves
-    // that conservatism verbatim — when no bus is live, Deck A always
+    // the provably-hidden case: a mix bus is the only consumer and no live bus
+    // can show Movie this frame. The `|| no bus live` term preserves that
+    // conservatism verbatim — when nothing routes a bus, Deck A always
     // uploads, exactly as before.
-    const _uploadA = _srcUsed(1) || _gLegacyReaders || !_mixbusNeeded;
+    const _anyBusLive = _mixbusNeeded.some(Boolean);
+    const _uploadA = _srcUsed(1) || _gLegacyReaders || !_anyBusLive;
     // Deck B is only reachable via source 25, TimeDisp capture, or a MixBus
     // input (no legacy subset list includes "Movie B" — keep it that way, or
     // extend _gLegacyReaders when appending it to one).

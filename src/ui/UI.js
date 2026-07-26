@@ -110,6 +110,8 @@ export function buildMappingPanels(ps, contextMenu) {
     'clip-params':     ps.getGroup('movie'),
     'clipB-params':    ps.getGroup('movieB'),
     'mix-params':      ps.getGroup('mix'),
+    'mix2-params':     ps.getGroup('mix2'),
+    'mix3-params':     ps.getGroup('mix3'),
     'transform-params': ps.getGroup('scene3d').filter(p => p.id.includes('rot') || p.id.includes('pos') || p.id.includes('scale') || p.id.includes('spin')),
     'camera3d-params': ps.getGroup('scene3d').filter(p => p.id.includes('cam')),
     'material-params': ps.getGroup('scene3d').filter(p => p.id.includes('mat') || p.id.includes('wire') || p.id.includes('depth')),

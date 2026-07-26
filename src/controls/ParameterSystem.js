@@ -499,8 +499,13 @@ export const SOURCE_DEFS = [
   { key: "analog",    label: "Analog"    }, // 23
   { key: "tdisp",     label: "TimeDisp"  }, // 24
   { key: "movieB",    label: "Movie B"   }, // 25
-  { key: "mixbus",    label: "Mix Bus"   }, // 26 — not in inputs bag
+  { key: "mixbus",    label: "Mix 1"     }, // 26 — not in inputs bag
+  { key: "mixbus2",   label: "Mix 2"     }, // 27 — not in inputs bag
+  { key: "mixbus3",   label: "Mix 3"     }, // 28 — not in inputs bag
 ];
+
+/** Source indices of the three mix buses, in evaluation order (1 → 2 → 3). */
+export const MIXBUS_IDX = [26, 27, 28];
 
 /** Display labels, index-aligned to SOURCE_DEFS. SELECT options array. */
 export const SOURCES = SOURCE_DEFS.map((s) => s.label);
@@ -1478,71 +1483,46 @@ export function registerCoreParameters(ps) {
     value: 0,
   });
 
-  // ── A/B Mix Bus (dual-deck v0.12; free sources Phase 23 Step 2) ───────────
-  // srcA/srcB select ANY source, not just the two movie decks. Defaults 1
-  // (Movie) and 25 (Movie B) reproduce the old hardwiring exactly, so every
-  // existing project renders identically.
-  // Deliberately group "mix", NOT "global": these ARE captured by Display
-  // States. Unlike glsl.preset (an index into a user-editable list), the
-  // source list is append-only and not user-editable, so the indices cannot
+  // ── Mix buses ×3 (dual-deck v0.12; free sources + buses 2/3 Phase 23) ─────
+  // srcA/srcB select ANY source, not just the two movie decks. Bus 1 keeps the
+  // bare `mix.` prefix and its exact v0.12 ids/labels — renaming to `mix1.`
+  // would break every saved state, bank, .imweb file and MIDI mapping on earth
+  // for zero functional gain. Buses 2 and 3 mirror it structurally, the same
+  // accepted asymmetry as movie.* vs movieB.*.
+  //
+  // Defaults 1 (Movie) / 25 (Movie B) on every bus: on bus 1 they reproduce the
+  // pre-Step-2 hardwiring exactly, so existing projects render identically; on
+  // buses 2/3 they are simply the least surprising starting point (an unused
+  // bus costs nothing — see the consumption gate in main.js).
+  //
+  // Deliberately group "mix"/"mix2"/"mix3", NOT "global": these ARE captured by
+  // Display States. Unlike glsl.preset (an index into a user-editable list),
+  // the source list is append-only and not user-editable, so the indices cannot
   // drift out from under a saved state.
-  ps.register({
-    id: "mix.srcA",
-    label: "MixSrcA",
-    group: "mix",
-    type: PARAM_TYPE.SELECT,
-    value: 1, // Movie (Deck A)
-    options: SOURCES,
-  });
-  ps.register({
-    id: "mix.srcB",
-    label: "MixSrcB",
-    group: "mix",
-    type: PARAM_TYPE.SELECT,
-    value: 25, // Movie B (Deck B)
-    options: SOURCES,
-  });
-  ps.register({
-    id: "mix.xfade",
-    label: "Crossfade",
-    group: "mix",
-    min: 0,
-    max: 1,
-    value: 0, // 0 = pure Deck A — old projects render identically
-    feedbackVisible: true,
-  });
-  ps.register({
-    id: "mix.mode",
-    label: "MixMode",
-    group: "mix",
-    type: PARAM_TYPE.SELECT,
-    value: 0,
+  const MIX_BUS_PARAMS = [
+    { key: "srcA",    label: "MixSrcA",   type: PARAM_TYPE.SELECT, value: 1,  options: SOURCES },
+    { key: "srcB",    label: "MixSrcB",   type: PARAM_TYPE.SELECT, value: 25, options: SOURCES },
+    { key: "xfade",   label: "Crossfade", min: 0, max: 1, value: 0, feedbackVisible: true },
     // APPEND-ONLY: indices persisted in saved states
-    options: ["Crossfade", "Add", "Multiply", "Luma Mask", "Displace"],
-  });
-  ps.register({
-    id: "mix.dispAmt",
-    label: "MixDisp",
-    group: "mix",
-    min: 0,
-    max: 1,
-    value: 0.1,
-  });
-  ps.register({
-    id: "mix.maskLo",
-    label: "MaskLo",
-    group: "mix",
-    min: 0,
-    max: 1,
-    value: 0.25,
-  });
-  ps.register({
-    id: "mix.maskHi",
-    label: "MaskHi",
-    group: "mix",
-    min: 0,
-    max: 1,
-    value: 0.75,
+    { key: "mode",    label: "MixMode",   type: PARAM_TYPE.SELECT, value: 0,
+      options: ["Crossfade", "Add", "Multiply", "Luma Mask", "Displace"] },
+    { key: "dispAmt", label: "MixDisp",   min: 0, max: 1, value: 0.1 },
+    { key: "maskLo",  label: "MaskLo",    min: 0, max: 1, value: 0.25 },
+    { key: "maskHi",  label: "MaskHi",    min: 0, max: 1, value: 0.75 },
+  ];
+  [
+    { prefix: "mix",  labelSuffix: "" },   // bus 1 — ids/labels frozen at v0.12
+    { prefix: "mix2", labelSuffix: " 2" },
+    { prefix: "mix3", labelSuffix: " 3" },
+  ].forEach(({ prefix, labelSuffix }) => {
+    MIX_BUS_PARAMS.forEach(({ key, label, ...rest }) => {
+      ps.register({
+        id: `${prefix}.${key}`,
+        label: label + labelSuffix,
+        group: prefix,
+        ...rest,
+      });
+    });
   });
 
   // ── Clip Library ──────────────────────────────────────────────────────────
