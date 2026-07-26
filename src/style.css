@@ -370,6 +370,13 @@ button {
     white-space: nowrap;
     flex-shrink: 0;
 }
+/* Visual break between the signal-flow tabs (Sources · Mix · Effects · Output)
+   and the editor tabs (3D · Analog · Draw · Project). The bar already scrolls
+   horizontally, so 8 tabs overflow rather than wrap. */
+.tab.tab-sep {
+    border-left: 1px solid var(--border);
+    margin-left: 4px;
+}
 .tab:hover {
     color: var(--text-1);
 }

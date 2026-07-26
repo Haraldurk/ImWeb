@@ -2610,7 +2610,11 @@ async function main() {
   outWinSel.addEventListener("change", () => { _outWinResIdx = +outWinSel.value; });
   ioBlock.appendChild(_ioRow("2Display", outWinSel));
 
-  document.getElementById("tab-mapping")?.prepend(ioBlock);
+  // Phase 23 Step 3: the Mapping tab is retired. I/O leads the SOURCES tab —
+  // it is mostly input-device selection (Camera, Audio In) and stays the first
+  // thing visible on the first tab, as it was at the top of Mapping.
+  // Injected at runtime, so it moves in JS rather than by relocating markup.
+  document.getElementById("tab-sources")?.prepend(ioBlock);
 
   async function populateCameraDevices() {
     // Re-enumerate after permission grant so labels are fully resolved
