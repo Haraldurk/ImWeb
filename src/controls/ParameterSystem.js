@@ -454,44 +454,66 @@ export class ParameterSystem extends EventTarget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Canonical source list — THE single origin (Phase 23 Step 1)
+// ─────────────────────────────────────────────────────────────────────────────
+// Every layer/capture source in the instrument, in index order.
+//
+// APPEND-ONLY, FOREVER: SELECT values persist as integer indices into this
+// array (layer.fg/bg/ds, td.captureSource, and every saved state, bank and
+// .imweb file). Inserting anywhere but the true end silently re-routes every
+// saved state on earth. Append at the end; never reorder; never delete.
+//
+// `label` is what the user sees. `key` is the inputs-bag key used by
+// Pipeline._resolveSource() and main.js _resolveLayerTex(). Two keys are NOT
+// in the inputs bag and resolve specially at each call site:
+//   'output' → pipeline.prev.texture   (post-composite feedback)
+//   'mixbus' → pipeline.mixTexture     (dedicated MixBus target)
+//
+// Derive from this — do NOT hand-copy it. Six hand-synced copies existed
+// before this consolidation and three had drifted, silently breaking
+// TimeDisplace capture and the AI Narrator for sources 25/26.
+export const SOURCE_DEFS = [
+  { key: "camera",    label: "Camera"    }, //  0
+  { key: "movie",     label: "Movie"     }, //  1
+  { key: "buffer",    label: "Buffer"    }, //  2
+  { key: "color",     label: "Color"     }, //  3
+  { key: "color2",    label: "Color2"    }, //  4
+  { key: "noise",     label: "Noise"     }, //  5
+  { key: "scene3d",   label: "3D Scene"  }, //  6
+  { key: "draw",      label: "Draw"      }, //  7
+  { key: "output",    label: "Output"    }, //  8  — not in inputs bag
+  { key: "bg1",       label: "BG1"       }, //  9
+  { key: "bg2",       label: "BG2"       }, // 10
+  { key: "text",      label: "Text"      }, // 11
+  { key: "sound",     label: "Sound"     }, // 12
+  { key: "delay",     label: "Delay"     }, // 13
+  { key: "scope",     label: "Scope"     }, // 14
+  { key: "slitscan",  label: "SlitScan"  }, // 15
+  { key: "particles", label: "Particles" }, // 16
+  { key: "seq1",      label: "Seq1"      }, // 17
+  { key: "seq2",      label: "Seq2"      }, // 18
+  { key: "seq3",      label: "Seq3"      }, // 19
+  { key: "depth3d",   label: "3D Depth"  }, // 20
+  { key: "sdf",       label: "SDF"       }, // 21
+  { key: "vwarp",     label: "VWarp"     }, // 22
+  { key: "analog",    label: "Analog"    }, // 23
+  { key: "tdisp",     label: "TimeDisp"  }, // 24
+  { key: "movieB",    label: "Movie B"   }, // 25
+  { key: "mixbus",    label: "Mix Bus"   }, // 26 — not in inputs bag
+];
+
+/** Display labels, index-aligned to SOURCE_DEFS. SELECT options array. */
+export const SOURCES = SOURCE_DEFS.map((s) => s.label);
+
+/** inputs-bag keys, index-aligned to SOURCE_DEFS. */
+export const SOURCE_KEYS = SOURCE_DEFS.map((s) => s.key);
+
+// ─────────────────────────────────────────────────────────────────────────────
 // registerCoreParameters  — defines all Phase 1 parameters
 // ─────────────────────────────────────────────────────────────────────────────
 
 export function registerCoreParameters(ps) {
   _ps = ps;  // make ps accessible to setTableManager for global.tableSlot sync
-  // ── Layer source selection ────────────────────────────────────────────────
-  // LOCKSTEP + APPEND-ONLY: this array must match the SOURCES key array in
-  // Pipeline._resolveSource() and the keys array in main.js _resolveLayerTex().
-  // Indices are persisted in saved states — append at the true end only.
-  const SOURCES = [
-    "Camera",   // 0
-    "Movie",    // 1
-    "Buffer",   // 2
-    "Color",    // 3
-    "Color2",   // 4
-    "Noise",    // 5
-    "3D Scene", // 6
-    "Draw",     // 7
-    "Output",   // 8
-    "BG1",      // 9
-    "BG2",      // 10
-    "Text",     // 11
-    "Sound",    // 12
-    "Delay",    // 13
-    "Scope",    // 14
-    "SlitScan", // 15
-    "Particles",// 16
-    "Seq1",     // 17
-    "Seq2",     // 18
-    "Seq3",     // 19
-    "3D Depth", // 20
-    "SDF",      // 21
-    "VWarp",    // 22
-    "Analog",   // 23
-    "TimeDisp", // 24
-    "Movie B",  // 25
-    "Mix Bus",  // 26
-  ];
 
   ps.register({
     id: "layer.fg",

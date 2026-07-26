@@ -27,10 +27,9 @@ export { buildParamRow };
 
 // ── Layer source button matrix ────────────────────────────────────────────────
 
-// Short labels for each source index (matches SOURCES order in ParameterSystem)
-// Indices match SOURCES order: Camera(0)…Color2(10), Sound(11, DS only)
-// Indices: Camera(0)…Color2(10), Text(11), Sound(12 — DS only)
-const SOURCE_ABBREV = ['CAM','MOV','BUF','COL','NSE','3D','DRW','OUT','BG1','BG2','COL2','TXT','SND'];
+// SOURCE_ABBREV removed (Phase 23 Step 1): 13 entries against a 27-entry
+// source list, mis-ordered from index 4 onward, and referenced by nothing.
+// Source labels come from the SELECT options (ParameterSystem SOURCES).
 
 /**
  * Builds the FG / BG / DS source-selector rows in #layer-params.
