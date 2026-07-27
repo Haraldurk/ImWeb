@@ -1085,18 +1085,18 @@ async function main() {
     collapseAllBtn.textContent = _allCollapsed ? "⊞" : "⊟";
   });
 
-  // Collapse all sections except Layers
-  function _collapseToLayers() {
+  // Collapse every section except the one(s) marked data-default-open in
+  // index.html. Previously this matched the header text against the literal
+  // string "Layers", so renaming or moving that section silently booted the
+  // app with everything collapsed. The marker is explicit and greppable:
+  // header text is now free to change, and the marker can move to any
+  // section on any tab.
+  function _collapseToDefaultOpen() {
     document.querySelectorAll(".panel-section").forEach((sec) => {
       const hdr = sec.querySelector(".section-header");
-      // Use the first text node to get the section title (ignoring child button elements)
-      const title =
-        [...(hdr?.childNodes ?? [])]
-          .find((n) => n.nodeType === 3)
-          ?.textContent.trim() ?? "";
-      const isLayers = title === "Layers";
-      sec.classList.toggle("collapsed", !isLayers);
-      hdr?.classList.toggle("collapsed", !isLayers);
+      const keepOpen = sec.hasAttribute("data-default-open");
+      sec.classList.toggle("collapsed", !keepOpen);
+      hdr?.classList.toggle("collapsed", !keepOpen);
     });
   }
 
@@ -1112,7 +1112,7 @@ async function main() {
     ps.set("layer.fg", 0); // Camera
     ps.set("layer.bg", 0); // Camera
     ps.set("layer.ds", 0); // Camera
-    _collapseToLayers();
+    _collapseToDefaultOpen();
     // Start camera if not already running
     if (!camera3d.active) {
       const ok = await camera3d.start(null);
@@ -5765,7 +5765,7 @@ void main() {
   // ── Startup: collapse sections + auto-start camera ───────────────────────
 
   // Always collapse all sections except Layers for clean first impression
-  _collapseToLayers();
+  _collapseToDefaultOpen();
 
   // Auto-start camera on first load (silently; user can stop it)
   camera3d.start(null).then((ok) => {
