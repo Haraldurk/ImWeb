@@ -128,6 +128,31 @@ window.addEventListener("resize", _applyLayout);
 const _sbEl = document.getElementById("status-bar");
 if (_sbEl) new ResizeObserver(_applyLayout).observe(_sbEl);
 
+// ── Initial tab activation — fully data-driven ───────────────────────────────
+// The section marked data-default-open in index.html decides BOTH which panel
+// section is expanded and which tab the app lands on. No `active` class is
+// hardcoded in the markup.
+//
+// Deliberately runs at module scope, before main(): 35 awaits sit between
+// main()'s start and the startup _collapseToDefaultOpen() call, and the tab
+// panes are display:none until something is marked active. Activating here
+// means the panel paints on the first frame and stays usable even if main()
+// throws later (WebGL init failure on an unsupported device, say).
+export function activateDefaultTab() {
+  const pane = document
+    .querySelector(".panel-section[data-default-open]")
+    ?.closest(".tab-content");
+  if (!pane) return; // no marker: leave whatever the markup says
+  const name = pane.id.replace(/^tab-/, "");
+  document
+    .querySelectorAll(".tab")
+    .forEach((b) => b.classList.toggle("active", b.dataset.tab === name));
+  document
+    .querySelectorAll(".tab-content")
+    .forEach((c) => c.classList.toggle("active", c === pane));
+}
+activateDefaultTab();
+
 
 async function main() {
   console.log(
@@ -1098,6 +1123,9 @@ async function main() {
       sec.classList.toggle("collapsed", !keepOpen);
       hdr?.classList.toggle("collapsed", !keepOpen);
     });
+    // Land on the tab that owns the marked section, so reset-all returns to
+    // the same place a cold boot does. Same helper the module-scope call uses.
+    activateDefaultTab();
   }
 
   // Reset all params to defaults → clean camera state
