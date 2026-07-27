@@ -2702,9 +2702,15 @@ export function buildWarpEditor(editor, ps, contextMenu) {
 
   function warpedPos(ni, nj) {
     const { dx, dy } = editor.dispAt(ni, nj);
+    // Negated for the same reason as the brush above: the shader samples at
+    // vUv + displacement, so a positive map value pulls content from further
+    // along and the picture moves the opposite way. Drawing the mesh at +dx
+    // showed the mirror image of what the video actually did. This is a
+    // display fix — dispAt and the stored arrays are unchanged, and the dot
+    // colouring nearby uses magnitude only, so it is unaffected.
     return {
-      x: (ni + dx * DISP_SCALE) * CW,
-      y: (nj + dy * DISP_SCALE) * CH,
+      x: (ni - dx * DISP_SCALE) * CW,
+      y: (nj - dy * DISP_SCALE) * CH,
     };
   }
 
@@ -2808,7 +2814,12 @@ export function buildWarpEditor(editor, ps, contextMenu) {
       const sign = _rightBtn ? -1 : 1;
       
       if (activeTool === 'push') {
-        editor.brush(nx, ny, brushRadius, brushStrength * 60, ddx * sign, ddy * sign);
+        // Negated to match the main canvas: the WARP shader samples at
+        // vUv + displacement, so a positive map value moves content the OTHER
+        // way. Without this, dragging left pushed the picture right. Only the
+        // INPUT is flipped — stored maps are untouched, so every saved slot and
+        // procedural preset renders exactly as before.
+        editor.brush(nx, ny, brushRadius, brushStrength * 60, -ddx * sign, -ddy * sign);
       } else if (activeTool === 'smooth') {
         editor.smooth(nx, ny, brushRadius, brushStrength * 5);
       } else if (activeTool === 'erase') {
