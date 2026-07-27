@@ -812,7 +812,13 @@ export function registerCoreParameters(ps) {
     label: "WarpAmt",
     group: "displace",
     min: 0,
-    max: 100,
+    // 200, not 100. The WARP shader displaces by (map - 0.5) * uStrength * 0.3
+    // and control points clamp at ±0.49, so a ceiling of 100 capped ANY warp —
+    // drawn, procedural or recalled — at 0.49 * 1.0 * 0.3 ≈ 15% of the frame.
+    // Raising the ceiling rather than the shader's 0.3 is what keeps every
+    // saved map, preset and Display State rendering exactly as before: values
+    // in the old range are untouched, there is simply more range above them.
+    max: 200,
     value: 50,
     unit: "%",
   });
