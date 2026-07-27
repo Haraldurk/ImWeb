@@ -2599,7 +2599,11 @@ async function main() {
 
   const camDeviceSel = _ioSel();
   camDeviceSel.innerHTML = '<option value="">default</option>';
-  ioBlock.appendChild(_ioRow("Camera", btnCameraOn, camDeviceSel));
+  // Camera (source 0) sits under LIVE IN in its own panel, parallel to Sound,
+  // rather than inside the generic I/O block. Falls back to ioBlock so the
+  // control can never be silently dropped.
+  (document.getElementById("camera-params") ?? ioBlock)
+    .appendChild(_ioRow("Camera", btnCameraOn, camDeviceSel));
 
   // ── Audio In ──
   const btnAudioIn = document.createElement("button");

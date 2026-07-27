@@ -12,7 +12,15 @@
 //   .value        — get/set current index (keeps label in sync)
 //   .addEventListener — works as a normal DOM element
 //
-export function mkSelect(opts, initVal, onChangeVal, extraClass = '') {
+/**
+ * @param order  Optional display sequence. Entries are either an integer
+ *   (an index into `opts`) or `{ header: 'MEDIA' }` for a non-clickable group
+ *   label. Lets a dropdown be grouped and reordered for legibility while the
+ *   value reported to onChangeVal stays the TRUE index into `opts` — which is
+ *   what SELECT params persist. Items carry data-idx so nothing relies on
+ *   menu position matching the value.
+ */
+export function mkSelect(opts, initVal, onChangeVal, extraClass = '', order = null) {
   const state = { v: Math.round(initVal) };
 
   const wrap = document.createElement('div');
@@ -39,16 +47,28 @@ export function mkSelect(opts, initVal, onChangeVal, extraClass = '') {
     menu = document.createElement('div');
     menu.className = 'imw-sel-menu';
     menu.style.cssText = 'position:fixed;z-index:9999;display:none;overflow-y:auto;max-height:60vh;';
-    opts.forEach((opt, i) => {
+    const seq = order ?? opts.map((_, i) => i);
+    seq.forEach(entry => {
+      if (entry && typeof entry === 'object' && entry.header) {
+        const h = document.createElement('div');
+        h.className = 'imw-sel-group';
+        h.textContent = entry.header;
+        menu.appendChild(h);
+        return;
+      }
+      const i = entry;
+      if (opts[i] == null) return; // order outlived the options array
       const item = document.createElement('div');
       item.className = 'imw-sel-item' + (i === state.v ? ' sel' : '');
-      item.textContent = opt;
+      item.dataset.idx = i;
+      item.textContent = opts[i];
       item.addEventListener('click', e => {
         e.stopPropagation();
         _close();
         state.v = i;
         lbl.textContent = opts[i] ?? '';
-        menu.querySelectorAll('.imw-sel-item').forEach((el, j) => el.classList.toggle('sel', j === i));
+        menu.querySelectorAll('.imw-sel-item').forEach(el =>
+          el.classList.toggle('sel', +el.dataset.idx === i));
         onChangeVal(i);
       });
       menu.appendChild(item);
@@ -64,8 +84,8 @@ export function mkSelect(opts, initVal, onChangeVal, extraClass = '') {
     menu.style.top   = (rect.bottom + 2) + 'px';
     menu.style.minWidth = rect.width + 'px';
     // Scroll selected item into view
-    const items = menu.querySelectorAll('.imw-sel-item');
-    items[state.v]?.scrollIntoView({ block: 'nearest' });
+    menu.querySelector(`.imw-sel-item[data-idx="${state.v}"]`)
+      ?.scrollIntoView({ block: 'nearest' });
     // Use click (bubble, fires after pointerup) — never interferes with canvas
     // pointerdown or altKey-click pin placement.
     setTimeout(() => document.addEventListener('click', _outside), 0);
@@ -93,7 +113,8 @@ export function mkSelect(opts, initVal, onChangeVal, extraClass = '') {
       const i = Math.round(v);
       state.v = i;
       lbl.textContent = opts[i] ?? opts[0] ?? '';
-      menu?.querySelectorAll('.imw-sel-item').forEach((el, j) => el.classList.toggle('sel', j === i));
+      menu?.querySelectorAll('.imw-sel-item').forEach(el =>
+        el.classList.toggle('sel', +el.dataset.idx === i));
     },
   });
 

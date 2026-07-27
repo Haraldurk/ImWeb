@@ -4,7 +4,7 @@
  * Vanilla JS — no framework. Direct DOM manipulation for sub-ms response.
  */
 
-import { PARAM_TYPE } from '../controls/ParameterSystem.js';
+import { PARAM_TYPE, SOURCES, SOURCE_DISPLAY_ORDER } from '../controls/ParameterSystem.js';
 import { DEFAULT_FX_ORDER } from '../core/Pipeline.js';
 import { PROVIDERS } from '../ai/AIFeatures.js';
 import { ResponseCurve } from '../state/TableManager.js';
@@ -60,11 +60,15 @@ export function buildLayerButtons(ps, contextMenu) {
     });
     row.appendChild(lbl);
 
+    // Identity check, not a name test: every source dropdown is registered
+    // with the SOURCES array itself, so this reorders exactly those and
+    // leaves every other SELECT alone. Values stay true indices.
     const sel = _mkSelect(
       param.options ?? [],
       param.value,
       i => { param.value = i; },
-      'source-select'
+      'source-select',
+      param.options === SOURCES ? SOURCE_DISPLAY_ORDER : null
     );
     sel.addEventListener('contextmenu', e => {
       e.preventDefault();

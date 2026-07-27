@@ -8,6 +8,7 @@
 import { PARAM_TYPE } from '../../controls/ParameterSystem.js';
 import { createBinding } from '../bindings/ParamBinding.js';
 import { mkSelect as _mkSelect } from './Select.js';
+import { SOURCES, SOURCE_DISPLAY_ORDER } from '../../controls/ParameterSystem.js';
 import { openCtrlPopover as _openCtrlPopover } from './CtrlPopover.js';
 import { LONG_PRESS_MS } from '../touch.js';
 
@@ -324,7 +325,10 @@ export function buildParamRow(param, contextMenu) {
       valueEl.appendChild(group);
     } else {
       // Custom dark dropdown for large option sets
-      const sel = _mkSelect(opts, param.value, i => { param.value = i; updateDisplay(); }, 'param-select');
+      // Source dropdowns (mix*.srcA/srcB, td.captureSource) get the taxonomy
+      // display order; identity check keeps every other SELECT untouched.
+      const sel = _mkSelect(opts, param.value, i => { param.value = i; updateDisplay(); }, 'param-select',
+        opts === SOURCES ? SOURCE_DISPLAY_ORDER : null);
       binding.sync(() => { sel.value = param.value; });
       valueEl.appendChild(sel);
     }
