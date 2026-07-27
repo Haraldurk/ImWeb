@@ -66,6 +66,41 @@ tab isn't really visible. Also: controller assignment via the context menu
 uses blocking `prompt()` dialogs for most types — **Random** is the one
 type assignable without a prompt, so use it for automated controller tests.
 
+### 6b. Techniques that earned their keep (Phase 23)
+
+**Prove behavioural equivalence by brute force, don't eyeball it.** Both
+rewrites of the idle-deck upload gate were checked by enumerating every
+combination of routing, capture source, mix mode, crossfade and legacy-reader
+state in Node and diffing old logic against new — 270k then 359k combinations,
+zero mismatches. A refactor that claims "no behaviour change" for existing
+projects can be *proved*, in a few minutes, without a browser.
+
+**Derive index-aligned lists; never hand-copy them.** Six copies of the 27-entry
+source list existed and three had silently drifted, breaking TimeDisplace
+capture and the AI Narrator for the newest sources. Lockstep comments did not
+prevent it — only a single exported origin (`SOURCE_DEFS` →
+`SOURCES`/`SOURCE_KEYS`) did. If two arrays must stay index-aligned, one of
+them is a bug waiting to happen.
+
+**Verify a decoupling by breaking the old coupling on purpose.** To confirm
+auto-expand no longer depends on header text, the check was not "does it still
+work" but "rename the header to something else and confirm it still works,
+then move the marker to another tab and confirm it follows." Testing the
+property, not the happy path.
+
+**A missing element is not an error — it is a silent hole.** Two near-misses
+this phase: `getElementById("tab-mapping")?.prepend(...)` would have made the
+whole I/O block vanish without a console message when that tab was retired,
+and removing the hardcoded `active` class left the control panel blank because
+panes are `display:none` until something is marked. Optional chaining and
+CSS-driven visibility both fail quietly. After moving or renaming a container,
+assert the thing that fills it actually rendered.
+
+**First paint vs. JS authority.** HTML may legitimately duplicate state that JS
+owns, as a paint hint — the module graph takes a real interval to evaluate, and
+anything gated on it is invisible until then (and forever if the module fails
+to load). Mark such duplication as a hint in a comment rather than deleting it.
+
 ### 7. Port discipline
 | Command | Protocol | Use for |
 |---------|----------|---------|

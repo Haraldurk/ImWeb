@@ -6,6 +6,73 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
 
 ---
 
+## [Unreleased] — MixBus Rethink (Phase 23)
+
+*The MixBus shipped in v0.12 as a crossfader hardwired to the two movie decks.
+ImWeb's actual model is a source graph — `layer.fg/bg/ds` pick freely from one
+shared list — so the bus was the only node in the instrument with fixed inputs.
+Phase 23 makes it a real graph node, adds two more, and rebuilds the panel
+taxonomy around signal flow. Blueprint: `docs/ImWeb-MixBus-Rethink-Blueprint.md`.*
+
+### Added
+- **Free source selection on every mix bus** — `mix.srcA` / `mix.srcB` (and the
+  `mix2.*` / `mix3.*` mirrors) select any of the 29 sources, resolved through
+  the same `_resolveSource()` the layers use. Camera against Noise, Draw against
+  the SDF generator, the 3D scene displaced by the Analog TV signal — all
+  reachable. The MIXBUS shader was already source-agnostic and is unchanged;
+  only the binding was hardwired. Defaults (1 = Movie, 25 = Movie B) reproduce
+  the old wiring exactly, so existing projects render identically.
+- **Three mix buses** — sources 26/27/28 ("Mix 1/2/3"), built from one
+  `MIX_BUS_PARAMS` descriptor registered for prefixes `mix` / `mix2` / `mix3`,
+  the same shape as `MOVIE_DECK_PARAMS`. Bus 1 keeps the bare `mix.` prefix and
+  its exact v0.12 ids and labels — renaming to `mix1.` would break every saved
+  state, bank, `.imweb` file and MIDI mapping for zero gain.
+- **One-frame-behind feedback** — each bus is double-buffered, writing its back
+  buffer and flipping only after the draw. One rule covers every case with no
+  feedback flag: a later bus reading an earlier one sees *this* frame, an
+  earlier bus reading a later one sees *last* frame, and a bus reading itself
+  sees *last* frame — safe because the sampled texture is physically a different
+  target from the one being written. Targets allocate lazily, so a project that
+  routes no bus pays no VRAM.
+
+### Changed
+- **Panel taxonomy follows signal flow** — the tab bar is now
+  `Sources · Mix · Effects · Output | 3D · Analog · Draw · Project`. "Mapping"
+  held 23 sections (essentially the whole instrument) and was named after one
+  section inside it; 3D/Analog/Draw stay top-level because they are large
+  *source editors*, not a different taxonomic kind. Renames: Movie Clips →
+  Movie A, ColorSrc 1&2 → Color / Gradient, Sequences → Frame Sequences,
+  Particles / GPU Engine → Particles, SDF / Metaballs → Metaballs, Camera (3D
+  tab) → 3D Camera, Response Curves "Tables" → Response Curves. No parameter
+  ids and no source indices changed.
+- **Consumption analysis is a fixpoint** — a bus renders only when something
+  reads it, and that is transitive in both directions (an earlier bus reading a
+  later one is still a real consumer). A bus feeding only itself never becomes
+  needed and costs nothing. The seven duplicated "is source *i* used" tests
+  collapsed into one `_srcUsed(i)` covering layers, TimeDisplace capture and
+  live mix inputs.
+- **Initial tab activation is data-driven** — the `.panel-section` carrying
+  `data-default-open` decides both which section is expanded and which tab the
+  app opens on. The `active` classes remaining in `index.html` are a documented
+  first-paint hint, not the source of truth.
+
+### Fixed
+- **TimeDisplace could not capture Movie B or Mix Bus** — `TD_CAPTURE_KEYS` had
+  25 entries against a 27-entry source list, so those indices resolved to
+  `undefined` and `tdEngine.capture()` silently no-oped. The `_gTdCap === 26`
+  branch in the idle-deck upload gate was therefore dead code.
+- **AI Narrator reported '?' for the newest sources** — `SOURCE_NAMES` in
+  `AIFeatures.js` was a stale 25-entry hand-copy, the exact recurrence its own
+  comment warned about.
+- **Six hand-synced copies of the source list, three drifted** — replaced by a
+  single exported origin (`SOURCE_DEFS` → `SOURCES` / `SOURCE_KEYS`). Dead,
+  mis-ordered `SOURCE_ABBREV` in `UI.js` deleted.
+- **Auto-expand no longer depends on header text** — `_collapseToLayers()`
+  matched the literal string `"Layers"`, so moving that section (as the
+  taxonomy restructure did) silently booted the app fully collapsed.
+
+---
+
 ## [Unreleased] — The Live GLSL Overhaul (Phases 13–20)
 
 ### Added
