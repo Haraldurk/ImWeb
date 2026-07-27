@@ -826,7 +826,7 @@ export function registerCoreParameters(ps) {
   // point, so a stationary pair of sliders does nothing and an LFO on X/Y
   // produces an orbiting drag.
   ps.register({
-    id: "displace.drawX",
+    id: "displace.warpDrawX",
     label: "WarpDrawX",
     group: "displace",
     min: 0,
@@ -834,7 +834,7 @@ export function registerCoreParameters(ps) {
     value: 50,
   });
   ps.register({
-    id: "displace.drawY",
+    id: "displace.warpDrawY",
     label: "WarpDrawY",
     group: "displace",
     min: 0,
@@ -842,7 +842,7 @@ export function registerCoreParameters(ps) {
     value: 50,
   });
   ps.register({
-    id: "displace.fade",
+    id: "displace.warpFade",
     label: "WarpFade",
     group: "displace",
     min: 0,
@@ -3147,7 +3147,7 @@ export function registerCoreParameters(ps) {
     // Append-only: camera/pad grammars gate on exact indices, and the
     // g-key / 3-finger cyclers use options.length — "Draw" (3) is inert
     // to them and routes canvas pointers to the DrawLayer instead.
-    options: ["Camera", "Pad", "Locked", "Draw"],
+    options: ["Camera", "Pad", "Locked", "Draw", "Warp"],
     value: 0,
   });
   ps.register({

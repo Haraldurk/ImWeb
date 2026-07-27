@@ -312,12 +312,58 @@ async function main() {
   teletextSource.setMovieInput(movieInput);
   const warpMaps = buildWarpMaps(); // 8 procedural warp map textures (map1–map8)
   const warpEditor = new WarpMapEditor(); // interactive editor → warpMaps[8] (Custom)
-  // Previous displace.drawX/drawY position, in 0..1 UV — the param-driven brush
+  // Previous displace.warpDrawX/warpDrawY position, in 0..1 UV — the param-driven brush
   // derives its direction from the delta. null until the first tick so a fresh
   // load never brushes from a phantom origin.
   let _warpDrawPrev = null;
-  const WARP_DRAW_RADIUS = 0.18; // UV space
-  const WARP_CUSTOM_IDX = 9;     // "Custom" in displace.warp options → warpMaps[8]
+  const WARP_DRAW_RADIUS = 0.18;    // UV space
+  const WARP_CUSTOM_IDX = 9;        // "Custom" in displace.warp options → warpMaps[8]
+  const WARP_DRAW_GAIN = 1.0;       // displacement rate per unit of pointer speed
+  const WARP_DRAW_MAX_RATE = 0.6;   // ceiling on that rate, in UV/second
+  const WARP_JUMP_MAX = 0.25;       // beyond this in one step it is a teleport
+
+  /**
+   * One stroke step on the Custom warp map, shared by the param-driven path
+   * and by dragging on the main canvas.
+   *
+   * Two things make this behave rather than spike:
+   *  - Strength is a RATE scaled by dt. brush() is called every frame, so a
+   *    per-frame strength meant an LFO applied ~60 pushes/second and saturated
+   *    the ±0.49 clamp almost instantly. Rate × dt is also frame-rate
+   *    independent, so a 30fps tablet draws the same stroke as a 120Hz desktop.
+   *  - A step larger than WARP_JUMP_MAX is a TELEPORT, not a gesture: a State
+   *    recall or preset change snapping drawX from 10 to 90 would otherwise
+   *    paint one enormous stroke across the map. Treated as pen-up — the
+   *    caller still updates its previous position, so the next real move draws
+   *    normally. Same rule a mouse re-entering the canvas needs.
+   *
+   * @param autoSelect only the param path may flip WarpMode; a canvas drag is
+   *   already gated on Custom being selected.
+   * @returns {boolean} true if a stroke was applied.
+   */
+  function _warpStroke(nx, ny, ddx, ddy, dtSec, autoSelect = false) {
+    const mag = Math.hypot(ddx, ddy);
+    if (mag <= 1e-4) return false;      // stationary — nothing to draw
+    if (mag > WARP_JUMP_MAX) return false; // teleport — pen-up
+    if (autoSelect) {
+      // Drawing only reaches the screen through the Custom warp map, so switch
+      // to it on the first stroke — otherwise the honest experience is "I moved
+      // the sliders and nothing happened". Deliberately narrow: only from
+      // "off", and never when a controller owns the param, because writing a
+      // parameter from the tick loop can fight state recall and morph.
+      const wp = ps.get("displace.warp");
+      if (wp.value === 0 && !wp.controller) ps.set("displace.warp", WARP_CUSTOM_IDX);
+    }
+    const speed = mag / Math.max(dtSec, 1e-4); // UV per second
+    const rate = Math.min(speed * WARP_DRAW_GAIN, WARP_DRAW_MAX_RATE);
+    warpEditor.brush(
+      nx, ny,
+      WARP_DRAW_RADIUS,
+      rate * dtSec,         // strength for THIS frame
+      ddx / mag, ddy / mag, // unit direction, per brush()'s contract
+    );
+    return true;
+  }
   warpMaps.push(warpEditor.texture); // index 9 in SELECT = warpMaps[8]
   const drawLayer = new DrawLayer();
   const strokeLooper = new StrokeLooper(drawLayer, ps);
@@ -6188,6 +6234,47 @@ void main() {
     () => (ps.get("touch.mode")?.value ?? 2) === 3,
   );
 
+  // ── Warp-on-canvas (touch.mode 4 "Warp") — smear the displacement map by
+  //    dragging the output. Claims its own mode index for the same reason the
+  //    Draw surface above does: camera orbit (0) and the pad (1) gate on theirs,
+  //    so a bare listener would have made every orbit drag also smear the map.
+  //    Straight rect mapping, matching the param path's convention (y down).
+  {
+    let wdrag = null;
+    const uv = (e) => {
+      const r = canvas.getBoundingClientRect();
+      return { x: (e.clientX - r.left) / r.width, y: (e.clientY - r.top) / r.height };
+    };
+    const active = () => (ps.get("touch.mode")?.value ?? 2) === 4;
+    canvas.addEventListener("pointerdown", (e) => {
+      if (!active()) return;
+      canvas.setPointerCapture(e.pointerId);
+      wdrag = { ...uv(e), t: performance.now() };
+    });
+    canvas.addEventListener("pointermove", (e) => {
+      if (!wdrag || !active()) return;
+      const p = uv(e);
+      const now = performance.now();
+      // Real elapsed time between pointer samples, not the render dt — pointer
+      // events can coalesce or outpace frames.
+      const dtSec = Math.min(Math.max((now - wdrag.t) / 1000, 1e-3), 0.1);
+      // autoSelect: entering Warp mode and dragging is unambiguous intent, so
+      // the same narrow off→Custom switch applies. A deliberately chosen mode
+      // (H-Wave, say) is still left alone, and the drag is then a no-op.
+      _warpStroke(p.x, p.y, p.x - wdrag.x, p.y - wdrag.y, dtSec, true);
+      wdrag = { ...p, t: now };
+    });
+    const endWarp = (e) => {
+      if (!wdrag) return;
+      wdrag = null;
+      if (e?.pointerId != null && canvas.hasPointerCapture?.(e.pointerId)) {
+        canvas.releasePointerCapture(e.pointerId);
+      }
+    };
+    canvas.addEventListener("pointerup", endWarp);
+    canvas.addEventListener("pointercancel", endWarp);
+  }
+
 
   // ── Render loop ───────────────────────────────────────────────────────────
 
@@ -6490,7 +6577,7 @@ void main() {
     }
 
     // ── Performative displacement drawing ───────────────────────────────────
-    // Drives the Custom warp map from displace.drawX/drawY, so MIDI/LFO/OSC can
+    // Drives the Custom warp map from displace.warpDrawX/warpDrawY, so MIDI/LFO/OSC can
     // sculpt it live instead of only the editor window.
     //
     // WarpMapEditor.brush() is a push/pull that needs a DIRECTION, not just a
@@ -6499,29 +6586,10 @@ void main() {
     // sliders therefore does nothing, which is what makes an explicit on/off
     // switch unnecessary. Speed sets the strength, so fast sweeps bite harder.
     {
-      const nx = ps.get("displace.drawX").value / 100;
-      const ny = ps.get("displace.drawY").value / 100;
+      const nx = ps.get("displace.warpDrawX").value / 100;
+      const ny = ps.get("displace.warpDrawY").value / 100;
       if (_warpDrawPrev) {
-        const ddx = nx - _warpDrawPrev.x;
-        const ddy = ny - _warpDrawPrev.y;
-        const mag = Math.hypot(ddx, ddy);
-        if (mag > 1e-4) {
-          // Drawing only reaches the screen through the Custom warp map, so
-          // switch to it on the first stroke — otherwise the honest experience
-          // is "I moved the sliders and nothing happened".
-          // Deliberately narrow: only when WarpMode is "off", and never when a
-          // controller owns the param. Overriding a chosen mode (H-Wave, say)
-          // would fight both the user and state recall, and writing a param
-          // from the tick loop is something to do as little as possible.
-          const wp = ps.get("displace.warp");
-          if (wp.value === 0 && !wp.controller) ps.set("displace.warp", WARP_CUSTOM_IDX);
-          warpEditor.brush(
-            nx, ny,
-            WARP_DRAW_RADIUS,
-            Math.min(mag * 2, 0.5), // strength from speed, clamped
-            ddx / mag, ddy / mag,   // unit direction, per brush()'s contract
-          );
-        }
+        _warpStroke(nx, ny, nx - _warpDrawPrev.x, ny - _warpDrawPrev.y, dt, true);
       }
       _warpDrawPrev = { x: nx, y: ny };
 
@@ -6529,7 +6597,7 @@ void main() {
       // black; zero is the neutral state of a displacement field. decay()
       // returns false once the map is flat, so an idle map costs one early-out
       // instead of a texture rebuild every frame.
-      const fade = ps.get("displace.fade").value;
+      const fade = ps.get("displace.warpFade").value;
       if (fade > 0) warpEditor.decay(fade * dt * 4);
     }
 

@@ -588,6 +588,14 @@ ImWeb</textarea
                             Displacement Map Editor
                         </div>
                         <div id="warp-editor-container"></div>
+                        <!-- Performative drawing lives WITH the grid it drives,
+                             not in the generic Displacement group. The
+                             displace.warp* prefix keeps these out of
+                             #displace-params via the existing filter. -->
+                        <div class="panel-subsection">
+                            <div class="subsection-header">Performative Draw</div>
+                            <div id="warp-draw-params"></div>
+                        </div>
                     </div>
                 </div>
                 <!-- EFFECTS TAB -->
