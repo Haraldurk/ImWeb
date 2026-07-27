@@ -374,13 +374,18 @@ async function main() {
       ux = Math.cos(a);
       uy = Math.sin(a);
     }
-    // X is negated, Y is NOT — the two axes genuinely differ. The shader
-    // samples at `vUv + displacement`, so a positive map value pulls content
-    // from further along and the picture moves the other way; that needs
-    // undoing on X. On Y the screen's downward axis already matches the map's,
-    // so negating it as well flipped an axis that was correct. Empirically:
-    // before any negation X was wrong and Y was right.
-    warpEditor.brush(nx, ny, WARP_DRAW_RADIUS, strength, -ux, uy);
+    // BOTH axes are negated, for one reason: the shader samples at
+    // `vUv + displacement`, so a positive map value pulls content from further
+    // along that axis and the picture appears to move the opposite way. To push
+    // the image along (ux, uy) the map must store (-ux, -uy).
+    // Y was previously left un-negated to cancel out a uv() that handed this
+    // function a y-DOWN position. Now that uv() is y-up — matching the map,
+    // whose row 0 is the BOTTOM of the screen because DataTexture defaults to
+    // flipY:false — that compensation inverted the drag instead, and strokes
+    // pushed the image up when you drew down. Position and direction have to
+    // share one axis convention; fixing one without the other just moves the
+    // mirror from where the stroke lands to which way it smears.
+    warpEditor.brush(nx, ny, WARP_DRAW_RADIUS, strength, -ux, -uy);
     return true;
   }
   warpMaps.push(warpEditor.texture); // index 9 in SELECT = warpMaps[8]
@@ -391,14 +396,6 @@ async function main() {
 
   const scene3d = new SceneManager(renderer, W, H);
   await scene3d.createHypercube({ startDim: 4 });
-  // TEMP DIAG — remove after recon
-  {
-    const _sz   = renderer.getSize(new THREE.Vector2());
-    const _dbsz = renderer.getDrawingBufferSize(new THREE.Vector2());
-    console.log('[diag] renderer.getSize:', _sz.x, _sz.y);
-    console.log('[diag] renderer.getDrawingBufferSize:', _dbsz.x, _dbsz.y);
-    console.log('[diag] window.devicePixelRatio:', window.devicePixelRatio);
-  }
 
   ps.get('hypercube.faces.active').onChange(v => {
     scene3d.getHypercube()?.setFacesVisible(!!v);
@@ -7015,6 +7012,12 @@ void main() {
         overlayCtx.lineWidth = 1;
         const cols = warpEditor.cols,
           rows = warpEditor.rows;
+        // Y is flipped (1 - v) to match the map: DataTexture defaults to
+        // flipY:false, so control row 0 renders at the BOTTOM of the output.
+        // Drawn y-down, this overlay was an upside-down picture of the warp it
+        // claims to show. The flip has to wrap (nj + dy), not just nj — flipping
+        // the node but not its displacement would put the lines in the right
+        // places while bulging them the wrong way.
         // Horizontal lines
         for (let j = 0; j < rows; j++) {
           overlayCtx.beginPath();
@@ -7022,7 +7025,7 @@ void main() {
             const ni = i / (cols - 1),
               nj = j / (rows - 1);
             const { dx, dy } = warpEditor.dispAt(ni, nj);
-            overlayCtx.lineTo((ni + dx) * w, (nj + dy) * h);
+            overlayCtx.lineTo((ni + dx) * w, (1 - (nj + dy)) * h);
           }
           overlayCtx.stroke();
         }
@@ -7033,7 +7036,7 @@ void main() {
             const ni = i / (cols - 1),
               nj = j / (rows - 1);
             const { dx, dy } = warpEditor.dispAt(ni, nj);
-            overlayCtx.lineTo((ni + dx) * w, (nj + dy) * h);
+            overlayCtx.lineTo((ni + dx) * w, (1 - (nj + dy)) * h);
           }
           overlayCtx.stroke();
         }
