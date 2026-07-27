@@ -500,18 +500,21 @@ ImWeb</textarea
                                 <div id="slitscan-params"></div>
                             </div>
                         </div>
-                    <!-- VasulkaWarp — DEFERRED (2026-07-26, Phase 23 Step 3).
-                         Hidden, experimental, architecture unresolved; superseded
-                         by SequenceBuffer timewarp mode. The live vwarp.* render
-                         path in main.js is deprecated-but-load-bearing until that
-                         mode is stable — do not remove it with this markup.
-                         A duplicate block for the older vasulka.* namespace was
-                         deleted here; this vwarp.* one is the surviving copy.
+                    <!-- VasulkaWarp — RESTORED 2026-07-27 (Phase 24 Step 4).
+                         Source 22 is routable and its render path in main.js is
+                         live, so under the Phase 24 rule "routable ⇒ visible UI
+                         footprint" it must have a panel; offering it in every
+                         source dropdown with no way to switch it on was the
+                         inconsistency this fixes.
+                         Still experimental and superseded in intent by
+                         SequenceBuffer timewarp mode — the vwarp.* render path
+                         is deprecated-but-load-bearing until that is stable.
+                         An older duplicate for the vasulka.* namespace was
+                         deleted in Phase 23; this vwarp.* one is the survivor. -->
                     <div class="panel-section">
-                      <div class="section-header">Vasulka Warp</div>
-                      <div id="vwarp-params"></div>
+                        <div class="section-header">Vasulka Warp</div>
+                        <div id="vwarp-params"></div>
                     </div>
-                    -->
                     <div class="panel-section">
                         <div class="section-header">Frame Sequences</div>
                         <div id="seq-params"></div>
