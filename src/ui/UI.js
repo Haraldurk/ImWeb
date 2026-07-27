@@ -109,8 +109,11 @@ export function buildMappingPanels(ps, contextMenu) {
     // WarpDrawX/Y/Fade sit with the map editor they drive. They are named
     // displace.warp* so the filter above already excludes them from the
     // generic Displacement panel — no second exclusion list to keep in sync.
-    'warp-draw-params': ['displace.warpDrawX', 'displace.warpDrawY', 'displace.warpFade']
-      .map(id => ps.get(id)).filter(Boolean),
+    // Rule, not a list: any displace.warp* param except the editor's own
+    // WarpMode/WarpAmt belongs here. An explicit id list silently dropped the
+    // four params added after it, which is exactly what it was meant to avoid.
+    'warp-draw-params': ps.getGroup('displace').filter(p =>
+      p.id.startsWith('displace.warp') && p.id !== 'displace.warp' && p.id !== 'displace.warpamt'),
     'blend-params':    ps.getGroup('blend'),
     'color-params':    ps.getGroup('color'),
     // noise-params-top and noise-params are built by buildNoisePanel()
