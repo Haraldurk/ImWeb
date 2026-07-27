@@ -6274,17 +6274,25 @@ void main() {
       // slot drawing reaches, and a WarpAmt of 0 renders nothing at all.
       ps.set("displace.warp", WARP_CUSTOM_IDX);
       if (ps.get("displace.warpamt").value === 0) ps.set("displace.warpamt", 80);
-      wdrag = { ...uv(e), t: performance.now() };
+      wdrag = uv(e); // `t` used to be stamped here and never read
     });
     canvas.addEventListener("pointermove", (e) => {
       if (!wdrag || !active()) return;
-      const p = uv(e);
-      const now = performance.now();
+      // Coalesced events, the same way the Draw surface consumes them. The
+      // browser batches motion between frames into ONE pointermove, so a fast
+      // flick arrives as a single large step — and _warpStroke reads a step
+      // over WARP_JUMP_MAX as a teleport and draws nothing at all. The faster
+      // you moved, the less happened. Replaying the sub-events keeps every
+      // delta small, so the guard goes back to catching only real teleports
+      // (state recalls, a pointer re-entering the canvas).
       // autoSelect: entering Warp mode and dragging is unambiguous intent, so
       // the same narrow off→Custom switch applies. A deliberately chosen mode
       // (H-Wave, say) is still left alone, and the drag is then a no-op.
-      _warpStroke(p.x, p.y, p.x - wdrag.x, p.y - wdrag.y, true);
-      wdrag = { ...p, t: now };
+      for (const ce of e.getCoalescedEvents?.() ?? [e]) {
+        const p = uv(ce);
+        _warpStroke(p.x, p.y, p.x - wdrag.x, p.y - wdrag.y, true);
+        wdrag = p;
+      }
     });
     const endWarp = (e) => {
       if (!wdrag) return;
