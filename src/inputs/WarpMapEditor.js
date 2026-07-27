@@ -128,6 +128,35 @@ export class WarpMapEditor {
     this._rebuild();
   }
 
+  /**
+   * Global temporal decay — relax every control point toward zero, i.e. flat.
+   * Zero (not black) is the neutral state of a displacement field, which is why
+   * this heals toward flat rather than compositing anything over a texture;
+   * erase() above uses the same `*= (1 - w)` relaxation, locally.
+   *
+   * @param {number} k fraction of the remaining displacement to remove this
+   *   call, already scaled by frame time by the caller.
+   * @returns {boolean} true if anything moved — lets the caller skip the
+   *   texture rebuild once the map has gone completely flat.
+   */
+  decay(k) {
+    if (!(k > 0)) return false;
+    const f = Math.max(0, 1 - k);
+    let moved = false;
+    for (let i = 0; i < this.dx.length; i++) {
+      if (this.dx[i] === 0 && this.dy[i] === 0) continue;
+      this.dx[i] *= f;
+      this.dy[i] *= f;
+      // Snap the residue so the map reaches exactly flat instead of asymptoting
+      // forever and rebuilding the texture every frame for invisible values.
+      if (Math.abs(this.dx[i]) < 1e-5) this.dx[i] = 0;
+      if (Math.abs(this.dy[i]) < 1e-5) this.dy[i] = 0;
+      moved = true;
+    }
+    if (moved) this._rebuild();
+    return moved;
+  }
+
   // ── Presets ───────────────────────────────────────────────────────────────
 
   reset() {

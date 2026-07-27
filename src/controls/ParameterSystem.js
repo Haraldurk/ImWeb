@@ -817,6 +817,40 @@ export function registerCoreParameters(ps) {
     unit: "%",
   });
 
+  // ── Performative displacement drawing ─────────────────────────────────────
+  // Drive the Custom warp map from controllers (MIDI / LFO / OSC / Automation)
+  // instead of only by dragging in the little editor window. 0–100 to match the
+  // draw.x / draw.y convention rather than introducing a second scale.
+  //
+  // There is no on/off switch by design: the brush fires on the MOTION of the
+  // point, so a stationary pair of sliders does nothing and an LFO on X/Y
+  // produces an orbiting drag.
+  ps.register({
+    id: "displace.drawX",
+    label: "WarpDrawX",
+    group: "displace",
+    min: 0,
+    max: 100,
+    value: 50,
+  });
+  ps.register({
+    id: "displace.drawY",
+    label: "WarpDrawY",
+    group: "displace",
+    min: 0,
+    max: 100,
+    value: 50,
+  });
+  ps.register({
+    id: "displace.fade",
+    label: "WarpFade",
+    group: "displace",
+    min: 0,
+    max: 1,
+    value: 0, // 0 = no decay — old projects must render identically
+    step: 0.005,
+  });
+
   // ── Blend & Feedback ──────────────────────────────────────────────────────
   ps.register({
     id: "blend.active",
