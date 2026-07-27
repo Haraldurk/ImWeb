@@ -318,8 +318,8 @@ async function main() {
   let _warpDrawPrev = null;
   const WARP_DRAW_RADIUS = 0.18;    // UV space
   const WARP_CUSTOM_IDX = 9;        // "Custom" in displace.warp options → warpMaps[8]
-  const WARP_DRAW_GAIN = 1.0;       // displacement rate per unit of pointer speed
-  const WARP_DRAW_MAX_RATE = 0.6;   // ceiling on that rate, in UV/second
+  const WARP_DRAW_GAIN = 3.0;       // displacement per unit of distance dragged
+  const WARP_DRAW_MAX_STEP = 0.25;  // per-event ceiling, so one big step cannot spike
   const WARP_JUMP_MAX = 0.25;       // beyond this in one step it is a teleport
 
   /**
@@ -327,10 +327,9 @@ async function main() {
    * and by dragging on the main canvas.
    *
    * Two things make this behave rather than spike:
-   *  - Strength is a RATE scaled by dt. brush() is called every frame, so a
-   *    per-frame strength meant an LFO applied ~60 pushes/second and saturated
-   *    the ±0.49 clamp almost instantly. Rate × dt is also frame-rate
-   *    independent, so a 30fps tablet draws the same stroke as a 120Hz desktop.
+   *  - Strength is proportional to DISTANCE dragged, capped per event. This is
+   *    frame-rate independent for free — more events each moving less sum to
+   *    the same stroke — and it matches how the mini-editor calls brush().
    *  - A step larger than WARP_JUMP_MAX is a TELEPORT, not a gesture: a State
    *    recall or preset change snapping drawX from 10 to 90 would otherwise
    *    paint one enormous stroke across the map. Treated as pen-up — the
@@ -341,7 +340,7 @@ async function main() {
    *   already gated on Custom being selected.
    * @returns {boolean} true if a stroke was applied.
    */
-  function _warpStroke(nx, ny, ddx, ddy, dtSec, autoSelect = false) {
+  function _warpStroke(nx, ny, ddx, ddy, autoSelect = false) {
     const mag = Math.hypot(ddx, ddy);
     if (mag <= 1e-4) return false;      // stationary — nothing to draw
     if (mag > WARP_JUMP_MAX) return false; // teleport — pen-up
@@ -354,9 +353,16 @@ async function main() {
       const wp = ps.get("displace.warp");
       if (wp.value === 0 && !wp.controller) ps.set("displace.warp", WARP_CUSTOM_IDX);
     }
-    const speed = mag / Math.max(dtSec, 1e-4); // UV per second
-    const rate = Math.min(speed * WARP_DRAW_GAIN, WARP_DRAW_MAX_RATE);
     const amt = (ps.get("displace.warpDrawAmt")?.value ?? 100) / 100;
+    // Displacement is proportional to DISTANCE travelled, not to elapsed time.
+    // That is how a brush works, it matches how the mini-editor calls brush()
+    // (raw delta × strength, no dt), and it is inherently frame-rate
+    // independent: more events each moving less sum to the same stroke. The
+    // previous rate×dt form capped a stroke at ~0.6×dt ≈ 0.01 per event no
+    // matter how fast you moved, which is why it felt weak — and the main
+    // canvas is ~4× wider than the editor, so the same hand movement is ~4×
+    // less UV distance there.
+    const strength = Math.min(mag * WARP_DRAW_GAIN, WARP_DRAW_MAX_STEP) * amt;
 
     // Direction: motion by default. With warpDrawFixed on, every stroke pushes
     // along warpDrawAngle instead — a steady wind field you can aim, rather
@@ -368,12 +374,13 @@ async function main() {
       ux = Math.cos(a);
       uy = Math.sin(a);
     }
-    warpEditor.brush(
-      nx, ny,
-      WARP_DRAW_RADIUS,
-      rate * dtSec * amt, // strength for THIS frame, scaled by WarpDrawAmt
-      ux, uy,             // unit direction, per brush()'s contract
-    );
+    // Negated on purpose. The WARP shader samples at `vUv + displacement`, so a
+    // POSITIVE map value pulls content from further along and the image appears
+    // to move the OTHER way — dragging left pushed the picture right. Negating
+    // makes content follow the pointer, which is what dragging on an image
+    // should do. The mini-editor keeps its historical sign so existing saved
+    // slots and the 8 procedural maps are unaffected.
+    warpEditor.brush(nx, ny, WARP_DRAW_RADIUS, strength, -ux, -uy);
     return true;
   }
   warpMaps.push(warpEditor.texture); // index 9 in SELECT = warpMaps[8]
@@ -6267,13 +6274,10 @@ void main() {
       if (!wdrag || !active()) return;
       const p = uv(e);
       const now = performance.now();
-      // Real elapsed time between pointer samples, not the render dt — pointer
-      // events can coalesce or outpace frames.
-      const dtSec = Math.min(Math.max((now - wdrag.t) / 1000, 1e-3), 0.1);
       // autoSelect: entering Warp mode and dragging is unambiguous intent, so
       // the same narrow off→Custom switch applies. A deliberately chosen mode
       // (H-Wave, say) is still left alone, and the drag is then a no-op.
-      _warpStroke(p.x, p.y, p.x - wdrag.x, p.y - wdrag.y, dtSec, true);
+      _warpStroke(p.x, p.y, p.x - wdrag.x, p.y - wdrag.y, true);
       wdrag = { ...p, t: now };
     });
     const endWarp = (e) => {
@@ -6601,7 +6605,7 @@ void main() {
       const nx = ps.get("displace.warpDrawX").value / 100;
       const ny = ps.get("displace.warpDrawY").value / 100;
       if (_warpDrawPrev) {
-        _warpStroke(nx, ny, nx - _warpDrawPrev.x, ny - _warpDrawPrev.y, dt, true);
+        _warpStroke(nx, ny, nx - _warpDrawPrev.x, ny - _warpDrawPrev.y, true);
       }
       _warpDrawPrev = { x: nx, y: ny };
 
