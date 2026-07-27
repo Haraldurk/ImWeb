@@ -857,6 +857,21 @@ export function registerCoreParameters(ps) {
     unit: "%",
   });
   ps.register({
+    // Brush width for BOTH main-canvas drags and the WarpDrawX/Y param path —
+    // they share one _warpStroke, so they share one radius. Was a hardcoded
+    // 0.18: with control points clamping at ±0.49, a narrow brush saturates its
+    // peak and the warp simply stops growing, which is why the main canvas hit
+    // a wall the mini editor (radius slider to 0.50) did not. Stored as a
+    // percentage so it reads like every other param; _warpStroke divides by 100.
+    id: "displace.warpDrawRadius",
+    label: "WarpDrawRadius",
+    group: "displace",
+    min: 2,
+    max: 50,
+    value: 18, // = the old WARP_DRAW_RADIUS 0.18, so the default feel is unchanged
+    unit: "%",
+  });
+  ps.register({
     id: "displace.warpDrawFixed",
     label: "WarpDrawFixed",
     group: "displace",
