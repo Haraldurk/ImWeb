@@ -188,8 +188,12 @@
             <!-- RIGHT: Control panels -->
             <div id="control-panel">
                 <div id="tab-bar">
-                    <button class="tab active" data-tab="sources">Sources</button>
-                    <button class="tab" data-tab="mix">Mix</button>
+                    <!-- Mix is the default tab, not Sources: _collapseToLayers()
+                         auto-expands the section literally named "Layers", which
+                         lives here, so the app boots showing the active routing
+                         rather than a fully collapsed list. -->
+                    <button class="tab" data-tab="sources">Sources</button>
+                    <button class="tab active" data-tab="mix">Mix</button>
                     <button class="tab" data-tab="effects">Effects</button>
                     <button class="tab" data-tab="output">Output</button>
                     <button class="tab tab-sep" data-tab="scene3d">3D</button>
@@ -198,7 +202,7 @@
                     <button class="tab" data-tab="presets">Project</button>
                 </div>
                 <!-- SOURCES TAB -->
-                <div id="tab-sources" class="tab-content active">
+                <div id="tab-sources" class="tab-content">
                     <div class="panel-section">
                         <div class="section-header">Movie A</div>
                         <div
@@ -469,7 +473,7 @@ ImWeb</textarea
                     </div>
                 </div>
                 <!-- MIX TAB -->
-                <div id="tab-mix" class="tab-content">
+                <div id="tab-mix" class="tab-content active">
                     <div class="panel-section">
                         <div class="section-header">Layers</div>
                         <div id="layer-params"></div>
