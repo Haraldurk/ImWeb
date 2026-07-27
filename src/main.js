@@ -318,8 +318,8 @@ async function main() {
   let _warpDrawPrev = null;
   const WARP_DRAW_RADIUS = 0.18;    // UV space
   const WARP_CUSTOM_IDX = 9;        // "Custom" in displace.warp options → warpMaps[8]
-  const WARP_DRAW_GAIN = 3.0;       // displacement per unit of distance dragged
-  const WARP_DRAW_MAX_STEP = 0.25;  // per-event ceiling, so one big step cannot spike
+  const WARP_DRAW_GAIN = 10.0;      // displacement per unit of distance dragged
+  const WARP_DRAW_MAX_STEP = 0.4;   // per-event ceiling, so one big step cannot spike
   const WARP_JUMP_MAX = 0.25;       // beyond this in one step it is a teleport
 
   /**
@@ -374,13 +374,13 @@ async function main() {
       ux = Math.cos(a);
       uy = Math.sin(a);
     }
-    // Negated on purpose. The WARP shader samples at `vUv + displacement`, so a
-    // POSITIVE map value pulls content from further along and the image appears
-    // to move the OTHER way — dragging left pushed the picture right. Negating
-    // makes content follow the pointer, which is what dragging on an image
-    // should do. The mini-editor keeps its historical sign so existing saved
-    // slots and the 8 procedural maps are unaffected.
-    warpEditor.brush(nx, ny, WARP_DRAW_RADIUS, strength, -ux, -uy);
+    // X is negated, Y is NOT — the two axes genuinely differ. The shader
+    // samples at `vUv + displacement`, so a positive map value pulls content
+    // from further along and the picture moves the other way; that needs
+    // undoing on X. On Y the screen's downward axis already matches the map's,
+    // so negating it as well flipped an axis that was correct. Empirically:
+    // before any negation X was wrong and Y was right.
+    warpEditor.brush(nx, ny, WARP_DRAW_RADIUS, strength, -ux, uy);
     return true;
   }
   warpMaps.push(warpEditor.texture); // index 9 in SELECT = warpMaps[8]
@@ -6268,6 +6268,11 @@ void main() {
     canvas.addEventListener("pointerdown", (e) => {
       if (!active()) return;
       canvas.setPointerCapture(e.pointerId);
+      // Match the mini-editor: entering Warp mode and pressing is unambiguous
+      // intent, so make sure the result is actually visible. Custom is the only
+      // slot drawing reaches, and a WarpAmt of 0 renders nothing at all.
+      ps.set("displace.warp", WARP_CUSTOM_IDX);
+      if (ps.get("displace.warpamt").value === 0) ps.set("displace.warpamt", 80);
       wdrag = { ...uv(e), t: performance.now() };
     });
     canvas.addEventListener("pointermove", (e) => {
