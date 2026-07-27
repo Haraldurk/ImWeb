@@ -188,10 +188,11 @@
             <!-- RIGHT: Control panels -->
             <div id="control-panel">
                 <div id="tab-bar">
-                    <!-- Mix is the default tab, not Sources: _collapseToLayers()
-                         auto-expands the section literally named "Layers", which
-                         lives here, so the app boots showing the active routing
-                         rather than a fully collapsed list. -->
+                    <!-- Mix is the default tab, not Sources: the section marked
+                         data-default-open is the only one expanded on boot, and
+                         it lives here, so the app opens showing the active
+                         routing rather than a fully collapsed list. Keep this
+                         tab and that marker on the same tab. -->
                     <button class="tab" data-tab="sources">Sources</button>
                     <button class="tab active" data-tab="mix">Mix</button>
                     <button class="tab" data-tab="effects">Effects</button>
@@ -474,7 +475,11 @@ ImWeb</textarea
                 </div>
                 <!-- MIX TAB -->
                 <div id="tab-mix" class="tab-content active">
-                    <div class="panel-section">
+                    <!-- data-default-open marks the section left expanded on
+                         boot and on reset-all. It is the ONLY thing that
+                         decides this — the header text is free to change, and
+                         the marker can move to any section on any tab. -->
+                    <div class="panel-section" data-default-open="true">
                         <div class="section-header">Layers</div>
                         <div id="layer-params"></div>
                         <div id="mirror-params"></div>
