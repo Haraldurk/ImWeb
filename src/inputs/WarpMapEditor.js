@@ -225,6 +225,55 @@ export class WarpMapEditor {
     } catch (e) { return false; }
   }
 
+  /**
+   * Crossfade to a saved slot over `seconds` instead of snapping to it.
+   * Interruptible: calling it again retargets from wherever the fade has got
+   * to, so stabbing slot buttons mid-fade blends rather than jumps.
+   * `seconds <= 0` falls through to the instant load().
+   * @returns {boolean} false if the slot is empty.
+   */
+  beginMorph(slot, seconds) {
+    if (!(seconds > 0)) return this.load(slot);
+    try {
+      const all = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '{}');
+      const data = all[slot];
+      if (!data) return false;
+      this._morph = {
+        tx: new Float32Array(data.dx),
+        ty: new Float32Array(data.dy),
+        t: 0,
+        dur: seconds,
+      };
+      return true;
+    } catch (e) { return false; }
+  }
+
+  /**
+   * Advance an in-flight slot crossfade. Call once per frame.
+   * Lerps toward the target with an eased curve and snaps exactly on arrival,
+   * so the grid ends identical to load() rather than near it.
+   * @returns {boolean} true while a fade is running.
+   */
+  tickMorph(dt) {
+    const m = this._morph;
+    if (!m) return false;
+    m.t += dt;
+    const done = m.t >= m.dur;
+    // Fraction of the REMAINING distance to close this frame — framerate
+    // independent and naturally eased, same shape as the decay relaxation.
+    const k = done ? 1 : Math.min(1, dt / Math.max(m.dur - (m.t - dt), 1e-4));
+    for (let i = 0; i < this.dx.length; i++) {
+      this.dx[i] = done ? m.tx[i] : this.dx[i] + (m.tx[i] - this.dx[i]) * k;
+      this.dy[i] = done ? m.ty[i] : this.dy[i] + (m.ty[i] - this.dy[i]) * k;
+    }
+    this._rebuild();
+    if (done) this._morph = null;
+    return true;
+  }
+
+  /** True while a slot crossfade is running. */
+  get morphing() { return !!this._morph; }
+
   getSavedSlots() {
     try {
       return Object.keys(JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '{}'));
@@ -258,6 +307,7 @@ export class WarpMapEditor {
       }
     }
     this.texture.needsUpdate = true;
+    this.onRebuild?.(); // repaint the mini-editor view, if one is attached
   }
 
   /** Interpolated displacement at normalized position (for canvas preview). */

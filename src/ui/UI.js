@@ -2675,8 +2675,15 @@ export function buildWarpEditor(editor, ps, contextMenu) {
       btn.style.padding = '3px 0';
       if (hasSaved) btn.style.color = 'var(--accent)';
       btn.addEventListener('click', () => {
-        if (hasSaved) { editor.load(String(i)); drawMesh(); }
-        else { editor.save(String(i)); refreshSlots(); }
+        if (hasSaved) {
+          // displace.warpSlotFade > 0 crossfades the control-point grid instead
+          // of snapping. beginMorph falls through to load() at 0, so the
+          // default is byte-for-byte the old behaviour. The render loop's
+          // tickMorph drives it and repaints the mesh as it goes.
+          const secs = ps.get('displace.warpSlotFade')?.value ?? 0;
+          editor.beginMorph(String(i), secs);
+          drawMesh();
+        } else { editor.save(String(i)); refreshSlots(); }
       });
       btn.addEventListener('contextmenu', e => {
         e.preventDefault();
@@ -2697,6 +2704,11 @@ export function buildWarpEditor(editor, ps, contextMenu) {
       y: (nj + dy * DISP_SCALE) * CH,
     };
   }
+
+  // Repaint whenever the grid changes for ANY reason — param-driven strokes,
+  // main-canvas drags, temporal decay, slot crossfades — not just local
+  // interaction with this little canvas.
+  editor.onRebuild = () => drawMesh();
 
   function drawMesh() {
     ctx.clearRect(0, 0, CW, CH);
