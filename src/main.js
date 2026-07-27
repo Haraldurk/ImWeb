@@ -6257,12 +6257,14 @@ void main() {
   //    dragging the output. Claims its own mode index for the same reason the
   //    Draw surface above does: camera orbit (0) and the pad (1) gate on theirs,
   //    so a bare listener would have made every orbit drag also smear the map.
-  //    Straight rect mapping, matching the param path's convention (y down).
+  //    Y is flipped (1 - v): the warp map is sampled y-up like the param path
+  //    (displace.warpDrawY), while pointer coords are y-down — without the flip
+  //    a stroke at the top of the output smears the bottom of the image.
   {
     let wdrag = null;
     const uv = (e) => {
       const r = canvas.getBoundingClientRect();
-      return { x: (e.clientX - r.left) / r.width, y: (e.clientY - r.top) / r.height };
+      return { x: (e.clientX - r.left) / r.width, y: 1 - (e.clientY - r.top) / r.height };
     };
     const active = () => (ps.get("touch.mode")?.value ?? 2) === 4;
     canvas.addEventListener("pointerdown", (e) => {
