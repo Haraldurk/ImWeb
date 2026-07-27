@@ -390,6 +390,59 @@ async function main() {
     warpEditor.brush(nx, ny, radius, strength, -ux, -uy);
     return true;
   }
+  // ── Warp slot / preset recall ─────────────────────────────────────────────
+  // ONE implementation, reached three ways: the editor's own buttons, the
+  // displace.warpSlot / displace.warpPreset SELECT params, and any controller
+  // (LFO/MIDI/OSC/random) driving those params. The buttons SET the param
+  // rather than recalling directly, so the badge and the grid can never
+  // disagree about what was last recalled — the same shape glsl.preset uses.
+  //
+  // Both honour displace.warpSlotFade for free, because they route through
+  // beginMorph/applyPreset, which already crossfade when handed seconds > 0.
+  // Derived from the param, never hand-copied: the SELECT options ARE the list,
+  // minus the leading "—" no-op. Three copies of these eight names (here, the
+  // param, the editor's buttons) is precisely how the source list once drifted
+  // into six copies with three of them wrong.
+  const WARP_PRESET_NAMES = ps.get("displace.warpPreset").options.slice(1);
+
+  /** Recall saved slot 1–16. Returns false for 0/out-of-range/empty slot. */
+  function _recallWarpSlot(i) {
+    if (!(i >= 1 && i <= 16)) return false;
+    const secs = ps.get("displace.warpSlotFade")?.value ?? 0;
+    // beginMorph returns false for an empty slot — don't switch WarpMode or
+    // raise WarpAmt for a recall that put nothing on screen.
+    if (!warpEditor.beginMorph(String(i), secs)) return false;
+    ps.set("displace.warp", WARP_CUSTOM_IDX);
+    if (ps.get("displace.warpamt").value === 0) ps.set("displace.warpamt", 80);
+    return true;
+  }
+
+  /** Fire procedural preset 1–8 (see WARP_PRESET_NAMES). 0 is a no-op. */
+  function _recallWarpPreset(i) {
+    const name = WARP_PRESET_NAMES[i - 1];
+    if (!name) return false;
+    const secs = ps.get("displace.warpSlotFade")?.value ?? 0;
+    if (name === "Reset") {
+      // Reset is the one preset that must NOT force Custom mode on: it clears
+      // the map, so activating it would show a flat warp instead of whatever
+      // procedural mode was selected.
+      if (secs > 0) warpEditor.morphToFlat(secs); else warpEditor.reset();
+      return true;
+    }
+    warpEditor.applyPreset(name, 0.35, secs);
+    ps.set("displace.warp", WARP_CUSTOM_IDX);
+    if (ps.get("displace.warpamt").value === 0) ps.set("displace.warpamt", 50);
+    return true;
+  }
+
+  // Attached so buildWarpEditor's buttons can reach the same code without
+  // importing main.js — the pattern drawLayer.attachDrawSurface already uses.
+  // Safe by construction: this runs at module setup, buildWarpEditor much later.
+  warpEditor.recallSlot   = _recallWarpSlot;
+  warpEditor.recallPreset = _recallWarpPreset;
+  ps.get("displace.warpSlot").onChange((v)   => _recallWarpSlot(Math.round(v)));
+  ps.get("displace.warpPreset").onChange((v) => _recallWarpPreset(Math.round(v)));
+
   warpMaps.push(warpEditor.texture); // index 9 in SELECT = warpMaps[8]
   const drawLayer = new DrawLayer();
   const strokeLooper = new StrokeLooper(drawLayer, ps);

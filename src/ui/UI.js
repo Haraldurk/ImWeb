@@ -112,8 +112,17 @@ export function buildMappingPanels(ps, contextMenu) {
     // Rule, not a list: any displace.warp* param except the editor's own
     // WarpMode/WarpAmt belongs here. An explicit id list silently dropped the
     // four params added after it, which is exactly what it was meant to avoid.
-    'warp-draw-params': ps.getGroup('displace').filter(p =>
-      p.id.startsWith('displace.warp') && p.id !== 'displace.warp' && p.id !== 'displace.warpamt'),
+    // ...plus displace.warpSlot, appended by id because it is the one warp
+    // param NOT in the displace group: it is group 'global' so Display States
+    // cannot capture it (slot contents live in per-origin localStorage, so a
+    // captured index would recall a different map elsewhere). The rule still
+    // governs everything else — this is a stated exception, not a return to
+    // the explicit id list that used to drop newly added params.
+    'warp-draw-params': [
+      ...ps.getGroup('displace').filter(p =>
+        p.id.startsWith('displace.warp') && p.id !== 'displace.warp' && p.id !== 'displace.warpamt'),
+      ps.get('displace.warpSlot'),
+    ].filter(Boolean),
     'blend-params':    ps.getGroup('blend'),
     'color-params':    ps.getGroup('color'),
     // noise-params-top and noise-params are built by buildNoisePanel()
@@ -142,7 +151,11 @@ export function buildMappingPanels(ps, contextMenu) {
     'effect-params':   ps.getGroup('effect'),
     // glsl.preset is global-group only to escape state capture — its row
     // (badge + dropdown) lives in the GLSL panel, built in main.js
-    'global-params':       ps.getGroup('global').filter(p => p.id !== 'glsl.preset'),
+    // Excluded: params that are group 'global' only to dodge Display State
+    // capture, and that already have a home in their own feature panel. They
+    // are 'global' for persistence reasons, not because they belong here.
+    'global-params':       ps.getGroup('global').filter(p =>
+      p.id !== 'glsl.preset' && p.id !== 'displace.warpSlot'),
     // particle-params rendered separately below (legacy + v2 split)
     // 'particle-params': ps.getGroup('particle'),
     'sdf-params':          ps.getGroup('sdf'),
@@ -2644,22 +2657,22 @@ export function buildWarpEditor(editor, ps, contextMenu) {
   presetRow.className = 'warp-presets';
   container.appendChild(presetRow);
 
-  const presets = ['H-Wave','V-Wave','Radial','Pinch','Spiral','Shear','Random','Reset'];
+  // Derived from the SELECT options (minus the leading "—" no-op), so the
+  // buttons, the param and main.js's recall can never disagree about order —
+  // and adding a preset means editing one list, not three.
+  const presets = ps.get('displace.warpPreset').options.slice(1);
   presets.forEach(name => {
     const btn = document.createElement('button');
     btn.className = 'warp-preset-btn';
     btn.textContent = name;
     btn.addEventListener('click', () => {
-      // Presets honour displace.warpSlotFade, like slot recall — clicking
-      // H-Wave with a 2s fade eases into the shape instead of snapping.
-      const secs = ps.get('displace.warpSlotFade')?.value ?? 0;
-      if (name === 'Reset') {
-        if (secs > 0) editor.morphToFlat(secs); else editor.reset();
-      } else {
-        editor.applyPreset(name, 0.35, secs);
-        ps.set('displace.warp', 9);                           // activate Custom mode
-        if (ps.get('displace.warpamt').value === 0) ps.set('displace.warpamt', 50);
-      }
+      // Route through displace.warpPreset so the button, a MIDI note and an
+      // LFO all reach the same recall in main.js. Re-clicking the SAME preset
+      // must still re-fire — Random especially — and setting a param to the
+      // value it already holds emits no onChange, so recall directly then.
+      const idx = presets.indexOf(name) + 1;
+      if (ps.get('displace.warpPreset').value === idx) editor.recallPreset?.(idx);
+      else ps.set('displace.warpPreset', idx);
       drawMesh();
     });
     presetRow.appendChild(btn);
@@ -2688,12 +2701,15 @@ export function buildWarpEditor(editor, ps, contextMenu) {
       if (hasSaved) btn.style.color = 'var(--accent)';
       btn.addEventListener('click', () => {
         if (hasSaved) {
-          // displace.warpSlotFade > 0 crossfades the control-point grid instead
-          // of snapping. beginMorph falls through to load() at 0, so the
-          // default is byte-for-byte the old behaviour. The render loop's
-          // tickMorph drives it and repaints the mesh as it goes.
-          const secs = ps.get('displace.warpSlotFade')?.value ?? 0;
-          editor.beginMorph(String(i), secs);
+          // LOADING routes through displace.warpSlot so a click, a MIDI note
+          // and an LFO all reach one recall in main.js (which still applies
+          // warpSlotFade — beginMorph falls through to load() at 0, so the
+          // default stays byte-for-byte the old behaviour). Re-clicking the
+          // slot already selected fires no onChange, so recall directly then.
+          // SAVING stays local: it writes storage rather than recalling, and
+          // has no business moving a controller-visible param.
+          if (ps.get('displace.warpSlot').value === i) editor.recallSlot?.(i);
+          else ps.set('displace.warpSlot', i);
           drawMesh();
         } else { editor.save(String(i)); refreshSlots(); }
       });
