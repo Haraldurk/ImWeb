@@ -322,13 +322,20 @@ export class WarpMapEditor {
   _rebuild() {
     const d = this._data;
     const c = this.cols, r = this.rows;
+    // Texel CENTRES, not texel corners. The shader reads this map with
+    // texture2D(uWarpMap, vUv) under LinearFilter, so the value stored in texel
+    // n is sampled at UV (n + 0.5) / TEX_SIZE. Authoring it for n / (TEX_SIZE-1)
+    // instead put the whole field a half-texel out of register: the map ended up
+    // squeezed toward the centre by 127/128, exact in the middle and ~0.4% of the
+    // canvas off at the edges. That is why a brush stroke landed on the pointer
+    // in the centre of the output and drifted the further out you drew.
     for (let py = 0; py < TEX_SIZE; py++) {
-      const ny = py / (TEX_SIZE - 1);
+      const ny = (py + 0.5) / TEX_SIZE;
       const gj = ny * (r - 1);
       const j0 = Math.min(Math.floor(gj), r - 2);
       const t  = gj - j0;
       for (let px = 0; px < TEX_SIZE; px++) {
-        const nx  = px / (TEX_SIZE - 1);
+        const nx  = (px + 0.5) / TEX_SIZE;
         const gi  = nx * (c - 1);
         const i0  = Math.min(Math.floor(gi), c - 2);
         const s   = gi - i0;
