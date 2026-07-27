@@ -2574,7 +2574,13 @@ export function buildWarpEditor(editor, ps, contextMenu) {
   container.appendChild(warpAmtRow);
 
   const CW = 288, CH = 200; // canvas display size in px
-  const DISP_SCALE = 2.5;   // amplify displacements for visual clarity
+  // 1.0 = truthful. This was 2.5 "for visual clarity", but control points clamp
+  // at ±0.49 and a preset like H-Wave already reaches 0.35, so 2.5× drew nodes
+  // up to 1.2 canvas-widths from home — the mesh exploded off-canvas for warps
+  // the video renders calmly. It also disagreed with the main-canvas grid
+  // overlay, which draws unscaled: two views of one grid must not use two
+  // scales, or neither can be trusted as a preview.
+  const DISP_SCALE = 1.0;
 
   // ── Canvas ────────────────────────────────────────────────────────────────
   const canvas = document.createElement('canvas');
@@ -2825,12 +2831,24 @@ export function buildWarpEditor(editor, ps, contextMenu) {
         // way. Without this, dragging left pushed the picture right. Only the
         // INPUT is flipped — stored maps are untouched, so every saved slot and
         // procedural preset renders exactly as before.
-        // 20, not 60. The editor canvas is roughly a quarter the width of the
-        // output, so an identical hand movement produces a much larger
-        // normalised delta here — the same multiplier makes this window far
-        // more sensitive than the main canvas. Main-canvas gain lives in
-        // main.js (WARP_DRAW_GAIN) and is deliberately separate.
-        editor.brush(nx, ny, brushRadius, brushStrength * 20, -ddx * sign, ddy * sign);
+        //
+        // UNIT direction × distance-proportional strength — the same formula as
+        // main.js/_warpStroke. This used to pass the raw per-event delta as the
+        // direction, which multiplies the movement in twice: brush() already
+        // scales by `strength`, so a 1px step here (~0.0035 UV on a 288px
+        // canvas) pushed by 0.0035 × strength instead of 1.0 × strength. That
+        // is ~30× weaker than the main canvas and is why this window barely
+        // drew. The old comment blamed the canvas being small and dialled the
+        // multiplier down to compensate, which made it weaker still — the
+        // canvas size is irrelevant once the direction is normalised.
+        const mag = Math.hypot(ddx, ddy);
+        if (mag > 1e-5) {
+          const ux = ddx / mag, uy = ddy / mag;
+          // 0.015 is the slider's unity point: at the default this matches the
+          // main canvas exactly, and the slider scales ~0.13× to ~5.3× around it.
+          const s = Math.min(mag * 10, 0.4) * (brushStrength / 0.015);
+          editor.brush(nx, ny, brushRadius, s, -ux * sign, uy * sign);
+        }
       } else if (activeTool === 'smooth') {
         editor.smooth(nx, ny, brushRadius, brushStrength * 5);
       } else if (activeTool === 'erase') {
