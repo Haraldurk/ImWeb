@@ -316,7 +316,8 @@ async function main() {
   // derives its direction from the delta. null until the first tick so a fresh
   // load never brushes from a phantom origin.
   let _warpDrawPrev = null;
-  const WARP_DRAW_RADIUS = 0.18;    // UV space
+  // Brush radius now lives in displace.warpDrawRadius (percent) so it can be
+  // dialled and controllered like everything else — see _warpStroke.
   const WARP_CUSTOM_IDX = 9;        // "Custom" in displace.warp options → warpMaps[8]
   const WARP_DRAW_GAIN = 10.0;      // displacement per unit of distance dragged
   const WARP_DRAW_MAX_STEP = 0.4;   // per-event ceiling, so one big step cannot spike
@@ -385,7 +386,8 @@ async function main() {
     // pushed the image up when you drew down. Position and direction have to
     // share one axis convention; fixing one without the other just moves the
     // mirror from where the stroke lands to which way it smears.
-    warpEditor.brush(nx, ny, WARP_DRAW_RADIUS, strength, -ux, -uy);
+    const radius = (ps.get("displace.warpDrawRadius")?.value ?? 18) / 100;
+    warpEditor.brush(nx, ny, radius, strength, -ux, -uy);
     return true;
   }
   warpMaps.push(warpEditor.texture); // index 9 in SELECT = warpMaps[8]
