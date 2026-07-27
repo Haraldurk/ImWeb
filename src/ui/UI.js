@@ -2710,7 +2710,7 @@ export function buildWarpEditor(editor, ps, contextMenu) {
     // colouring nearby uses magnitude only, so it is unaffected.
     return {
       x: (ni - dx * DISP_SCALE) * CW,
-      y: (nj - dy * DISP_SCALE) * CH,
+      y: (nj + dy * DISP_SCALE) * CH,
     };
   }
 
@@ -2799,9 +2799,12 @@ export function buildWarpEditor(editor, ps, contextMenu) {
     _rightBtn = (e.button === 2);
     const { nx, ny } = evToNorm(e);
     _lastX = nx; _lastY = ny;
-    // Activate Custom warp mode automatically
+    // Activate Custom warp mode automatically, but only RAISE WarpAmt when it
+    // is zero — this used to force 80% on every mousedown, discarding whatever
+    // you had dialled in. The main canvas does the same thing, so both drawing
+    // surfaces now behave identically.
     ps.set('displace.warp', 9);
-    ps.set('displace.warpamt', 80);
+    if (ps.get('displace.warpamt').value === 0) ps.set('displace.warpamt', 80);
   });
   canvas.addEventListener('contextmenu', e => e.preventDefault());
 
@@ -2819,7 +2822,7 @@ export function buildWarpEditor(editor, ps, contextMenu) {
         // way. Without this, dragging left pushed the picture right. Only the
         // INPUT is flipped — stored maps are untouched, so every saved slot and
         // procedural preset renders exactly as before.
-        editor.brush(nx, ny, brushRadius, brushStrength * 60, -ddx * sign, -ddy * sign);
+        editor.brush(nx, ny, brushRadius, brushStrength * 60, -ddx * sign, ddy * sign);
       } else if (activeTool === 'smooth') {
         editor.smooth(nx, ny, brushRadius, brushStrength * 5);
       } else if (activeTool === 'erase') {
