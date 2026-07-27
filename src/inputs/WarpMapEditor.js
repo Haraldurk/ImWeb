@@ -165,8 +165,16 @@ export class WarpMapEditor {
     this._rebuild();
   }
 
-  applyPreset(name, amount = 0.35) {
-    this.reset();
+  /** Ease back to a flat grid over `seconds`; Reset's timed counterpart. */
+  morphToFlat(seconds) {
+    if (!(seconds > 0)) { this.reset(); return true; }
+    return this._startMorph(new Float32Array(this.dx.length), new Float32Array(this.dy.length), seconds);
+  }
+
+  /** Compute a preset's control-point arrays without touching current state. */
+  _presetArrays(name, amount = 0.35) {
+    const outX = new Float32Array(this.dx.length);
+    const outY = new Float32Array(this.dy.length);
     const c = this.cols, r = this.rows;
     for (let j = 0; j < r; j++) {
       for (let i = 0; i < c; i++) {
@@ -196,10 +204,23 @@ export class WarpMapEditor {
           case 'Shear':   dx = (y - 0.5) * amount * 1.2; dy = (x - 0.5) * amount * 1.2; break;
           case 'Random':  dx = (Math.random() - 0.5) * amount; dy = (Math.random() - 0.5) * amount; break;
         }
-        this.dx[idx] = Math.max(-0.49, Math.min(0.49, dx));
-        this.dy[idx] = Math.max(-0.49, Math.min(0.49, dy));
+        outX[idx] = Math.max(-0.49, Math.min(0.49, dx));
+        outY[idx] = Math.max(-0.49, Math.min(0.49, dy));
       }
     }
+    return { dx: outX, dy: outY };
+  }
+
+  /**
+   * Apply a procedural preset. With `seconds > 0` it eases to the shape
+   * instead of snapping, using the same crossfade as slot recall — so the
+   * preset buttons honour displace.warpSlotFade too.
+   */
+  applyPreset(name, amount = 0.35, seconds = 0) {
+    const target = this._presetArrays(name, amount);
+    if (seconds > 0) return this._startMorph(target.dx, target.dy, seconds);
+    this.dx = target.dx;
+    this.dy = target.dy;
     this._rebuild();
   }
 
@@ -238,14 +259,25 @@ export class WarpMapEditor {
       const all = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '{}');
       const data = all[slot];
       if (!data) return false;
-      this._morph = {
-        tx: new Float32Array(data.dx),
-        ty: new Float32Array(data.dy),
-        t: 0,
-        dur: seconds,
-      };
+      this._startMorph(new Float32Array(data.dx), new Float32Array(data.dy), seconds);
       return true;
     } catch (e) { return false; }
+  }
+
+  /**
+   * Begin an eased crossfade to arbitrary target arrays. Snapshots the CURRENT
+   * grid as the start point, which is what makes smoothstep possible — the
+   * previous form closed a fraction of the remaining distance each frame, an
+   * exponential ease-OUT with no ease-in and no true endpoint.
+   * Interruptible: re-targeting mid-fade snapshots wherever it has reached.
+   */
+  _startMorph(tx, ty, seconds) {
+    this._morph = {
+      fx: new Float32Array(this.dx),
+      fy: new Float32Array(this.dy),
+      tx, ty, t: 0, dur: seconds,
+    };
+    return true;
   }
 
   /**
@@ -258,13 +290,18 @@ export class WarpMapEditor {
     const m = this._morph;
     if (!m) return false;
     m.t += dt;
-    const done = m.t >= m.dur;
-    // Fraction of the REMAINING distance to close this frame — framerate
-    // independent and naturally eased, same shape as the decay relaxation.
-    const k = done ? 1 : Math.min(1, dt / Math.max(m.dur - (m.t - dt), 1e-4));
+    // Epsilon: accumulated dt drifts (10 x 0.1 sums to 0.999...), which would
+    // otherwise leave the fade running an extra frame short of its end.
+    const done = m.t >= m.dur - 1e-6;
+    // smoothstep: eases in AND out, unlike the exponential relaxation this
+    // replaced. Interpolating from a snapshotted START rather than from the
+    // current value is what allows a non-monotonic curve — and it lands on the
+    // target exactly, instead of asymptotically approaching it.
+    const p = done ? 1 : Math.min(1, Math.max(0, m.t / m.dur));
+    const s = p * p * (3 - 2 * p);
     for (let i = 0; i < this.dx.length; i++) {
-      this.dx[i] = done ? m.tx[i] : this.dx[i] + (m.tx[i] - this.dx[i]) * k;
-      this.dy[i] = done ? m.ty[i] : this.dy[i] + (m.ty[i] - this.dy[i]) * k;
+      this.dx[i] = m.fx[i] + (m.tx[i] - m.fx[i]) * s;
+      this.dy[i] = m.fy[i] + (m.ty[i] - m.fy[i]) * s;
     }
     this._rebuild();
     if (done) this._morph = null;
