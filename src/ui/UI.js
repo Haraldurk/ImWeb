@@ -106,6 +106,11 @@ export function buildMappingPanels(ps, contextMenu) {
     'mirror-params':   [ps.get('camera.device'), ...ps.getGroup('mirror')].filter(Boolean),
     'keyer-params':    ps.getGroup('keyer'),
     'displace-params': ps.getGroup('displace').filter(p => !p.id.startsWith('displace.warp')),
+    // WarpDrawX/Y/Fade sit with the map editor they drive. They are named
+    // displace.warp* so the filter above already excludes them from the
+    // generic Displacement panel — no second exclusion list to keep in sync.
+    'warp-draw-params': ['displace.warpDrawX', 'displace.warpDrawY', 'displace.warpFade']
+      .map(id => ps.get(id)).filter(Boolean),
     'blend-params':    ps.getGroup('blend'),
     'color-params':    ps.getGroup('color'),
     // noise-params-top and noise-params are built by buildNoisePanel()
