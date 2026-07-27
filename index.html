@@ -188,11 +188,17 @@
             <!-- RIGHT: Control panels -->
             <div id="control-panel">
                 <div id="tab-bar">
-                    <!-- Mix is the default tab, not Sources: the section marked
-                         data-default-open is the only one expanded on boot, and
-                         it lives here, so the app opens showing the active
-                         routing rather than a fully collapsed list. Keep this
-                         tab and that marker on the same tab. -->
+                    <!-- The `active` classes below are a FIRST-PAINT HINT, not
+                         the source of truth. activateDefaultTab() in main.js
+                         derives the landing tab from whichever .panel-section
+                         carries data-default-open and overrides these as soon
+                         as the module evaluates.
+                         They cannot be removed: every .tab-content is
+                         display:none until something is marked active, and the
+                         module graph takes a real interval to load — without a
+                         hint the control panel paints blank until then, and
+                         stays blank forever if the module fails to load.
+                         Keep this hint pointing at the marked section's tab. -->
                     <button class="tab" data-tab="sources">Sources</button>
                     <button class="tab active" data-tab="mix">Mix</button>
                     <button class="tab" data-tab="effects">Effects</button>
