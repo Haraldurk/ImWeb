@@ -188,28 +188,32 @@
             <!-- RIGHT: Control panels -->
             <div id="control-panel">
                 <div id="tab-bar">
-                    <!-- The `active` classes below are a FIRST-PAINT HINT, not
-                         the source of truth. activateDefaultTab() in main.js
-                         derives the landing tab from whichever .panel-section
-                         carries data-default-open and overrides these as soon
-                         as the module evaluates.
-                         They cannot be removed: every .tab-content is
-                         display:none until something is marked active, and the
-                         module graph takes a real interval to load — without a
-                         hint the control panel paints blank until then, and
-                         stays blank forever if the module fails to load.
-                         Keep this hint pointing at the marked section's tab. -->
+                    <!-- Five fixed tabs = the signal flow. Phase 24 retires the 3D /
+                         Analog / Draw tabs; those become workspaces opened from their row
+                         in Sources. Their .tab-content divs remain in the DOM (main.js
+                         still targets #tab-scene3d) and are reachable again once the
+                         workspace router lands in Step 2.
+                         The active classes are a FIRST-PAINT HINT only — activateDefaultTab()
+                         derives the real landing tab from data-default-open. -->
                     <button class="tab" data-tab="sources">Sources</button>
                     <button class="tab active" data-tab="mix">Mix</button>
                     <button class="tab" data-tab="effects">Effects</button>
                     <button class="tab" data-tab="output">Output</button>
-                    <button class="tab tab-sep" data-tab="scene3d">3D</button>
-                    <button class="tab" data-tab="analog">Analog</button>
-                    <button class="tab" data-tab="draw">Draw</button>
                     <button class="tab" data-tab="presets">Project</button>
+                    <!-- Contextual workspace tab is injected here by Step 2. -->
+                    <span id="tab-workspace-slot"></span>
                 </div>
                 <!-- SOURCES TAB -->
                 <div id="tab-sources" class="tab-content">
+                    <div class="panel-group">
+                        <div class="group-header">Live In</div>
+                        <div class="panel-section">
+                            <div class="section-header">Sound</div>
+                            <div id="sound-params"></div>
+                        </div>
+                    </div>
+                    <div class="panel-group">
+                        <div class="group-header">Media</div>
                     <div class="panel-section">
                         <div class="section-header">Movie A</div>
                         <div
@@ -303,14 +307,28 @@
                             <div id="buffer-params"></div>
                         </div>
                     </div>
-                    <div class="panel-section">
-                        <div class="section-header">Color / Gradient</div>
-                        <div id="color-params"></div>
+                        <div class="panel-section">
+                            <div class="section-header">BG1</div>
+                            <div id="bg1-params"></div>
+                        </div>
+                        <div class="panel-section">
+                            <div class="section-header">BG2</div>
+                            <div id="bg2-params"></div>
+                        </div>
                     </div>
-                    <div class="panel-section">
-                        <div class="section-header">Palette</div>
-                        <div id="palette-params"></div>
-                    </div>
+                    <div class="panel-group">
+                        <div class="group-header">Generators</div>
+                        <div class="panel-section">
+                            <div class="section-header">Color / Gradient</div>
+                            <div class="panel-subsection">
+                                <div class="subsection-header">Solid &amp; Gradient</div>
+                                <div id="color-params"></div>
+                            </div>
+                            <div class="panel-subsection">
+                                <div class="subsection-header">Palette</div>
+                                <div id="palette-params"></div>
+                            </div>
+                        </div>
                     <div class="panel-section">
                         <div class="section-header">Noise</div>
                         <div id="noise-params-top"></div>
@@ -351,88 +369,6 @@
                             </label>
                         </div>
                         <div id="noise-params"></div>
-                    </div>
-                    <!-- Text Layer (merged from former Text tab; wrapper id kept for JS) -->
-                    <div id="tab-text">
-                        <div class="panel-section">
-                            <div class="section-header">Text Layer</div>
-                            <canvas
-                                id="text-preview"
-                                width="256"
-                                height="256"
-                                style="
-                                    display: block;
-                                    width: 100%;
-                                    image-rendering: pixelated;
-                                    border: 1px solid var(--border);
-                                    background: #000;
-                                "
-                            ></canvas>
-                            <textarea
-                                id="text-content"
-                                rows="4"
-                                spellcheck="false"
-                                style="
-                                    width: 100%;
-                                    box-sizing: border-box;
-                                    margin-top: 6px;
-                                    font-family: var(--mono);
-                                    font-size: 12px;
-                                    background: var(--bg-4);
-                                    border: 1px solid var(--border);
-                                    color: var(--text-1);
-                                    padding: 6px;
-                                    border-radius: 3px;
-                                    resize: vertical;
-                                "
-                            >
-ImWeb</textarea
-                            >
-                            <div style="display: flex; gap: 6px; padding: 4px 0">
-                                <button id="btn-text-advance" class="import-btn">
-                                    → Advance
-                                </button>
-                                <button id="btn-text-reset" class="import-btn">
-                                    ↩ Reset
-                                </button>
-                            </div>
-                        </div>
-                        <div class="panel-section">
-                            <div class="section-header">Style</div>
-                            <div id="text-params"></div>
-                        </div>
-                    </div>
-                    <div class="panel-section">
-                        <div class="section-header">Video Delay</div>
-                        <div id="delay-params"></div>
-                    </div>
-                    <div class="panel-section">
-                        <div class="section-header">Time Displace</div>
-                        <div id="tdisp-params"></div>
-                    </div>
-                    <div class="panel-section">
-                        <div class="section-header">Slit Scan</div>
-                        <div id="slitscan-params"></div>
-                    </div>
-                    <div class="panel-section">
-                        <div class="section-header">Vectorscope</div>
-                        <div id="vectorscope-params"></div>
-                    </div>
-                    <!-- VasulkaWarp — DEFERRED (2026-07-26, Phase 23 Step 3).
-                         Hidden, experimental, architecture unresolved; superseded
-                         by SequenceBuffer timewarp mode. The live vwarp.* render
-                         path in main.js is deprecated-but-load-bearing until that
-                         mode is stable — do not remove it with this markup.
-                         A duplicate block for the older vasulka.* namespace was
-                         deleted here; this vwarp.* one is the surviving copy.
-                    <div class="panel-section">
-                      <div class="section-header">Vasulka Warp</div>
-                      <div id="vwarp-params"></div>
-                    </div>
-                    -->
-                    <div class="panel-section">
-                        <div class="section-header">Frame Sequences</div>
-                        <div id="seq-params"></div>
                     </div>
                     <div class="panel-section">
                         <div class="section-header">Particles</div>
@@ -477,6 +413,97 @@ ImWeb</textarea
                     <div class="panel-section">
                         <div class="section-header">Metaballs</div>
                         <div id="sdf-params"></div>
+                    </div>
+                        <div class="panel-section">
+                            <div class="section-header">Text</div>
+                    <!-- Text Layer (merged from former Text tab; wrapper id kept for JS) -->
+                        <div class="panel-subsection">
+                            <div class="subsection-header">Content</div>
+                            <canvas
+                                id="text-preview"
+                                width="256"
+                                height="256"
+                                style="
+                                    display: block;
+                                    width: 100%;
+                                    image-rendering: pixelated;
+                                    border: 1px solid var(--border);
+                                    background: #000;
+                                "
+                            ></canvas>
+                            <textarea
+                                id="text-content"
+                                rows="4"
+                                spellcheck="false"
+                                style="
+                                    width: 100%;
+                                    box-sizing: border-box;
+                                    margin-top: 6px;
+                                    font-family: var(--mono);
+                                    font-size: 12px;
+                                    background: var(--bg-4);
+                                    border: 1px solid var(--border);
+                                    color: var(--text-1);
+                                    padding: 6px;
+                                    border-radius: 3px;
+                                    resize: vertical;
+                                "
+                            >
+ImWeb</textarea
+                            >
+                            <div style="display: flex; gap: 6px; padding: 4px 0">
+                                <button id="btn-text-advance" class="import-btn">
+                                    → Advance
+                                </button>
+                                <button id="btn-text-reset" class="import-btn">
+                                    ↩ Reset
+                                </button>
+                            </div>
+                        </div>
+                        <div class="panel-subsection">
+                            <div class="subsection-header">Style</div>
+                            <div id="text-params"></div>
+                        </div>
+                    
+                        </div>
+                    </div>
+                    <div class="panel-group">
+                        <div class="group-header">From the Signal</div>
+                    <div class="panel-section">
+                        <div class="section-header">Video Delay</div>
+                        <div id="delay-params"></div>
+                    </div>
+                        <div class="panel-section">
+                            <div class="section-header">Time FX</div>
+                            <div class="panel-subsection">
+                                <div class="subsection-header">Time Displace</div>
+                                <div id="tdisp-params"></div>
+                            </div>
+                            <div class="panel-subsection">
+                                <div class="subsection-header">Slit Scan</div>
+                                <div id="slitscan-params"></div>
+                            </div>
+                        </div>
+                    <!-- VasulkaWarp — DEFERRED (2026-07-26, Phase 23 Step 3).
+                         Hidden, experimental, architecture unresolved; superseded
+                         by SequenceBuffer timewarp mode. The live vwarp.* render
+                         path in main.js is deprecated-but-load-bearing until that
+                         mode is stable — do not remove it with this markup.
+                         A duplicate block for the older vasulka.* namespace was
+                         deleted here; this vwarp.* one is the surviving copy.
+                    <div class="panel-section">
+                      <div class="section-header">Vasulka Warp</div>
+                      <div id="vwarp-params"></div>
+                    </div>
+                    -->
+                    <div class="panel-section">
+                        <div class="section-header">Frame Sequences</div>
+                        <div id="seq-params"></div>
+                    </div>
+                    <div class="panel-section">
+                        <div class="section-header">Vectorscope</div>
+                        <div id="vectorscope-params"></div>
+                    </div>
                     </div>
                 </div>
                 <!-- MIX TAB -->

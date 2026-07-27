@@ -408,6 +408,64 @@ button {
 
 /* ── PANEL SECTIONS ──────────────────────────────────────────────────────── */
 
+/* ── Phase 24 taxonomy: three visual levels ──────────────────────────────────
+   Level 1  .panel-group / .group-header      "Live In", "Media", …
+   Level 2  .panel-section / .section-header  a routable source (collapsible)
+   Level 3  .panel-subsection / .subsection-header   part OF a source
+   Only level 2 is an accordion — main.js sweeps `.section-header` for the
+   collapse + detach wiring, so levels 1 and 3 must NOT use that class. */
+
+.panel-group {
+    border-bottom: 1px solid var(--border-hi, var(--border));
+}
+.group-header {
+    font-family: var(--mono);
+    font-size: 9px;
+    font-weight: 500;
+    letter-spacing: 0.18em;
+    color: var(--accent);
+    text-transform: uppercase;
+    padding: 10px 10px 5px;
+    background: var(--bg-2);
+    border-top: 1px solid var(--border-hi, var(--border));
+    user-select: none;
+    position: sticky;
+    top: 0;
+    z-index: 2; /* above .section-header, which is also sticky at z-index 1 */
+}
+.panel-group > .panel-section > .section-header {
+    padding-left: 16px; /* sources sit inboard of their group */
+}
+
+.panel-subsection {
+    padding-left: 10px;
+    border-left: 1px solid var(--border);
+    margin-left: 12px;
+}
+.subsection-header {
+    font-family: var(--mono);
+    font-size: 9px;
+    font-weight: 400;
+    letter-spacing: 0.08em;
+    color: var(--text-2);
+    opacity: 0.75;
+    text-transform: uppercase;
+    padding: 5px 8px 3px;
+    user-select: none;
+    /* not sticky, not clickable — a sub-section is never an accordion */
+}
+
+/* Contextual workspace tab slot — filled by the Step 2 router. */
+#tab-workspace-slot {
+    display: inline-flex;
+    align-items: center;
+    flex-shrink: 0;
+}
+#tab-workspace-slot:not(:empty) {
+    border-left: 1px solid var(--border);
+    margin-left: 4px;
+}
+
 .panel-section {
     border-bottom: 1px solid var(--border);
 }
