@@ -317,6 +317,7 @@ async function main() {
   // load never brushes from a phantom origin.
   let _warpDrawPrev = null;
   const WARP_DRAW_RADIUS = 0.18; // UV space
+  const WARP_CUSTOM_IDX = 9;     // "Custom" in displace.warp options → warpMaps[8]
   warpMaps.push(warpEditor.texture); // index 9 in SELECT = warpMaps[8]
   const drawLayer = new DrawLayer();
   const strokeLooper = new StrokeLooper(drawLayer, ps);
@@ -6505,6 +6506,15 @@ void main() {
         const ddy = ny - _warpDrawPrev.y;
         const mag = Math.hypot(ddx, ddy);
         if (mag > 1e-4) {
+          // Drawing only reaches the screen through the Custom warp map, so
+          // switch to it on the first stroke — otherwise the honest experience
+          // is "I moved the sliders and nothing happened".
+          // Deliberately narrow: only when WarpMode is "off", and never when a
+          // controller owns the param. Overriding a chosen mode (H-Wave, say)
+          // would fight both the user and state recall, and writing a param
+          // from the tick loop is something to do as little as possible.
+          const wp = ps.get("displace.warp");
+          if (wp.value === 0 && !wp.controller) ps.set("displace.warp", WARP_CUSTOM_IDX);
           warpEditor.brush(
             nx, ny,
             WARP_DRAW_RADIUS,
