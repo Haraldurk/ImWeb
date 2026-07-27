@@ -27,69 +27,14 @@ The instrument composites video sources through a signal chain of effects and re
 
 ---
 
-## Tech stack
-
-| Layer       | Technology                                                      |
-|-------------|-----------------------------------------------------------------|
-| Renderer    | Three.js r160+ (WebGL, WebGLRenderTarget ping-pong)             |
-| Build       | Vite 5.4 (ES modules, HMR)                                      |
-| UI          | Vanilla JS + DOM; no React/Vue                                  |
-| Style       | src/style.css; CSS variables for theming                        |
-| Persistence | IndexedDB (presets, tables); localStorage (AI config, settings) |
-| Input       | WebRTC (camera), File API, Web MIDI API                         |
-| Audio       | Web Audio API (AnalyserNode FFT/VU)                             |
-| AI          | Switchable provider (Anthropic / Gemini / OpenAI / Ollama)      |
-
----
-
-## Project structure
-src/
-main.js                   Bootstrap, render loop, all feature wiring
-style.css                 All styles — dark performance UI
-ai/
-AIFeatures.js           AI provider system: narrator, coach, preset
-generator. Provider/key config persisted to
-localStorage 'imweb-ai-config'. All calls
-route through _call(systemPrompt, userPrompt).
-controls/
-ParameterSystem.js      All parameters declared here; reactive onChange
-ControllerManager.js    Mouse, MIDI, LFO, Sound, Key, Random,
-Expression, Gamepad, Wacom, OSC drivers
-LFO.js                  Sine/Triangle/Sawtooth/Square/S&H + beat sync
-Automation.js           Record/play parameter movements, loop playback
-core/
-Pipeline.js             WebGL compositing chain — all render passes
-shaders/
-index.js                All GLSL effect shaders as named exports
-inputs/
-CameraInput.js          WebRTC getUserMedia → VideoTexture
-MovieInput.js           Video file → VideoTexture; speed/loop/BPM sync
-StillsBuffer.js         Frame capture store
-SlitScanBuffer.js       Rolling slit scan effect
-SDFGenerator.js       GPU-raymarched SDF metaballs → WebGLRenderTarget
-TextLayer.js            Canvas 2D text → Texture
-DrawLayer.js            Freehand canvas → Texture (Wacom pressure)
-ParticleSystem.js       GPU particle field (emitter shapes, attractors, scale modes)
-VasulkaWarp.js          Temporal strip-buffer slit-scan — EXPERIMENTAL, hidden from UI
-io/
-ProjectFile.js          .imweb JSON save/load — full session
-OSCBridge.js            WebSocket ↔ UDP OSC relay
-LUTLoader.js            .cube file import
-scene3d/
-SceneManager.js         Three.js 3D scene → RenderTarget
-GeometryFactory.js      13 procedural geometry generators
-state/
-Preset.js               Presets + 128 Display States, IndexedDB
-ui/
-UI.js                   All UI builders: param rows, tabs, signal path,
-context menus, seq cards, WarpMap editor,
-controller badge popovers
+## Architecture Notes
 
 main.js is the integration hub (~7550 lines). Most feature wiring lives here. Do not split it without a clear architectural reason.
 
-### Architecture Notes
 - Pipeline.js (src/core/Pipeline.js) owns the noise material uniform init block and the generateNoise() setter — NOT main.js. main.js only contains the call site and event listeners.
 - Noise shader lives at src/shaders/index.js (not src/core/shaders/)
+- VasulkaWarp.js (src/inputs/) is EXPERIMENTAL but no longer hidden — its panel lives under "From the Signal" in #tab-sources (restored Phase 24, Step 4). Phase 24 rule: routable source ⇒ visible UI.
+- AIFeatures.js persists provider/key config to localStorage 'imweb-ai-config'; all calls route through _call(systemPrompt, userPrompt).
 
 ### Source list & mix buses (Phase 23)
 - **ONE canonical source list.** `SOURCE_DEFS` in ParameterSystem.js is the single
@@ -178,16 +123,6 @@ Opens dark panel adjacent to badge. Closes on click-outside or Escape.
 - Fixed: Value
 All fields use same drag/dblclick pattern as range fields.
 
-### CSS variables (key values)
---text-1: #e0e0f0        primary text
---text-2: #8888a0        muted/inactive text
---accent: #c8a020        primary yellow
---accent-dim: #8c7a28    dimmed accent
---bg-1: #12121a          main background
---bg-2: #18181f          panel background
---bg-3: #1f1f25          section background
---bg-4: #26262e          hover state
-
 ### Adding a new feature
 1. Declare parameters in ParameterSystem.js
 2. Implement logic in relevant src/inputs/ or src/core/ module
@@ -231,51 +166,7 @@ Before implementing any flag or conditional guard:
 
 ## Debugging Protocols
 
-These rules apply to all AI agents working on ImWeb. They come from hard-won
-session experience and must be followed before writing any fix prompt.
-
-### Save / Load bugs
-1. Ask for the serialized file FIRST (.imweb, .imbank, .imstate, .json).
-   Read the data before reading any code. The file is the ground truth —
-   if modelAsset is absent from the JSON, no amount of code reading will
-   reveal why the model isn't loading.
-2. Ask "how was the asset loaded?" before assuming anything about the
-   loading method. Drag-drop and URL-load are different code paths with
-   different persistence behaviour. One question saves three fix loops.
-
-### Before writing any Claude Code prompt
-1. Verify every variable name in the actual source file before putting it
-   in a prompt. Never guess a reference name (this.sm vs this.extras.scene3d
-   vs sceneManager) — grep or read the file first. One wrong name costs
-   an entire session loop.
-2. State one way the fix could still fail before sending the prompt.
-   Per the Guard Logic Rules above: if you cannot answer this, the fix
-   is not fully understood.
-
-### One task per prompt — hard rule
-If a task feels like it needs two prompts, it does. Split it. A prompt
-that touches two separate things produces one correct fix and one subtle
-regression that costs twice as long to find.
-
-### Serialized file inspection commands
-Quick reads for common ImWeb file types:
-
-```bash
-  # Check what a .imweb file actually contains:
-  cat file.imweb | python3 -c "import json,sys; d=json.load(sys.stdin);
-    print('banks:', len(d.get('presets',[])));
-    print('scene3d:', d.get('scene3d',{}));
-    print('activePreset:', d.get('activePreset'))"
-
-  # Check if modelAsset is present:
-  cat file.imweb | python3 -c "import json,sys;
-    t=sys.stdin.read(); print('modelAsset present:', 'modelAsset' in t)"
-
-  # Check all states in a bank for a specific param:
-  cat file.imweb | python3 -c \"
-import json,sys
-d=json.load(sys.stdin)
-for bank in d.get('presets',[]):
-  for i,s in enumerate(bank.get('states',[])):
-    v=s.get('params',s.get('values',{})).get('scene3d.geo','MISSING')
-    print(f'{bank[\"name\"]} state {i}: scene3d.geo={v}')\"
+Before investigating any bug or writing any fix prompt, invoke the
+`imweb-debugging` skill (.claude/skills/imweb-debugging/SKILL.md) — it holds the
+save/load investigation order, the pre-prompt verification rules, the one-task-per-prompt
+rule, and the serialized-file inspection commands.
