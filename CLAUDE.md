@@ -85,11 +85,58 @@ UI.js                   All UI builders: param rows, tabs, signal path,
 context menus, seq cards, WarpMap editor,
 controller badge popovers
 
-main.js is the integration hub (~5400 lines). Most feature wiring lives here. Do not split it without a clear architectural reason.
+main.js is the integration hub (~7550 lines). Most feature wiring lives here. Do not split it without a clear architectural reason.
 
 ### Architecture Notes
 - Pipeline.js (src/core/Pipeline.js) owns the noise material uniform init block and the generateNoise() setter — NOT main.js. main.js only contains the call site and event listeners.
 - Noise shader lives at src/shaders/index.js (not src/core/shaders/)
+
+### Source list & mix buses (Phase 23)
+- **ONE canonical source list.** `SOURCE_DEFS` in ParameterSystem.js is the single
+  origin; `SOURCES` (labels) and `SOURCE_KEYS` (inputs-bag keys) derive from it and
+  are imported by Pipeline._resolveSource(), main.js _resolveLayerTex(), the
+  TimeDisplace capture path and AIFeatures. **APPEND-ONLY forever** — SELECT values
+  persist as integer indices into it. Never hand-copy this list: six copies once
+  existed and three had silently drifted, breaking TimeDisplace capture and the AI
+  Narrator for the newest sources.
+- **Three mix buses** — sources 26/27/28 (Mix 1/2/3). Params come from one
+  `MIX_BUS_PARAMS` descriptor registered for prefixes `mix` / `mix2` / `mix3`, the
+  same shape as `MOVIE_DECK_PARAMS`. Bus 1 keeps the bare `mix.` prefix and its
+  v0.12 ids/labels — renaming to `mix1.` breaks every saved state, bank, .imweb
+  file and MIDI mapping for zero gain.
+- **srcA/srcB are free source selectors**, resolved through the same
+  `_resolveSource()` the layers use — a bus is a real graph node, not a hardwired
+  deck crossfader. Group `mix`/`mix2`/`mix3`, NOT `global`: unlike glsl.preset they
+  ARE captured by Display States, because the source list is append-only and not
+  user-editable, so its indices cannot drift under a saved state.
+- **Double-buffered, NOT feedback-guarded.** Each bus writes its back buffer and
+  flips `_mixCur` only after the draw. One rule, no special cases: later-reads-
+  earlier sees THIS frame; earlier-reads-later and self-read see LAST frame. Do not
+  add an identity guard here — the double buffer is the mechanism (see Guard Logic
+  Rules: this is the case where a second target beats a guard). Targets allocate
+  lazily, so a project routing no bus pays no VRAM.
+- **Consumption is a fixpoint** — `_srcUsed(i)` in main.js: a source is used by a
+  layer, by td.captureSource, or by a live mix input; a bus is needed if any needed
+  bus reads it (transitive in both directions). Extend THAT function when adding a
+  consumer — do not copy the pattern, which is how seven near-duplicates accrued.
+
+### UI structure (Phase 23)
+- Tabs follow signal flow: **Sources · Mix · Effects · Output | 3D · Analog · Draw ·
+  Project**. 3D/Analog/Draw are top-level because they are large *source editors*,
+  not a different taxonomic kind — do not silently “fix” this by folding them into Sources.
+- Section labels and order live in index.html. `buildMappingPanels()` (UI.js) is a
+  container-id → params map with no labels and no ordering, so regrouping tabs needs
+  no JS change as long as container ids are preserved.
+- The `.panel-section` carrying `data-default-open` decides BOTH which section is
+  expanded and which tab the app lands on (`activateDefaultTab()`, module scope in
+  main.js). The `active` classes in index.html are a **first-paint hint only** —
+  do not delete them: every .tab-content is display:none until a class is set, so
+  the panel paints blank until the module graph evaluates, and stays blank forever
+  if it fails to load.
+- I/O and Hypercube panels are **injected at runtime** (into #tab-sources and
+  #tab-scene3d) — they move in JS, not markup. The #tab-buffer and #tab-glsl wrapper
+  ids are queried by main.js: keep them, and keep them class-less (giving them
+  .tab-content would permanently hide them).
 
 ### Live GLSL & AI Subsystem
 - **Live GLSL Editor:** Uses CodeMirror 6. Must gracefully catch syntax errors via a last-good compile fallback to ensure the master render loop is never dropped.
