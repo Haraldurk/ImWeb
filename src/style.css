@@ -14,9 +14,15 @@
     --border: #2a2a34;
     --border-hi: #3a3a48;
 
+    /* Phase 24: --text-1/--text-2 were #9090a8 / #8888a0 — around 4.5:1 on the
+       panel background, which reads fine on a calibrated desktop display and
+       poorly on a glossy tablet in daylight. Raised to roughly 8–9:1. Changing
+       the tokens rather than patching individual rules keeps section headers,
+       sub-section headers and param labels on one scale instead of creating
+       three exceptions. */
     --text-0: #e8e8f0; /* primary */
-    --text-1: #9090a8; /* secondary */
-    --text-2: #8888a0; /* muted */
+    --text-1: #c2c2d6; /* secondary */
+    --text-2: #a6a6c0; /* muted */
 
     --accent: #e8c840; /* yellow — active/assigned (matches ImOs9 feedback) */
     --accent-dim: #8c7a28;
@@ -448,10 +454,11 @@ button {
     font-weight: 400;
     letter-spacing: 0.08em;
     color: var(--text-2);
-    opacity: 0.75;
     text-transform: uppercase;
     padding: 5px 8px 3px;
     user-select: none;
+    /* opacity:0.75 removed — it fought the contrast fix above; the level-3
+       distinction comes from size, indent and the left rule, not from dimming */
     /* not sticky, not clickable — a sub-section is never an accordion */
 }
 
@@ -482,6 +489,22 @@ button {
 }
 .tab.tab-workspace .ws-close:hover {
     color: var(--text-1);
+}
+
+/* Non-clickable group label inside a source dropdown (mkSelect `order`). */
+.imw-sel-group {
+    font-family: var(--mono);
+    font-size: 9px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--accent);
+    padding: 7px 10px 3px;
+    pointer-events: none;
+    user-select: none;
+}
+.imw-sel-group:not(:first-child) {
+    border-top: 1px solid var(--border);
+    margin-top: 3px;
 }
 
 /* "⤢ Open workspace" launcher inside a source panel. */

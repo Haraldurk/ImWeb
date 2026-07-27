@@ -474,7 +474,7 @@ export class ParameterSystem extends EventTarget {
 // TimeDisplace capture and the AI Narrator for sources 25/26.
 export const SOURCE_DEFS = [
   { key: "camera",    label: "Camera"    }, //  0
-  { key: "movie",     label: "Movie"     }, //  1
+  { key: "movie",     label: "Movie A"   }, //  1
   { key: "buffer",    label: "Buffer"    }, //  2
   { key: "color",     label: "Color"     }, //  3
   { key: "color2",    label: "Color2"    }, //  4
@@ -506,6 +506,43 @@ export const SOURCE_DEFS = [
 
 /** Source indices of the three mix buses, in evaluation order (1 → 2 → 3). */
 export const MIXBUS_IDX = [26, 27, 28];
+
+/**
+ * Display sequence for every source dropdown (layer.fg/bg/ds,
+ * td.captureSource, mix*.srcA/srcB) — Phase 24 taxonomy order, so the menu
+ * reads like the Sources tab instead of like the raw array.
+ *
+ * PRESENTATION ONLY. These are indices INTO SOURCE_DEFS; the value a SELECT
+ * stores and persists is still the true index, so reordering here can never
+ * re-route a saved state. Entries are an index, or { header } for a
+ * non-clickable group label. Any source omitted here simply would not be
+ * listed — the assertion below keeps that from happening silently.
+ */
+export const SOURCE_DISPLAY_ORDER = [
+  { header: "Live In" },        0 /* Camera */, 12 /* Sound */,
+  { header: "Media" },          1 /* Movie A */, 25 /* Movie B */, 2 /* Buffer */,
+                                9 /* BG1 */, 10 /* BG2 */,
+  { header: "Generators" },     3 /* Color */, 4 /* Color2 */, 5 /* Noise */,
+                                16 /* Particles */, 21 /* SDF */, 11 /* Text */,
+                                7 /* Draw */, 6 /* 3D Scene */, 20 /* 3D Depth */,
+                                23 /* Analog */,
+  { header: "From the Signal" }, 8 /* Output */, 13 /* Delay */, 24 /* TimeDisp */,
+                                15 /* SlitScan */, 17 /* Seq1 */, 18 /* Seq2 */,
+                                19 /* Seq3 */, 14 /* Scope */, 22 /* VWarp */,
+  { header: "Mix" },            26 /* Mix 1 */, 27 /* Mix 2 */, 28 /* Mix 3 */,
+];
+
+// Fail loudly at load if a source is missing from the display order, rather
+// than quietly vanishing from every dropdown.
+{
+  const listed = SOURCE_DISPLAY_ORDER.filter((e) => typeof e === "number");
+  const missing = SOURCE_DEFS.map((_, i) => i).filter((i) => !listed.includes(i));
+  if (missing.length || new Set(listed).size !== listed.length) {
+    throw new Error(
+      `SOURCE_DISPLAY_ORDER must list every source exactly once — missing: [${missing}]`,
+    );
+  }
+}
 
 /** Display labels, index-aligned to SOURCE_DEFS. SELECT options array. */
 export const SOURCES = SOURCE_DEFS.map((s) => s.label);
