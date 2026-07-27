@@ -144,8 +144,10 @@ export function buildMappingPanels(ps, contextMenu) {
     // 'vasulka-params':   ps.getGroup('vasulka'),
     'vectorscope-params':  ps.getGroup('vectorscope'),
     'slitscan-params':     ps.getGroup('slitscan'),
-    // VasulkaWarp — hidden, experimental, architecture unresolved. See dev notes.
-    // 'vwarp-params':     ps.getGroup('vwarp'),
+    // VasulkaWarp restored (Phase 24 Step 4) — source 22 is routable and its
+    // render path is live, so it gets a panel. Still experimental; the older
+    // vasulka.* namespace above stays retired.
+    'vwarp-params':        ps.getGroup('vwarp'),
     // 'seq-params' is built by buildSeqParams() — skip here
     // 'layer-params' is owned by buildLayerButtons() — do not render here
     'lut-params':          ps.getGroup('lut'),
