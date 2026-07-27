@@ -205,7 +205,7 @@
                 </div>
                 <!-- SOURCES TAB -->
                 <div id="tab-sources" class="tab-content">
-                    <div class="panel-group">
+                    <div class="panel-group" id="group-live-in">
                         <div class="group-header">Live In</div>
                         <div class="panel-section">
                             <div class="section-header">Sound</div>
@@ -466,6 +466,18 @@ ImWeb</textarea
                         </div>
                     
                         </div>
+                        <div class="panel-section">
+                            <div class="section-header">3D Scene</div>
+                            <button class="ws-open" data-workspace="scene3d">⤢ Open workspace</button>
+                        </div>
+                        <div class="panel-section">
+                            <div class="section-header">Analog TV</div>
+                            <button class="ws-open" data-workspace="analog">⤢ Open workspace</button>
+                        </div>
+                        <div class="panel-section">
+                            <div class="section-header">Draw</div>
+                            <button class="ws-open" data-workspace="draw">⤢ Open workspace</button>
+                        </div>
                     </div>
                     <div class="panel-group">
                         <div class="group-header">From the Signal</div>
@@ -611,6 +623,10 @@ ImWeb</textarea
                         <div id="lut-params"></div>
                     </div>
                     <!-- Live GLSL (merged from former GLSL tab; wrapper id kept for JS) -->
+                        <div class="panel-section">
+                            <div class="section-header">Live GLSL</div>
+                            <button class="ws-open" data-workspace="glsl">⤢ Open workspace</button>
+                        </div>
                     <div id="tab-glsl">
                         <div class="panel-section">
                             <div class="section-header">Live GLSL Effect</div>

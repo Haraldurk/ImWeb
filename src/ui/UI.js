@@ -112,6 +112,13 @@ export function buildMappingPanels(ps, contextMenu) {
     'mix-params':      ps.getGroup('mix'),
     'mix2-params':     ps.getGroup('mix2'),
     'mix3-params':     ps.getGroup('mix3'),
+    // Phase 24: BG1/BG2 are routable sources (indices 9/10) that had no UI at
+    // all — screen.bg1/bg2 are TRIGGERs in group 'screen', which was mapped
+    // nowhere. Split one per panel so each BG source owns its own capture
+    // trigger. (Sound, the third source without a panel, has no parameters —
+    // its Audio In device row is injected from main.js instead.)
+    'bg1-params':      [ps.get('screen.bg1')].filter(Boolean),
+    'bg2-params':      [ps.get('screen.bg2')].filter(Boolean),
     'transform-params': ps.getGroup('scene3d').filter(p => p.id.includes('rot') || p.id.includes('pos') || p.id.includes('scale') || p.id.includes('spin')),
     'camera3d-params': ps.getGroup('scene3d').filter(p => p.id.includes('cam')),
     'material-params': ps.getGroup('scene3d').filter(p => p.id.includes('mat') || p.id.includes('wire') || p.id.includes('depth')),
