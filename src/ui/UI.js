@@ -2644,10 +2644,13 @@ export function buildWarpEditor(editor, ps, contextMenu) {
     btn.className = 'warp-preset-btn';
     btn.textContent = name;
     btn.addEventListener('click', () => {
+      // Presets honour displace.warpSlotFade, like slot recall — clicking
+      // H-Wave with a 2s fade eases into the shape instead of snapping.
+      const secs = ps.get('displace.warpSlotFade')?.value ?? 0;
       if (name === 'Reset') {
-        editor.reset();
+        if (secs > 0) editor.morphToFlat(secs); else editor.reset();
       } else {
-        editor.applyPreset(name);
+        editor.applyPreset(name, 0.35, secs);
         ps.set('displace.warp', 9);                           // activate Custom mode
         if (ps.get('displace.warpamt').value === 0) ps.set('displace.warpamt', 50);
       }
@@ -2822,7 +2825,12 @@ export function buildWarpEditor(editor, ps, contextMenu) {
         // way. Without this, dragging left pushed the picture right. Only the
         // INPUT is flipped — stored maps are untouched, so every saved slot and
         // procedural preset renders exactly as before.
-        editor.brush(nx, ny, brushRadius, brushStrength * 60, -ddx * sign, ddy * sign);
+        // 20, not 60. The editor canvas is roughly a quarter the width of the
+        // output, so an identical hand movement produces a much larger
+        // normalised delta here — the same multiplier makes this window far
+        // more sensitive than the main canvas. Main-canvas gain lives in
+        // main.js (WARP_DRAW_GAIN) and is deliberately separate.
+        editor.brush(nx, ny, brushRadius, brushStrength * 20, -ddx * sign, ddy * sign);
       } else if (activeTool === 'smooth') {
         editor.smooth(nx, ny, brushRadius, brushStrength * 5);
       } else if (activeTool === 'erase') {
