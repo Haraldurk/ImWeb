@@ -312,6 +312,11 @@ async function main() {
   teletextSource.setMovieInput(movieInput);
   const warpMaps = buildWarpMaps(); // 8 procedural warp map textures (map1–map8)
   const warpEditor = new WarpMapEditor(); // interactive editor → warpMaps[8] (Custom)
+  // Previous displace.drawX/drawY position, in 0..1 UV — the param-driven brush
+  // derives its direction from the delta. null until the first tick so a fresh
+  // load never brushes from a phantom origin.
+  let _warpDrawPrev = null;
+  const WARP_DRAW_RADIUS = 0.18; // UV space
   warpMaps.push(warpEditor.texture); // index 9 in SELECT = warpMaps[8]
   const drawLayer = new DrawLayer();
   const strokeLooper = new StrokeLooper(drawLayer, ps);
@@ -6481,6 +6486,41 @@ void main() {
     if ((ps.get("draw.toParticles")?.value ?? 0) > 0.5 && drawLayer.strokeActive) {
       ps.set("particle.emitx", ps.get("draw.x").value);
       ps.set("particle.emity", ps.get("draw.y").value);
+    }
+
+    // ── Performative displacement drawing ───────────────────────────────────
+    // Drives the Custom warp map from displace.drawX/drawY, so MIDI/LFO/OSC can
+    // sculpt it live instead of only the editor window.
+    //
+    // WarpMapEditor.brush() is a push/pull that needs a DIRECTION, not just a
+    // position, so the direction comes from the motion of the point between
+    // frames — the same thing a mouse drag expresses. A stationary pair of
+    // sliders therefore does nothing, which is what makes an explicit on/off
+    // switch unnecessary. Speed sets the strength, so fast sweeps bite harder.
+    {
+      const nx = ps.get("displace.drawX").value / 100;
+      const ny = ps.get("displace.drawY").value / 100;
+      if (_warpDrawPrev) {
+        const ddx = nx - _warpDrawPrev.x;
+        const ddy = ny - _warpDrawPrev.y;
+        const mag = Math.hypot(ddx, ddy);
+        if (mag > 1e-4) {
+          warpEditor.brush(
+            nx, ny,
+            WARP_DRAW_RADIUS,
+            Math.min(mag * 2, 0.5), // strength from speed, clamped
+            ddx / mag, ddy / mag,   // unit direction, per brush()'s contract
+          );
+        }
+      }
+      _warpDrawPrev = { x: nx, y: ny };
+
+      // Temporal decay — heals toward FLAT (zero displacement), not toward
+      // black; zero is the neutral state of a displacement field. decay()
+      // returns false once the map is flat, so an idle map costs one early-out
+      // instead of a texture rebuild every frame.
+      const fade = ps.get("displace.fade").value;
+      if (fade > 0) warpEditor.decay(fade * dt * 4);
     }
 
     // Tick text layer (updates text rendering based on text.* params)
