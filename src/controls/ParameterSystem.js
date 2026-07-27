@@ -495,7 +495,7 @@ export const SOURCE_DEFS = [
   { key: "seq3",      label: "Seq3"      }, // 19
   { key: "depth3d",   label: "3D Depth"  }, // 20
   { key: "sdf",       label: "SDF"       }, // 21
-  { key: "vwarp",     label: "VWarp"     }, // 22
+  { key: "vwarp",     label: "Vasulka Warp" }, // 22 — matches its panel header
   { key: "analog",    label: "Analog"    }, // 23
   { key: "tdisp",     label: "TimeDisp"  }, // 24
   { key: "movieB",    label: "Movie B"   }, // 25
