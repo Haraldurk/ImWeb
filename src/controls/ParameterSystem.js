@@ -842,6 +842,41 @@ export function registerCoreParameters(ps) {
     value: 50,
   });
   ps.register({
+    id: "displace.warpDrawAmt",
+    label: "WarpDrawAmt",
+    group: "displace",
+    min: 0,
+    max: 200,
+    value: 100, // 100% = the speed-derived feel this replaced; unchanged default
+    unit: "%",
+  });
+  ps.register({
+    id: "displace.warpDrawFixed",
+    label: "WarpDrawFixed",
+    group: "displace",
+    type: PARAM_TYPE.TOGGLE,
+    value: 0, // 0 = direction follows motion, exactly as before
+  });
+  ps.register({
+    id: "displace.warpDrawAngle",
+    label: "WarpDrawAngle",
+    group: "displace",
+    min: 0,
+    max: 360,
+    value: 0,
+    unit: "°",
+  });
+  ps.register({
+    id: "displace.warpSlotFade",
+    label: "WarpSlotFade",
+    group: "displace",
+    min: 0,
+    max: 10,
+    value: 0, // 0 = instant slot load, exactly as before
+    step: 0.05,
+    unit: "s",
+  });
+  ps.register({
     id: "displace.warpFade",
     label: "WarpFade",
     group: "displace",

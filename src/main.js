@@ -356,11 +356,23 @@ async function main() {
     }
     const speed = mag / Math.max(dtSec, 1e-4); // UV per second
     const rate = Math.min(speed * WARP_DRAW_GAIN, WARP_DRAW_MAX_RATE);
+    const amt = (ps.get("displace.warpDrawAmt")?.value ?? 100) / 100;
+
+    // Direction: motion by default. With warpDrawFixed on, every stroke pushes
+    // along warpDrawAngle instead — a steady wind field you can aim, rather
+    // than a direction that changes with the way you happen to be moving.
+    // Motion still decides WHETHER to draw and how fast, just not which way.
+    let ux = ddx / mag, uy = ddy / mag;
+    if (ps.get("displace.warpDrawFixed")?.value) {
+      const a = ((ps.get("displace.warpDrawAngle")?.value ?? 0) * Math.PI) / 180;
+      ux = Math.cos(a);
+      uy = Math.sin(a);
+    }
     warpEditor.brush(
       nx, ny,
       WARP_DRAW_RADIUS,
-      rate * dtSec,         // strength for THIS frame
-      ddx / mag, ddy / mag, // unit direction, per brush()'s contract
+      rate * dtSec * amt, // strength for THIS frame, scaled by WarpDrawAmt
+      ux, uy,             // unit direction, per brush()'s contract
     );
     return true;
   }
@@ -6592,6 +6604,9 @@ void main() {
         _warpStroke(nx, ny, nx - _warpDrawPrev.x, ny - _warpDrawPrev.y, dt, true);
       }
       _warpDrawPrev = { x: nx, y: ny };
+
+      // Advance an in-flight slot crossfade (displace.warpSlotFade > 0).
+      warpEditor.tickMorph(dt);
 
       // Temporal decay — heals toward FLAT (zero displacement), not toward
       // black; zero is the neutral state of a displacement field. decay()
