@@ -857,6 +857,38 @@ export function registerCoreParameters(ps) {
     unit: "%",
   });
   ps.register({
+    // Recall a saved warp slot (1–16) from a controller. 0 = "—", a no-op, so
+    // the default does nothing and an LFO parked at zero stays quiet.
+    //
+    // group 'global' → excluded from Display State capture, and for a sharper
+    // reason than glsl.preset's: slot CONTENTS live in per-origin localStorage
+    // while the index would live in the .imweb file, so a captured slot 3
+    // recalls a different map on another machine, another port, or after the
+    // performer re-saves that slot. The index is stable; what it points at is
+    // not. warpPreset below has no such problem and IS captured.
+    id: "displace.warpSlot",
+    label: "WarpSlot",
+    group: "global",
+    type: PARAM_TYPE.SELECT,
+    options: ["—", "1", "2", "3", "4", "5", "6", "7", "8",
+              "9", "10", "11", "12", "13", "14", "15", "16"],
+    value: 0,
+  });
+  ps.register({
+    // Fire a procedural warp preset from a controller. 0 = "—", a no-op.
+    // group 'displace' (unlike warpSlot) because these eight live in code, not
+    // in storage: the list is fixed and deterministic on every machine, so a
+    // captured index means the same shape everywhere. Append new presets at the
+    // END — the value persists as an integer index, same rule as SOURCE_DEFS.
+    id: "displace.warpPreset",
+    label: "WarpPreset",
+    group: "displace",
+    type: PARAM_TYPE.SELECT,
+    options: ["—", "H-Wave", "V-Wave", "Radial", "Pinch",
+              "Spiral", "Shear", "Random", "Reset"],
+    value: 0,
+  });
+  ps.register({
     // Brush width for BOTH main-canvas drags and the WarpDrawX/Y param path —
     // they share one _warpStroke, so they share one radius. Was a hardcoded
     // 0.18: with control points clamping at ±0.49, a narrow brush saturates its
