@@ -455,7 +455,7 @@ button {
     /* not sticky, not clickable — a sub-section is never an accordion */
 }
 
-/* Contextual workspace tab slot — filled by the Step 2 router. */
+/* Contextual workspace tab slot — filled by the router in main.js. */
 #tab-workspace-slot {
     display: inline-flex;
     align-items: center;
@@ -464,6 +464,44 @@ button {
 #tab-workspace-slot:not(:empty) {
     border-left: 1px solid var(--border);
     margin-left: 4px;
+}
+.tab.tab-workspace {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--accent);
+}
+.tab.tab-workspace .ws-close {
+    font-size: 9px;
+    line-height: 1;
+    padding: 2px 3px;
+    color: var(--text-2);
+    background: none;
+    border: none;
+    cursor: pointer;
+}
+.tab.tab-workspace .ws-close:hover {
+    color: var(--text-1);
+}
+
+/* "⤢ Open workspace" launcher inside a source panel. */
+button.ws-open {
+    display: block;
+    width: calc(100% - 20px);
+    margin: 6px 10px 8px;
+    padding: 6px 8px;
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.06em;
+    color: var(--text-2);
+    background: var(--bg-3, var(--bg-2));
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    cursor: pointer;
+}
+button.ws-open:hover {
+    color: var(--accent);
+    border-color: var(--border-hi, var(--border));
 }
 
 .panel-section {

@@ -1098,6 +1098,113 @@ async function main() {
     hdr.appendChild(btns);
   });
 
+  // ── Contextual workspace router (Phase 24) ────────────────────────────────
+  // Large source editors are no longer top-level tabs. Each is opened from its
+  // row in Sources (or Effects, for Live GLSL) and appears as a sixth,
+  // contextual tab. The taxonomy therefore stays one axis — signal flow —
+  // while the editors keep a full-width surface. See
+  // docs/ImWeb-UI-Taxonomy-Phase24-Proposal.md §3.
+  const WORKSPACES = [
+    { key: "scene3d", pane: "tab-scene3d", label: "3D Scene" },
+    { key: "analog",  pane: "tab-analog",  label: "Analog TV" },
+    { key: "draw",    pane: "tab-draw",    label: "Draw" },
+    { key: "glsl",    pane: "tab-glsl",    label: "Live GLSL" },
+  ];
+  let _openWorkspace = null; // key of the open workspace, or null
+  let _wsReturnTab = null;   // data-tab to restore when it closes
+
+  // #tab-glsl is a plain wrapper nested inside #tab-effects. To be shown as a
+  // workspace it must be a .tab-content sibling of the other panes, so promote
+  // it once at init. Same element throughout, so the existing
+  // getElementById("tab-glsl") consumer keeps working.
+  {
+    const glslPane = document.getElementById("tab-glsl");
+    if (glslPane && !glslPane.classList.contains("tab-content")) {
+      glslPane.classList.add("tab-content");
+      document.getElementById("control-panel")?.appendChild(glslPane);
+    }
+  }
+
+  const _showPane = (paneId) =>
+    document
+      .querySelectorAll(".tab-content")
+      .forEach((c) => c.classList.toggle("active", c.id === paneId));
+
+  function openWorkspace(key) {
+    const ws = WORKSPACES.find((w) => w.key === key);
+    const pane = ws && document.getElementById(ws.pane);
+    if (!pane) return;
+    // Remember where to go back to, but only on the first open — re-opening an
+    // already-open workspace must not overwrite the return tab with itself.
+    if (_openWorkspace !== key) {
+      const cur = document.querySelector(".tab.active")?.dataset.tab;
+      if (cur) _wsReturnTab = cur;
+    }
+    _openWorkspace = key;
+
+    const slot = document.getElementById("tab-workspace-slot");
+    if (!slot) return;
+    slot.innerHTML = "";
+    const btn = document.createElement("button");
+    btn.className = "tab tab-workspace active";
+    btn.dataset.workspace = key;
+    btn.append(ws.label);
+    // initTabs() bound its handlers at load, so this button needs its own.
+    btn.addEventListener("click", (e) => {
+      if (e.target.tagName === "BUTTON") return; // the ✕ handles itself
+      document
+        .querySelectorAll(".tab")
+        .forEach((t) => t.classList.toggle("active", t === btn));
+      _showPane(ws.pane);
+    });
+    const close = document.createElement("button");
+    close.className = "ws-close";
+    close.textContent = "✕";
+    close.title = "Close workspace";
+    close.addEventListener("click", (e) => {
+      e.stopPropagation();
+      closeWorkspace();
+    });
+    btn.appendChild(close);
+    slot.appendChild(btn);
+
+    document
+      .querySelectorAll(".tab")
+      .forEach((t) => t.classList.toggle("active", t === btn));
+    _showPane(ws.pane);
+  }
+
+  /** Idempotent — safe to call when nothing is open (see _resetAllParams). */
+  function closeWorkspace() {
+    const slot = document.getElementById("tab-workspace-slot");
+    // Was the user actually looking at the workspace? If they had already
+    // switched to a fixed tab, closing must not yank them somewhere else.
+    const wasActive = !!slot?.querySelector(".tab-workspace.active");
+    if (slot) slot.innerHTML = "";
+    if (!_openWorkspace) return;
+    _openWorkspace = null;
+    if (!wasActive) {
+      _wsReturnTab = null;
+      return;
+    }
+    // Return to the tab we came from; fall back to Sources, where the source
+    // that owns the workspace lives.
+    const back =
+      _wsReturnTab && document.getElementById(`tab-${_wsReturnTab}`)
+        ? _wsReturnTab
+        : "sources";
+    _wsReturnTab = null;
+    document
+      .querySelectorAll(".tab")
+      .forEach((t) => t.classList.toggle("active", t.dataset.tab === back));
+    _showPane(`tab-${back}`);
+  }
+
+  document.querySelectorAll("[data-workspace]").forEach((el) => {
+    if (el.classList.contains("tab")) return; // the contextual tab itself
+    el.addEventListener("click", () => openWorkspace(el.dataset.workspace));
+  });
+
   // Collapse / expand all sections
   const collapseAllBtn = document.getElementById("btn-collapse-all");
   collapseAllBtn?.addEventListener("click", () => {
@@ -1140,6 +1247,12 @@ async function main() {
     ps.set("layer.fg", 0); // Camera
     ps.set("layer.bg", 0); // Camera
     ps.set("layer.ds", 0); // Camera
+    // Global reset is a zero-state return, and that includes the interface:
+    // close any open workspace before landing on the default tab, so the user
+    // is not left inside a 3D/Analog editor after everything else was reset.
+    // closeWorkspace() is idempotent — safe when nothing is open.
+    // (Proposal §7. State recall deliberately does NOT do this.)
+    closeWorkspace();
     _collapseToDefaultOpen();
     // Start camera if not already running
     if (!camera3d.active) {
@@ -2437,6 +2550,21 @@ async function main() {
   const ioBlock = document.createElement("div");
   ioBlock.className = "panel-section";
 
+  // Phase 24 §2c splits I/O along the signal flow: inputs belong to
+  // Sources > Live In, outputs to the Output tab. Built here beside ioBlock
+  // so both share the _ioRow/_ioSel helpers.
+  const ioOutBlock = document.createElement("div");
+  ioOutBlock.className = "panel-section";
+  const ioOutHdr = document.createElement("div");
+  ioOutHdr.className = "section-header";
+  ioOutHdr.textContent = "Display & Record";
+  ioOutHdr.addEventListener("click", (e) => {
+    if (e.target.tagName === "BUTTON") return;
+    ioOutBlock.classList.toggle("collapsed");
+    ioOutHdr.classList.toggle("collapsed");
+  });
+  ioOutBlock.appendChild(ioOutHdr);
+
   const ioHdr = document.createElement("div");
   ioHdr.className = "section-header";
   ioHdr.textContent = "I / O";
@@ -2482,7 +2610,12 @@ async function main() {
 
   const audioDeviceSel = _ioSel();
   audioDeviceSel.innerHTML = '<option value="">—</option>';
-  ioBlock.appendChild(_ioRow("Audio In", btnAudioIn, audioDeviceSel));
+  // Sound (source 12) has no parameters — soundTexture is a 1x1 DataTexture
+  // driven straight from the analyser — so the Audio In device row is the
+  // panel's real content. Falls back into the I/O block if the container is
+  // missing, so this can never silently drop the control.
+  (document.getElementById("sound-params") ?? ioBlock)
+    .appendChild(_ioRow("Audio In", btnAudioIn, audioDeviceSel));
 
   // Enumerate all media devices on startup — shows labels immediately if permission
   // already granted from a previous session; falls back to generic names otherwise.
@@ -2607,7 +2740,7 @@ async function main() {
   dispSel.value = ps.get("output.resolution").value;
   dispSel.addEventListener("change", () => ps.set("output.resolution", +dispSel.value));
   ps.get("output.resolution").onChange(v => { dispSel.value = v; recSel.value = v; });
-  ioBlock.appendChild(_ioRow("Display", dispSel));
+  ioOutBlock.appendChild(_ioRow("Display", dispSel));
 
   // ── Record resolution (linked to Display until independent REC target is built) ──
   const recSel = _ioSel();
@@ -2618,7 +2751,7 @@ async function main() {
   });
   recSel.value = ps.get("output.resolution").value;
   recSel.addEventListener("change", () => ps.set("output.resolution", +recSel.value));
-  ioBlock.appendChild(_ioRow("Record", recSel));
+  ioOutBlock.appendChild(_ioRow("Record", recSel));
 
   // ── 2Display resolution — controls second screen bitmap resize pre-postMessage ──
   const _outWinResOpts = [
@@ -2636,13 +2769,18 @@ async function main() {
   });
   outWinSel.value = _outWinResIdx;
   outWinSel.addEventListener("change", () => { _outWinResIdx = +outWinSel.value; });
-  ioBlock.appendChild(_ioRow("2Display", outWinSel));
+  ioOutBlock.appendChild(_ioRow("2Display", outWinSel));
 
   // Phase 23 Step 3: the Mapping tab is retired. I/O leads the SOURCES tab —
   // it is mostly input-device selection (Camera, Audio In) and stays the first
   // thing visible on the first tab, as it was at the top of Mapping.
   // Injected at runtime, so it moves in JS rather than by relocating markup.
-  document.getElementById("tab-sources")?.prepend(ioBlock);
+  // Phase 24: inputs lead the LIVE IN group; outputs lead the Output tab.
+  // Both are injected at runtime, so they move in JS rather than markup.
+  // Falls back to the old prepend target if the group is absent.
+  (document.getElementById("group-live-in") ??
+    document.getElementById("tab-sources"))?.appendChild(ioBlock);
+  document.getElementById("tab-output")?.prepend(ioOutBlock);
 
   async function populateCameraDevices() {
     // Re-enumerate after permission grant so labels are fully resolved
