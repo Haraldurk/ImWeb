@@ -73,7 +73,14 @@ export class MovieInput {
     video.style.pointerEvents = 'none';
     video.muted = true;
     video.loop = true;
-    video.preload = 'auto';
+    // LOAD with 'metadata', not 'auto'. 'auto' commits the browser to buffering
+    // the whole file just to report a duration, and that byte budget — not the
+    // number of elements — is what caps the rack: with these All-Intra clips it
+    // is exhausted around 837 MB, after which further videos never fire
+    // loadedmetadata at all. Buffering is promoted to 'auto' once the clip is
+    // safely registered (below), so racking a clip no longer competes with
+    // reading it.
+    video.preload = 'metadata';
     video.src = url;
 
     // Wait for metadata so we know duration. Raced against a timeout: a video
@@ -136,6 +143,13 @@ export class MovieInput {
       duration: video.duration,
       thumb,
     });
+
+    // Now that the clip is racked and nothing else is waiting on metadata, let
+    // the browser buffer ahead for smooth playback and scrubbing. Promoting
+    // AFTER registration is the whole point: buffering is opportunistic and the
+    // browser evicts under pressure, whereas buffering during load starved the
+    // next clip's metadata and silently capped the rack.
+    video.preload = 'auto';
 
     console.info(`[Movie] Loaded clip ${idx}: "${name}" (${video.duration.toFixed(1)}s)`);
 
