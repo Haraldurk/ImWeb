@@ -186,6 +186,11 @@ _imweb_ready/
 # !public/** negation (later rules win). Only MasterProject is factory.
 public/Projects/*.imweb
 !public/Projects/MasterProject.imweb
+# .imbank needs the same treatment: !public/** above un-ignores it, so without
+# this line every bank saved into public/Projects was one `git add .` from
+# shipping — the exact thing the comment above exists to prevent.
+public/Projects/*.imbank
+!public/Projects/FactoryBank.imbank
 
 # Re-ignore Finder metadata inside public/ (overrides the !public/** above)
 public/.DS_Store
@@ -222,6 +227,10 @@ Brainstorms/
 assets/Projects/Banks/*.imbank
 assets/Projects/States/*.imstate
 
+# localStorage exports — per-origin user data, not factory content
+glsl-user-presets-backup.json
+*-presets-backup.json
+
 # Obsidian
 imweb-obsidian.md
 
@@ -240,6 +249,7 @@ imweb-dist-*.zip
 .agents/
 .antigravitycli/
 .codegraph/
+.codewhale/
 .codex/
 .deepseek/
 .opencode/
