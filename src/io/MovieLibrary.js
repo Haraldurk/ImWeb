@@ -61,7 +61,7 @@ class MovieLibrary {
    * promise, and an already-scanned entry resolves immediately.
    */
   async scan(entry) {
-    if (!entry || !entry.src) return entry;
+    if (!entry || !(entry.src || entry.file)) return entry;
     if (entry.duration != null) return entry;          // already scanned
     if (this._scanning.has(entry.id)) return this._scanning.get(entry.id);
 
@@ -98,15 +98,19 @@ class MovieLibrary {
     video.muted = true;
     video.playsInline = true;
     video.crossOrigin = "anonymous";
+    // Imports carry a File rather than a fetchable URL; mint a temporary object
+    // URL for the probe and revoke it, so scanning never leaks one.
+    const tempUrl = entry.src ? null : URL.createObjectURL(entry.file);
     const release = () => {
       video.removeAttribute("src");
       video.load();
+      if (tempUrl) URL.revokeObjectURL(tempUrl);
     };
     const rejectAfter = (ms, msg) =>
       new Promise((_, rej) => setTimeout(() => rej(new Error(msg)), ms));
 
     try {
-      video.src = entry.src;
+      video.src = entry.src ?? tempUrl;
       await Promise.race([
         new Promise((resolve, reject) => {
           video.onloadedmetadata = resolve;
@@ -151,6 +155,7 @@ class MovieLibrary {
     origin = "import",
     name,
     src = null,
+    file = null,
     duration = null,
     thumbnail = null,
     slotIndex = null,
@@ -158,9 +163,18 @@ class MovieLibrary {
     const id = `${origin}:${origin === "record" ? slotIndex : name}`;
     const existing = this.get(id);
     if (existing) return existing;
-    const entry = { id, name, origin, src, duration, thumbnail, slotIndex };
+    // `file` is kept for imports only. A blob URL dies with the session and a
+    // browser cannot re-open a local path, so holding the File is what lets an
+    // imported clip be loaded into the OTHER deck later from the Library. It
+    // still cannot survive a reload — see the blueprint's unresolved entries.
+    const entry = { id, name, origin, src, file, duration, thumbnail, slotIndex };
     this.entries.push(entry);
     return entry;
+  }
+
+  /** What MovieInput.addClip() should be handed for this entry. */
+  sourceOf(entry) {
+    return entry?.file ?? entry?.src ?? null;
   }
 
   get(id) {

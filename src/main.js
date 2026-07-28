@@ -1082,18 +1082,53 @@ async function main() {
    * @param {object} entry MovieLibrary descriptor
    * @param {'A'|'B'} deckId
    */
-  async function loadEntryToDeck(entry, deckId) {
+  async function loadEntryToDeck(entry, deckId, { select = true } = {}) {
     const deck = deckId === "B" ? movieInputB : movieInput;
     if (deck.clips.length >= MAX_CLIPS)
       throw new Error(`Deck ${deckId} rack is full (${MAX_CLIPS}) — remove a clip first`);
-    const idx = await deck.addClip(entry.src);
+    const idx = await deck.addClip(movieLibrary.sourceOf(entry));
     if (idx < 0) throw new Error(`Deck ${deckId} rack is full`);
-    deck.selectClip(idx);
+    // select=false for imports: dropping a file mid-performance should not yank
+    // the output to it. addClip still auto-activates when the rack was empty.
+    if (select) deck.selectClip(idx);
     if (deckId === "B") {
       ps.set("movieB.active", 1);
       refreshClipBStatus();
     } else {
       refreshClipsList();
+    }
+    return idx;
+  }
+
+  /**
+   * Register an imported File in the catalogue, then rack it. This is the
+   * import feed: everything that arrives by drop or file picker becomes a
+   * Library entry, so "one library where all clips live" stays true rather than
+   * meaning "the preloaded ones".
+   */
+  async function importFileToDeck(file, deckId = "A") {
+    const entry = movieLibrary.add({ origin: "import", name: file.name, file });
+    refreshMovieLibrary();
+    let idx;
+    try {
+      idx = await loadEntryToDeck(entry, deckId, { select: false });
+    } catch (err) {
+      // The entry is already catalogued, so a full rack is no longer a failed
+      // import — say that, rather than leaving the user thinking the file was
+      // rejected outright.
+      if (/rack is full/.test(err.message))
+        throw new Error(
+          `Deck ${deckId} rack is full (${MAX_CLIPS}) — "${file.name}" was added to the Movie Library; free a slot to load it`,
+        );
+      throw err;
+    }
+    // Backfill from the clip we just decoded rather than making the Library
+    // probe the same file a second time.
+    const clip = (deckId === "B" ? movieInputB : movieInput).clips[idx];
+    if (clip) {
+      entry.duration ??= clip.duration;
+      entry.thumbnail ??= clip.thumb;
+      refreshMovieLibrary();
     }
     return idx;
   }
@@ -3304,7 +3339,7 @@ async function main() {
     input.onchange = async (e) => {
       for (const file of e.target.files) {
         try {
-          await movieInput.addClip(file);
+          await importFileToDeck(file, "A");
         } catch (err) {
           console.error("[Movie] Failed to load:", err);
           _showClipError(err.message);
@@ -3368,13 +3403,10 @@ async function main() {
       ) {
         try {
           if (dropToDeckB) {
-            await movieInputB.addClip(file);
-            ps.set("movieB.active", 1);
+            await importFileToDeck(file, "B");
             movieInputB.currentClip?.video.play().catch(() => {});
-            refreshClipBStatus();
           } else {
-            await movieInput.addClip(file);
-            refreshClipsList();
+            await importFileToDeck(file, "A");
             if (movieInput.currentClip) {
               movieInput.currentClip.video.play().catch(() => {});
               ps.set("layer.fg", 1);
