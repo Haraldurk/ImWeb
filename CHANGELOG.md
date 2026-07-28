@@ -6,6 +6,48 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
 
 ---
 
+## [Unreleased]
+
+*Importing a project used to delete banks. `importAll()` pruned every bank in
+IndexedDB whose index the incoming file did not claim — no prompt, no undo —
+and it sat behind three call sites, including a drag-dropped `.imx`. The local
+MasterProject went from six banks to two before anyone noticed. Import is now
+additive; the only thing that still destroys banks is the button whose job is
+destroying banks.*
+
+### Fixed
+- **Project import no longer deletes local banks.** The prune is gone.
+  `PresetManager.importAll()` merges: banks already in the store are left alone,
+  and the project's own banks are written alongside them.
+- **Nor does it silently overwrite them.** Banks are keyed by `index` and
+  `dbPut` overwrites by key, so deletion was only half the blast radius — an
+  incoming bank at index 8 destroyed a local bank 8 just as thoroughly. A
+  colliding incoming bank is now **reindexed** to the lowest free slot. The
+  free-index set is seeded from IndexedDB *and* from memory, because a bank can
+  exist in the store without being in `presets` (an import before `init()`, or a
+  second tab).
+- **`activePreset` follows the reindexing.** `ProjectFile` takes the index map
+  `importAll()` returns and translates the saved id through it; without that, a
+  merge that moved a bank would silently restore a different one.
+- **The hidden `#bank-select` proxy tracks the bank set.** Its `<option>`
+  elements were rebuilt only when the bank dropdown was opened, so any bank
+  added since then had no option and the select read `""`. Extracted into
+  `_syncBankSelect()` and called from `_refresh()`, which already listens for
+  bank activation, saving, recall and rename.
+
+### Changed
+- **Destructive import is now opt-in**, via `importAll(data, { replace: true })`.
+  Two callers pass it: "Restore MasterProject", which already warns that the
+  action cannot be undone, and the first-ever launch — `init()` saves a blank
+  `Preset(0)` before MasterProject loads, so a merge there would collide with it
+  and shift every factory bank one slot. `_firstLaunch` means the store was
+  empty, so the only bank replace can destroy is that empty one.
+- **Loading the same project twice now duplicates its banks** rather than
+  replacing them. This is the deliberate trade: duplicate banks can be deleted,
+  deleted banks cannot be recovered.
+
+---
+
 ## [0.13.0] — 2026-07-28 — Performative Warp Drawing (Phase 24)
 
 *The displacement map had an editor but no performance. You could sculpt a warp
