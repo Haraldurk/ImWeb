@@ -849,7 +849,7 @@ export function registerCoreParameters(ps) {
   });
   ps.register({
     id: "displace.warpDrawAmt",
-    label: "WarpDrawAmt",
+    label: "Draw Amt",
     group: "displace",
     min: 0,
     max: 200,
@@ -896,7 +896,7 @@ export function registerCoreParameters(ps) {
     // a wall the mini editor (radius slider to 0.50) did not. Stored as a
     // percentage so it reads like every other param; _warpStroke divides by 100.
     id: "displace.warpDrawRadius",
-    label: "WarpDrawRadius",
+    label: "Radius",
     group: "displace",
     min: 2,
     max: 50,
@@ -905,14 +905,14 @@ export function registerCoreParameters(ps) {
   });
   ps.register({
     id: "displace.warpDrawFixed",
-    label: "WarpDrawFixed",
+    label: "Fixed Dir",
     group: "displace",
     type: PARAM_TYPE.TOGGLE,
     value: 0, // 0 = direction follows motion, exactly as before
   });
   ps.register({
     id: "displace.warpDrawAngle",
-    label: "WarpDrawAngle",
+    label: "Angle",
     group: "displace",
     min: 0,
     max: 360,
@@ -921,7 +921,7 @@ export function registerCoreParameters(ps) {
   });
   ps.register({
     id: "displace.warpSlotFade",
-    label: "WarpSlotFade",
+    label: "Slot Fade",
     group: "displace",
     min: 0,
     max: 10,
