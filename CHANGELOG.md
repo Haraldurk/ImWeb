@@ -6,7 +6,94 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
 
 ---
 
-## [Unreleased] — MixBus Rethink (Phase 23)
+## [0.13.0] — 2026-07-28 — Performative Warp Drawing (Phase 24)
+
+*The displacement map had an editor but no performance. You could sculpt a warp
+in a 288×200 panel, or pick one of eight procedural shapes, and that was the
+instrument. Phase 24 makes the warp map something you play: draw it on the
+output itself, drive it from LFO/MIDI/OSC, recall it from a controller, and
+crossfade between saved maps. Design doc:
+`docs/ImWeb-UI-Taxonomy-Phase24-Proposal.md`.*
+
+### Added
+- **Draw the warp on the main canvas** — Touch Mode `Warp` (index 4) claims the
+  output surface, so dragging smears the displacement map under the pointer.
+  Claims its own mode index for the same reason the Draw surface does: camera
+  orbit and the pad gate on theirs, so a bare listener would have made every
+  orbit drag also smear the map.
+- **`displace.warpDrawX` / `warpDrawY`** — the same brush driven by parameters
+  instead of a pointer, so an LFO pair produces an orbiting drag and MIDI can
+  sculpt the map live. Direction comes from motion between frames, which is why
+  a stationary pair of sliders does nothing and no on/off switch is needed.
+- **`displace.warpDrawRadius`** (2–50%) and **`displace.warpDrawAmt`**
+  ("Strength", 0–200%) — brush width and bite, now real parameters. Both are
+  shared by all three drawing surfaces: the mini editor, the main-canvas drag
+  and the WarpDrawX/Y path. The mini editor's Radius and Strength sliders are
+  *views* of these params, not private variables, so a controller visibly moves
+  them and dialling them changes what the main canvas draws.
+- **`displace.warpSlot` (1–16) and `displace.warpPreset` (8 shapes)** — slot and
+  preset recall as SELECT params with a leading "—" no-op, so LFO/MIDI/OSC can
+  fire them. One recall implementation in main.js; the editor's buttons set the
+  param rather than recalling directly, so button, MIDI and LFO share a path.
+  Capture semantics differ on purpose: `warpPreset` is captured by Display
+  States (the eight shapes live in code, so an index means the same thing
+  everywhere) while `warpSlot` is not (slot *contents* live in per-origin
+  localStorage, so a captured index would recall a different map elsewhere).
+- **`displace.warpSlotFade`** — slot and preset recall crossfades the control
+  grid over N seconds instead of snapping, on a smoothstep that eases in *and*
+  out and lands on the target exactly. Interruptible: re-targeting mid-fade
+  snapshots wherever it reached.
+- **`displace.warpDrawFixed` / `warpDrawAngle`** — a steady wind field you can
+  aim, instead of a direction that changes with the way you happen to be moving.
+  Motion still decides *whether* to draw and how hard, just not which way.
+- **Controller assignment on controls that are not param rows** — the mini
+  editor's Radius/Strength sliders and the preset buttons take right-click or
+  Ctrl+click; slot buttons take Ctrl+click only, because plain right-click
+  already saves to the slot.
+
+### Changed
+- **WarpAmt ceiling raised from 100% to 200%.** The shader displaces by
+  `(map − 0.5) × uStrength × 0.3` and control points clamp at ±0.49, so 100%
+  capped every warp at ~15% of the frame. Raising the *param* ceiling rather
+  than the shader's `0.3` keeps every saved map, preset, Display State and
+  `.imweb` project rendering byte-for-byte as before.
+- Warp param labels shortened (`Strength`, `Radius`, `Fixed Dir`, `Angle`,
+  `Slot Fade`) — five of them overflowed the panel's label column and rendered
+  as an identical `WarpDraw…`, which made the new Radius param unfindable. IDs
+  are unchanged, so saved states and MIDI mappings are unaffected.
+
+### Fixed
+- **Warp drawing was mirrored vertically, twice.** `DataTexture` defaults to
+  `flipY: false`, so map row 0 is the *bottom* of the screen while pointer
+  coordinates are y-down. Fixing the stroke position without the drag direction
+  then simply moved the mirror from where a stroke landed to which way it
+  smeared — position and direction have to share one axis convention.
+- **Half-texel register error in the warp map.** `_rebuild()` stored the field
+  at `n/(TEX_SIZE−1)` — texel *corners* — while the shader samples texel
+  *centres* at `(n+0.5)/TEX_SIZE`. The whole map was squeezed toward the centre
+  by 127/128: exact in the middle, ~0.4% of the canvas off at the edges, which
+  is why a brush stroke drifted the further out you drew.
+- **The grid overlay drew an upside-down picture of the warp** it claims to
+  show. The flip wraps `(nj + dy)`, not just `nj` — flipping the node but not
+  its displacement would put the lines in the right places while bulging them
+  the wrong way.
+- **The mini editor barely drew.** Its mousemove passed the raw per-event delta
+  as the brush *direction*, but `brush()` already scales by `strength`, so the
+  movement was multiplied in twice — roughly 30× weaker than the main canvas.
+  Now a unit direction with distance-proportional strength, matching
+  `_warpStroke`.
+- **The mini editor's mesh was 2.5× exaggerated**, drawing nodes up to 1.2
+  canvas-widths from home for warps the video renders calmly, and disagreeing
+  with the unscaled main-canvas overlay. Now 1:1.
+- **Fast strokes on the main canvas drew nothing.** The browser batches motion
+  into one `pointermove`, and a single large step trips the teleport guard —
+  the faster you moved, the less happened. Now replays `getCoalescedEvents()`,
+  guarding on the list being *empty* rather than absent (it exists and returns
+  `[]` for untrusted events, so `?? [e]` never fired).
+
+---
+
+## [0.13.0] — 2026-07-28 — MixBus Rethink (Phase 23)
 
 *The MixBus shipped in v0.12 as a crossfader hardwired to the two movie decks.
 ImWeb's actual model is a source graph — `layer.fg/bg/ds` pick freely from one
@@ -73,7 +160,7 @@ taxonomy around signal flow. Blueprint: `docs/ImWeb-MixBus-Rethink-Blueprint.md`
 
 ---
 
-## [Unreleased] — The Live GLSL Overhaul (Phases 13–20)
+## [0.13.0] — 2026-07-28 — The Live GLSL Overhaul (Phases 13–20)
 
 ### Added
 - **Pen-ready drawing (Pointer Events + pressure)** — the Draw preview

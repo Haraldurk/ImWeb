@@ -2672,16 +2672,36 @@ export function buildWarpEditor(editor, ps, contextMenu) {
   });
   radiusLabel.title = 'Brush radius — shared with the main canvas and WarpDrawX/Y.\nRight-click or Ctrl+click to assign a controller.';
 
-  // Strength
+  // Strength — a VIEW of displace.warpDrawAmt, the param that already scaled
+  // main-canvas strength. Deliberately NOT a third knob: the two were always
+  // the same quantity expressed twice. The old local scale had unity at 0.015
+  // and entered brush() as `strength/0.015`, exactly where the main canvas
+  // used `warpDrawAmt/100` — so 0.015 ≡ 100% and the default feel is
+  // unchanged; only the top of the range moves (5.3x → 2x, warpDrawAmt's max).
+  const strParam = ps.get('displace.warpDrawAmt');
+  const _amt = () => (strParam?.value ?? 100) / 100;   // read at USE time
   const strLabel = document.createElement('span');
   strLabel.className = 'warp-ctrl-label';
   strLabel.textContent = 'Strength';
-  let brushStrength = 0.015;
   const strSlider = document.createElement('input');
-  strSlider.type = 'range'; strSlider.min = '0.002'; strSlider.max = '0.08';
-  strSlider.step = '0.001'; strSlider.value = String(brushStrength);
+  strSlider.type = 'range';
+  strSlider.min = String(strParam?.min ?? 0);
+  strSlider.max = String(strParam?.max ?? 200);
+  strSlider.step = '1';
+  strSlider.value = String(strParam?.value ?? 100);
   strSlider.className = 'warp-slider';
-  strSlider.addEventListener('input', () => { brushStrength = parseFloat(strSlider.value); });
+  strSlider.addEventListener('input', () => {
+    ps.set('displace.warpDrawAmt', parseFloat(strSlider.value));
+  });
+  strParam?.onChange(v => {
+    const next = String(v);
+    if (strSlider.value !== next) strSlider.value = next;
+  });
+  [strLabel, strSlider].forEach(el => {
+    el.addEventListener('contextmenu', _assign(strParam));
+    el.addEventListener('click', e => { if (e.ctrlKey || e.metaKey) _assign(strParam)(e); });
+  });
+  strLabel.title = 'Brush strength — shared with the main canvas and WarpDrawX/Y.\nRight-click or Ctrl+click to assign a controller.';
 
   controlRow.append(radiusLabel, radiusSlider, strLabel, strSlider);
 
@@ -2913,15 +2933,17 @@ export function buildWarpEditor(editor, ps, contextMenu) {
         const mag = Math.hypot(ddx, ddy);
         if (mag > 1e-5) {
           const ux = ddx / mag, uy = ddy / mag;
-          // 0.015 is the slider's unity point: at the default this matches the
-          // main canvas exactly, and the slider scales ~0.13× to ~5.3× around it.
-          const s = Math.min(mag * 10, 0.4) * (brushStrength / 0.015);
+          // Byte-for-byte the main canvas's formula now (_warpStroke): the same
+          // gain, the same per-event ceiling, the same amt multiplier.
+          const s = Math.min(mag * 10, 0.4) * _amt();
           editor.brush(nx, ny, _radius(), s, -ux * sign, uy * sign);
         }
       } else if (activeTool === 'smooth') {
-        editor.smooth(nx, ny, _radius(), brushStrength * 5);
+        // 0.075 / 0.15 are the old 0.015×5 and 0.015×10 with the unity point
+        // folded in, so SMOOTH and ERASE keep their previous feel at 100%.
+        editor.smooth(nx, ny, _radius(), 0.075 * _amt());
       } else if (activeTool === 'erase') {
-        editor.erase(nx, ny, _radius(), brushStrength * 10);
+        editor.erase(nx, ny, _radius(), 0.15 * _amt());
       }
       
       _lastX = nx; _lastY = ny;

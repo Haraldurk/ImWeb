@@ -849,7 +849,10 @@ export function registerCoreParameters(ps) {
   });
   ps.register({
     id: "displace.warpDrawAmt",
-    label: "Draw Amt",
+    // "Strength", not "Draw Amt": the mini editor's Strength slider is now a
+    // view of THIS param, and one param with two names on screen is a bug
+    // waiting to be reported as two controls that mysteriously move together.
+    label: "Strength",
     group: "displace",
     min: 0,
     max: 200,
