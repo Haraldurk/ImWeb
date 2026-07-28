@@ -23,9 +23,9 @@
     "three": "^0.168.0"
   },
   "devDependencies": {
-    "@vitejs/plugin-basic-ssl": "^1.2.0",
+    "@vitejs/plugin-basic-ssl": "^2.3.0",
     "obsidian-dataview": "^0.5.68",
-    "vite": "^5.4.0"
+    "vite": "^8.1.5"
   },
   "overrides": {
     "@codemirror/language": "^6.12.3",

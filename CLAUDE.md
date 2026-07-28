@@ -35,6 +35,43 @@ main.js is the integration hub (~7550 lines). Most feature wiring lives here. Do
 - Noise shader lives at src/shaders/index.js (not src/core/shaders/)
 - VasulkaWarp.js (src/inputs/) is EXPERIMENTAL but no longer hidden — its panel lives under "From the Signal" in #tab-sources (restored Phase 24, Step 4). Phase 24 rule: routable source ⇒ visible UI.
 - AIFeatures.js persists provider/key config to localStorage 'imweb-ai-config'; all calls route through _call(systemPrompt, userPrompt).
+- **Build is Vite 8** (`vite ^8.1.5`, `@vitejs/plugin-basic-ssl ^2.3.0`). Verify
+  against `npx vite preview`, never the https dev server — automation rejects
+  its self-signed cert. `obsidian-dataview` is a devDependency that nothing
+  imports; it arrived by accident in 3020a35 and is a candidate for removal.
+
+### Warp drawing (Phase 24)
+- **One axis convention, everywhere.** `DataTexture` defaults to `flipY:false`,
+  so warp-map row 0 is the BOTTOM of the screen: the map's y axis is y-UP while
+  pointer coords are y-down. Position AND direction must both be flipped —
+  fixing one without the other just moves the mirror from where a stroke lands
+  to which way it smears. Both axes are then negated into `brush()` because the
+  shader samples `vUv + displacement`, so a positive map value moves the picture
+  the opposite way. The grid overlay flips `(nj + dy)`, not just `nj`.
+- **The map is authored at texel CENTRES** — `(n + 0.5)/TEX_SIZE`, matching how
+  `texture2D` samples it under LinearFilter. Authoring at `n/(TEX_SIZE-1)` put
+  the field a half-texel out of register and squeezed it toward the centre by
+  127/128 (exact in the middle, ~0.4% off at the edges).
+- **ONE brush formula**: unit direction × distance-proportional strength
+  (`min(mag × 10, 0.4) × amt`). Passing a raw delta as the *direction* multiplies
+  the movement in twice — that is what made the mini editor ~30× weaker than the
+  main canvas. `_warpStroke` (main.js) is the reference; the mini editor matches
+  it deliberately, it does not get its own tuning.
+- **Radius and Strength are single params**, `displace.warpDrawRadius` and
+  `displace.warpDrawAmt`, shared by all three surfaces (mini editor,
+  main-canvas drag, WarpDrawX/Y). The editor's sliders are VIEWS that read the
+  param at USE time — do not reintroduce a local `let`, which is exactly why
+  dialling radius there once did nothing to the main canvas.
+- **Slot vs preset capture differs on purpose.** `displace.warpPreset` is
+  group 'displace' and IS captured by Display States (the eight shapes live in
+  code, so an index means the same thing everywhere). `displace.warpSlot` is
+  group 'global' and is NOT — slot *contents* live in per-origin localStorage,
+  so a captured index would recall a different map on another machine or port.
+  warpSlot is therefore appended to warp-draw-params by id and excluded from
+  global-params, as glsl.preset is.
+- **`getCoalescedEvents()` needs a `.length` guard, not `?? []`** — the method
+  EXISTS and returns an empty array for untrusted events, so `?? [e]` never
+  fires and the drag draws nothing. `attachDrawSurface` still has this pattern.
 
 ### Source list & mix buses (Phase 23)
 - **ONE canonical source list.** `SOURCE_DEFS` in ParameterSystem.js is the single
