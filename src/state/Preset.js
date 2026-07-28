@@ -59,6 +59,16 @@ async function dbGetAll(store) {
   });
 }
 
+async function dbDelete(store, key) {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(store, 'readwrite');
+    const req = tx.objectStore(store).delete(key);
+    req.onsuccess = () => resolve();
+    req.onerror   = () => reject(req.error);
+  });
+}
+
 // ── Preset ────────────────────────────────────────────────────────────────────
 
 export class Preset {
@@ -145,6 +155,10 @@ export class Preset {
   static async loadAll() {
     const all = await dbGetAll('banks');
     return all.map(d => Preset.deserialize(d));
+  }
+
+  static async delete(index) {
+    await dbDelete('banks', index);
   }
 }
 
@@ -480,6 +494,14 @@ export class PresetManager extends EventTarget {
     await p.save();
   }
 
+  async renameBank(index, name) {
+    const p = this.presets[index];
+    if (!p) return;
+    p.name = name;
+    await p.save();
+    this.dispatchEvent(new CustomEvent('bankRenamed', { detail: { index, name } }));
+  }
+
   async saveAsBank(newName) {
     const src = this.current;
     if (!src) return;
@@ -516,6 +538,8 @@ export class PresetManager extends EventTarget {
 
   /** Replace all presets from imported project data. */
   async importAll(presetDataArray) {
+    const existing = await Preset.loadAll();
+
     this.presets = [];
     for (const data of presetDataArray) {
       const p = Preset.deserialize(data);
@@ -527,6 +551,13 @@ export class PresetManager extends EventTarget {
       this.presets[0] = new Preset(0);
       await this.presets[0].save();
     }
+
+    // Prune IndexedDB banks that aren't part of the imported project — otherwise
+    // they silently reappear on the next page load (loadAll() reads the whole store).
+    const keptIndices = new Set(this.presets.filter(Boolean).map(p => p.index));
+    const stale = existing.filter(p => !keptIndices.has(p.index));
+    await Promise.all(stale.map(p => Preset.delete(p.index)));
+
     this.dispatchEvent(new CustomEvent('presetActivated', { detail: { index: 0 } }));
   }
 

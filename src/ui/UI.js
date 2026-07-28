@@ -937,11 +937,7 @@ export class StateBar {
     this.bankBtn.innerHTML = '';
     this.bankBtn.appendChild(inp);
     inp.focus(); inp.select();
-    const commit = () => {
-      bank.name = inp.value.trim() || orig;
-      bank.save?.();
-      this._updateBankBtn();
-    };
+    const commit = () => this.pm.renameBank(this.pm.currentIdx, inp.value.trim() || orig);
     inp.addEventListener('blur', commit);
     inp.addEventListener('keydown', e => {
       if (e.key === 'Enter') { e.preventDefault(); inp.blur(); }
@@ -1080,6 +1076,7 @@ export class StateBar {
     this.pm.addEventListener('presetActivated', () => this._refresh());
     this.pm.addEventListener('stateSaved',      () => this._refresh());
     this.pm.addEventListener('stateRecalled',   () => this._refresh());
+    this.pm.addEventListener('bankRenamed',     () => this._refresh());
     this.pm.addEventListener('morphStarted', e => {
       const { fromIndex, toIndex } = e.detail;
       this._morphingIndices = new Set([fromIndex, toIndex]);
@@ -1851,6 +1848,7 @@ export class MemoryPanel {
     this.pm.addEventListener('presetActivated', () => { this._build(); this._updateBankName(); this._buildBankList(); });
     this.pm.addEventListener('stateSaved',      () => this._build());
     this.pm.addEventListener('stateRecalled',   () => this._build());
+    this.pm.addEventListener('bankRenamed',     () => { this._updateBankName(); this._buildBankList(); });
     this._updateBankName();
   }
 
@@ -1961,11 +1959,39 @@ export class MemoryPanel {
     el.innerHTML = '';
     this.pm.presets.forEach((bank, i) => {
       if (!bank) return;
-      const row = document.createElement('button');
+      const row = document.createElement('div');
       row.className = 'bank-list-item' + (i === this.pm.currentIdx ? ' active' : '');
-      row.textContent = bank.name || `Bank ${i + 1}`;
-      row.addEventListener('click', () => this.pm.activatePreset(i));
+
+      const name = document.createElement('span');
+      name.className = 'bank-list-name';
+      name.textContent = bank.name || `Bank ${i + 1}`;
+      name.title = 'Click to rename';
+      name.addEventListener('click', () => this._startBankListRename(name, bank, i));
+      row.appendChild(name);
+
+      const switchBtn = document.createElement('button');
+      switchBtn.className = 'bank-list-switch';
+      switchBtn.textContent = '▶';
+      switchBtn.title = 'Switch to this bank';
+      switchBtn.addEventListener('click', () => this.pm.activatePreset(i));
+      row.appendChild(switchBtn);
+
       el.appendChild(row);
+    });
+  }
+
+  _startBankListRename(span, bank, i) {
+    const orig = bank.name || `Bank ${i + 1}`;
+    const inp = document.createElement('input');
+    inp.className = 'bank-list-name-input';
+    inp.value = orig;
+    span.replaceWith(inp);
+    inp.focus(); inp.select();
+    const commit = () => this.pm.renameBank(i, inp.value.trim() || orig);
+    inp.addEventListener('blur', commit);
+    inp.addEventListener('keydown', e => {
+      if (e.key === 'Enter') { e.preventDefault(); inp.blur(); }
+      if (e.key === 'Escape') { inp.value = orig; inp.blur(); }
     });
   }
 
