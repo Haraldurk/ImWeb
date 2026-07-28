@@ -163,6 +163,10 @@ Brainstorms/*
 # Ignore heavy video work folders and loose video files
 _raw_videos/
 _imweb_ready/
+# Pre-faststart originals kept aside during the moov remux. Matches
+# _imweb_ready_backup/ and any other _imweb_ready* staging dir, so a stray
+# `git add .` cannot try to commit gigabytes of video.
+_imweb_ready*/
 *.mp4
 *.webm
 *.mov
