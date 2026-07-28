@@ -2202,7 +2202,12 @@ async function main() {
 
     const _loadMasterProject = async (attempt = 1) => {
       try {
-        await projectFile.importFromURL('/Projects/MasterProject.imweb');
+        // Factory load onto a blank slate, so it replaces rather than merges:
+        // init() has already created and SAVED an empty Preset(0), which a merge
+        // would collide with — pushing MasterProject's own bank 0 to slot 1 and
+        // leaving the blank bank sitting at 0. _firstLaunch means the store held
+        // nothing, so the only bank this can destroy is that empty one.
+        await projectFile.importFromURL('/Projects/MasterProject.imweb', { replace: true });
         console.info('[ImWeb] First launch — MasterProject.imweb loaded' + (attempt > 1 ? ` (attempt ${attempt})` : ''));
         _mpStatus.style.color = '';
         _mpStatus.textContent = 'MasterProject loaded';
