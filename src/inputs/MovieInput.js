@@ -12,7 +12,18 @@
 
 import * as THREE from 'three';
 
-const MAX_CLIPS = 8;
+export const MAX_CLIPS = 8;
+
+// Metadata is required (no duration ⇒ no usable clip), so a stall rejects and
+// the clip is skipped. The thumbnail is optional, so it gets a shorter budget
+// and a stall just means no preview image. Both are generous for local files;
+// they exist to bound a hang, not to police slow disks.
+const METADATA_TIMEOUT_MS = 8000;
+const THUMB_TIMEOUT_MS    = 3000;
+
+/** Rejects after ms — for racing against a promise that may never settle. */
+const _rejectAfter = (ms, msg) =>
+  new Promise((_, reject) => setTimeout(() => reject(new Error(msg)), ms));
 
 export class MovieInput {
   constructor(prefix = 'movie') {
@@ -65,11 +76,27 @@ export class MovieInput {
     video.preload = 'auto';
     video.src = url;
 
-    // Wait for metadata so we know duration
-    await new Promise((resolve, reject) => {
-      video.onloadedmetadata = resolve;
-      video.onerror = e => reject(new Error(`Failed to load "${name}" — unsupported codec or corrupt file`));
-    });
+    // Wait for metadata so we know duration. Raced against a timeout: a video
+    // whose metadata never arrives fires no 'error' either, so without this the
+    // promise stays pending forever and takes the caller's loop down with it —
+    // a throttled background tab reproduces it reliably. On timeout, tear the
+    // element down so it stops downloading and the blob URL is not leaked.
+    try {
+      await Promise.race([
+        new Promise((resolve, reject) => {
+          video.onloadedmetadata = resolve;
+          video.onerror = e => reject(new Error(`Failed to load "${name}" — unsupported codec or corrupt file`));
+        }),
+        _rejectAfter(METADATA_TIMEOUT_MS, `Timed out loading "${name}" after ${METADATA_TIMEOUT_MS / 1000}s`),
+      ]);
+    } catch (err) {
+      video.onloadedmetadata = null;
+      video.onerror = null;
+      video.removeAttribute('src');
+      video.load();
+      if (file instanceof File) URL.revokeObjectURL(url);
+      throw err;
+    }
 
     const texture = new THREE.VideoTexture(video);
     texture.minFilter = THREE.LinearFilter;
@@ -85,7 +112,14 @@ export class MovieInput {
     try {
       const seekTo = Math.min(video.duration * 0.1, 0.5);
       video.currentTime = seekTo;
-      await new Promise(res => video.addEventListener('seeked', res, { once: true }));
+      // Second hang point: this 'seeked' wait had no reject path either, so a
+      // seek that never completes stalls just as hard as missing metadata —
+      // and the surrounding try/catch cannot help, because nothing throws.
+      // The thumbnail is optional, so on timeout we keep the clip without one.
+      await Promise.race([
+        new Promise(res => video.addEventListener('seeked', res, { once: true })),
+        _rejectAfter(THUMB_TIMEOUT_MS, `thumbnail seek timed out for "${name}"`),
+      ]);
       const tc = document.createElement('canvas');
       tc.width = 160; tc.height = 90;
       tc.getContext('2d').drawImage(video, 0, 0, 160, 90);

@@ -43,7 +43,7 @@ import { ControllerManager } from "./controls/ControllerManager.js";
 import { Automation } from "./controls/Automation.js";
 import { StepSequencer } from "./controls/StepSequencer.js";
 import { CameraInput } from "./inputs/CameraInput.js";
-import { MovieInput } from "./inputs/MovieInput.js";
+import { MovieInput, MAX_CLIPS } from "./inputs/MovieInput.js";
 import { StillsBuffer } from "./inputs/StillsBuffer.js";
 import { SequenceBuffer } from "./inputs/SequenceBuffer.js";
 import { VideoDelayLine } from "./inputs/VideoDelayLine.js";
@@ -73,6 +73,7 @@ import { OSCBridge } from "./io/OSCBridge.js";
 import { MontyBridge } from "./io/MontyBridge.js";
 import { ProjectFile } from "./io/ProjectFile.js";
 import clipLibrary from "./io/ClipLibrary.js";
+import movieLibrary from "./io/MovieLibrary.js";
 import { importImX } from "./io/ImXImporter.js";
 import { parseCubeFile } from "./io/CubeLoader.js";
 import {
@@ -263,7 +264,7 @@ async function main() {
   const movieInput = new MovieInput();
   const movieInputB = new MovieInput('movieB');
   // Dev-only console access — Deck B has no UI until v0.12 Step 4
-  if (import.meta.env.DEV) window.__decks = { movieInput, movieInputB, ps };
+  if (import.meta.env.DEV) window.__decks = { movieInput, movieInputB, ps, movieLibrary };
   ctrl._movieInput = movieInput;
 
   const stillsBuffer = new StillsBuffer(renderer, W, H);
@@ -7713,21 +7714,44 @@ void main() {
     const res = await fetch("/_imweb_ready/manifest.json");
     if (res.ok) {
       const { clips } = await res.json();
+      // Feed the catalogue first — it is the record of what EXISTS.
       for (const name of clips) {
+        movieLibrary.add({
+          origin: "preload",
+          name,
+          src: `/_imweb_ready/${encodeURIComponent(name)}`,
+        });
+      }
+
+      // Then fill Deck A's rack FROM the catalogue. Deck A no longer reads the
+      // manifest — that is the decoupling — but it still ends up loaded, so
+      // ⇧1-8 works on boot exactly as before. Routing loading through the
+      // catalogue without a Library panel to load from (blueprint step 3) would
+      // strip the instrument of its clips in the meantime.
+      // Attempt only the first MAX_CLIPS entries — never the whole catalogue.
+      // Chrome caps concurrent media decoders, so once ~7 clips hold one with
+      // preload='auto', every later video stalls without metadata and without
+      // an 'error'. A failed clip does not increment clips.length, so hunting
+      // for a full rack would retry every remaining entry at one timeout each
+      // (17 entries ⇒ ~80s of boot). The rack is the catalogue's first
+      // MAX_CLIPS; the rest stay catalogue-only until loaded on demand.
+      for (const entry of movieLibrary.entries.slice(0, MAX_CLIPS)) {
         try {
-          await movieInput.addClip(`/_imweb_ready/${encodeURIComponent(name)}`);
+          const idx = await movieInput.addClip(entry.src);
+          if (idx < 0) break; // rack genuinely full
           // Refresh per clip, not once after the loop: addClip awaits video
-          // metadata, and a clip that never resolves (a throttled background
-          // tab will do it) used to leave the whole list showing its empty
-          // state even though earlier clips had loaded fine.
+          // metadata, and a clip that never resolves used to leave the whole
+          // list showing its empty state even though earlier clips had loaded
+          // fine. Observed on a real foreground tab, not just a throttled one.
           refreshClipsList();
         } catch (e) {
-          console.warn(`[ImWeb] Could not load clip "${name}":`, e.message);
+          console.warn(`[ImWeb] Could not load clip "${entry.name}":`, e.message);
         }
       }
       refreshClipsList();
       console.info(
-        `[ImWeb] Loaded ${movieInput.clips.length} clip(s) from _imweb_ready/`,
+        `[ImWeb] Catalogue: ${movieLibrary.size} entries from _imweb_ready/ — ` +
+          `Deck A rack loaded ${movieInput.clips.length}`,
       );
     }
   } catch (e) {
