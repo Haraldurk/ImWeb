@@ -60,13 +60,13 @@ export default defineConfig({
     },
   ],
   server: {
-    port: 5173,
-    host: "localhost",
-    open: true,
-    ...(HTTPS && hasMkcert
-      ? { https: { cert: fs.readFileSync(CERT), key: fs.readFileSync(KEY) } }
-      : {}),
-  },
+      port: 5173,
+      host: true, // <-- Now exposes to local network
+      open: true,
+      ...(HTTPS && hasMkcert
+        ? { https: { cert: fs.readFileSync(CERT), key: fs.readFileSync(KEY) } }
+        : {}),
+    },
   build: {
     target: "esnext",
     outDir: "dist",
