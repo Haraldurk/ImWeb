@@ -839,6 +839,29 @@ export class StateBar {
     });
   }
 
+  /**
+   * Rebuild the hidden #bank-select MIDI proxy from the live bank set.
+   *
+   * The options and the value must be written together: setting .value for an
+   * index that has no <option> yet is silently dropped and leaves the select
+   * empty. This used to live only in _buildDropdown(), which runs when the user
+   * OPENS the dropdown, so any bank added since then had no option and the
+   * select read "" until the menu was next opened.
+   */
+  _syncBankSelect() {
+    const sel = document.getElementById('bank-select');
+    if (!sel) return;
+    sel.innerHTML = '';
+    this.pm.presets.forEach((bank, i) => {
+      if (!bank) return;                    // presets is sparse — skip holes
+      const opt = document.createElement('option');
+      opt.value = i;
+      opt.textContent = bank.name || `Bank ${i + 1}`;
+      sel.appendChild(opt);
+    });
+    sel.value = String(this.pm.currentIdx); // only valid once options exist
+  }
+
   _buildDropdown() {
     if (!this.bankDropdown) return;
     this.bankDropdown.innerHTML = '';
@@ -854,19 +877,7 @@ export class StateBar {
       });
       this.bankDropdown.appendChild(btn);
     });
-    // Sync hidden select for MIDI proxy
-    const sel = document.getElementById('bank-select');
-    if (sel) {
-      sel.innerHTML = '';
-      this.pm.presets.forEach((bank, i) => {
-        if (!bank) return;
-        const opt = document.createElement('option');
-        opt.value = i;
-        opt.textContent = bank.name || `Bank ${i + 1}`;
-        sel.appendChild(opt);
-      });
-      sel.value = String(this.pm.currentIdx);
-    }
+    this._syncBankSelect();
     const divider = document.createElement('div');
     divider.className = 'bank-dropdown-divider';
     this.bankDropdown.appendChild(divider);
@@ -1068,8 +1079,7 @@ export class StateBar {
       if (this._morphingIndices.has(i)) tile.classList.add('state-tile--morphing');
     });
     this._updateBankBtn();
-    const sel = document.getElementById('bank-select');
-    if (sel) sel.value = String(this.pm.currentIdx);
+    this._syncBankSelect();
   }
 
   _wirePresetManager() {
