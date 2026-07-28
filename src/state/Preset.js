@@ -536,13 +536,44 @@ export class PresetManager extends EventTarget {
     return all.map(p => p.serialize());
   }
 
-  /** Replace all presets from imported project data. */
-  async importAll(presetDataArray) {
+  /**
+   * Merge imported project banks into the existing set.
+   *
+   * Additive by default: never deletes a local bank, and never overwrites one.
+   * Banks are keyed by index and dbPut() overwrites by key, so an incoming bank
+   * whose index is already taken is REINDEXED to a free slot — dropping the
+   * delete without this would just trade silent deletion for silent overwrite.
+   *
+   * { replace: true } is the explicit factory reset and wipes every existing
+   * bank; the caller must confirm with the user first.
+   *
+   * @returns {Map<number,number>} imported index → final index, for callers
+   *          that stored an index (activePreset) and must remap it.
+   */
+  async importAll(presetDataArray, { replace = false } = {}) {
     const existing = await Preset.loadAll();
+    const indexMap = new Map();
 
-    this.presets = [];
+    if (replace) {
+      await Promise.all(existing.map(p => Preset.delete(p.index)));
+      this.presets = [];
+    }
+
+    // Every index already spoken for. Seeded from BOTH the store and memory: a
+    // bank can exist in IndexedDB without being in this.presets (an import that
+    // runs before init(), or a second tab), and dbPut would clobber it.
+    const taken = new Set([
+      ...(replace ? [] : existing.map(p => p.index)),
+      ...this.presets.filter(Boolean).map(p => p.index),
+    ]);
+    const lowestFree = () => { let i = 0; while (taken.has(i)) i++; return i; };
+
     for (const data of presetDataArray) {
       const p = Preset.deserialize(data);
+      const orig = p.index;
+      if (taken.has(orig)) p.index = lowestFree();
+      taken.add(p.index);
+      indexMap.set(orig, p.index);
       this.presets[p.index] = p;
       await p.save();
     }
@@ -552,13 +583,8 @@ export class PresetManager extends EventTarget {
       await this.presets[0].save();
     }
 
-    // Prune IndexedDB banks that aren't part of the imported project — otherwise
-    // they silently reappear on the next page load (loadAll() reads the whole store).
-    const keptIndices = new Set(this.presets.filter(Boolean).map(p => p.index));
-    const stale = existing.filter(p => !keptIndices.has(p.index));
-    await Promise.all(stale.map(p => Preset.delete(p.index)));
-
     this.dispatchEvent(new CustomEvent('presetActivated', { detail: { index: 0 } }));
+    return indexMap;
   }
 
   async loadPreset(index) {
