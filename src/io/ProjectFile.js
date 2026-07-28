@@ -169,7 +169,7 @@ export class ProjectFile {
     setTimeout(() => URL.revokeObjectURL(a.href), 5000);
   }
 
-  async _apply(data) {
+  async _apply(data, { replace = false } = {}) {
     const isLegacy = data._type === 'imweb-project';
     const isInline = data.format === 'imweb';
     if (!isLegacy && !isInline) throw new Error('Not a valid .imweb project file');
@@ -186,14 +186,18 @@ export class ProjectFile {
     }
 
     // Import presets
+    let indexMap = new Map();
     if (data.presets) {
-      await this.presets.importAll(data.presets);
+      indexMap = await this.presets.importAll(data.presets, { replace });
     }
 
-    // Restore active preset — find by bank .index field, not array position
-    const savedId = data.activePreset ?? data.currentPreset ?? 0;
+    // Restore active preset — find by bank .index field, not array position.
+    // A merge may have reindexed the bank to dodge a collision, so translate
+    // the saved id through the import's map before looking it up.
+    const savedId  = data.activePreset ?? data.currentPreset ?? 0;
+    const mappedId = indexMap.has(savedId) ? indexMap.get(savedId) : savedId;
     const banks = this.presets.presets;
-    const pos = banks.findIndex(b => b && b.index === savedId);
+    const pos = banks.findIndex(b => b && b.index === mappedId);
     await this.presets.loadPreset(pos >= 0 ? pos : 0);
 
     // Restore live params (overlay on top of preset)
