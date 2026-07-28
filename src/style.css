@@ -3296,6 +3296,102 @@ body.fullscreen-output #app {
     min-width: 120px;
 }
 
+/* ── Movie Library ───────────────────────────────────────────────────────── */
+.movie-lib-filter {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 8px;
+}
+.movie-lib-search {
+    flex: 1;
+    min-width: 0;
+    font-size: 10px;
+    font-family: var(--mono);
+    background: var(--bg-4);
+    border: 1px solid var(--border);
+    color: var(--text-1);
+    padding: 2px 6px;
+    border-radius: 2px;
+    outline: none;
+}
+.movie-lib-search:focus {
+    border-color: var(--accent-dim);
+}
+.movie-lib-count {
+    flex: none;
+    font-size: 9px;
+    font-family: var(--mono);
+    color: var(--text-2);
+}
+/* Scrolls on purpose: the catalogue is unbounded, the panel is not. */
+.movie-lib-list {
+    max-height: 240px;
+    overflow-y: auto;
+}
+.movie-lib-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 8px;
+    border-bottom: 1px solid var(--bg-1);
+}
+.movie-lib-item:hover {
+    background: var(--bg-4);
+}
+.movie-lib-thumb {
+    flex-shrink: 0;
+    width: 56px;
+    height: 32px;
+    background: var(--bg-0) center/cover no-repeat;
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    color: var(--text-2);
+}
+.movie-lib-info {
+    flex: 1;
+    min-width: 0;
+}
+.movie-lib-name {
+    font-size: 10px;
+    color: var(--text-1);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.movie-lib-meta {
+    font-size: 9px;
+    font-family: var(--mono);
+    color: var(--text-2);
+}
+.movie-lib-actions {
+    flex: none;
+    display: flex;
+    gap: 3px;
+}
+.movie-lib-load {
+    background: var(--bg-3);
+    border: 1px solid var(--border);
+    color: var(--text-2);
+    font-size: 10px;
+    font-family: var(--mono);
+    padding: 2px 5px;
+    border-radius: 2px;
+    cursor: pointer;
+}
+.movie-lib-load:hover:not(:disabled) {
+    color: var(--accent);
+    border-color: var(--accent-dim);
+}
+.movie-lib-load:disabled {
+    opacity: 0.6;
+    cursor: default;
+}
+
 /* ── Clip Library ────────────────────────────────────────────────────────── */
 .clip-lib-header {
     display: flex;

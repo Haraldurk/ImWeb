@@ -49,6 +49,13 @@ const runFFmpeg = (inputFile, outputFile) => {
       "0:v:0",   // Primary video track
       "-map",
       "0:a?",    // Audio if present (? = optional, won't fail if no audio)
+      // Move the moov atom to the FRONT. Without this it lands at the end of
+      // the file, so a browser cannot learn a clip's duration until it has
+      // reached the end of a 200 MB+ All-Intra file — loadedmetadata stalls for
+      // seconds or never fires under load, which is what made the movie rack
+      // hang on its 8th clip and what makes a large library slow to scan.
+      "-movflags",
+      "+faststart",
       "-y", // Overwrite if exists
       outputFile,
     ];

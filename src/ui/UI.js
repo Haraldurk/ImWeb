@@ -3477,6 +3477,144 @@ export function buildAISettingsPanel(ai, panelEl) {
   refreshProviderUI(cfg.activeProvider);
 }
 
+// ── Movie Library UI ───────────────────────────────────────────────────────────
+
+/**
+ * Build the Movie Library panel — the catalogue of every clip that exists,
+ * versus a deck's rack, which is the handful currently loaded.
+ *
+ * Rows scan lazily via IntersectionObserver: a catalogue of a hundred clips
+ * costs a hundred strings at boot, and only the rows you actually look at pay
+ * for a metadata read. Nothing here holds a <video>; loading into a deck is what
+ * allocates one.
+ *
+ * @param {object}   movieLibrary  MovieLibrary singleton
+ * @param {Function} onLoad        (entry, deck:'A'|'B') → Promise, performs the load
+ * @returns {{ refreshMovieLibrary: Function }}
+ */
+export function buildMovieLibrary(movieLibrary, onLoad) {
+  const container = document.getElementById('movie-library');
+  if (!container) return { refreshMovieLibrary: () => {} };
+  container.innerHTML = '';
+
+  const filterRow = document.createElement('div');
+  filterRow.className = 'movie-lib-filter';
+  const search = document.createElement('input');
+  search.type = 'search';
+  search.placeholder = 'Filter clips…';
+  search.className = 'movie-lib-search';
+  const count = document.createElement('span');
+  count.className = 'movie-lib-count';
+  filterRow.appendChild(search);
+  filterRow.appendChild(count);
+  container.appendChild(filterRow);
+
+  const list = document.createElement('div');
+  list.className = 'movie-lib-list';
+  container.appendChild(list);
+
+  // One observer for the whole list: when a row becomes visible, scan its entry
+  // and repaint just that row. Rows already scanned unobserve themselves.
+  const io = new IntersectionObserver(
+    (records) => {
+      for (const r of records) {
+        if (!r.isIntersecting) continue;
+        const row = r.target;
+        io.unobserve(row);
+        const entry = row._entry;
+        if (!entry || entry.duration != null) continue;
+        movieLibrary.scan(entry).then(() => _paintRow(row, entry));
+      }
+    },
+    { root: list, rootMargin: '120px' },
+  );
+
+  function _fmtDur(d) {
+    if (d == null) return '…';
+    return d >= 60 ? `${Math.floor(d / 60)}m${Math.round(d % 60)}s` : `${d.toFixed(1)}s`;
+  }
+
+  function _paintRow(row, entry) {
+    const thumb = row.querySelector('.movie-lib-thumb');
+    const meta = row.querySelector('.movie-lib-meta');
+    if (entry.thumbnail) {
+      thumb.style.backgroundImage = `url(${entry.thumbnail})`;
+      thumb.textContent = '';
+    } else if (entry.scanError) {
+      thumb.textContent = '⚠';
+    }
+    meta.textContent = entry.scanError
+      ? entry.scanError
+      : `${_fmtDur(entry.duration)} · ${entry.origin}`;
+  }
+
+  function refreshMovieLibrary() {
+    const q = search.value.trim().toLowerCase();
+    const shown = movieLibrary.entries.filter(
+      (e) => !q || e.name.toLowerCase().includes(q),
+    );
+    count.textContent = `${shown.length}/${movieLibrary.size}`;
+    list.innerHTML = '';
+    shown.forEach((entry) => {
+      const row = document.createElement('div');
+      row.className = 'movie-lib-item';
+      row._entry = entry;
+
+      const thumb = document.createElement('div');
+      thumb.className = 'movie-lib-thumb';
+      thumb.textContent = '▶';
+
+      const info = document.createElement('div');
+      info.className = 'movie-lib-info';
+      const nameLine = document.createElement('div');
+      nameLine.className = 'movie-lib-name';
+      nameLine.textContent = entry.name.replace(/\.[^/.]+$/, '');
+      nameLine.title = entry.name;
+      const meta = document.createElement('div');
+      meta.className = 'movie-lib-meta';
+      info.appendChild(nameLine);
+      info.appendChild(meta);
+
+      const actions = document.createElement('div');
+      actions.className = 'movie-lib-actions';
+      for (const deck of ['A', 'B']) {
+        const btn = document.createElement('button');
+        btn.className = 'movie-lib-load';
+        btn.textContent = `→${deck}`;
+        btn.title = `Load into Deck ${deck}'s rack`;
+        btn.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          btn.disabled = true;
+          const was = btn.textContent;
+          btn.textContent = '…';
+          try {
+            await onLoad(entry, deck);
+            btn.textContent = '✓';
+            setTimeout(() => { btn.textContent = was; btn.disabled = false; }, 900);
+          } catch (err) {
+            btn.textContent = '✕';
+            btn.title = err.message;
+            setTimeout(() => { btn.textContent = was; btn.disabled = false; }, 1600);
+          }
+        });
+        actions.appendChild(btn);
+      }
+
+      row.appendChild(thumb);
+      row.appendChild(info);
+      row.appendChild(actions);
+      list.appendChild(row);
+
+      _paintRow(row, entry);
+      if (entry.duration == null && !entry.scanError) io.observe(row);
+    });
+  }
+
+  search.addEventListener('input', refreshMovieLibrary);
+  refreshMovieLibrary();
+  return { refreshMovieLibrary };
+}
+
 // ── Clip Library UI ────────────────────────────────────────────────────────────
 
 /**
