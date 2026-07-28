@@ -7716,6 +7716,11 @@ void main() {
       for (const name of clips) {
         try {
           await movieInput.addClip(`/_imweb_ready/${encodeURIComponent(name)}`);
+          // Refresh per clip, not once after the loop: addClip awaits video
+          // metadata, and a clip that never resolves (a throttled background
+          // tab will do it) used to leave the whole list showing its empty
+          // state even though earlier clips had loaded fine.
+          refreshClipsList();
         } catch (e) {
           console.warn(`[ImWeb] Could not load clip "${name}":`, e.message);
         }

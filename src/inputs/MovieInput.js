@@ -36,7 +36,12 @@ export class MovieInput {
     }
 
     const url = file instanceof File ? URL.createObjectURL(file) : file;
-    const name = file instanceof File ? file.name : url.split('/').pop();
+    // URL-loaded clips carry a percent-encoded last path segment (the manifest
+    // loader encodeURIComponent()s each filename), so decode it for display —
+    // otherwise a clip with a space shows as "mirror%20clip". decodeURIComponent
+    // throws URIError on a stray literal '%' ("50%.mp4"), so fall back raw.
+    const _decode = (s) => { try { return decodeURIComponent(s); } catch { return s; } };
+    const name = file instanceof File ? file.name : _decode(url.split('/').pop());
 
     // Check browser codec support before attempting load
     const ext = name.split('.').pop().toLowerCase();
