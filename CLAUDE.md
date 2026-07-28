@@ -37,8 +37,7 @@ main.js is the integration hub (~7550 lines). Most feature wiring lives here. Do
 - AIFeatures.js persists provider/key config to localStorage 'imweb-ai-config'; all calls route through _call(systemPrompt, userPrompt).
 - **Build is Vite 8** (`vite ^8.1.5`, `@vitejs/plugin-basic-ssl ^2.3.0`). Verify
   against `npx vite preview`, never the https dev server — automation rejects
-  its self-signed cert. `obsidian-dataview` is a devDependency that nothing
-  imports; it arrived by accident in 3020a35 and is a candidate for removal.
+  its self-signed cert.
 
 ### Warp drawing (Phase 24)
 - **One axis convention, everywhere.** `DataTexture` defaults to `flipY:false`,
