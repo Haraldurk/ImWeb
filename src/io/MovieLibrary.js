@@ -28,13 +28,14 @@
 const SCAN_CONCURRENCY = 1;
 
 /**
- * Generous on purpose. A clip prepped WITHOUT `-movflags +faststart` keeps its
- * moov atom at the end of the file, so the browser cannot report duration until
- * it has reached the end of a 200 MB+ file. imweb-prep.js now writes faststart
- * files, where this completes in milliseconds — but clips prepped before that
- * change are still out there, and a lazy background scan can afford to wait.
+ * Tight because the media is faststart: with the moov atom at the FRONT of the
+ * file, loadedmetadata fires after a few KB regardless of how large the clip is,
+ * so anything still pending after 3s is genuinely broken rather than merely big.
+ * Raise this again if a project ever carries clips prepped without
+ * `-movflags +faststart` — those cannot report duration until the browser has
+ * read to the END of the file, which on a 200 MB+ All-Intra clip takes seconds.
  */
-const SCAN_TIMEOUT_MS = 20000;
+const SCAN_TIMEOUT_MS = 3000;
 
 class MovieLibrary {
   constructor() {
