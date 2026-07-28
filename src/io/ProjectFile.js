@@ -145,12 +145,16 @@ export class ProjectFile {
   /**
    * Fetch a .imweb file from a server URL and apply it.
    * Used for first-launch MasterProject load and "Restore MasterProject".
+   *
+   * { replace: true } wipes every existing bank — only "Restore MasterProject"
+   * passes it, and only after its confirmation modal. First launch leaves it
+   * false: the store is empty then, so a merge lands banks at their own indices.
    */
-  async importFromURL(url) {
+  async importFromURL(url, { replace = false } = {}) {
     const resp = await fetch(url);
     if (!resp.ok) throw new Error(`${resp.status} ${resp.statusText}`);
     const data = await resp.json();
-    await this._apply(data);
+    await this._apply(data, { replace });
     return data._name ?? data.name ?? 'MasterProject';
   }
 

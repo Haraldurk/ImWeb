@@ -2419,7 +2419,9 @@ async function main() {
         hideModal();
         setStatus("⟳ Restoring MasterProject…", "var(--text-2)");
         try {
-          await projectFile.importFromURL("/Projects/MasterProject.imweb");
+          // The one destructive import: this is a factory reset, and the
+          // confirmation modal above is the gate for it.
+          await projectFile.importFromURL("/Projects/MasterProject.imweb", { replace: true });
           memoryPanel?._refresh?.();
           refreshBufferGrid();
           setStatus("✓ MasterProject restored", "var(--green)");
