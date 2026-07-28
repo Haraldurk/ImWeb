@@ -2628,16 +2628,49 @@ export function buildWarpEditor(editor, ps, contextMenu) {
   });
   controlRow.appendChild(toolGroup);
 
-  // Brush radius
+  // Brush radius — a VIEW of displace.warpDrawRadius, not its own variable.
+  // One radius now governs all three drawing surfaces: this editor, the main
+  // canvas drag and the WarpDrawX/Y param path. It used to be a local `let`
+  // that nothing else could see, which is why dialling it here did nothing to
+  // the main canvas. Percent in the param, 0..1 UV on the slider.
+  const radiusParam = ps.get('displace.warpDrawRadius');
+  // Read at USE time, never cached: a controller can move the param between
+  // two pointermove events, and the brush must see the current value.
+  const _radius = () => (radiusParam?.value ?? 18) / 100;
   const radiusLabel = document.createElement('span');
   radiusLabel.className = 'warp-ctrl-label';
   radiusLabel.textContent = 'Radius';
-  let brushRadius = 0.20;
   const radiusSlider = document.createElement('input');
-  radiusSlider.type = 'range'; radiusSlider.min = '0.05'; radiusSlider.max = '0.50';
-  radiusSlider.step = '0.01'; radiusSlider.value = String(brushRadius);
+  radiusSlider.type = 'range';
+  radiusSlider.min = String((radiusParam?.min ?? 2) / 100);
+  radiusSlider.max = String((radiusParam?.max ?? 50) / 100);
+  radiusSlider.step = '0.01';
+  radiusSlider.value = String((radiusParam?.value ?? 18) / 100);
   radiusSlider.className = 'warp-slider';
-  radiusSlider.addEventListener('input', () => { brushRadius = parseFloat(radiusSlider.value); });
+  radiusSlider.addEventListener('input', () => {
+    ps.set('displace.warpDrawRadius', parseFloat(radiusSlider.value) * 100);
+  });
+  // Follow the param, so an LFO/MIDI controller visibly moves this slider too.
+  radiusParam?.onChange(v => {
+    const next = String(v / 100);
+    if (radiusSlider.value !== next) radiusSlider.value = next;
+  });
+  // Right-click / Ctrl+click → the same assign menu a param row offers. These
+  // are bare <input>/<span>, not a .param-row, so they get no badge for free;
+  // wiring contextMenu.show here is what makes the control assignable at all.
+  const _assign = (param) => (e) => {
+    e.preventDefault(); e.stopPropagation();
+    contextMenu?.show(param, e.clientX, e.clientY);
+  };
+  [radiusLabel, radiusSlider].forEach(el => {
+    el.addEventListener('contextmenu', _assign(radiusParam));
+    // Windows/Linux Ctrl+click arrives as a plain click; macOS synthesises a
+    // contextmenu instead, so both paths are needed for one gesture.
+    el.addEventListener('click', e => {
+      if (e.ctrlKey || e.metaKey) _assign(radiusParam)(e);
+    });
+  });
+  radiusLabel.title = 'Brush radius — shared with the main canvas and WarpDrawX/Y.\nRight-click or Ctrl+click to assign a controller.';
 
   // Strength
   const strLabel = document.createElement('span');
@@ -2665,7 +2698,12 @@ export function buildWarpEditor(editor, ps, contextMenu) {
     const btn = document.createElement('button');
     btn.className = 'warp-preset-btn';
     btn.textContent = name;
-    btn.addEventListener('click', () => {
+    btn.addEventListener('click', (e) => {
+      // Ctrl/Cmd+click assigns a controller to displace.warpPreset instead of
+      // firing the preset — these buttons are not param rows, so without this
+      // there is no way to reach the assign menu from the control you are
+      // actually looking at.
+      if (e.ctrlKey || e.metaKey) { _assign(ps.get('displace.warpPreset'))(e); return; }
       // Route through displace.warpPreset so the button, a MIDI note and an
       // LFO all reach the same recall in main.js. Re-clicking the SAME preset
       // must still re-fire — Random especially — and setting a param to the
@@ -2675,6 +2713,9 @@ export function buildWarpEditor(editor, ps, contextMenu) {
       else ps.set('displace.warpPreset', idx);
       drawMesh();
     });
+    // Nothing else claims right-click on a preset button, so it opens the
+    // assign menu too — matching the param-row convention.
+    btn.addEventListener('contextmenu', _assign(ps.get('displace.warpPreset')));
     presetRow.appendChild(btn);
   });
 
@@ -2699,7 +2740,11 @@ export function buildWarpEditor(editor, ps, contextMenu) {
       btn.style.width = '24px';
       btn.style.padding = '3px 0';
       if (hasSaved) btn.style.color = 'var(--accent)';
-      btn.addEventListener('click', () => {
+      btn.addEventListener('click', (e) => {
+        // Ctrl/Cmd+click → assign a controller to displace.warpSlot. Right-click
+        // is NOT free here (it saves), so unlike the preset buttons this gesture
+        // is the only route to the assign menu from a slot.
+        if (e.ctrlKey || e.metaKey) { _assign(ps.get('displace.warpSlot'))(e); return; }
         if (hasSaved) {
           // LOADING routes through displace.warpSlot so a click, a MIDI note
           // and an LFO all reach one recall in main.js (which still applies
@@ -2715,6 +2760,14 @@ export function buildWarpEditor(editor, ps, contextMenu) {
       });
       btn.addEventListener('contextmenu', e => {
         e.preventDefault();
+        // macOS turns Ctrl+click into a contextmenu event, so "save on
+        // right-click" and "assign on Ctrl+click" arrive at the SAME handler.
+        // ctrlKey is what separates them: a true right-click (button 2) carries
+        // ctrlKey false. Without this branch, Ctrl+click on a slot would
+        // silently overwrite it instead of opening the assign menu — a
+        // destructive misfire, which is why this is a branch and not a
+        // second listener.
+        if (e.ctrlKey || e.metaKey) { _assign(ps.get('displace.warpSlot'))(e); return; }
         editor.save(String(i));
         refreshSlots();
       });
@@ -2796,7 +2849,7 @@ export function buildWarpEditor(editor, ps, contextMenu) {
       ctx.strokeStyle = 'rgba(232,200,64,0.5)';
       ctx.lineWidth = 1;
       ctx.beginPath();
-      ctx.arc(_hover.cx, _hover.cy, brushRadius * CW, 0, Math.PI * 2);
+      ctx.arc(_hover.cx, _hover.cy, _radius() * CW, 0, Math.PI * 2);
       ctx.stroke();
     }
   }
@@ -2863,12 +2916,12 @@ export function buildWarpEditor(editor, ps, contextMenu) {
           // 0.015 is the slider's unity point: at the default this matches the
           // main canvas exactly, and the slider scales ~0.13× to ~5.3× around it.
           const s = Math.min(mag * 10, 0.4) * (brushStrength / 0.015);
-          editor.brush(nx, ny, brushRadius, s, -ux * sign, uy * sign);
+          editor.brush(nx, ny, _radius(), s, -ux * sign, uy * sign);
         }
       } else if (activeTool === 'smooth') {
-        editor.smooth(nx, ny, brushRadius, brushStrength * 5);
+        editor.smooth(nx, ny, _radius(), brushStrength * 5);
       } else if (activeTool === 'erase') {
-        editor.erase(nx, ny, brushRadius, brushStrength * 10);
+        editor.erase(nx, ny, _radius(), brushStrength * 10);
       }
       
       _lastX = nx; _lastY = ny;
