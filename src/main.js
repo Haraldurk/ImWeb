@@ -1057,10 +1057,14 @@ async function main() {
     { input: movieInputB, onLoad: refreshClipBStatus },
   );
 
-  /** Deck B status in the Movie B panel: active clip thumbnail + name
-   *  (Deck B deliberately has no clip list — no duplicated DOM). */
+  /** Deck B status in the Movie B panel: active clip thumbnail + name, above
+   *  the rack list. Deck B renders through the same _renderRack() as Deck A —
+   *  the original "no duplicated DOM" constraint is met by parameterising that
+   *  one renderer, not by leaving Deck B listless. Every existing caller of
+   *  this function refreshes the rack too, so no call site had to change. */
   function refreshClipBStatus() {
     const el = document.getElementById("clipB-status");
+    refreshClipsBList();
     if (!el) return;
     el.innerHTML = "";
     const n = movieInputB.clips.length;
@@ -3047,18 +3051,37 @@ async function main() {
     setTimeout(() => el.remove(), duration);
   }
 
-  function refreshClipsList() {
-    if (!clipsList) return;
-    clipsList.innerHTML = "";
-    if (!movieInput.clips.length) {
+  /**
+   * Render one deck's 8-slot rack. Deck A and Deck B hold identical MovieInput
+   * clip arrays — only the container, the param prefix, the key hint and the
+   * ⇧-click behaviour differ, so this stays ONE function rather than two copies
+   * of ~130 lines of DOM. (Six hand-copied source lists once drifted apart here;
+   * see CLAUDE.md. The Deck B panel was originally left listless for exactly
+   * this reason — "no duplicated DOM" — which parameterising honours.)
+   *
+   * @param {object}   cfg
+   * @param {object}   cfg.deck         MovieInput instance
+   * @param {Element}  cfg.listEl       container to render into
+   * @param {string}   cfg.prefix       param prefix — "movie" | "movieB"
+   * @param {string}   cfg.keyHint      modifier glyph shown on the slot key badge
+   * @param {?string}  cfg.emptyMsg     empty-state text, or null to render nothing
+   * @param {Function} cfg.refresh      this deck's own refresh, for re-render
+   * @param {?Function} cfg.onShiftClick ⇧-click handler, or null for plain select
+   */
+  function _renderRack(cfg) {
+    const { deck, listEl, prefix, keyHint, emptyMsg, refresh, onShiftClick } = cfg;
+    if (!listEl) return;
+    listEl.innerHTML = "";
+    if (!deck.clips.length) {
+      if (!emptyMsg) return;
       const empty = document.createElement("div");
       empty.className = "clip-empty";
-      empty.textContent = "Drop video files here or click + Add Clip";
-      clipsList.appendChild(empty);
+      empty.textContent = emptyMsg;
+      listEl.appendChild(empty);
       return;
     }
-    movieInput.clips.forEach((clip, i) => {
-      const isActive = i === movieInput.currentIndex;
+    deck.clips.forEach((clip, i) => {
+      const isActive = i === deck.currentIndex;
       const item = document.createElement("div");
       item.className = `clip-item${isActive ? " active" : ""}`;
 
@@ -3101,7 +3124,7 @@ async function main() {
 
       const key = document.createElement("kbd");
       key.className = "clip-key";
-      key.textContent = i < 8 ? `⇧${i + 1}` : "";
+      key.textContent = i < 8 ? `${keyHint}${i + 1}` : "";
 
       const rmBtn = document.createElement("button");
       rmBtn.className = "clip-remove";
@@ -3109,8 +3132,8 @@ async function main() {
       rmBtn.title = "Remove clip";
       rmBtn.addEventListener("click", (e) => {
         e.stopPropagation();
-        movieInput.removeClip(i);
-        refreshClipsList();
+        deck.removeClip(i);
+        refresh();
       });
 
       metaLine.appendChild(dur);
@@ -3123,19 +3146,14 @@ async function main() {
       item.appendChild(info);
 
       item.addEventListener("click", (e) => {
-        // ⇧-click → send this clip to Deck B (Deck A selection unchanged)
-        if (e.shiftKey) {
-          movieInputB.addClip(clip.url).then((idx) => {
-            if (idx < 0) return;
-            movieInputB.selectClip(idx);
-            ps.set("movieB.active", 1);
-            refreshClipBStatus();
-          }).catch((err) => _showClipError(err.message));
+        // ⇧-click → send this clip to Deck B (this deck's selection unchanged)
+        if (e.shiftKey && onShiftClick) {
+          onShiftClick(clip);
           return;
         }
-        movieInput.selectClip(i);
-        if (ps.get("movie.active").value) clip.video.play().catch(() => {});
-        refreshClipsList();
+        deck.selectClip(i);
+        if (ps.get(`${prefix}.active`).value) clip.video.play().catch(() => {});
+        refresh();
       });
       item.addEventListener("contextmenu", (e) => {
         e.preventDefault();
@@ -3152,9 +3170,9 @@ async function main() {
           .querySelector('[data-action="midi"]')
           .addEventListener("click", () => {
             menu.remove();
-            // Trigger the controller badge popover for movie.speed
+            // Trigger the controller badge popover for this deck's speed
             const badge = document.querySelector(
-              '[data-param-id="movie.speed"] .param-ctrl',
+              `[data-param-id="${prefix}.speed"] .param-ctrl`,
             );
             if (badge)
               badge.dispatchEvent(
@@ -3168,8 +3186,8 @@ async function main() {
           .querySelector('[data-action="remove"]')
           .addEventListener("click", () => {
             menu.remove();
-            movieInput.removeClip(i);
-            refreshClipsList();
+            deck.removeClip(i);
+            refresh();
           });
         const dismiss = (ev) => {
           if (!menu.contains(ev.target)) {
@@ -3180,7 +3198,48 @@ async function main() {
         setTimeout(() => document.addEventListener("pointerdown", dismiss), 0);
       });
 
-      clipsList.appendChild(item);
+      listEl.appendChild(item);
+    });
+  }
+
+  function refreshClipsList() {
+    _renderRack({
+      deck: movieInput,
+      listEl: clipsList,
+      prefix: "movie",
+      keyHint: "⇧",
+      emptyMsg: "Drop video files here or click + Add Clip",
+      refresh: refreshClipsList,
+      // ⇧-click sends the clip to Deck B without disturbing Deck A's selection
+      onShiftClick: (clip) => {
+        movieInputB
+          .addClip(clip.url)
+          .then((idx) => {
+            if (idx < 0) return;
+            movieInputB.selectClip(idx);
+            ps.set("movieB.active", 1);
+            refreshClipBStatus();
+          })
+          .catch((err) => _showClipError(err.message));
+      },
+    });
+  }
+
+  /** Deck B's rack. Empty state is left to #clipB-status, which already carries
+   *  the "how do I load Deck B" hint — rendering it twice would just be noise. */
+  function refreshClipsBList() {
+    _renderRack({
+      deck: movieInputB,
+      listEl: document.getElementById("clipsB-list"),
+      prefix: "movieB",
+      keyHint: "⌥",
+      emptyMsg: null,
+      // Re-render through the status function, not this one: the status line
+      // above the rack carries the clip COUNT, so selecting or removing here
+      // has to refresh both or it goes stale. refreshClipBStatus() calls back
+      // into this function, so the rack still redraws.
+      refresh: refreshClipBStatus,
+      onShiftClick: null,
     });
   }
 
@@ -5700,6 +5759,21 @@ void main() {
       }
       e.preventDefault();
       return; // prevent other shortcuts (e.g. / on Nordic layout) from also firing
+    }
+
+    // Option/Alt+1–8 = Select Deck B clip. Matches on e.code, never e.key:
+    // on macOS Option+digit emits ¡™£¢∞§¶• rather than a digit, but the code
+    // stays DigitN. Guarded off Shift so ⇧⌥N doesn't drive both decks at once.
+    if (e.altKey && !e.shiftKey && !e.metaKey && /^Digit[1-8]$/.test(e.code)) {
+      const idx = parseInt(e.code.replace("Digit", "")) - 1;
+      if (idx < movieInputB.clips.length) {
+        movieInputB.selectClip(idx);
+        if (ps.get("movieB.active").value)
+          movieInputB.clips[idx]?.video.play().catch(() => {});
+        refreshClipBStatus();
+      }
+      e.preventDefault();
+      return;
     }
 
     // / (or þ/Þ on Icelandic, where Shift+7=/ is intercepted by the clip-select shortcut above)
