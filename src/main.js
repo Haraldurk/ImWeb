@@ -44,6 +44,14 @@ import { Automation } from "./controls/Automation.js";
 import { StepSequencer } from "./controls/StepSequencer.js";
 import { CameraInput } from "./inputs/CameraInput.js";
 import { MovieInput, MAX_CLIPS } from "./inputs/MovieInput.js";
+
+/**
+ * How many catalogue entries to rack into Deck A at boot. Deliberately below
+ * MAX_CLIPS: the limit on racked clips is total BYTES, not slot count (see the
+ * manifest loader), and leaving headroom means Deck B and on-demand Library
+ * loads still have budget. The Library panel covers everything else.
+ */
+const EAGER_RACK_LOAD = 4;
 import { StillsBuffer } from "./inputs/StillsBuffer.js";
 import { SequenceBuffer } from "./inputs/SequenceBuffer.js";
 import { VideoDelayLine } from "./inputs/VideoDelayLine.js";
@@ -108,6 +116,7 @@ import {
   DebugOverlay,
   TablesEditor,
   buildClipLibrary,
+  buildMovieLibrary,
   buildPaletteSection,
   buildAnalogPresetBar,
 } from "./ui/UI.js";
@@ -1050,6 +1059,7 @@ async function main() {
   }
 
   buildWarpEditor(warpEditor, ps, contextMenu);
+  const { refreshMovieLibrary } = buildMovieLibrary(movieLibrary, loadEntryToDeck);
   const { refreshClipGrid, setRecording } = buildClipLibrary(
     ps,
     clipLibrary,
@@ -1057,6 +1067,28 @@ async function main() {
     contextMenu,
     { input: movieInputB, onLoad: refreshClipBStatus },
   );
+
+  /**
+   * Load a catalogue entry into a deck's rack. This is the one verb the Library
+   * exposes, and the only place a catalogue entry becomes a live <video>.
+   * @param {object} entry MovieLibrary descriptor
+   * @param {'A'|'B'} deckId
+   */
+  async function loadEntryToDeck(entry, deckId) {
+    const deck = deckId === "B" ? movieInputB : movieInput;
+    if (deck.clips.length >= MAX_CLIPS)
+      throw new Error(`Deck ${deckId} rack is full (${MAX_CLIPS}) — remove a clip first`);
+    const idx = await deck.addClip(entry.src);
+    if (idx < 0) throw new Error(`Deck ${deckId} rack is full`);
+    deck.selectClip(idx);
+    if (deckId === "B") {
+      ps.set("movieB.active", 1);
+      refreshClipBStatus();
+    } else {
+      refreshClipsList();
+    }
+    return idx;
+  }
 
   /** Deck B status in the Movie B panel: active clip thumbnail + name, above
    *  the rack list. Deck B renders through the same _renderRack() as Deck A —
@@ -7728,14 +7760,15 @@ void main() {
       // ⇧1-8 works on boot exactly as before. Routing loading through the
       // catalogue without a Library panel to load from (blueprint step 3) would
       // strip the instrument of its clips in the meantime.
-      // Attempt only the first MAX_CLIPS entries — never the whole catalogue.
-      // Chrome caps concurrent media decoders, so once ~7 clips hold one with
-      // preload='auto', every later video stalls without metadata and without
-      // an 'error'. A failed clip does not increment clips.length, so hunting
-      // for a full rack would retry every remaining entry at one timeout each
-      // (17 entries ⇒ ~80s of boot). The rack is the catalogue's first
-      // MAX_CLIPS; the rest stay catalogue-only until loaded on demand.
-      for (const entry of movieLibrary.entries.slice(0, MAX_CLIPS)) {
+      refreshMovieLibrary(); // catalogue is known before anything is racked
+
+      // Rack only the first EAGER_RACK_LOAD entries; the Library loads the rest
+      // on demand. preload='auto' buffers each clip IN FULL, and these ALL-I
+      // files average ~135 MB, so the browser's media budget is exhausted around
+      // 837 MB — after which every later element stalls with no metadata and no
+      // 'error'. This is a byte ceiling, not a count: lower this if a project's
+      // clips are larger, raise it if they are small.
+      for (const entry of movieLibrary.entries.slice(0, EAGER_RACK_LOAD)) {
         try {
           const idx = await movieInput.addClip(entry.src);
           if (idx < 0) break; // rack genuinely full
