@@ -6341,7 +6341,12 @@ void main() {
       // autoSelect: entering Warp mode and dragging is unambiguous intent, so
       // the same narrow off→Custom switch applies. A deliberately chosen mode
       // (H-Wave, say) is still left alone, and the drag is then a no-op.
-      for (const ce of e.getCoalescedEvents?.() ?? [e]) {
+      // `?? [e]` is not enough: getCoalescedEvents() EXISTS but returns an
+      // empty array for untrusted events, and `[] ?? x` is `[]`, so the loop
+      // body would never run and the drag would draw nothing at all. Fall back
+      // on emptiness, not just on absence.
+      const coalesced = e.getCoalescedEvents?.() ?? [];
+      for (const ce of (coalesced.length ? coalesced : [e])) {
         const p = uv(ce);
         _warpStroke(p.x, p.y, p.x - wdrag.x, p.y - wdrag.y, true);
         wdrag = p;
