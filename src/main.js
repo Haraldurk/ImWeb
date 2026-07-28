@@ -48,22 +48,18 @@ import { MovieInput, MAX_CLIPS } from "./inputs/MovieInput.js";
 /**
  * How many catalogue entries to rack into Deck A at boot.
  *
- * NOT MAX_CLIPS, and faststart did not change that. Faststart fixed metadata
- * DISCOVERY — the moov atom now sits at the front, so loadedmetadata fires in
- * milliseconds instead of requiring a read to EOF. But preload='auto' still
- * buffers each clip IN FULL, and that byte budget is the real ceiling: measured
- * at ~840 MB on this machine, where clip 8 stalls at exactly the same point
- * before and after the remux (7 clips = 837 MB).
+ * A full rack, which is only safe because MovieInput.addClip() now LOADS with
+ * preload='metadata' and promotes to 'auto' after the clip is registered.
  *
- * Set to MAX_CLIPS the rack still reaches only 7 and boot pays a dead 8s
- * timeout for the clip that cannot fit. Four clips (~643 MB here) leaves enough
- * headroom that Deck B and on-demand Library loads still succeed — verified by
- * a Library →B load landing while Deck A held four.
+ * While loading used 'auto', each clip committed to buffering its whole file
+ * just to report a duration. That byte budget — ~837 MB here, not any element
+ * count — was exhausted at seven clips, and the eighth then never fired
+ * loadedmetadata at all. Raising this number alone achieved nothing; the fix
+ * was in HOW clips load, so keep the two changes together.
  *
- * A full 8-slot rack needs preload='metadata' with promotion to 'auto' on
- * select, not a larger number here.
+ * The Library panel loads anything beyond MAX_CLIPS on demand.
  */
-const EAGER_RACK_LOAD = 4;
+const EAGER_RACK_LOAD = MAX_CLIPS;
 import { StillsBuffer } from "./inputs/StillsBuffer.js";
 import { SequenceBuffer } from "./inputs/SequenceBuffer.js";
 import { VideoDelayLine } from "./inputs/VideoDelayLine.js";
