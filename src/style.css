@@ -1254,7 +1254,7 @@ body.dnd-active::after {
 
 /* ── CLIPS LIST ──────────────────────────────────────────────────────────── */
 
-#btn-add-clip {
+#btn-add-movie {
     display: block;
     margin: 8px 10px;
     font-family: var(--mono);
@@ -1267,7 +1267,7 @@ body.dnd-active::after {
     cursor: pointer;
     transition: all 0.1s;
 }
-#btn-add-clip:hover {
+#btn-add-movie:hover {
     color: var(--text-0);
     border-color: var(--border-hi);
 }

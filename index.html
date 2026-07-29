@@ -220,6 +220,23 @@
                         <div class="group-header">Media</div>
                     <div class="panel-section">
                         <div class="section-header">Movie Library</div>
+                        <div
+                            style="
+                                display: flex;
+                                gap: 6px;
+                                padding: 6px 8px 4px;
+                                align-items: center;
+                            "
+                        >
+                            <button
+                                id="btn-add-movie"
+                                class="import-btn"
+                                style="flex: 1"
+                                title="Add movie files to the Library — load them into a deck with →A / →B"
+                            >
+                                + Add Movie
+                            </button>
+                        </div>
                         <div id="movie-library"></div>
                     </div>
                     <div class="panel-section">
@@ -233,16 +250,10 @@
                             "
                         >
                             <button
-                                id="btn-add-clip"
-                                class="import-btn"
-                                style="flex: 1"
-                            >
-                                + Add Clip
-                            </button>
-                            <button
                                 id="btn-clear-clips"
                                 class="import-btn"
-                                title="Remove all clips"
+                                style="flex: 1"
+                                title="Remove all clips from Deck A's rack"
                             >
                                 ✕ Clear
                             </button>
@@ -295,6 +306,23 @@
                         >
                             No clip — ⇧-click a library slot or ⇧-drop a
                             video to load Deck B
+                        </div>
+                        <div
+                            style="
+                                display: flex;
+                                gap: 6px;
+                                padding: 6px 8px 4px;
+                                align-items: center;
+                            "
+                        >
+                            <button
+                                id="btn-clear-clips-b"
+                                class="import-btn"
+                                style="flex: 1"
+                                title="Remove all clips from Deck B's rack"
+                            >
+                                ✕ Clear
+                            </button>
                         </div>
                         <div id="clipsB-list"></div>
                         <div id="clipB-params"></div>
