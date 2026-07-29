@@ -127,6 +127,38 @@ catalogue entries. This is deliberate:
 **The catalogue is uncapped.** It is metadata; hundreds of entries cost
 thumbnails, not VRAM.
 
+### 2.4 CORRECTION (2026-07-29, after implementation)
+
+This section said a rack slot holds a fully buffered video and that instant
+switching came from pre-buffering all eight. **Both halves of that were wrong**,
+and correcting them was the bulk of the implementation work. Recorded here so the
+reasoning is not re-derived:
+
+**A rack is bounded by BYTES, not by slots.** `preload='auto'` buffers a clip in
+full. With All-Intra files averaging ~135 MB, the browser's media budget is spent
+around **837 MB — seven of these clips** — and every element after that never
+fires `loadedmetadata` at all, with no `error` either. It simply hangs. That was
+the eighth-clip hang, and no timeout value or larger constant fixes it.
+
+**Two independent causes, fixed separately:**
+
+1. **`moov` at the end of the file.** `imweb-prep.js` never passed
+   `-movflags +faststart`, so a browser had to read to EOF before it could report
+   a duration. On a 237 MB clip that is seconds, or never under load. Fixed in the
+   prep script; existing clips need a lossless remux.
+2. **Buffering during load.** Loading now uses `preload='metadata'`, and
+   `selectClip()` promotes *only the clip being played* to `'auto'` while demoting
+   the one being left. Promoting all eight after registration was tried and is
+   worse than the original bug: the rack fills, but the clip you switch to cannot
+   obtain data and holds its first frame indefinitely while the tick calls
+   `play()` every frame.
+
+**Consequences for the design above:** switching to a slot that has been idle is
+*not* free — its first play may wait briefly for data. The instant-switching
+premise for an 8-slot rack does not hold with files this large. If that proves
+unacceptable in performance, the direction is pre-warming a neighbour or two of
+the selected slot, not raising the number of clips on `'auto'`.
+
 ### 2.4 Three feeds, one catalogue
 
 Everything that produces a clip registers an entry:
@@ -308,16 +340,23 @@ the existing `getManifest()` with no rewrite (§3).
 
 Each step leaves the app working and is independently revertible.
 
-1. **Deck B rack UI.** Pure win, no model change — give B the list it already has
-   data for. Ships value even if the rest is deferred.
-2. **`Option+1-8`** for Deck B's rack.
-3. **Library module + panel**, populated from the three feeds; loading routed
-   through it. Decks unchanged underneath.
-4. **Recorder rename**, labels only, ids frozen.
-5. **Rack refs in `.imweb`** plus the legacy-load path (§5.4).
-6. **`setMediaRef` correctness** (§5.5).
+1. ~~**Deck B rack UI**~~ — DONE (`a5080d4`). `_renderRack()` is parameterised and
+   serves both decks rather than being duplicated.
+2. ~~**`Option+1-8`** for Deck B's rack~~ — DONE (`a5080d4`).
+3. ~~**Library module + panel**~~ — DONE (`af3e885`, `068a211`). Lazy per-row
+   scanning via IntersectionObserver is what makes a hundred entries viable.
+   Imports were routed through the catalogue in `6c2f79d`.
+4. **Recorder rename**, labels only, ids frozen — NOT STARTED. `clipLibrary.recall()`
+   still calls `addClip` directly, so recordings are the one feed that never
+   reaches the Library.
+5. **Rack refs in `.imweb`** plus the legacy-load path (§5.4) — NOT STARTED.
+   Saved projects still do not restore which clips were racked.
+6. **`setMediaRef` correctness** (§5.5) — NOT STARTED.
 
-Steps 1-2 are worth doing regardless of whether 3-6 are ever approved.
+Beyond the original plan, use produced: eviction of the oldest clip on a full rack
+(never the clip playing), a per-row delete in the Library, drag-from-Library onto
+either deck panel, `+ Add Movie` moving to the Library as a catalogue-only action,
+a per-deck Clear, and routing a layer to a deck switching that deck on.
 
 ---
 
