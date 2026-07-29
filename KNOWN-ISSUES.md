@@ -7,6 +7,24 @@ When an issue is fixed, move it to the Resolved table with version and commit.
 
 ## Active
 
+### One preload clip times out racking, but scans fine
+**Symptom:** on startup, `200628_155535_mirror clip_ALL-I.mp4` logs
+`Timed out loading … after 8s` and Deck A racks 7 clips instead of 8. The clip
+appears in the Movie Library with a correct duration (10.0s) and thumbnail, so
+the *scan* path succeeds and only the *rack* path fails.
+**Suspicion:** it is the only filename in `_imweb_ready/` containing a space.
+`main.js:7901` builds the src with `encodeURIComponent(name)`, and v0.14 already
+fixed one percent-encoding bug on this exact file (a clip showing as
+`mirror%20clip`). Verified NOT a server problem: a range request for
+`200628_155535_mirror%20clip_ALL-I.mp4` returns 206 with a correct
+`Content-Range` and `ftyp` as the first atom, on both dev and preview.
+**Not** the byte ceiling — that explains 7-of-8 racking in general, but not why
+this specific clip is the one that fails while 16 others scan.
+**Status:** deferred 2026-07-29, owner's call. Reproduces on dev and preview.
+**Related files:** src/inputs/MovieInput.js (`addClip`), src/main.js:7891–7930
+
+---
+
 ### xController override re-applies response table (double-shaping)
 **Symptom:** a param with both a table and an xController gets the curve
 applied twice on the override write — response feels steeper than the curve.
