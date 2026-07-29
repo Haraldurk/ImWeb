@@ -1084,8 +1084,16 @@ async function main() {
    */
   async function loadEntryToDeck(entry, deckId, { select = true } = {}) {
     const deck = deckId === "B" ? movieInputB : movieInput;
-    if (deck.clips.length >= MAX_CLIPS)
-      throw new Error(`Deck ${deckId} rack is full (${MAX_CLIPS}) — remove a clip first`);
+    // Full rack evicts the OLDEST clip rather than refusing, so loading never
+    // interrupts a set. Never evict the clip that is playing — dropping the
+    // live output to make room for a clip you have not cut to yet would be the
+    // worst possible moment — so step past it to the next oldest.
+    if (deck.clips.length >= MAX_CLIPS) {
+      const victim = deck.currentIndex === 0 ? 1 : 0;
+      const evicted = deck.clips[victim]?.name;
+      deck.removeClip(victim);
+      console.info(`[Movie] Deck ${deckId} rack full — evicted "${evicted}"`);
+    }
     const idx = await deck.addClip(movieLibrary.sourceOf(entry));
     if (idx < 0) throw new Error(`Deck ${deckId} rack is full`);
     // select=false for imports: dropping a file mid-performance should not yank
@@ -1109,19 +1117,9 @@ async function main() {
   async function importFileToDeck(file, deckId = "A") {
     const entry = movieLibrary.add({ origin: "import", name: file.name, file });
     refreshMovieLibrary();
-    let idx;
-    try {
-      idx = await loadEntryToDeck(entry, deckId, { select: false });
-    } catch (err) {
-      // The entry is already catalogued, so a full rack is no longer a failed
-      // import — say that, rather than leaving the user thinking the file was
-      // rejected outright.
-      if (/rack is full/.test(err.message))
-        throw new Error(
-          `Deck ${deckId} rack is full (${MAX_CLIPS}) — "${file.name}" was added to the Movie Library; free a slot to load it`,
-        );
-      throw err;
-    }
+    // A full rack no longer fails — loadEntryToDeck evicts its oldest clip —
+    // so there is no rack-full case left to translate here.
+    const idx = await loadEntryToDeck(entry, deckId, { select: false });
     // Backfill from the clip we just decoded rather than making the Library
     // probe the same file a second time.
     const clip = (deckId === "B" ? movieInputB : movieInput).clips[idx];

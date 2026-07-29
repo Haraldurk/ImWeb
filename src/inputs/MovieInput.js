@@ -181,7 +181,12 @@ export class MovieInput {
     clip.texture.dispose();
     if (clip.url.startsWith('blob:')) URL.revokeObjectURL(clip.url);
     this.clips.splice(idx, 1);
-    if (this._current >= this.clips.length) this._current = this.clips.length - 1;
+    // Removing a clip BELOW the playhead shifts every later index down by one,
+    // so _current must follow or it silently starts pointing at a different
+    // movie — visible as the output changing by itself when a clip is evicted
+    // or removed from the list.
+    if (idx < this._current) this._current--;
+    else if (this._current >= this.clips.length) this._current = this.clips.length - 1;
     if (this._current < 0) this.active = false;
   }
 
