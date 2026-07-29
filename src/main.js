@@ -3109,7 +3109,7 @@ async function main() {
   // ── Clip management UI ──────────────────────────────────────────────────
 
   const clipsList = document.getElementById("clips-list");
-  const btnAddClip = document.getElementById("btn-add-clip");
+  const btnAddMovie = document.getElementById("btn-add-movie");
 
   function _showClipError(msg) {
     const el = document.createElement("div");
@@ -3321,40 +3321,45 @@ async function main() {
 
   refreshClipsList(); // show empty state on startup
 
-  document.getElementById("btn-clear-clips")?.addEventListener("click", () => {
-    if (!movieInput.clips.length) return;
-    if (!confirm("Remove all clips?")) return;
+  /** Empty one deck's rack. The Library is untouched — Clear unloads, it does
+   *  not delete, so anything cleared can be racked again from the Library. */
+  function clearDeckRack(deckId) {
+    const deck = deckId === "B" ? movieInputB : movieInput;
+    if (!deck.clips.length) return;
+    if (!confirm(`Remove all clips from Deck ${deckId}'s rack?`)) return;
     // removeClip shifts indices — remove from end
-    for (let i = movieInput.clips.length - 1; i >= 0; i--)
-      movieInput.removeClip(i);
-    ps.set("movie.active", 0);
-    refreshClipsList();
-  });
+    for (let i = deck.clips.length - 1; i >= 0; i--) deck.removeClip(i);
+    ps.set(deckId === "B" ? "movieB.active" : "movie.active", 0);
+    if (deckId === "B") refreshClipBStatus();
+    else refreshClipsList();
+  }
 
-  btnAddClip?.addEventListener("click", () => {
+  document
+    .getElementById("btn-clear-clips")
+    ?.addEventListener("click", () => clearDeckRack("A"));
+  document
+    .getElementById("btn-clear-clips-b")
+    ?.addEventListener("click", () => clearDeckRack("B"));
+
+  // "+ Add Movie" belongs to the Library, not to a deck: adding a movie says
+  // "this exists", and →A / →B says "play it here". It deliberately does NOT
+  // rack the file — with a full rack that would fail, and auto-racking only
+  // when a slot happens to be free is the kind of conditional behaviour that
+  // makes a control feel unpredictable.
+  btnAddMovie?.addEventListener("click", () => {
     const input = document.createElement("input");
     input.type = "file";
     input.accept = "video/*,.mp4,.webm,.mov,.avi,.mkv";
     input.multiple = true;
-    input.onchange = async (e) => {
+    input.onchange = (e) => {
+      const added = [];
       for (const file of e.target.files) {
-        try {
-          await importFileToDeck(file, "A");
-        } catch (err) {
-          console.error("[Movie] Failed to load:", err);
-          _showClipError(err.message);
-        }
+        added.push(movieLibrary.add({ origin: "import", name: file.name, file }));
       }
-      refreshClipsList();
-      // Apply current mute state to all clips
-      const muted = !!ps.get("movie.mute").value;
-      movieInput.clips.forEach((c) => {
-        c.video.muted = muted;
-      });
-      if (movieInput.currentClip) {
-        movieInput.currentClip.video.play().catch(() => {});
-        ps.set("layer.fg", 1);
-      }
+      // Duration and thumbnail fill in through the panel's lazy scan, exactly
+      // as they do for preloaded entries.
+      refreshMovieLibrary();
+      if (added.length) console.info(`[Movie] Added ${added.length} movie(s) to the Library`);
     };
     input.click();
   });
