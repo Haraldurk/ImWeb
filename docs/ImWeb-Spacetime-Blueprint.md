@@ -1,0 +1,655 @@
+# ImWeb — Spacetime Blueprint (Phases 25–27)
+
+*Architectural proposal, 2026-07-29 — no code yet. Output of the post-v0.14
+brainstorm session. Successor to `ImWeb-MixBus-Rethink-Blueprint.md`, which
+established that ImWeb's best idea is "routing is data, not topology," and
+`ImWeb-UI-Taxonomy-Phase24-Proposal.md`, which made the warp map performable.*
+
+*Three phases were chosen from ~25 candidates. §11 records what was rejected and
+why, so it is not re-derived. Two claims made early in this document's own
+drafting were disproved while writing it; both corrections are marked in place
+rather than quietly removed — see §4 and §9c.*
+
+---
+
+## 0. The reframe that shapes everything
+
+ImWeb has five engines that all answer one question — *store recent frames,
+sample them oddly* — and each answers it differently:
+
+| File | Lines | The odd sampling |
+|---|---|---|
+| `src/inputs/TimeDisplaceEngine.js` | 418 | per-pixel delay from a 7-way mode switch |
+| `src/inputs/SequenceBuffer.js` | 326 | ×3, 4–480 frames, plus a `timewarp` mode |
+| `src/inputs/StillsBuffer.js` | 304 | 4/8/16/32 addressable stills, FrameSelect |
+| `src/inputs/VasulkaWarp.js` | 206 | strip ring, `bufSize` 960 |
+| `src/inputs/SlitScanBuffer.js` + `VideoDelayLine.js` | ~200 | column sweep; ring tap by age |
+
+That is five vocabularies for one operation. The instrument exposes them as five
+sources (13 `delay`, 15 `slitscan`, 22 `vwarp`, 24 `tdisp`, 17–19 `seq1/2/3`),
+five panels, and five mental models, and a performer has to know which box to
+open before they can ask a question about time.
+
+**The reframe:** the frame history is a **volume in (x, y, t)**. Every one of
+those five engines is that volume read along a **plane**. Video delay is a plane
+parallel to x–y, offset in t. Slit-scan is a plane containing the t axis.
+Time-displacement is that plane bent by a control texture. There is one
+operation, and its parameter is *the orientation of the plane*.
+
+This is not a new observation — it is Woody and Steina's, stated in the
+mid-seventies as the "Time/Energy Object," and it has never been available as a
+single continuous real-time control in any tool. Phase 25 makes the orientation
+a knob.
+
+**The compatibility rule is strict, as in Phase 23.** `SOURCE_DEFS` is not
+touched, no source index moves, every existing `td.*`/`delay.*`/`slitscan.*`/
+`vwarp.*` param id survives, and all five panels stay. This is a consolidation
+*behind* the UI, not a redesign of it. The chosen level is **adapters** — see
+§5 for what that costs and §5e for the one place it changes behaviour.
+
+---
+
+## 1. The engine already exists
+
+The first draft of this document costed Phase 25 as a new engine subsuming
+~1250 lines. **That was wrong, and the error is worth recording because it
+inverts the phase's risk profile.**
+
+`TimeDisplaceEngine.js` is already a spacetime buffer. It has:
+
+- **A `WebGLArrayRenderTarget` ring with z = time** (`_allocate()`), written one
+  layer per frame via `r.setRenderTarget(this._arrayRT, this._head)`.
+- **A runtime capability probe** (`_probe()`) that renders a known green into
+  layer 1, reads it back with `readRenderTargetPixels(..., 1)`, and falls back to
+  N render targets if render-to-layer is broken — the ANGLE/Metal-on-Intel risk
+  that bit this project in Chrome 148 is already handled, defensively, in code.
+- **Buffer resolution decoupled from display** (`setBufferResolution`,
+  `_bufW`/`_bufH`, `setUpscaleFilter`), so the ring's VRAM cost is a parameter
+  rather than a consequence of canvas size.
+- **A read shader that already computes a per-pixel delay map.**
+  `ARRAY_READ_FRAG` derives a scalar `m` per fragment, gammas it by
+  `uDelayCurve`, scales by `uMaxDelay`, clamps to real history, and samples
+  `tRing` at that layer.
+- **Its own header comment (line 15) calling it the "general successor to the
+  deprecated VasulkaWarp strip-buffer."** The intent in this document was
+  already written down in 2026; it was just never carried through to the other
+  four engines.
+
+The only thing standing between that and the sampling plane is how `m` is
+produced: a **7-way `uMode` branch**, not a continuous orientation.
+
+```glsl
+    if (uMode == 0)      { m = vUv.x; }                    // slitScanX
+    else if (uMode == 1) { m = vUv.y; }                    // slitScanY
+    else if (uMode == 2) { m = (abs(vUv.x - uScanPos) < uScanWidth*0.5) ? 0.0 : 1.0; }
+    else if (uMode == 3 || uMode == 4) { /* symmetric ramp about uScanPos */ }
+    else if (uMode == 5) { /* radial from (uScanPos, uScanPosY) */ }
+    else                 { m = luminance(texture(uNoiseTex, vUv).rgb); }
+```
+
+Every branch is a special case of one expression. **Phase 25 is a shader
+generalisation plus a storage/read split — not a new engine.** That is the
+single most important fact in this document, and it is why the phase is worth
+attempting at all.
+
+---
+
+## 2. One ring, N taps
+
+The expensive thing about a frame history is the **history** (VRAM). The cheap
+thing is **reading** it (one fullscreen pass into one small render target).
+Today, four engines each own both halves. Split them:
+
+**`SpacetimeRing` — the storage.** One instance. Extracted from the ring half of
+`TimeDisplaceEngine`: allocation and strategy choice, `capture(srcTex)`, `_head`
+and `_count`, `setBufferResolution`, `resize`, `dispose`.
+
+**`SpacetimeTap` — a plane, an output RT, and one read pass.** Many instances.
+Each owns its plane parameters, publishes a `.texture`, and knows nothing about
+storage beyond the ring handle it samples.
+
+```
+                       ┌─────────────────────────────┐
+   capture source ────▶ │  SpacetimeRing  (x, y, t)   │
+   (td.captureSource)  │  one allocation, one write  │
+                       └──┬────┬────┬────┬───────────┘
+                          │    │    │    │        one read pass + one small RT each
+                    ┌─────▼┐ ┌─▼──┐ ┌▼───┐ ┌▼─────┐
+                    │ tap  │ │tap │ │tap │ │ tap  │
+                    │delay │ │slit│ │vwar│ │tdisp │
+                    └──┬───┘ └─┬──┘ └─┬──┘ └──┬───┘
+                       │       │      │       │
+                  inputs.delay …slitscan …vwarp …tdisp
+```
+
+This is what makes the adapter answer affordable: four sources reading one
+history at four different orientations costs **one ring and four small render
+targets**, not four rings. Today `videoDelay` alone allocates 30 full-res
+targets (`main.js:311`) while `tdEngine` allocates its own N-layer array and
+`vasulkaWarp` a third buffer at `bufSize` 960. Phase 25 should *reduce* VRAM
+while adding capability — that is testable, and §10 makes it an acceptance
+criterion rather than a hope.
+
+**Taps allocate lazily**, following the mix-bus precedent (`Pipeline.js:237`): a
+project that routes no temporal source pays for no tap, and the ring itself is
+not allocated until something captures.
+
+---
+
+## 3. The plane
+
+### 3a. The continuous form
+
+Replace the `uMode` branch with one expression. The plane is defined by an
+**angle**, a **centre**, a **linear↔radial blend**, a **width**, and an optional
+**map texture**:
+
+```glsl
+  // linear: signed distance along the plane normal, remapped to 0..1
+  vec2  n      = vec2(cos(uAngle), sin(uAngle));
+  vec2  d      = vUv - uCentre;
+  float linear = dot(d, n) + 0.5;
+  float radial = length(d) * 1.41421356;      // normalised to half-diagonal
+  float m      = mix(linear, radial, uRadial);
+  m = mix(m, uSymmetric > 0.5 ? abs(m - 0.5) * 2.0 : m, 1.0);
+  if (uMapAmount > 0.0)                        // texture-driven displacement
+    m = mix(m, luminance(texture(uMapTex, vUv).rgb), uMapAmount);
+  // then: existing uInvert → uDelayCurve gamma → uMaxDelay → clamp to history
+```
+
+The tail of the pipeline — invert, curve, max delay, clamp to `uCount` — is
+unchanged from `ARRAY_READ_FRAG` and keeps its existing parameters. Only the
+production of `m` is generalised.
+
+### 3b. The seven modes become presets
+
+`td.mode` **stays**, as a SELECT that writes plane params rather than switching a
+shader branch — the same "one recall implementation, the buttons set the param"
+pattern Phase 24 used for `displace.warpPreset`. This table is the proof that
+the generalisation loses nothing, and it belongs in the code as a comment:
+
+| `td.mode` | angle | radial | symmetric | width / map |
+|---|---|---|---|---|
+| 0 slitScanX | 0° | 0 | no | — |
+| 1 slitScanY | 90° | 0 | no | — |
+| 2 warpLine | 0° | 0 | no | hard band at `scanPosition`, `scanWidth` |
+| 3 slitScanXSym | 0° | 0 | yes | about `scanPosition` |
+| 4 slitScanYSym | 90° | 0 | yes | about `scanPosition` |
+| 5 radial | — | 1 | no | centre (`scanPosition`, `scanPosY`) |
+| 6 noise | — | — | — | `uMapAmount` = 1, map = Noise output |
+| **—** | **any** | **any** | **any** | **the oblique plane no mode reached** |
+
+### 3c. What is actually new
+
+**The oblique plane.** Time running diagonally across the frame, continuously
+rotatable, with the rotation itself assignable to an LFO, MIDI CC or the pad.
+Nothing in ImWeb does that today; the seven modes are axis-locked. A slow LFO on
+`td.angle` sweeps the direction time flows through the picture, and there is no
+mode switch, no discontinuity and no reallocation as it passes through the old
+mode positions.
+
+**The new params** (group `td`, appended — the group already holds 12):
+
+| Param | Type | Range | Default | Note |
+|---|---|---|---|---|
+| `td.angle` | CONTINUOUS | 0–360° | 0 | plane normal |
+| `td.radial` | CONTINUOUS | 0–1 | 0 | linear ↔ radial blend |
+| `td.symmetric` | TOGGLE | — | off | fold about centre |
+| `td.mapAmount` | CONTINUOUS | 0–1 | 0 | map-texture influence |
+| `td.mapSource` | SELECT | `SOURCES` | Noise | *any* source drives the map |
+
+`td.mapSource` is the sleeper: mode 6 hardwires the map to the Noise generator,
+but resolved through `_resolveLayerTex` the way `mix.srcA` is, **any source can
+become the delay field** — the camera's luminance, the SDF's distance, a movie.
+That is one SELECT param and it is the single largest expressive gain in the
+phase.
+
+All are group `td` and therefore captured by Display States, correctly: they are
+continuous quantities with fixed meaning, not indices into a user-editable list
+(contrast `displace.warpSlot`, and see §9d).
+
+---
+
+## 4. Storage strategy — the blocking constraint
+
+**This section corrects the plan this document was written from.** The plan
+asserted the ring/tap split was clean because the strategy probe already handles
+backend variation. Reading `tick()` disproves that:
+
+```js
+    } else {
+      // Fallback: fixed 1-frame delay; gradient modes unavailable here.
+      if (!this._fallbackGradientWarned) {
+        console.warn('[TimeDisplace] gradient modes are array-texture only; …');
+```
+
+**On the fallback path there is no per-pixel delay at all.** The ring is N
+separate `WebGLRenderTarget`s, each a `sampler2D`, and a per-fragment *variable*
+layer index is not expressible against N distinct bindings. The fallback shows a
+fixed 1-frame delay and warns once.
+
+That is survivable while only `tdisp` depends on it. It is **not** survivable
+once `delay`, `slitscan` and `vwarp` are taps, because those three work on every
+backend today: `VideoDelayLine` just picks a whole render target by age,
+`SlitScanBuffer` is CPU canvas work, and only `vwarp` already needs array
+textures. Routing them through the ring as-is would regress three working
+features on any backend where the probe fails — precisely the class of mistake
+the Guard Logic Rules in CLAUDE.md exist to prevent.
+
+### 4a. Recommendation: a tiled atlas, as the only strategy
+
+Store the ring as **frames tiled into one 2D texture** — a grid of `cols × rows`
+tiles in a single `sampler2D`. Per-pixel delay becomes tile arithmetic:
+
+```glsl
+  float layer = floor(d);                      // desired frame, 0 = newest
+  float idx   = mod(uHead - 1.0 - layer + uN, uN);
+  vec2  tile  = vec2(mod(idx, uCols), floor(idx / uCols));
+  vec2  uv    = (tile + clamp(vUv, uInset, 1.0 - uInset)) * uTileScale;
+  outColor    = texture2D(tRing, uv);
+```
+
+This works identically on every backend, which means **the probe, the dual read
+path, the `strategy` getter and the fallback warning all disappear.** The file
+being generalised gets *smaller*. One storage strategy, no special cases — the
+same principle the mix-bus double buffer was chosen for.
+
+**Costs, stated honestly:**
+
+- **A max-texture-size ceiling on frame count.** At a 512×288 buffer and a
+  4096² texture that is 8×14 = 112 frames; desktop 16384² gives far more.
+  Since buffer resolution is already an independent parameter
+  (`setBufferResolution`), the trade is exposed to the user rather than hidden.
+  `td.maxDelay` must clamp against the *achievable* count, not the requested one.
+- **Bilinear filtering bleeds across tile seams.** Hence the `uInset` clamp
+  above — inset sampling by half a texel per tile. This is the one genuinely
+  fiddly part and it must be tested at tile boundaries specifically, because the
+  error is a thin wrong-coloured line that is easy to miss in motion.
+- **Writing a frame is a viewport-scissored blit** rather than a layer render.
+  Straightforward, but `capture()` must set and restore the scissor state, and
+  Three.js's renderer state cache has to be respected.
+
+### 4b. Fallback position, if the atlas measures badly
+
+Keep the array path as a *fast* path and add the atlas as the *universal* one,
+selected by the existing probe. This preserves today's behaviour exactly and
+costs one extra read shader. It is the conservative choice and it keeps the
+bifurcation this document would rather delete — take it only if measurement
+shows the atlas costs real frame time, and record the measurement.
+
+**One way §4 still fails:** the atlas's seam handling interacts with
+`setUpscaleFilter`. The tap reads the ring at buffer resolution and the
+compositor upscales; if the *upscale* filter is linear and the tap output already
+contains a seam artefact, the artefact spreads. Test the two filters against tile
+boundaries together, not separately.
+
+---
+
+## 5. Adapters
+
+`SOURCE_DEFS` is append-only forever, so all indices survive. All five panels and
+every param id stay. Behind them:
+
+### 5a. `tdisp` (24) — the free tap
+Gains the plane params of §3c. Its panel becomes the place the plane is played;
+`td.mode` remains at the top as the preset row.
+
+### 5b. `delay` (13) — a flat plane, offset in t
+`delay.frames` writes the tap's constant offset. `VideoDelayLine.getTexture(n)`
+is called from exactly one place (`main.js:7151`), so the class becomes a thin
+shim behind its existing signature, or retires. **This is where the VRAM comes
+back:** 30 full-res render targets collapse into a share of one ring.
+
+### 5c. `slitscan` (15) — a linear plane, and a readback deleted
+`SlitScanBuffer` is CPU-based — it takes no renderer, does a `readPixels` into
+`_pixBuf` and writes a canvas-2D `CanvasTexture` every tick. That is a GPU→CPU
+stall per frame whenever slitscan is active. As a tap it is a fragment shader.
+**The consolidation buys frame time here, not just tidiness**, and §10 tests for
+an improvement rather than mere parity.
+
+### 5d. `vwarp` (22) — the open question, closed
+`KNOWN-ISSUES.md` has carried "strip-buffer approach conflicts with the pipeline
+source model" since before v0.9, with "treat as a Sequence slot backed by
+IndexedDB" as the candidate direction. **That candidate is wrong and should be
+struck.** The conflict was never about where the frames live; it was that the
+strip buffer is a *private* history with a *private* read. As a tap on the shared
+ring, both halves dissolve. The `vasulka` entry commented out of
+`DEFAULT_FX_ORDER` (`Pipeline.js:35`) stays commented out — that is a separate,
+genuinely deprecated FX-chain pass, not the source.
+
+### 5e. The one behaviour change, stated up front
+**Taps share one ring, therefore one capture source and one buffer resolution.**
+Today the four engines differ:
+
+| Engine | Captures | Where |
+|---|---|---|
+| `videoDelay` | `pipeline.prev.texture` | `main.js:7225` |
+| `slitScan` | `pipeline.prev` | `main.js:6987` |
+| `tdEngine` | selectable via `td.captureSource` | `main.js:7235–7241` |
+| `vasulkaWarp` | `camera3d.active ? camera : pipeline.prev` | `main.js:7248` |
+
+Three of four already capture the composite output, so a shared ring on
+`td.captureSource` **defaulting to Output is behaviour-identical for delay,
+slitscan and tdisp**. Only vwarp changes: its hardcoded camera preference goes
+away. That quirk is undocumented, unreachable from any parameter, and sits
+directly under a `DEPRECATED` comment — but it is a real change to what a saved
+project renders, and it goes in the changelog as one.
+
+The upside of the same constraint: **delay and slit-scan gain a source
+selector** they never had. A slit-scan of the SDF generator, or a video delay of
+Deck B alone, is newly reachable.
+
+### 5f. Out of scope: `seq1/2/3` (17/18/19)
+`SequenceBuffer` also does frame-count-addressed playback, its own capture loop
+and `setNormPos` scrubbing; only its `timewarp` mode overlaps with the plane.
+Folding it in is a later question. Claiming otherwise here would be exactly the
+"blueprints go stale mid-implementation" failure `ImWeb-MovieLibrary-Blueprint.md`
+§2.4 already had to correct in itself. `StillsBuffer` is likewise out of scope —
+it is an *addressable stills* instrument with thumbnails and slot protection,
+not a continuous history.
+
+---
+
+## 6. Phase 26 — Rutt-Etra, historical first
+
+The Rutt-Etra Scan Processor (1972) sits directly beside the Sandin Image
+Processor and the Paik/Abe synthesiser in the lineage this project claims, and
+it is the only one of the three with no representation in the instrument. There
+is a `pre-rutt-etra` tag in the repo and no code, docs or changelog entry
+anywhere — the idea has existed only as a tag name.
+
+**The model:** N horizontal scanlines × M vertices, z displaced by luminance,
+perspective camera with orbit, monochrome phosphor with decay. Controls: line
+count, z-gain, line thickness, camera angle/distance, decay, and a free source
+selector.
+
+**Why faithful before general:** Rutt-Etra is beautiful *because it lies about
+depth*. Luminance is not distance, and the entire character of the machine comes
+from that error — faces become ridges, shadows become holes. Generalising to "any
+channel displaces any primitive" before living with the historical instrument
+risks building something configurable that nobody plays. Generalise in a later
+release, along the axes actually reached for. (This is also the argument against
+monocular-depth ML — §11.)
+
+**Cost: low. It is the shape this codebase has accepted five times.** New
+`src/inputs/RuttEtra.js` (~250 lines) following `src/inputs/SDFGenerator.js` —
+own scene, own camera, own render target, `.texture` getter, one
+`tick(ps, dt, srcTex)` gated on use (`main.js:7038` is the pattern). Then:
+
+- append to `SOURCE_DEFS` (index 29) **and** `SOURCE_DISPLAY_ORDER` — the
+  assertion at `ParameterSystem.js:538` throws at boot if the second is
+  forgotten, which makes a passing boot the test
+- one line in the inputs bag (`main.js:7135`)
+- source selection reuses `_resolveLayerTex`, exactly as `mix.srcA` does
+- one container id in `index.html` + one entry in `buildMappingPanels()`
+  (`UI.js:171`) — no ordering or label code, per the Phase 23 design
+- **extend `_srcUsed(i)`** for the render gate rather than copying the pattern;
+  that function exists specifically because seven near-duplicates once accrued
+
+**Technical note, recorded so a later session does not "fix" it:** this needs a
+**vertex-stage texture fetch** to displace by luminance. That is fine under
+WebGL2, which is three r168's default. It does **not** violate the CLAUDE.md
+"strict WebGL 1.0 / GLSL ES 1.00" rule — that rule constrains *AI-generated*
+shaders in the Live GLSL pass, where a user's browser and an LLM's habits are
+both unknown. The pipeline's own materials are not bound by it.
+
+**Second increment, same file, later:** each vertex becomes an oriented
+anisotropic splat whose covariance follows the local image gradient — smooth
+regions smear along the gradient, detail stays tight. Roughly 80 lines and a
+different draw call. This is where Gaussian splatting genuinely lands in a
+performance instrument: the splat as a **live-video render primitive**, with none
+of the reconstruction, training, feature distillation or uncertainty machinery
+(§11).
+
+---
+
+## 7. Phase 27 — State terrain
+
+Saved states already *are* feature vectors. `Preset.states[i].values` is a flat
+`{ paramId: value }` map (`src/state/Preset.js:86–99`), and `ps.captureState()` /
+`ps.restoreState(values)` already round-trip it. No model, no embedding, no
+training.
+
+**What it feels like:** an XY pad where a bank's states are scattered landmarks
+under their existing thumbnails, and you move continuously between them —
+including through territory between states you never saved. A bank stops being an
+ordered cue list and becomes a terrain.
+
+**Mechanism:**
+1. Build a matrix from `states[].values` over the union of param ids, normalised
+   per-param by each `Parameter`'s min/max, so a 0–360 hue cannot dominate a 0–1
+   toggle.
+2. PCA to two dimensions — power iteration on the covariance matrix is enough for
+   two components, ~60 lines of plain arithmetic.
+3. On pad move, inverse-distance-weight the *k* nearest states and write the
+   blend through `ps.restoreState()`.
+
+**Do not route this through morph.** `PresetManager`'s morph is A→B over time
+(`_morphFrom`/`_morphTo`/`_morphT`, `tick()` at `Preset.js:288`). The pad needs an
+*instantaneous weighted blend of k states*, which is a different operation.
+Reuse `restoreState`; leave morph alone. Reset-cascade history (`0bfdfe9`,
+`83118ba`) shows what happens when bulk parameter writes meet an active morph.
+
+**Reuses:** the existing state thumbnails, and the normalised XY pad channel
+`GestureArbitrator`'s Pad mode already feeds into `ControllerManager`'s mouse
+channel — so the terrain is playable by finger, mouse, MIDI or LFO with no new
+controller plumbing at all.
+
+**This phase may die, and that is a valid result.** Whether the space between
+states is meaningful is a property of *the owner's banks*, not of the code. If a
+bank's states are topologically heterogeneous — different sources, different
+active effects — the territory between them is garbage and the pad is a
+random-preset generator. **The first task of Phase 27 is therefore an
+inspection, not an implementation:** open `public/Projects/MasterProject.imweb`
+and, per bank, count how many params actually vary across states, and check
+whether `layer.fg`/`layer.bg` differ between them. Interpolating a source *index*
+is meaningless — SELECT and TOGGLE params must snap to the nearest landmark
+rather than blend, and if most of the variance in a bank lives in SELECTs then
+there is no terrain to walk.
+
+---
+
+## 8. Suggested build order (each step ships alone)
+
+**Phase 25**
+1. **Capture the reference set first.** Before touching code: PNGs of `delay`,
+   `slitscan` and `tdisp` output at several parameter settings from one fixed
+   clip, plus each of the seven `td.mode` values. This is the acceptance test and
+   it cannot be reconstructed afterwards.
+2. Atlas storage in `TimeDisplaceEngine`, behind the existing behaviour — array
+   path still live, atlas verified equal, probe still deciding. Nothing else
+   changes yet.
+3. Delete the array path, the probe, `strategy` and the fallback warning **only
+   once step 2 measures clean** (§4b if it does not).
+4. Split into `SpacetimeRing` + `SpacetimeTap`. `tdisp` is the only tap. No
+   behaviour change; the reference set must still match.
+5. Generalise `m` to the plane. Add the five params. Keep `td.mode` as a preset
+   writer. Reference set must still match on all seven modes.
+6. `delay` becomes a tap. Then `slitscan`. Then `vwarp`. One commit each, each
+   checked against its own reference images.
+7. `td.mapSource` — the free map selector (§3c).
+
+**Phase 26** — the source, then the panel, then the gate, then persistence.
+**Phase 27** — the `MasterProject.imweb` inspection, and only then the pad.
+
+Tag before step 4: `git tag -a pre-spacetime -m 'working state before ring/tap split'`.
+
+---
+
+## 9. Gotchas found while writing this
+
+### 9a. Two files each claim to have superseded VasulkaWarp, and they disagree
+`main.js:7243` — *"DEPRECATED: superseded by SequenceBuffer timewarp mode."*
+`TimeDisplaceEngine.js:15` — TD is the *"general successor to the deprecated
+VasulkaWarp strip-buffer."* Meanwhile Phase 24 Step 4 restored the vwarp panel
+(`index.html:536`) and `KNOWN-ISSUES.md` still describes the feature as "hidden
+from UI." Three documents, three stories, and the source is live in the inputs
+bag the whole time (`main.js:7154`). Phase 25 settles it in code rather than in
+prose: vwarp becomes a tap, and both comments get corrected to say so.
+
+### 9b. `KNOWN-ISSUES.md` is stale on vwarp's UI status
+It has been wrong since 2026-07-27. Fix it in the same commit that touches vwarp,
+and strike the "Sequence slot backed by IndexedDB" candidate direction (§5d).
+
+### 9c. `StillsBuffer` is not an atlas — an assumption corrected mid-draft
+An earlier draft of §4a argued the tiled atlas was "already proven in this
+codebase, in `StillsBuffer`'s 8×8 grid." It is not. `StillsBuffer` holds N
+separate render targets in `frames[]` plus an array of 80×45 *thumbnail
+canvases*; the 8×8 grid is a UI layout, not a texture atlas. The atlas is new
+work and must be costed as new work. Recorded because the wrong version of this
+claim is very easy to re-derive from the panel screenshot.
+
+### 9d. Capture semantics for the new params
+The five plane params are group `td` and **are** captured by Display States —
+they are continuous quantities with fixed meaning. `td.mapSource` is a SELECT,
+but into `SOURCES`, which is append-only and not user-editable, so an index means
+the same thing on every machine and it is captured too. This follows the
+`mix.srcA` precedent exactly, and is the opposite of `displace.warpSlot` /
+`glsl.preset`, whose contents live in per-origin localStorage. The distinction is
+*whether the list the index points into is user-editable* — not whether it is a
+SELECT.
+
+### 9e. Frame ordering is load-bearing and already documented
+`TimeDisplaceEngine`'s header pins it: `tick()` reads **before**
+`pipeline.render()`; `capture()` writes **after**, beside `videoDelay.capture`.
+The taps inherit this — all reads before the pipeline, one write after. Getting
+it backwards costs one frame of latency and is invisible in a still screenshot,
+which is exactly how it would survive review. The `videoDelay.getTexture(1)`
+equivalence check named in that same comment is the cheapest available test.
+
+### 9f. `td.maxDelay` must clamp to the achievable count
+It currently clamps to `this.frames - 1`. Under the atlas, the achievable frame
+count depends on `MAX_TEXTURE_SIZE` and buffer resolution, so it becomes a
+runtime value. A silent clamp here reads as "the knob stops working past 40%,"
+which is the hardest class of bug to report.
+
+---
+
+## 10. Verification
+
+Build and verify against `npx vite preview` — **never** the https dev server;
+automation rejects its self-signed cert. Use the `verify` skill. Occluded tabs
+freeze rAF, so a backgrounded tab reports 0 fps and invalidates any timing test.
+
+**Phase 25**
+1. **Adapter equivalence is the acceptance test.** The §8.1 reference set must
+   re-render identically for delay, slitscan and tdisp. vwarp's camera-preference
+   change (§5e) is the one documented expected divergence.
+2. Tile-seam inspection specifically: a high-contrast source, a delay that lands
+   the read on a tile boundary, and both upscale filters (§4a).
+3. Load a pre-Phase-25 `.imweb` and a saved Display State using each of the seven
+   `td.mode` values.
+4. **VRAM must go down.** Route all four temporal sources simultaneously and
+   compare `renderer.info.memory` against the pre-refactor baseline. One ring
+   plus four small RTs against 30 delay targets + an N-layer array + a 960 strip
+   buffer should be a clear win; if it is not, the tap output targets are
+   oversized.
+5. **Frame time with slitscan active must improve**, not merely hold — the
+   `readPixels` is gone (§5c).
+6. Confirm the probe, `strategy` and the fallback warning are actually deleted
+   and not merely unreachable.
+
+**Phase 26**
+1. A passing boot is the `SOURCE_DISPLAY_ORDER` test (`ParameterSystem.js:538`).
+2. Route Rutt-Etra to FG, BG and DS in turn; into a mix bus; as
+   `td.captureSource`. All must work, because all resolve through the same
+   `_resolveSource`.
+3. Unrouted, `_srcUsed(29)` is false and no pass runs — check
+   `renderer.info.render.calls`.
+4. Save, reload, re-import a `.imweb` carrying a Rutt-Etra patch.
+
+**Phase 27**
+1. The `MasterProject.imweb` inspection (§7) — it may end the phase.
+2. A pad sweep must never land `layer.fg` on a fractional source index.
+3. Start a pad sweep during an active bank morph; neither may corrupt the other.
+
+---
+
+## 11. Rejected, and why
+
+Recorded so these are not re-derived. Several are good ideas for a different
+instrument.
+
+**WebGPU / TSL migration.** The blocker is concrete, not vague: **WebGL and
+WebGPU contexts cannot share GPU textures.** A WebGPU sub-engine feeding the
+WebGL pipeline costs a full-frame copy through a canvas element every frame, so
+"add WebGPU for one source" is not incremental — it is a whole-renderer
+migration that breaks every hand-written shader in `src/shaders/index.js` and the
+Live GLSL editor's entire contract with users' saved presets. Revisit only when
+three's TSL is stable *and* iPadOS WebGPU is solid, because touch is half this
+instrument.
+
+**3D Gaussian Splatting as scene reconstruction.** Needs multi-view capture and
+per-scene training; it is a capture-and-optimise pipeline, not a performance
+instrument, and it has no live-input story. The *primitive* is kept (§6,
+increment 2); the reconstruction, adaptive density control, feature distillation
+and uncertainty mapping are not.
+
+**Monocular depth ML for the Rutt-Etra z channel.** 50–200 MB of weights and a
+per-frame inference budget, spent to remove the very error that makes the
+instrument beautiful (§6).
+
+**A full patchable node graph.** `Pipeline.render()` is ~500 lines of
+straight-line passes over a **two-target ping-pong pool** with hand-computed flip
+parity — the bloom handler (`Pipeline.js:118–136`) literally reasons about parity
+and inserts a manual flip to dodge a feedback conflict. A general scheduler
+replaces that hand-reasoning with liveness analysis and cycle detection, in the
+most load-bearing file in the project. **The cheaper 60% is already there:** the
+FX chain is reorderable (`fxOrder`, drag-reorder at `UI.js:1304`) and mix buses
+are free-input nodes with a proven cycle rule. Give each bus an effect insert —
+the pattern `glsl.target` already uses — and ImWeb is a video modular with no
+scheduler. Candidate for Phase 28.
+
+**Node-based shader editor.** Strictly worse than a CodeMirror editor with
+last-good fallback plus an AI that writes GLSL from a sentence, both of which
+ship today.
+
+**Timeline / NLE mode.** Violates "the interface is also the performance — no
+edit/perform mode split," the one principle in `imweb-obsidian.md` worth
+defending hardest. Gesture-tape overdubbing (record the parameter stream, loop
+it, record over it) gives the same capability without a timeline.
+
+**WebXR output, plugin API, audience-phone control surfaces.** Each is a good
+demo and permanent maintenance weight in a repo already carrying ~38.5k lines.
+
+**Cross-modal neural ingestion, Thousand-Brains reference frames, conformal
+prediction.** From a different brief. A video synthesiser with distribution-free
+coverage guarantees is a category error: the instrument's job is making images
+that were never true, and the line between observed reality and algorithmic
+ignorance is the material, not the risk. The one real rhyme — *explicit editable
+primitives over implicit learned fields* — is already ImWeb's constitution:
+`ParameterSystem` as the state, ~240 named editable values, no bundled state
+management, no weights anywhere.
+
+**Long-term direction, recorded but not scheduled: the LLM as a blind
+performer.** A new `'ai'` controller type in `ControllerManager.js`'s type
+switch that sees **parameter state and its recent history, never the image**, and
+writes *targets* which the existing slew system renders as continuous motion — so
+a 1–3 s round trip never appears as a jump. It plays the instrument the way a
+musician who cannot see the projection would. `AIFeatures.js` already routes
+everything through `_call(systemPrompt, userPrompt)` with provider config and key
+persistence, so the plumbing exists; the work is the temperament, not the
+transport. This retires the Narrator and Coach, on the argument that
+commentating on a performance is the least interesting job available to a model
+sitting inside the instrument.
+
+---
+
+## 12. Open questions
+
+1. **Atlas-only, or atlas-plus-array-fast-path?** §4a recommends deleting the
+   array path; §4b keeps it. Decide on measurement at build step 3, and record
+   the number either way.
+2. **Does `delay` keep its own frame-count parameter, or read `td`'s?** Sharing
+   the ring means sharing its depth. `delay.frames` currently maxes at 30
+   (`main.js:311`) while `td` allocates 60. Keeping `delay.frames` as an *offset*
+   into a deeper shared ring is the compatible answer, but it silently raises
+   delay's ceiling — probably welcome, definitely a changelog line.
+3. **How many taps before the read passes cost more than the rings saved?** Four
+   is clearly fine. If `seq1/2/3` ever join (§5f) it is seven, and that is the
+   point at which to measure rather than assume.
+4. **Should `td.angle` be degrees or turns?** Degrees match `displace.warpDrawAngle`
+   and the 3D rotation params; turns are friendlier to an LFO sweeping through
+   the full circle. Consistency argues degrees.
+5. **Phase 27's viability is an empirical question about the owner's banks**, and
+   the inspection in §7 answers it before any code is written.
