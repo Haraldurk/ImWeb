@@ -3,7 +3,7 @@
 ![ImWeb Preview](assets/preview.png)
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
-[![Version](https://img.shields.io/badge/version-v0.11.0-brightgreen)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-v0.14.0-brightgreen)](CHANGELOG.md)
 [![Live Demo](https://img.shields.io/badge/demo-live-orange)](https://imweb.image-ine.org)
 
 **ImWeb is Image/ine — reimagined** — The legendary real-time video synthesis instrument created by Tom Demeyer and Steina Vasulka at STEIM Amsterdam, rebuilt for the modern browser and pointed toward what comes next. Free, open source, no installation required.
@@ -15,7 +15,7 @@
 
 ## Contents
 
-[What This Is](#what-this-is) · [Quick Start](#quick-start) · [Features](#features-v090) · [Keyboard Reference](#keyboard-reference) · [Architecture](#architecture) · [Roadmap](#roadmap) · [Contributing](#contributing) · [Credits](#credits) · [License](#license) · [Support](#support)
+[What This Is](#what-this-is) · [Quick Start](#quick-start) · [Features](#features-v0140) · [Keyboard Reference](#keyboard-reference) · [Architecture](#architecture) · [Roadmap](#roadmap) · [Contributing](#contributing) · [Credits](#credits) · [License](#license) · [Support](#support)
 
 ---
 
@@ -59,12 +59,14 @@ Firefox and Safari supported in WebGL mode with minor limitations.
 
 ---
 
-## Features (v0.11.0)
+## Features (v0.14.0)
 
 ### Input Sources
 
 - Camera (WebRTC, auto-start on load)
-- Movie clips — up to 8; auto-loaded from `_imweb_ready/` on startup; speed, loop range, position scrub, BPM sync, mirror, mute; thumbnails in UI
+- Movie Library — unlimited catalogue of clips with thumbnail, duration and filter box; auto-loaded from `_imweb_ready/` on startup; drag a row onto a deck or use `→A` / `→B`
+- Movie decks A and B — two independent engines, 8 loaded clips each; speed (±3×), loop range, position scrub, BPM sync, mirror, mute; a full rack evicts its oldest clip, never the one playing
+- Mix buses ×3 — Mix 1/2/3, each crossfading or combining any two sources (Add, Multiply, Luma Mask, Displace); the mixed signal is itself a source, so it can be composited, captured and time-displaced
 - Analog TV — Phase 1 signal simulator (720×480); 4:3 cropping; hue/sat/bright/contrast grading
 - Stills buffer — capture up to 64 frames (8×8 grid), FrameSelect 1/2/3
 - Color source (HSV solid)
@@ -82,7 +84,7 @@ Firefox and Safari supported in WebGL mode with minor limitations.
 
 - TransferMode — 22 blend modes (Add, Difference, Multiply, Screen, Overlay, etc.)
 - Displacement (amount, angle, offset, RotateGrey)
-- WarpMap
+- WarpMap — draw the displacement map directly on the output canvas, or drive the same brush from LFO/MIDI/OSC via WarpDrawX/Y; shared Radius and Strength; 16 slots and 8 procedural shapes recallable from a controller, with timed crossfade between maps
 - Luminance keyer (White, Black, Softness)
 - Blend / frame persistence / motion blur
 - ColorShift
@@ -153,6 +155,7 @@ Right-click any parameter to assign:
 
 - Multi-provider system — Anthropic, Google Gemini, OpenAI, Ollama (local), OpenRouter; switchable, API keys stored locally
 - AI State Generator — LLM-driven parameter patching ("make a slow organic ocean")
+- AI shader generation — describe an effect in natural language and the provider writes the GLSL; compile-checked before it reaches the editor, with one automatic repair attempt on compiler errors
 - AI Narrator — periodic AI-generated description of the current parameter state, shown as an overlay
 - AI Coach — periodic AI-generated performance suggestions
 - AI Settings panel — per-provider live model lists, connection status, configurable Narrator/Coach interval & response length
@@ -160,7 +163,7 @@ Right-click any parameter to assign:
 ### UI
 
 - Signal path display — hidden by default; ┄ toolbar toggle; float/dock via `Shift+P`
-- Live GLSL editor — 10 built-in presets; auto-injects standard uniforms
+- Live GLSL editor — CodeMirror 6 with GLSL syntax highlighting; built-in and saveable user presets, recallable from MIDI/LFO over a configurable index range; auto-injected VJ uniform contract (audio FFT, previous frame, BPM/beat, level/bass/mid/high); insert routing to Master Output, Foreground, Background or Displace; compile errors fall back to the last good shader instead of dropping the render loop
 - First-visit onboarding overlay
 - LFO visualiser in context menu
 - Vectorscope (Lissajous / waveform / FFT) as source
@@ -186,7 +189,7 @@ Right-click any parameter to assign:
 | `A` | Cycle Background source |
 | `Z` | Cycle DisplaceSrc source |
 | `T` | Tap tempo |
-| `G` | Cycle canvas mode (Camera / Pad / Locked) |
+| `G` | Cycle canvas mode (Camera / Pad / Locked / Draw / Warp) |
 | `I` | Toggle parameter OSD |
 | `U` | Toggle state bar |
 | `?` | Keyboard help overlay |
@@ -194,7 +197,8 @@ Right-click any parameter to assign:
 | `0–9` | Recall State 0–9 |
 | `Shift+0` | Neutral State |
 | `Shift+S` | Quick-save State to next empty slot |
-| `Shift+1–8` | Select movie clip 1–8 |
+| `Shift+1–8` | Select clip 1–8 on Movie Deck A |
+| `Option+1–8` | Select clip 1–8 on Movie Deck B |
 | `Cmd/Ctrl+S` | Save project → downloads `.imweb` |
 | `Cmd/Ctrl+F` | Fullscreen output |
 | `NumPad +/-` | Next / previous Bank |
@@ -244,18 +248,40 @@ node imweb-prep.js
 # Drop source files in _raw_videos/, output goes to _imweb_ready/
 ```
 
+As of v0.14.0 this writes **faststart** MP4s (`-movflags +faststart`), moving the
+`moov` atom to the front of the file. Without it a browser cannot report a clip's
+duration until it has read to EOF — seconds on a large All-Intra clip, or never
+under load.
+
+**Clips prepped before v0.14.0 need a one-off remux.** It is lossless — no
+re-encode, no quality change:
+
+```bash
+ffmpeg -i old.mp4 -c copy -movflags +faststart new.mp4
+```
+
 ---
 
 ## Roadmap
 
-Phases 1–5 complete. Phase 6 in progress:
+Phases 1–24 complete, through v0.14.0. Recently shipped:
 
-- [ ] Mobile-friendly UI — touch targets, responsive layout, swipe gestures
-- [ ] GLSL editor fixes — resolve WebGL 1281/1282 on preset apply
+- [x] Touch instrument — gesture arbitration, responsive layout, iPad-sized targets (v0.10–v0.11)
+- [x] Dual-deck video and mix buses (v0.12–v0.13)
+- [x] Live GLSL editor — CodeMirror, AI shader generation, last-good compile fallback (v0.13)
+- [x] Performative warp drawing — draw the displacement map on the output (v0.13)
+- [x] Movie Library — unlimited catalogue, two racks (v0.14)
+
+Still open:
+
 - [ ] Hypercube instancer texture switching (live source change without reset)
 - [ ] Performance profiling / GPU display
 - [ ] Multi-quad projection mapping (independent sources per quad)
 - [ ] Multi-cam workflow (per-layer camera selector)
+- [ ] iPad soak test of the dual-deck engine and the 8-tab bar on real hardware
+
+See [CHANGELOG.md](CHANGELOG.md) for the full history and
+`docs/imweb-obsidian.md` for per-phase detail.
 
 ---
 
