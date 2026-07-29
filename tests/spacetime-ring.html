@@ -52,51 +52,52 @@ const frameTex = (k) => {
 };
 
 /** Force the compatibility path without touching production code. */
-const forceAtlasOn = (eng) => {
-  if (eng._arrayRT) { eng._arrayRT.dispose(); eng._arrayRT = null; }
-  eng._useArray = false;
-  eng._allocateAtlas();
-  eng._head = 0; eng._count = 0;
+const forceAtlasOn = (ring) => {
+  if (ring._arrayRT) { ring._arrayRT.dispose(); ring._arrayRT = null; }
+  ring._useArray = false;
+  ring._allocateAtlas();
+  ring._rev++;                 // taps re-apply layout uniforms on a rev change
+  ring._head = 0; ring._count = 0;
 };
 
 function runOne(label, forceAtlas, reallocTo = null) {
-  const eng = new TimeDisplaceEngine(renderer, W, H, N);
+  const eng  = new TimeDisplaceEngine(renderer, W, H, N);
+  const ring = eng.ring;
 
-  if (forceAtlas) forceAtlasOn(eng);
+  if (forceAtlas) forceAtlasOn(ring);
 
   if (reallocTo) {
-    // Buffer-resolution change on the atlas path: the grid is recomputed and
-    // the read shader's uCols/uTileScale/uInset must follow, or capture() and
-    // the read disagree about tile layout. setBufferResolution() re-probes and
-    // would flip back to array on healthy hardware, so drive the atlas half.
-    eng._bufW = reallocTo[0]; eng._bufH = reallocTo[1];
-    eng._outRT.setSize(reallocTo[0], reallocTo[1]);
-    eng._disposeAtlas();
-    eng._allocateAtlas();
-    eng._head = 0; eng._count = 0;
+    // Buffer-resolution change on the atlas path: the grid is recomputed and the
+    // tap's uCols/uTileScale/uInset must follow, or capture() and the read
+    // disagree about tile layout. ring.setBufferResolution() re-probes and would
+    // flip back to array on healthy hardware, so drive the atlas half directly.
+    ring._bufW = reallocTo[0]; ring._bufH = reallocTo[1];
+    ring._disposeAtlas();
+    forceAtlasOn(ring);
+    eng.tap.setSize(reallocTo[0], reallocTo[1]);
   }
 
   log(`\n── ${label} — strategy=${eng.strategy}, slots=${eng.slots}` +
       (eng.strategy === 'atlas'
-        ? `, grid=${eng._cols}x${eng._rows}, tile=${eng._bufW}x${eng._bufH}`
+        ? `, grid=${ring.cols}x${ring.rows}, tile=${ring.bufW}x${ring.bufH}`
         : ''));
 
   // Write M > N frames so the head has wrapped — wrapping is where off-by-one
   // and negative-modulus bugs live.
   const M = N + 3;
   for (let k = 0; k < M; k++) eng.capture(frameTex(k));
-  log(`   wrote ${M} frames (head=${eng._head}, count=${eng._count})`);
+  log(`   wrote ${M} frames (head=${ring.head}, count=${ring.count})`);
 
   vals['td.maxDelay'] = eng.slots - 1;
   eng.tick(ps, 1 / 60, null);
 
   // Read a row of pixels and compare each against the frame that d(x) selects.
-  const rw = eng._bufW, rh = eng._bufH;
+  const rw = eng.tap.width, rh = eng.tap.height;
   const buf = new Uint8Array(rw * rh * 4);
-  renderer.readRenderTargetPixels(eng._outRT, 0, 0, rw, rh, buf);
+  renderer.readRenderTargetPixels(eng.tap._outRT, 0, 0, rw, rh, buf);
 
   const maxDelay = eng.slots - 1;
-  const maxBack  = Math.max(1, Math.min(eng.slots - 1, eng._count - 1));
+  const maxBack  = Math.max(1, Math.min(eng.slots - 1, ring.count - 1));
   let fails = 0, checked = 0;
 
   for (let i = 0; i < rw; i++) {
@@ -104,7 +105,7 @@ function runOne(label, forceAtlas, reallocTo = null) {
     let d = uvx * maxDelay;                  // mode 0 (slitScanX), curve 1
     d = Math.min(Math.max(d, 0), maxBack);
     const age  = Math.floor(d);
-    const slot = ((eng._head - 1 - age) % eng.slots + eng.slots) % eng.slots;
+    const slot = ((ring.head - 1 - age) % eng.slots + eng.slots) % eng.slots;
     // Slot `slot` last received frame index k where k % slots === slot and k < M
     let k = -1;
     for (let c = M - 1; c >= 0; c--) if (c % eng.slots === slot) { k = c; break; }
