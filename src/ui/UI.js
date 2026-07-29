@@ -3479,6 +3479,9 @@ export function buildAISettingsPanel(ai, panelEl) {
 
 // ── Movie Library UI ───────────────────────────────────────────────────────────
 
+/** Private drag type for Library rows — lets file-drop handlers ignore us. */
+export const ENTRY_MIME = 'application/x-imweb-movie-entry';
+
 /**
  * Build the Movie Library panel — the catalogue of every clip that exists,
  * versus a deck's rack, which is the handful currently loaded.
@@ -3559,6 +3562,17 @@ export function buildMovieLibrary(movieLibrary, onLoad) {
       const row = document.createElement('div');
       row.className = 'movie-lib-item';
       row._entry = entry;
+
+      // Drag a row onto the Movie A / Movie B panel to rack it. The id travels
+      // on a private MIME type rather than text/plain so the page's file-drop
+      // handler can tell an internal drag from a dropped file.
+      row.draggable = true;
+      row.addEventListener('dragstart', (e) => {
+        e.dataTransfer.setData(ENTRY_MIME, entry.id);
+        e.dataTransfer.effectAllowed = 'copy';
+        row.classList.add('dragging');
+      });
+      row.addEventListener('dragend', () => row.classList.remove('dragging'));
 
       const thumb = document.createElement('div');
       thumb.className = 'movie-lib-thumb';

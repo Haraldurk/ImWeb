@@ -125,6 +125,7 @@ import {
   TablesEditor,
   buildClipLibrary,
   buildMovieLibrary,
+  ENTRY_MIME,
   buildPaletteSection,
   buildAnalogPresetBar,
 } from "./ui/UI.js";
@@ -3378,8 +3379,14 @@ async function main() {
     }
   }
 
+  /** True for an OS file drag, false for an internal Library-row drag. */
+  const _isFileDrag = (e) => Array.from(e.dataTransfer?.types ?? []).includes("Files");
+
   document.body.addEventListener("dragover", (e) => {
     e.preventDefault();
+    // Dragging a Library row is not a file drop: without this the whole page
+    // lights up its "drop video files here" state on an internal drag.
+    if (!_isFileDrag(e)) return;
     e.dataTransfer.dropEffect = "copy";
     document.body.classList.add("dnd-active");
   });
@@ -3389,9 +3396,49 @@ async function main() {
     }
   });
 
+  // Drag a Movie Library row onto either deck panel to rack it. The panel
+  // section is the target rather than the rack list: an empty Deck B renders no
+  // list at all, so a list-only target would be unhittable in exactly the case
+  // where you most want to drop something.
+  for (const [sectionId, deckId] of [
+    ["movie-a-section", "A"],
+    ["movie-b-section", "B"],
+  ]) {
+    const section = document.getElementById(sectionId);
+    if (!section) continue;
+    const isEntryDrag = (e) =>
+      Array.from(e.dataTransfer?.types ?? []).includes(ENTRY_MIME);
+
+    section.addEventListener("dragover", (e) => {
+      if (!isEntryDrag(e)) return;
+      e.preventDefault();
+      e.stopPropagation(); // keep the page-wide file-drop styling out of it
+      e.dataTransfer.dropEffect = "copy";
+      section.classList.add("deck-drop-target");
+    });
+    section.addEventListener("dragleave", (e) => {
+      if (!section.contains(e.relatedTarget)) section.classList.remove("deck-drop-target");
+    });
+    section.addEventListener("drop", async (e) => {
+      if (!isEntryDrag(e)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      section.classList.remove("deck-drop-target");
+      const entry = movieLibrary.get(e.dataTransfer.getData(ENTRY_MIME));
+      if (!entry) return;
+      try {
+        await loadEntryToDeck(entry, deckId);
+      } catch (err) {
+        console.error(`[Movie] Drop to Deck ${deckId} failed:`, err);
+        _showClipError(err.message);
+      }
+    });
+  }
+
   document.body.addEventListener("drop", async (e) => {
     e.preventDefault();
     document.body.classList.remove("dnd-active");
+    if (!_isFileDrag(e)) return; // internal Library drag — handled by the decks
     const dropToDeckB = e.shiftKey; // ⇧-drop routes videos to Deck B
     const files = Array.from(e.dataTransfer.files);
     // Read .imx buffers immediately before any await (DataTransfer expires after first yield)
