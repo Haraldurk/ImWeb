@@ -144,12 +144,11 @@ export class MovieInput {
       thumb,
     });
 
-    // Now that the clip is racked and nothing else is waiting on metadata, let
-    // the browser buffer ahead for smooth playback and scrubbing. Promoting
-    // AFTER registration is the whole point: buffering is opportunistic and the
-    // browser evicts under pressure, whereas buffering during load starved the
-    // next clip's metadata and silently capped the rack.
-    video.preload = 'auto';
+    // NOTE: preload stays 'metadata' here. Promoting every racked clip to
+    // 'auto' put eight large files in flight at once, and the clip you then
+    // switched to could not get data — it held its first frame indefinitely
+    // while the tick called play() every frame. selectClip() promotes ONLY the
+    // clip being played, and demotes the one being left.
 
     console.info(`[Movie] Loaded clip ${idx}: "${name}" (${video.duration.toFixed(1)}s)`);
 
@@ -164,11 +163,22 @@ export class MovieInput {
    */
   selectClip(idx) {
     if (idx < 0 || idx >= this.clips.length) return;
-    // Pause the old clip
-    if (this._current >= 0) {
-      this.clips[this._current].video.pause();
+    // Pause the old clip and stop it buffering ahead — only the clip actually
+    // playing earns aggressive buffering. With every racked clip on
+    // preload='auto' the media budget is spent before the one you switch to can
+    // fetch anything, which showed up as a still first frame that never moved.
+    if (this._current >= 0 && this._current !== idx) {
+      const prev = this.clips[this._current];
+      if (prev) {
+        prev.video.pause();
+        prev.video.preload = 'metadata';
+      }
     }
     this._current = idx;
+    // load() would restart the fetch from scratch and reset currentTime; simply
+    // raising preload lets the browser buffer ahead from where it already is,
+    // and the tick's per-frame play() picks it up as soon as data arrives.
+    this.clips[idx].video.preload = 'auto';
     this._lastPos  = -1; // reset so pos scrub applies immediately on new clip
     this._revAccum = 0;
   }
