@@ -191,8 +191,10 @@ activateDefaultTab();
 
 
 async function main() {
+  // Read the version rather than restating it — this banner said v0.6.0 for
+  // seven releases while the UI badge (below, same constant) said the truth.
   console.log(
-    "%cImWeb v0.6.0",
+    `%cImWeb v${__APP_VERSION__}`,
     "color:#e8c840;font-weight:bold;font-size:14px",
   );
 
