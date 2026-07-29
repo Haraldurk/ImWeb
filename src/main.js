@@ -36,8 +36,22 @@ import {
   registerCoreParameters,
   setTableManager,
   SOURCE_KEYS,
+  SOURCE_DISPLAY_ORDER,
   MIXBUS_IDX,
 } from "./controls/ParameterSystem.js";
+
+/**
+ * The order q/a/z step through, which is the order the LAYERS dropdowns show —
+ * SOURCE_DISPLAY_ORDER minus its group headers. Cycling used to walk raw
+ * SOURCE_DEFS indices, so the keys and the menu disagreed: the menu goes
+ * Camera → Sound → Movie A, while +1 from Camera landed on Movie A and reached
+ * Sound eleven steps later.
+ *
+ * PRESENTATION ONLY, exactly as SOURCE_DISPLAY_ORDER is. The value written to
+ * layer.fg/bg/ds is still the true SOURCE_DEFS index, so no saved state, bank,
+ * .imweb file or MIDI mapping is affected by this order.
+ */
+const SOURCE_CYCLE = SOURCE_DISPLAY_ORDER.filter((e) => typeof e === "number");
 import { tableManager } from "./state/TableManager.js";
 import { ControllerManager } from "./controls/ControllerManager.js";
 import { Automation } from "./controls/Automation.js";
@@ -1083,6 +1097,22 @@ async function main() {
    * @param {object} entry MovieLibrary descriptor
    * @param {'A'|'B'} deckId
    */
+  /**
+   * Step a layer's source one place along the LAYERS dropdown order.
+   * @param {string} paramId layer.fg | layer.bg | layer.ds
+   * @param {number} dir     +1 forward, -1 back
+   */
+  function _cycleLayerSource(paramId, dir = 1) {
+    const p = ps.get(paramId);
+    const pos = SOURCE_CYCLE.indexOf(p.value);
+    // A value outside the display order would mean SOURCE_DISPLAY_ORDER had
+    // gone stale, which its load-time assertion already prevents; start from
+    // the top rather than getting stuck.
+    const next =
+      pos < 0 ? 0 : (pos + dir + SOURCE_CYCLE.length) % SOURCE_CYCLE.length;
+    ps.set(paramId, SOURCE_CYCLE[next]);
+  }
+
   async function loadEntryToDeck(entry, deckId, { select = true } = {}) {
     const deck = deckId === "B" ? movieInputB : movieInput;
     // Full rack evicts the OLDEST clip rather than refusing, so loading never
@@ -5995,24 +6025,18 @@ void main() {
         showModeOSD(`MODE: ${p.options?.[next] ?? next}`);
       }
     }
-    // q/a/z = cycle FG / BG / DS source
+    // q/a/z = cycle FG / BG / DS source, in the LAYERS dropdown's order
     if (e.key === "q" && !e.metaKey) {
       e.preventDefault();
-      const p = ps.get("layer.fg");
-      const n = p.options.length;
-      ps.set("layer.fg", (p.value + 1) % n);
+      _cycleLayerSource("layer.fg");
     }
     if (e.key === "a" && !e.metaKey) {
       e.preventDefault();
-      const p = ps.get("layer.bg");
-      const n = p.options.length;
-      ps.set("layer.bg", (p.value + 1) % n);
+      _cycleLayerSource("layer.bg");
     }
     if (e.key === "z" && !e.metaKey) {
       e.preventDefault();
-      const p = ps.get("layer.ds");
-      const n = p.options.length;
-      ps.set("layer.ds", (p.value + 1) % n);
+      _cycleLayerSource("layer.ds");
     }
     // t = Tap tempo
     if (e.key === "t" && !e.metaKey) {
