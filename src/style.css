@@ -3324,10 +3324,18 @@ body.fullscreen-output #app {
     font-family: var(--mono);
     color: var(--text-2);
 }
-/* Scrolls on purpose: the catalogue is unbounded, the panel is not. */
+/* Scrolls on purpose: the catalogue is unbounded, the docked panel is not. */
 .movie-lib-list {
     max-height: 240px;
     overflow-y: auto;
+}
+/* Detached, the window itself is the constraint — it is user-resizable
+   (.detached-panel has resize:both) and .detached-panel-body already scrolls.
+   Keeping the 240px cap here is what limited a floating Library to ~6 rows no
+   matter how large the user made it. */
+.detached-panel .movie-lib-list {
+    max-height: none;
+    overflow-y: visible;
 }
 .movie-lib-item {
     display: flex;
@@ -3390,6 +3398,20 @@ body.fullscreen-output #app {
 .movie-lib-load:disabled {
     opacity: 0.6;
     cursor: default;
+}
+.movie-lib-del {
+    background: none;
+    border: 1px solid transparent;
+    color: var(--text-2);
+    font-size: 10px;
+    font-family: var(--mono);
+    padding: 2px 4px;
+    border-radius: 2px;
+    cursor: pointer;
+}
+.movie-lib-del:hover {
+    color: var(--red, #e05a5a);
+    border-color: var(--red, #e05a5a);
 }
 
 /* ── Clip Library ────────────────────────────────────────────────────────── */

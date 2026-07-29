@@ -3600,6 +3600,21 @@ export function buildMovieLibrary(movieLibrary, onLoad) {
         actions.appendChild(btn);
       }
 
+      // Remove from the catalogue. Deliberately NOT a deck operation: a clip
+      // already racked keeps its own <video> and keeps playing, exactly as
+      // Clear unloads a rack without deleting the entry. Nothing on disk is
+      // touched, and a preloaded entry returns from the manifest on reload.
+      const del = document.createElement('button');
+      del.className = 'movie-lib-del';
+      del.textContent = '✕';
+      del.title = 'Remove from Library (does not delete the file or stop a racked clip)';
+      del.addEventListener('click', (e) => {
+        e.stopPropagation();
+        movieLibrary.remove(entry.id);
+        refreshMovieLibrary();
+      });
+      actions.appendChild(del);
+
       row.appendChild(thumb);
       row.appendChild(info);
       row.appendChild(actions);
