@@ -31,8 +31,10 @@ ImWeb is a ground-up reimagining for the modern browser — an instrument rooted
 
 ```
 INPUT SOURCES
-  Camera · Movie · Stills Buffer · Color · Noise
+  Camera · Movie A · Movie B · Stills Buffer · Color · Noise
   3D Scene · Draw · Slit Scan · Sequencer · GPU Particles · SDF Raymarcher
+        ↓ any two into ↓
+  Mix 1 | Mix 2 | Mix 3   (crossfade / Add / Multiply / Luma Mask / Displace)
         ↓ assigned to ↓
   Foreground | Background | DisplaceSrc
         ↓ effects chain ↓
