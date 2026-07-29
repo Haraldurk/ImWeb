@@ -6,7 +6,7 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
 
 ---
 
-## [Unreleased]
+## [0.14.0] — 2026-07-29 — The Movie Library
 
 *Movies had no home. There was a list of clips inside Deck A, a second deck with
 the same list and no way to see it, and a recorder confusingly named "Clip
@@ -63,20 +63,14 @@ thumbnails loading as you scroll — and two decks that load from it. Design doc
 - **The startup console banner reads the real version**, having announced v0.6.0
   through seven releases.
 
-### Changed
-- **Detached, the Movie Library fills its window.** Its list was capped at 240px,
-  so a floating panel showed ~6 rows however large you made it.
+### Fixed — project import no longer destroys banks
 
----
+*`importAll()` pruned every bank in IndexedDB whose index the incoming file did
+not claim — no prompt, no undo — and it sat behind three call sites, including a
+drag-dropped `.imx`. The local MasterProject went from six banks to two before
+anyone noticed. Import is now additive; the only thing that still destroys banks
+is the button whose job is destroying banks.*
 
-*Importing a project used to delete banks. `importAll()` pruned every bank in
-IndexedDB whose index the incoming file did not claim — no prompt, no undo —
-and it sat behind three call sites, including a drag-dropped `.imx`. The local
-MasterProject went from six banks to two before anyone noticed. Import is now
-additive; the only thing that still destroys banks is the button whose job is
-destroying banks.*
-
-### Fixed
 - **Project import no longer deletes local banks.** The prune is gone.
   `PresetManager.importAll()` merges: banks already in the store are left alone,
   and the project's own banks are written alongside them.
@@ -96,7 +90,11 @@ destroying banks.*
   `_syncBankSelect()` and called from `_refresh()`, which already listens for
   bank activation, saving, recall and rename.
 
+---
+
 ### Changed
+- **Detached, the Movie Library fills its window.** Its list was capped at 240px,
+  so a floating panel showed ~6 rows however large you made it.
 - **Destructive import is now opt-in**, via `importAll(data, { replace: true })`.
   Two callers pass it: "Restore MasterProject", which already warns that the
   action cannot be undone, and the first-ever launch — `init()` saves a blank
