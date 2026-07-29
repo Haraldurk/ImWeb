@@ -52,6 +52,9 @@ import {
  * .imweb file or MIDI mapping is affected by this order.
  */
 const SOURCE_CYCLE = SOURCE_DISPLAY_ORDER.filter((e) => typeof e === "number");
+
+/** False until init finishes, so project loading cannot auto-start a deck. */
+let _bootDone = false;
 import { tableManager } from "./state/TableManager.js";
 import { ControllerManager } from "./controls/ControllerManager.js";
 import { Automation } from "./controls/Automation.js";
@@ -793,6 +796,29 @@ async function main() {
 
   ps.set("movie.active", 0); // always start with movie off regardless of saved preset state
   ps.set("movieB.active", 0);
+
+  /**
+   * Routing a layer to a movie deck switches that deck on.
+   *
+   * Both decks are forced off just above so a project never starts blasting
+   * video on load. Deck A recovers easily — there is a Movie On button in the
+   * top bar — but Deck B's toggle lives inside its panel, so selecting Movie B
+   * as a Background and seeing nothing was the default experience. The drop and
+   * Library load paths already switch a deck on for the same reason; this
+   * extends it to the source selectors and q/a/z.
+   *
+   * Gated until boot finishes (see _bootDone below): the whole point of the two
+   * lines above is that loading a project does NOT start playback, and layer
+   * sources are restored during that load.
+   */
+  const _DECK_OF_SOURCE = { 1: "movie.active", 25: "movieB.active" };
+  for (const layerId of ["layer.fg", "layer.bg", "layer.ds"]) {
+    ps.get(layerId).onChange((v) => {
+      if (!_bootDone) return;
+      const activeId = _DECK_OF_SOURCE[v];
+      if (activeId && !ps.get(activeId).value) ps.set(activeId, 1);
+    });
+  }
   const stepSequencer = new StepSequencer(presetMgr);
 
   // MIDI Program Change → preset recall (PC 0–127 maps to preset index)
@@ -7579,6 +7605,11 @@ void main() {
     if (e.key === "n") _toggleNarrator();
     if (e.key === "p") _toggleCoach();
   });
+
+  // From here on, a layer routed to a movie deck switches that deck on. Until
+  // now it must not: the first-launch MasterProject load restores layer sources,
+  // and boot deliberately leaves both decks off.
+  _bootDone = true;
 
   console.log(
     "%cImWeb ready — press V to start camera, 3D tab for scene",
