@@ -103,18 +103,24 @@ Open Chrome at `localhost:5173`. On first load:
 
 ### Tabs
 
+Tabs follow the signal's own order — where a picture comes from, how pictures are
+combined, what is done to them, where they go — with the large source editors
+alongside.
+
 | Tab | Contents |
 |-----|----------|
-| **Mapping** | All parameter rows, organised by section |
-| **Buffer** | Stills buffer capture grid and controls |
+| **Sources** | Live In (camera, sound, I/O), Media (Movie Library, Movie A, Movie B, Clip Library, stills, BG1/BG2), Generators, and taps From the Signal |
+| **Mix** | Layer routing, per-layer colour, the three mix buses, keyer, displacement |
+| **Effects** | Post-FX chain and its ordering |
+| **Output** | Output modes, LUT, interlace, recording |
+| **3D** | 3D scene, geometry, import, material, camera, Hypercube |
 | **Analog** | Analog signal simulator and CRT formatting |
-| **Draw** | Freehand canvas and brush controls |
-| **Text** | Text layer content and formatting |
-| **3D** | 3D scene, geometry, import, material, camera |
-| **Clips** | Movie clip library and playback controls |
-| **Project** | Project save/load, AI generator, Banks panel, States list, Step Sequencer |
-| **Tables** | Response curve editor |
-| **GLSL** | Live shader code editor |
+| **Draw** | Freehand canvas, brush controls, stroke looper |
+| **Project** | Project save/load, AI generator, Banks, States, Step Sequencer, response curves, live GLSL |
+
+Any panel can be **detached** into a floating, resizable window with the ⊞ button
+in its section header — useful for the Movie Library, which then shows as many rows
+as the window is tall.
 
 ### Bottom Bar
 
@@ -175,12 +181,73 @@ The device list is enumerated at startup. Resolution requests 1280×720 ideal, a
 
 ---
 
-### 4.2 Movie Clips
+### 4.2 Movie Library & Decks
 
-Load and play up to 8 independent video files.
+Movies live in one place — the **Movie Library** — and play on one of **two decks**,
+Movie A and Movie B. Keeping those separate is the whole design:
 
-**Loading:** Drag `.mp4 / .webm / .mov` onto the canvas, or use the **Clips** tab "Add Clip" button.
-**Selection:** Click a clip card, or press `Shift+1` through `Shift+8`.
+| | Movie Library | Deck rack (A / B) |
+|---|---|---|
+| Holds | every movie that exists | the handful loaded and ready |
+| Size | **no limit** | 8 slots per deck |
+| Cost | a name, a duration, a thumbnail | a decoded video, buffered |
+| Answers | "what have I got?" | "what can I cut to right now?" |
+
+A library entry is only a *description* of a movie. It becomes playable when you
+load it into a deck's rack — that is the moment a video is decoded. Two decks
+playing the same file need independent playheads, so each rack slot holds its own
+video, which is why a rack is small and the Library is not.
+
+#### Getting movies into the Library
+
+- **`+ Add Movie`** (top of the Movie Library panel) — pick one or more files.
+  They join the Library but are **not** racked; load them to a deck when you want them.
+- **Drop a file on the canvas** — joins the Library *and* racks it on Deck A.
+  Hold `Shift` while dropping to rack it on Deck B instead.
+- Anything in `_imweb_ready/` is added automatically at startup (see *Video prep* below).
+
+Rows show a thumbnail, duration and origin. Duration and thumbnail are read only
+when a row scrolls into view, so a Library of a hundred movies still starts instantly.
+Use the **filter box** to narrow a long list.
+
+#### Loading a movie onto a deck
+
+- **Drag a Library row onto the Movie A or Movie B panel** — the panel highlights as you hover.
+- Or click the row's **`→A`** / **`→B`** button.
+- `Shift`-click a Deck A rack entry to copy it to Deck B.
+
+**When a rack is full, the oldest clip is evicted** to make room, so loading never
+interrupts a set. The clip currently *playing* is never evicted — if it happens to
+be the oldest, the next oldest goes instead.
+
+#### Selecting a clip on a deck
+
+| Keys | Deck |
+|------|------|
+| `Shift+1` … `Shift+8` | Movie **A** rack, slots 1–8 |
+| `Option+1` … `Option+8` | Movie **B** rack, slots 1–8 |
+
+Each rack row shows its own key badge (`⇧3`, `⌥2`) so the mapping is visible.
+Clicking a rack row selects it too.
+
+#### Removing things
+
+- **`✕ Clear`** in a deck panel empties *that deck's* rack. It unloads only — the
+  Library keeps every entry, so anything cleared can be racked again.
+- **`✕`** on a Library row removes the *entry*. Nothing on disk is touched, and a
+  clip already racked keeps playing. Startup entries return on the next reload.
+
+#### Both decks start switched off
+
+A project never begins blasting video: `movie.active` and `movieB.active` are both
+forced off at launch regardless of what a saved state says. **Routing a layer to
+Movie A or Movie B switches that deck on for you**, so selecting Movie B as a
+Background just works. Deck A also has the **Movie On/Off** button in the status bar.
+
+#### Parameters
+
+Deck B mirrors every parameter below under the `movieB.` prefix
+(`movieB.speed`, `movieB.loop`, …).
 
 | Parameter | Range | Description |
 |-----------|-------|-------------|
@@ -194,9 +261,15 @@ Load and play up to 8 independent video files.
 | `movie.bpmsync` | TOGGLE | Lock playback to global BPM |
 | `movie.bpmbeats` | SELECT | ½ / 1 / 2 / 4 / 8 / 16 beats per loop |
 
-**Clip context menu:** Right-click a clip card to assign a MIDI controller to `movie.speed` or remove the clip.
+**Clip context menu:** Right-click a rack row to assign a MIDI controller to `movie.speed` or remove the clip.
 
 Each clip maintains its own playback state. Thumbnails (160×90) are captured at 10% of the clip duration to avoid black frames.
+
+**Only the clip you are playing buffers ahead.** The others hold their position at
+metadata only. This is what allows a full 8-slot rack: the limit on racked clips is
+not their number but their total *bytes*, and All-Intra files are large. Switching
+to a slot that has been idle can therefore take a moment to start on the very first
+play — after that it is instant.
 
 #### Recommended video formats
 
@@ -1247,12 +1320,17 @@ Click the ⊞ button in any section header to detach it as a floating panel. Dra
 | Key | Action |
 |-----|--------|
 | `V` | Toggle camera |
-| `M` | Toggle movie playback |
-| `Q` | Cycle Foreground source through all inputs |
-| `A` | Cycle Background source through all inputs |
-| `Z` | Cycle DisplaceSrc through all inputs |
-| `Shift+1–8` | Select movie clip 1–8 |
+| `M` | Toggle movie playback (Deck A) |
+| `Q` | Cycle Foreground source — in the LAYERS dropdown's order |
+| `A` | Cycle Background source — same order |
+| `Z` | Cycle DisplaceSrc — same order |
+| `Shift+1–8` | Select clip 1–8 on the **Movie A** rack |
+| `Option+1–8` | Select clip 1–8 on the **Movie B** rack |
 | `C` | Capture frame to stills buffer |
+
+`Q` / `A` / `Z` step through sources in exactly the order the Mix ▸ LAYERS
+dropdowns list them (Live In → Media → Generators → From the Signal → Mix), not in
+internal index order, so the keyboard and the menu always agree.
 
 ### Effects & Processing
 
@@ -1340,7 +1418,31 @@ node imweb-prep.js
 1. Drop raw video files into `_raw_videos/`
 2. Run `node imweb-prep.js`
 3. Converted files appear in `_imweb_ready/` with suffix `_ALL-I.mp4`
-4. Drag the converted files into the ImWeb Clips tab
+4. Files in `_imweb_ready/` are added to the Movie Library at startup
+
+#### Clips prepped before v0.14 need a one-off remux
+
+The converter now writes a **faststart** MP4 — the `moov` atom is placed at the
+*front* of the file. Without it a browser cannot report a clip's duration until it
+has read to the *end* of the file, which on a 200 MB+ All-Intra clip means metadata
+takes seconds to arrive or never arrives under load. That was the cause of clips
+loading only up to the eighth slot and of Library rows sitting at "…".
+
+To fix existing files without re-encoding (lossless, seconds per file):
+
+```bash
+cd _imweb_ready
+for f in *.mp4; do
+  ffmpeg -v error -i "$f" -c copy -movflags +faststart "fs_$f" && mv "fs_$f" "$f"
+done
+```
+
+Back up first. To check whether a file is already faststart, list the first two
+top-level atoms — `moov` must come *before* `mdat`:
+
+```bash
+ffmpeg -v trace -i file.mp4 -f null - 2>&1 | grep -m2 -E "type:'(moov|mdat)'"
+```
 
 **Output specification:**
 
@@ -1394,6 +1496,10 @@ VRAM shown in red when above 800MB.
 | Audio reactive not working | Mic permission not granted | Allow microphone in browser |
 | Movie clip won't load | Unsupported codec | Convert with `node imweb-prep.js` |
 | MoviePos scrubbing jumpy | Non-All-Intra encoding | Convert with `node imweb-prep.js` |
+| Only the first 7–8 clips load; the rest time out | Clips prepped without faststart — `moov` at end of file, so duration cannot be read | One-off remux with `-movflags +faststart` (see §*Clips prepped before v0.14*) |
+| Library rows stay at "…" and never show a duration | Same cause | Same fix |
+| Newly selected clip shows a still frame that never moves | Clip is still fetching its first data | Expected briefly on an idle slot's first play; if permanent, the clips are not faststart |
+| Movie B selected as a layer but nothing appears | Deck B switched off | Routing a layer to it now switches it on; otherwise use `MovieOn B` in the Movie B panel |
 | Camera won't start on iPad | Insecure (http) origin | Serve with `npm run dev:https`; trust the mkcert CA on the device |
 | Tilt/Compass give no values | iOS motion permission not granted | Tap **Enable Motion** (GLOBAL); if no prompt appears, fully close the tab and reopen |
 | Desktop framerate low on MacBook | macOS routed the browser to the integrated GPU | Disable "Automatic graphics switching" (Battery → Options), relaunch browser |

@@ -8,6 +8,67 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
 
 ## [Unreleased]
 
+*Movies had no home. There was a list of clips inside Deck A, a second deck with
+the same list and no way to see it, and a recorder confusingly named "Clip
+Library". Now there is one **Movie Library** — everything you have, unlimited,
+thumbnails loading as you scroll — and two decks that load from it. Design doc:
+`docs/ImWeb-MovieLibrary-Blueprint.md`.*
+
+### Added
+- **Movie Library panel** (Sources ▸ Media) — every clip that exists, with
+  thumbnail, duration, origin badge, a filter box, and `→A` / `→B` to load. It
+  holds *descriptors*, not players, so its size is unlimited; duration and
+  thumbnail are read only when a row scrolls into view.
+- **Drag a Library row onto the Movie A or Movie B panel** to rack it. The whole
+  panel is the target, because an empty Deck B renders no list to aim at.
+- **Deck B finally has a rack UI** — it always had the 8-clip array, just nothing
+  to show it. Both decks now render through one parameterised `_renderRack()`.
+- **`Option+1-8`** selects on Deck B's rack, mirroring `Shift+1-8` on Deck A.
+  Matched on `e.code`, since macOS Option+digit emits `¡™£¢∞§¶•`.
+- **A full rack evicts its oldest clip** instead of refusing, so loading never
+  interrupts a set — never the clip that is *playing*, which would drop the live
+  output at the worst possible moment.
+- **`✕` on a Library row** removes the catalogue entry; a racked clip keeps
+  playing and nothing on disk is touched. The mirror of Clear, which unloads a
+  rack without deleting entries.
+- **`✕ Clear` for Deck B**, and `+ Add Clip` becomes **`+ Add Movie`** in the
+  Library — adding a movie says "this exists", clearing a rack says "unload
+  these".
+
+### Fixed
+- **`imweb-prep.js` now writes faststart MP4s.** Without `-movflags +faststart`
+  the `moov` atom lands at the *end* of the file, so a browser cannot report a
+  duration until it has read to EOF — seconds on a 237 MB All-Intra clip, or
+  never under load. This is why the movie rack had always hung on its eighth
+  clip. **Clips prepped earlier need a one-off lossless remux** — see the manual.
+- **Only the clip being played buffers ahead.** `preload='auto'` on every racked
+  clip spends the media byte budget (~837 MB here) on clips nobody is watching,
+  and the clip you switch to then holds its first frame forever. Loading uses
+  `preload='metadata'`; `selectClip()` promotes the incoming clip and demotes the
+  outgoing one.
+- **`removeClip()` kept the playhead on its own clip.** It only corrected
+  `_current` when the playhead ran off the end of the array, so removing any clip
+  *below* it silently switched the output to a different movie.
+- **Routing a layer to a movie deck switches that deck on.** Both decks are
+  forced off at launch so a project never starts blasting video, but Deck B's
+  toggle is buried in its panel — selecting Movie B as a Background showed
+  nothing, with no visible cause.
+- **`q`/`a`/`z` cycle layer sources in the LAYERS dropdown's order** rather than
+  raw index order, walking the same `SOURCE_DISPLAY_ORDER` the menus are built
+  from. Presentation only — the stored value is still the true source index.
+- **The clip list appears as clips load**, instead of after the whole manifest
+  finishes; one stalled file no longer hides every clip behind it.
+- **Percent-encoded clip names are decoded** — a file with a space showed as
+  `mirror%20clip`.
+- **The startup console banner reads the real version**, having announced v0.6.0
+  through seven releases.
+
+### Changed
+- **Detached, the Movie Library fills its window.** Its list was capped at 240px,
+  so a floating panel showed ~6 rows however large you made it.
+
+---
+
 *Importing a project used to delete banks. `importAll()` pruned every bank in
 IndexedDB whose index the incoming file did not claim — no prompt, no undo —
 and it sat behind three call sites, including a drag-dropped `.imx`. The local

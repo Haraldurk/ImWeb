@@ -21,7 +21,8 @@ FX Chain is **reorderable** by dragging nodes in the Signal Path display.
 | Source | Notes |
 |--------|-------|
 | **Camera** | WebRTC, auto-starts on load (`V` to toggle) |
-| **Movie** | Up to 8 clips; drag `.mp4/.webm/.mov` onto canvas; `Shift+1–8` to select |
+| **Movie Library** | Every movie you have — unlimited, thumbnails load lazily, filter box. `+ Add Movie`, or drop files on the canvas. Drag a row (or `→A`/`→B`) onto a deck to play it |
+| **Movie A / Movie B** | Two decks, 8 loaded slots each. `Shift+1–8` selects on A, `Option+1–8` on B. A full rack evicts its oldest clip, never the one playing. Both decks start off; routing a layer to one switches it on |
 | **Analog TV** | Self-contained 720x480 analog signal simulator. Currently supports 4:3 cropping and base signal color grading (hue, saturation, brightness, contrast). Routes as a standard layer source. |
 | **Teletext** | Teletext input source simulating classic teletext pages; customizable page data and draw utilities; routes as WebGLRenderTarget. |
 | **Stills Buffer** | Up to 64 captured frames (configurable rows×cols grid, 1–8 each, default 4×4=16); `C` to capture; scan/blend between slots |
@@ -140,10 +141,10 @@ Auto-declared uniforms: `uTexture` `tAudio` (FFT+waveform) `tPrev` (feedback) `u
 | Key | Action |
 |-----|--------|
 | `V` | Camera on/off |
-| `M` | Movie play/pause |
-| `Q` | Cycle Foreground source |
-| `A` | Cycle Background source |
-| `Z` | Cycle DisplaceSrc source |
+| `M` | Movie play/pause (Deck A) |
+| `Q` | Cycle Foreground source — in LAYERS dropdown order |
+| `A` | Cycle Background source — same order |
+| `Z` | Cycle DisplaceSrc source — same order |
 | `C` | Capture frame |
 | `K` | Keyer on/off |
 | `B` | Blend on/off |
@@ -163,7 +164,8 @@ Auto-declared uniforms: `uTexture` `tAudio` (FFT+waveform) `tPrev` (feedback) `u
 | `Shift+0` | Neutral State (reset params, keep controllers) |
 | `Shift+S` | Quick-save State (auto-thumbnail) |
 | `+` / `−` | Next / previous Bank |
-| `Shift+1–8` | Select movie clip |
+| `Shift+1–8` | Select clip on Movie **A** rack |
+| `Option+1–8` | Select clip on Movie **B** rack |
 | `/` | Parameter search |
 | `?` | Keyboard help |
 
@@ -283,7 +285,16 @@ node imweb-prep.js
 # 3. Load the converted files from _imweb_ready/ into ImWeb
 ```
 
-**Output spec:** H.264 All-Intra · yuv420p · no audio · even dimensions · CRF 18
+**Output spec:** H.264 All-Intra · yuv420p · faststart · even dimensions · CRF 18
+
+**Clips prepped before v0.14 need a one-off faststart remux** — without `moov` at the
+front of the file a browser cannot read a large clip's duration promptly, which stalls
+rack loading and leaves Library rows at "…". Lossless, no re-encode:
+
+```bash
+cd _imweb_ready
+for f in *.mp4; do ffmpeg -v error -i "$f" -c copy -movflags +faststart "fs_$f" && mv "fs_$f" "$f"; done
+```
 
 | Format | Works without prep? | Notes |
 |--------|---------------------|-------|
