@@ -3948,6 +3948,48 @@ export function registerCoreParameters(ps) {
     type: PARAM_TYPE.TOGGLE,
     value: 0,
   });
+  // Phase 25 step 4 — the sampling plane. `angle` rotates the delay map about
+  // the frame centre, so every mode above becomes orientable: a slit-scan that
+  // runs diagonally, a warp line at any angle. Continuous, so an LFO sweeps the
+  // direction time flows through the picture with no mode switch. Default 0 is
+  // the exact identity, so saved states are unaffected.
+  // Degrees, matching displace.warpDrawAngle and the 3D rotation params.
+  ps.register({
+    id: "td.angle",
+    label: "Angle",
+    group: "td",
+    min: 0,
+    max: 360,
+    value: 0,
+    unit: "°",
+  });
+  // What drives the per-pixel delay map. Was hardwired to the Noise generator;
+  // resolved through the same _resolveLayerTex() the layers use, ANY source can
+  // now be the delay field — the camera's luminance, an SDF distance field, a
+  // movie. Default 5 (Noise) reproduces the old wiring exactly.
+  // Group 'td', so captured by Display States: unlike glsl.preset this indexes
+  // SOURCES, which is append-only and not user-editable, so the index cannot
+  // drift under a saved state. Same reasoning as mix.srcA.
+  ps.register({
+    id: "td.mapSource",
+    label: "Map src",
+    group: "td",
+    type: PARAM_TYPE.SELECT,
+    options: SOURCES,
+    value: 5,
+  });
+  // Blend the map source into the analytic shapes (modes 0-5) — a slit-scan
+  // jittered by noise or by the camera. Mode 6 (Noise) is already pure map, so
+  // it ignores this. Default 0 keeps every shape exact.
+  ps.register({
+    id: "td.mapAmount",
+    label: "Map amt",
+    group: "td",
+    min: 0,
+    max: 1,
+    value: 0,
+    step: 0.01,
+  });
 
   // ── Vasulka Warp (Temporal Slit-Scan) ────────────────────────────────────
   ps.register({

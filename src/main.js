@@ -6731,7 +6731,21 @@ void main() {
     const _cTd = ps.get("td.enabled").value
       ? ps.get("td.captureSource").value
       : -1;
-    const _direct = (i) => _cFg === i || _cBg === i || _cDs === i || _cTd === i;
+    // td.mapSource drives the per-pixel delay map (Phase 25 step 4). It is a
+    // real consumer, so it belongs in the fixpoint rather than in a bespoke
+    // gate beside it: this replaces the old `_tdModeNoise` special case, which
+    // hardwired "TimeDisp in Noise mode ⇒ the Noise generator is used" and
+    // could not know about any other map source.
+    // Sampled when mode is Noise (pure map) or when mapAmount blends it into
+    // one of the analytic shapes — outside those the texture is never read.
+    const TD_MODE_NOISE = 6;
+    const _tdMapLive =
+      ps.get("td.enabled").value &&
+      (ps.get("td.mode").value === TD_MODE_NOISE ||
+        ps.get("td.mapAmount").value > 0);
+    const _cTdMap = _tdMapLive ? ps.get("td.mapSource").value : -1;
+    const _direct = (i) =>
+      _cFg === i || _cBg === i || _cDs === i || _cTd === i || _cTdMap === i;
 
     // Per-bus inputs. Which one can actually reach the bus output? MIXBUS
     // computes mix(a, modeResult, xfade): xfade=0 is pure srcA (srcB hidden),
@@ -6990,10 +7004,9 @@ void main() {
     // 3D Depth, SDF, Analog, Particles) that would otherwise stay null/stale unless a
     // layer also displays it. A MixBus input can now do the same. Both cases are
     // folded into _srcUsed() above — the local _tdCap copy it replaced is gone.
-    // td.mode === "Noise" (6) drives the per-pixel delay map from the Noise
-    // generator's output — force Noise to tick even if no layer uses it.
-    const TD_MODE_NOISE = 6;
-    const _tdModeNoise = ps.get("td.enabled").value && ps.get("td.mode").value === TD_MODE_NOISE;
+    // The TimeDisplace delay-map source is folded into _srcUsed() too, via
+    // _cTdMap — see the comment there. The old _tdModeNoise flag is gone: it
+    // could only ever express "Noise", and the map source is now free.
 
     // Tick particle system — resolve luma mask source (only pre-ticked textures are safe)
     const _pmSrcMap = [
@@ -7065,7 +7078,7 @@ void main() {
 
     // Generate noise only when a layer is using it as a source (512×512 dedicated target)
     const NOISE_IDX = 5;
-    const _noiseUsed = _srcUsed(NOISE_IDX) || _analogSrcIdx === 3 || ps.get('scene3d.mat.texsrc')?.value === 6 || _tdModeNoise;
+    const _noiseUsed = _srcUsed(NOISE_IDX) || _analogSrcIdx === 3 || ps.get('scene3d.mat.texsrc')?.value === 6;
     const _scene3dNoise = ps.get('scene3d.mat.texsrc')?.value === 6;
     const _noiseScale = ps.get('noise.scale')?.value ?? 8;
     const _seamlessPeriod = _scene3dNoise
@@ -7100,9 +7113,13 @@ void main() {
     // Time-Displacement Engine — READ + PUBLISH before pipeline.render so
     // inputs.tdisp is consumable this frame. Ring WRITE happens after render
     // (beside videoDelay.capture). Engine gates internally on td.enabled.
-    // Runs after noise generation so td.mode === "Noise" can sample this
-    // frame's noiseTexture (non-null when _tdModeNoise forces _noiseUsed).
-    tdEngine.tick(ps, dt, noiseTexture);
+    //
+    // The delay map is now a free source (td.mapSource, Phase 25 step 4),
+    // resolved through the same _resolveLayerTex() the layers use. Runs after
+    // noise generation so the default (Noise) samples THIS frame's output; the
+    // _cTdMap term in _srcUsed() is what guarantees the chosen source has been
+    // ticked, whatever it is.
+    tdEngine.tick(ps, dt, _resolveLayerTex(ps.get("td.mapSource").value));
 
     // Render 3D scene if active OR used as a layer source
     const SCENE3D_IDX = 6; // index in SOURCES array

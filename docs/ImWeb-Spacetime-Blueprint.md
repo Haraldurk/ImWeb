@@ -188,15 +188,67 @@ Nothing in ImWeb does that today; the seven modes are axis-locked. A slow LFO on
 mode switch, no discontinuity and no reallocation as it passes through the old
 mode positions.
 
-**The new params** (group `td`, appended — the group already holds 12):
+### 3d. CORRECTION — rotation of the coordinate, not one unified expression
+
+*Implemented 2026-07-29. §3a–3c above describe replacing the seven-way `uMode`
+branch with a single continuous expression, and `td.mode` becoming a preset
+writer. **That design was not built, and should not be.** What shipped rotates
+the sampling coordinate and leaves the shape math alone. The reasoning, since it
+was not obvious until the exactness audit was actually attempted:*
+
+**Two legacy quirks make a unified expression non-exact.**
+
+1. **Modes 0/1 ignore `scanPosition`; modes 2–5 use it as their origin.**
+   `m = uv.x` has no origin term at all. A single plane origin therefore cannot
+   reproduce both families — it needs an extra "is the scan position meaningful"
+   uniform whose only job is to encode which legacy mode you are in.
+2. **The normalisation constant differs and one of them is wrong.** Modes 3/4 use
+   `maxDist = max(scanPos, 1−scanPos)`; mode 5 hardcodes `0.70710678` *regardless
+   of where the centre is*, so an off-centre radial has never been normalised
+   correctly. Generalising to a true corner-maximum would silently change every
+   saved off-centre radial state. Preserving both means carrying both constants
+   and blending them — a continuous control whose endpoints are two different
+   historical mistakes.
+
+**And `td.mode`-as-preset-writer carries a contract nobody asked for.** Once the
+plane params are the truth and the mode writes them, you need: a `Custom` mode
+state for when the user moves a plane param directly; a re-entrancy guard so the
+mode's own writes do not bounce back and set `Custom`; and a restore-order
+contract, because a Display State containing both `td.mode` and plane params
+gives a different result depending on which is applied last. That is three new
+failure modes in the save/load path — the exact area `imweb-debugging` exists
+for — bought in exchange for shape morphing.
+
+**Rotation gets the actual prize without any of it.** `td.angle` rotates the
+coordinate about the frame centre *before* the existing shape math. Every shape
+becomes orientable, the angle is continuous, an LFO on it sweeps the direction
+time runs through the picture with no mode switch — which is precisely what §3c
+named as the new territory. And it is exact by construction rather than by audit:
+`cos(0)` is `1.0`, `sin(0)` is `0.0`, and `x*1.0 − y*0.0` is bit-identical to `x`,
+so at the default every one of the seven modes computes what it always did. No
+`Custom` state, no guard, no restore-order question, and `td.mode` keeps meaning
+exactly what it meant.
+
+**Deferred, with no current plan to build:** the continuous linear↔radial and
+symmetric blends. They are shape morphing, a different and lesser axis than
+orientation, and the two quirks above are the price of entry. Revisit only if
+playing the angle makes the shape boundaries feel like a limitation.
+
+**What shipped** (group `td`, appended — the group already held 12):
 
 | Param | Type | Range | Default | Note |
 |---|---|---|---|---|
-| `td.angle` | CONTINUOUS | 0–360° | 0 | plane normal |
-| `td.radial` | CONTINUOUS | 0–1 | 0 | linear ↔ radial blend |
-| `td.symmetric` | TOGGLE | — | off | fold about centre |
-| `td.mapAmount` | CONTINUOUS | 0–1 | 0 | map-texture influence |
-| `td.mapSource` | SELECT | `SOURCES` | Noise | *any* source drives the map |
+| `td.angle` | CONTINUOUS | 0–360° | 0 | rotates the map coordinate about the frame centre |
+| `td.mapSource` | SELECT | `SOURCES` | 5 (Noise) | *any* source drives the map |
+| `td.mapAmount` | CONTINUOUS | 0–1 | 0 | blends the map into modes 0–5 (mode 6 is already pure map) |
+
+Two consequences of rotating about the frame centre rather than about
+`scanPosition`, both deliberate: the field spins around the middle of the image
+instead of pivoting on a moving origin, and for mode 5 an angle sweep *orbits* an
+off-centre radial focus around the frame — a usable gesture rather than a bug.
+The rotated coordinate also leaves `[0,1]` near the corners, so a ramp saturates
+sooner there; the existing final `clamp` absorbs it, and the result is a rotated
+field cropped to the frame, which is what a rotated scan physically is.
 
 `td.mapSource` is the sleeper: mode 6 hardwires the map to the Noise generator,
 but resolved through `_resolveLayerTex` the way `mix.srcA` is, **any source can
@@ -491,8 +543,11 @@ there is no terrain to walk.
    not touched. `_slots` becomes capacity-aware and `td.maxDelay` clamps to it.
 3. Split into `SpacetimeRing` + `SpacetimeTap`. `tdisp` is the only tap. No
    behaviour change.
-4. Generalise `m` to the plane, in the shared chunk from step 1. Add the five
-   params. Keep `td.mode` as a preset writer.
+4. **Orientation.** `td.angle` rotates the map coordinate in the shared chunk
+   from step 1; `td.mapSource` frees the delay map from the Noise generator;
+   `td.mapAmount` blends it into the analytic shapes. `td.mode` keeps its
+   meaning — see §3d for why the "one continuous expression, mode as preset
+   writer" design in §3a–3c was dropped.
 5. `delay` becomes a tap — `delay.frames` is an **offset into the deeper shared
    ring**, not its own depth (owner's decision, 2026-07-29; §12.2 resolved).
    Then `slitscan`. Then `vwarp`. One commit each.
@@ -699,8 +754,9 @@ sitting inside the instrument.
 3. **How many taps before the read passes cost more than the rings saved?** Four
    is clearly fine. If `seq1/2/3` ever join (§5f) it is seven, and that is the
    point at which to measure rather than assume.
-4. **Should `td.angle` be degrees or turns?** Degrees match `displace.warpDrawAngle`
-   and the 3D rotation params; turns are friendlier to an LFO sweeping through
-   the full circle. Consistency argues degrees.
+4. ~~**Should `td.angle` be degrees or turns?**~~ **RESOLVED 2026-07-29:**
+   degrees, 0–360, `unit: "°"` — identical to `displace.warpDrawAngle`. Radians
+   are computed in `TimeDisplaceEngine.tick()`, and 0 survives the conversion
+   exactly, which is what keeps the rotation a bit-exact identity by default.
 5. **Phase 27's viability is an empirical question about the owner's banks**, and
    the inspection in §7 answers it before any code is written.

@@ -50,6 +50,7 @@ export class TimeDisplaceEngine {
     this._opts = {
       mode: 0, direction: 0, maxDelay: 0, delayCurve: 1.0,
       scanPos: 0.5, scanPosY: 0.5, scanWidth: 0.05, invert: 0,
+      angle: 0, mapAmount: 0,
     };
   }
 
@@ -63,10 +64,11 @@ export class TimeDisplaceEngine {
   /**
    * Bind `td.*` to a tap read. Per-pixel analytic delay works on BOTH storage
    * strategies since Phase 25.
-   * @param {THREE.Texture|null} noiseTex  Noise generator output, used as the
-   *   delay map when td.mode === "Noise" (6).
+   * @param {THREE.Texture|null} mapTex  the delay-map source, resolved by the
+   *   caller from `td.mapSource` (defaults to Noise). Sampled when
+   *   td.mode === "Noise" (6), and blended in by td.mapAmount otherwise.
    */
-  tick(ps, dt, noiseTex = null) {
+  tick(ps, dt, mapTex = null) {
     if (!ps.get('td.enabled').value) return;   // bypass: keep last output
 
     const o = this._opts;
@@ -80,8 +82,13 @@ export class TimeDisplaceEngine {
     o.scanPosY   = ps.get('td.scanPosY')?.value ?? 0.5;
     o.scanWidth  = ps.get('td.scanWidth')?.value ?? 0.05;
     o.invert     = ps.get('td.invertMap')?.value ? 1 : 0;
+    // Degrees in the parameter (matching displace.warpDrawAngle), radians in the
+    // shader. 0 stays exactly 0 through the conversion, which is what keeps the
+    // rotation a bit-exact identity for every pre-step-4 state.
+    o.angle      = (ps.get('td.angle')?.value ?? 0) * Math.PI / 180;
+    o.mapAmount  = ps.get('td.mapAmount')?.value ?? 0;
 
-    this.tap.render(this.ring, o, noiseTex);
+    this.tap.render(this.ring, o, mapTex);
   }
 
   // ── Published state ───────────────────────────────────────────────────────

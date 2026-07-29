@@ -53,9 +53,35 @@ const DELAY_MAP_CHUNK = /* glsl */ `
   uniform float uScanPosY;   // radial centre y (0..1)
   uniform float uScanWidth;  // warpLine band width (fraction of frame)
   uniform float uInvert;     // >0.5 flips map value
+  uniform float uAngle;      // radians — orientation of the plane (step 4)
+  uniform float uMapAmount;  // 0..1 — blend the map source into modes 0-5
 
   // mapLum = luminance of the map source at uv, sampled by the caller.
   float tdDelayMap(vec2 uv, float mapLum) {
+    // ── Orientation (Phase 25 step 4) ────────────────────────────────────────
+    // Rotate the sampling coordinate about the frame centre BEFORE the shape
+    // math, which makes every shape below orientable: a slit-scan can run
+    // diagonally, a warp line can lie at any angle, and an LFO on the angle
+    // sweeps the direction time flows through the picture with no mode switch
+    // and no discontinuity.
+    //
+    // At uAngle == 0 this is EXACTLY the identity — cos(0) is 1.0 and sin(0) is
+    // 0.0, and (x * 1.0 - y * 0.0) is bit-identical to x — so every saved state,
+    // Display State and .imweb renders as before. That exactness is why the
+    // rotation is unconditional rather than guarded on a non-zero angle: a guard
+    // there would be dead weight, and per the Guard Logic Rules a branch whose
+    // two sides compute the same thing should not exist.
+    //
+    // Rotation is about the FRAME centre, not about uScanPos, so the field spins
+    // around the middle of the image rather than pivoting on a moving origin.
+    // Consequence worth knowing: the rotated coordinate leaves [0,1] near the
+    // corners, so a ramp saturates sooner there. The final clamp absorbs it —
+    // the result is a rotated field cropped to the frame, which is what a
+    // rotated scan physically is.
+    float ca = cos(uAngle), sa = sin(uAngle);
+    vec2  q  = uv - 0.5;
+    uv = vec2(ca * q.x - sa * q.y, sa * q.x + ca * q.y) + 0.5;
+
     float m;
     if (uMode == 0) {
       m = uv.x;                                            // slitScanX
@@ -80,6 +106,10 @@ const DELAY_MAP_CHUNK = /* glsl */ `
     } else {
       m = mapLum;             // noise: per-pixel delay from the map source
     }
+    // Blend the map source into the analytic shapes — a slit-scan jittered by
+    // noise, by the camera's luminance, by the SDF's distance field. Mode 6 IS
+    // the map, so it is left alone. Default 0 keeps all six shapes exact.
+    if (uMode != 6) m = mix(m, mapLum, uMapAmount);
     if (uInvert > 0.5) m = 1.0 - m;
     return clamp(m, 0.0, 1.0);
   }
@@ -92,7 +122,7 @@ const ARRAY_READ_FRAG = /* glsl */ `
   precision highp float;
   precision highp sampler2DArray;
   uniform sampler2DArray tRing;
-  uniform sampler2D uNoiseTex; // td.mode==6: per-pixel delay map source
+  uniform sampler2D uMapTex;   // the per-pixel delay map source (td.mapSource)
   uniform int   uHead;       // next-write slot; newest capture = head-1
   uniform int   uN;          // ring depth (slots)
   uniform int   uCount;      // captured frames so far (clamp to real history)
@@ -103,7 +133,7 @@ const ARRAY_READ_FRAG = /* glsl */ `
   out vec4 outColor;
 ${DELAY_MAP_CHUNK}
   void main() {
-    float m = tdDelayMap(vUv, tdLuma(texture(uNoiseTex, vUv).rgb));
+    float m = tdDelayMap(vUv, tdLuma(texture(uMapTex, vUv).rgb));
     float d = pow(m, uDelayCurve) * uMaxDelay;
     if (uDirection == 1) d = uMaxDelay - d;                // backward = reflect window
     float maxBack = float(max(1, min(uN - 1, uCount - 1)));
@@ -129,7 +159,7 @@ ${DELAY_MAP_CHUNK}
 const ATLAS_READ_FRAG = /* glsl */ `
   precision highp float;
   uniform sampler2D tRing;
-  uniform sampler2D uNoiseTex;
+  uniform sampler2D uMapTex;
   uniform float uHead;       // next-write slot
   uniform float uN;          // slot count (atlas capacity, NOT frames)
   uniform float uCount;      // captured frames so far
@@ -142,7 +172,7 @@ const ATLAS_READ_FRAG = /* glsl */ `
   varying vec2 vUv;
 ${DELAY_MAP_CHUNK}
   void main() {
-    float m = tdDelayMap(vUv, tdLuma(texture2D(uNoiseTex, vUv).rgb));
+    float m = tdDelayMap(vUv, tdLuma(texture2D(uMapTex, vUv).rgb));
     float d = pow(m, uDelayCurve) * uMaxDelay;
     if (uDirection == 1) d = uMaxDelay - d;
     float maxBack = max(1.0, min(uN - 1.0, uCount - 1.0));
@@ -156,10 +186,16 @@ ${DELAY_MAP_CHUNK}
   }
 `;
 
-/** Shape of the per-frame read options. All fields optional; defaults are neutral. */
+/**
+ * Shape of the per-frame read options. All fields optional; defaults are the
+ * NEUTRAL values — `angle: 0` and `mapAmount: 0` reproduce the pre-step-4
+ * behaviour exactly, so a caller that does not know about the plane still gets
+ * the historical shapes.
+ */
 const DEFAULTS = {
   mode: 0, direction: 0, maxDelay: 0, delayCurve: 1.0,
   scanPos: 0.5, scanPosY: 0.5, scanWidth: 0.05, invert: 0,
+  angle: 0, mapAmount: 0,
 };
 
 export class SpacetimeTap {
@@ -184,7 +220,7 @@ export class SpacetimeTap {
       glslVersion: THREE.GLSL3,
       uniforms: {
         tRing:       { value: null },
-        uNoiseTex:   { value: null },
+        uMapTex:     { value: null },
         uHead:       { value: 0 },
         uN:          { value: 2 },
         uCount:      { value: 0 },
@@ -196,6 +232,8 @@ export class SpacetimeTap {
         uScanPosY:   { value: 0.5 },
         uScanWidth:  { value: 0.05 },
         uInvert:     { value: 0.0 },
+        uAngle:      { value: 0.0 },
+        uMapAmount:  { value: 0.0 },
       },
       vertexShader:   ARRAY_READ_VERT,
       fragmentShader: ARRAY_READ_FRAG,
@@ -210,7 +248,7 @@ export class SpacetimeTap {
     this._atlasMat = new THREE.ShaderMaterial({
       uniforms: {
         tRing:       { value: null },
-        uNoiseTex:   { value: null },
+        uMapTex:     { value: null },
         uHead:       { value: 0 },
         uN:          { value: 2 },
         uCount:      { value: 0 },
@@ -225,6 +263,8 @@ export class SpacetimeTap {
         uScanPosY:   { value: 0.5 },
         uScanWidth:  { value: 0.05 },
         uInvert:     { value: 0.0 },
+        uAngle:      { value: 0.0 },
+        uMapAmount:  { value: 0.0 },
       },
       vertexShader:   VERT,
       fragmentShader: ATLAS_READ_FRAG,
@@ -260,6 +300,18 @@ export class SpacetimeTap {
     const tex = ring.texture;
     if (!tex) return;                       // ring not allocated yet
 
+    // A map source that resolves to this tap's OWN output would have the read
+    // sampling the very target it is writing — the WebGL feedback hazard, and a
+    // GL_INVALID_OPERATION. Reachable in one click now that the map is a free
+    // source selector: td.mapSource = "TimeDisp".
+    //
+    // Identity check rather than a flag, per the Guard Logic Rules: it depends on
+    // values, not on call order, so it cannot be defeated by someone reordering
+    // the frame. Dropping to null (an unmapped shape) is the honest degradation —
+    // the alternative, one-frame-behind self-reference, would need a second
+    // target this tap does not own.
+    if (mapTex === this._outRT.texture) mapTex = null;
+
     const o = { ...DEFAULTS, ...opts };
     const useArray = ring.useArray;
     const mat   = useArray ? this._arrayMat   : this._atlasMat;
@@ -279,7 +331,7 @@ export class SpacetimeTap {
     }
 
     u.tRing.value       = tex;
-    u.uNoiseTex.value   = mapTex ?? null;
+    u.uMapTex.value     = mapTex ?? null;
     u.uHead.value       = ring.head;
     u.uN.value          = ring.slots;
     u.uCount.value      = ring.count;
@@ -291,6 +343,8 @@ export class SpacetimeTap {
     u.uScanPosY.value   = o.scanPosY;
     u.uScanWidth.value  = o.scanWidth;
     u.uInvert.value     = o.invert ? 1.0 : 0.0;
+    u.uAngle.value      = o.angle;
+    u.uMapAmount.value  = o.mapAmount;
 
     const r = this.renderer;
     const prevRT = r.getRenderTarget();
