@@ -39,6 +39,8 @@ const vals = {
   'td.maxDelay': N - 1, 'td.delayCurve': 1.0,
   'td.scanPosition': 0.5, 'td.scanPosY': 0.5, 'td.scanWidth': 0.05,
   'td.invertMap': 0,
+  // Phase 25 step 4 — neutral defaults must reproduce pre-step-4 output exactly.
+  'td.angle': 0, 'td.mapAmount': 0, 'td.mapSource': 5,
 };
 const ps = { get: (id) => (id in vals ? { value: vals[id] } : undefined) };
 
@@ -125,12 +127,72 @@ function runOne(label, forceAtlas, reallocTo = null) {
   return fails === 0;
 }
 
+/**
+ * Step 4: the plane's angle must be an EXACT identity at 0 (so every saved state
+ * renders as before), and must actually rotate the field at 90°.
+ *
+ * Read the whole output at angle 0, then at 90°, and compare. Mode 0 is a ramp
+ * along x, so a 90° rotation turns it into a ramp along y: the angle-0 frame must
+ * vary across columns and not rows, and the angle-90 frame the opposite.
+ */
+function runAngle() {
+  const eng  = new TimeDisplaceEngine(renderer, W, H, N);
+  const ring = eng.ring;
+  const M = N + 3;
+  for (let k = 0; k < M; k++) eng.capture(frameTex(k));
+  vals['td.maxDelay'] = eng.slots - 1;
+
+  const grab = (deg) => {
+    vals['td.angle'] = deg;
+    eng.tick(ps, 1 / 60, null);
+    const buf = new Uint8Array(W * H * 4);
+    renderer.readRenderTargetPixels(eng.tap._outRT, 0, 0, W, H, buf);
+    return buf;
+  };
+
+  const at0  = grab(0);
+  const at90 = grab(90);
+  vals['td.angle'] = 0;
+
+  // Variation along a row (across columns) vs down a column (across rows).
+  const spread = (buf, along) => {
+    const vs = [];
+    for (let i = 0; i < (along === 'x' ? W : H); i++) {
+      const idx = along === 'x' ? ((H >> 1) * W + i) : (i * W + (W >> 1));
+      vs.push(buf[idx * 4]);
+    }
+    return Math.max(...vs) - Math.min(...vs);
+  };
+
+  const h0 = spread(at0, 'x'),  v0 = spread(at0, 'y');
+  const h9 = spread(at90, 'x'), v9 = spread(at90, 'y');
+
+  log(`\n── ANGLE (mode 0 = ramp along x)`);
+  log(`   angle 0 : spread across columns=${h0}, down rows=${v0}`);
+  log(`   angle 90: spread across columns=${h9}, down rows=${v9}`);
+
+  // Re-read at 0 and require byte-identity with the first angle-0 read: proves
+  // the rotation is a true identity and leaves no residue in the uniforms.
+  const again = grab(0);
+  let identical = true;
+  for (let i = 0; i < at0.length; i++) if (at0[i] !== again[i]) { identical = false; break; }
+
+  const rotates  = h0 > 20 && v0 === 0 && v9 > 20 && h9 === 0;
+  log(rotates   ? '   PASS — angle 0 varies along x only; angle 90 along y only'
+                : '   FAIL — rotation did not transpose the ramp');
+  log(identical ? '   PASS — returning to angle 0 is byte-identical (exact identity)'
+                : '   FAIL — angle 0 output changed after visiting 90°');
+  eng.dispose();
+  return rotates && identical;
+}
+
 const a = runOne('ARRAY path (primary)', false);
 const b = runOne('ATLAS path (forced fallback)', true);
 // Non-square tile, and a grid re-computation after the tile size changed.
 const c = runOne('ATLAS after buffer-res change (48x20)', true, [48, 20]);
-const all = a && b && c;
+const d = runAngle();
+const all = a && b && c && d;
 log(`\n=== RESULT: ${all ? 'ALL PASS' : 'FAILURE'} ===`);
-log(`array=${a ? 'pass' : 'FAIL'} atlas=${b ? 'pass' : 'FAIL'} atlas-realloc=${c ? 'pass' : 'FAIL'}`);
-window.__tdResult = { array: a, atlas: b, atlasRealloc: c };
+log(`array=${a ? 'pass' : 'FAIL'} atlas=${b ? 'pass' : 'FAIL'} atlas-realloc=${c ? 'pass' : 'FAIL'} angle=${d ? 'pass' : 'FAIL'}`);
+window.__tdResult = { array: a, atlas: b, atlasRealloc: c, angle: d };
 </script>
