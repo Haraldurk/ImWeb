@@ -17,13 +17,13 @@ rather than quietly removed — see §4 and §9c.*
 ImWeb has five engines that all answer one question — *store recent frames,
 sample them oddly* — and each answers it differently:
 
-| File | Lines | The odd sampling |
-|---|---|---|
-| `src/inputs/TimeDisplaceEngine.js` | 418 | per-pixel delay from a 7-way mode switch |
-| `src/inputs/SequenceBuffer.js` | 326 | ×3, 4–480 frames, plus a `timewarp` mode |
-| `src/inputs/StillsBuffer.js` | 304 | 4/8/16/32 addressable stills, FrameSelect |
-| `src/inputs/VasulkaWarp.js` | 206 | strip ring, `bufSize` 960 |
-| `src/inputs/SlitScanBuffer.js` + `VideoDelayLine.js` | ~200 | column sweep; ring tap by age |
+| File                                                 | Lines | The odd sampling                          |
+| ---------------------------------------------------- | ----- | ----------------------------------------- |
+| `src/inputs/TimeDisplaceEngine.js`                   | 418   | per-pixel delay from a 7-way mode switch  |
+| `src/inputs/SequenceBuffer.js`                       | 326   | ×3, 4–480 frames, plus a `timewarp` mode  |
+| `src/inputs/StillsBuffer.js`                         | 304   | 4/8/16/32 addressable stills, FrameSelect |
+| `src/inputs/VasulkaWarp.js`                          | 206   | strip ring, `bufSize` 960                 |
+| `src/inputs/SlitScanBuffer.js` + `VideoDelayLine.js` | ~200  | column sweep; ring tap by age             |
 
 That is five vocabularies for one operation. The instrument exposes them as five
 sources (13 `delay`, 15 `slitscan`, 22 `vwarp`, 24 `tdisp`, 17–19 `seq1/2/3`),
@@ -236,10 +236,10 @@ textures. Routing them through the ring as-is would regress three working
 features on any backend where the probe fails — precisely the class of mistake
 the Guard Logic Rules in CLAUDE.md exist to prevent.
 
-### 4a. Recommendation: a tiled atlas, as the only strategy
+### 4a. A tiled atlas — the mechanism
 
-Store the ring as **frames tiled into one 2D texture** — a grid of `cols × rows`
-tiles in a single `sampler2D`. Per-pixel delay becomes tile arithmetic:
+Store the frames **tiled into one 2D texture** — a grid of `cols × rows` tiles in
+a single `sampler2D`. Per-pixel delay becomes tile arithmetic:
 
 ```glsl
   float layer = floor(d);                      // desired frame, 0 = newest
@@ -249,18 +249,12 @@ tiles in a single `sampler2D`. Per-pixel delay becomes tile arithmetic:
   outColor    = texture2D(tRing, uv);
 ```
 
-This works identically on every backend, which means **the probe, the dual read
-path, the `strategy` getter and the fallback warning all disappear.** The file
-being generalised gets *smaller*. One storage strategy, no special cases — the
-same principle the mix-bus double buffer was chosen for.
+This works on every backend, in GLSL1, with no array-texture support required.
 
-**Costs, stated honestly:**
+**Costs:**
 
-- **A max-texture-size ceiling on frame count.** At a 512×288 buffer and a
-  4096² texture that is 8×14 = 112 frames; desktop 16384² gives far more.
-  Since buffer resolution is already an independent parameter
-  (`setBufferResolution`), the trade is exposed to the user rather than hidden.
-  `td.maxDelay` must clamp against the *achievable* count, not the requested one.
+- **A max-texture-size ceiling on frame count** (see 4b — this turns out to be
+  decisive).
 - **Bilinear filtering bleeds across tile seams.** Hence the `uInset` clamp
   above — inset sampling by half a texel per tile. This is the one genuinely
   fiddly part and it must be tested at tile boundaries specifically, because the
@@ -269,13 +263,51 @@ same principle the mix-bus double buffer was chosen for.
   Straightforward, but `capture()` must set and restore the scissor state, and
   Three.js's renderer state cache has to be respected.
 
-### 4b. Fallback position, if the atlas measures badly
+### 4b. CORRECTION — the atlas replaces the fallback, not the array path
 
-Keep the array path as a *fast* path and add the atlas as the *universal* one,
-selected by the existing probe. This preserves today's behaviour exactly and
-costs one extra read shader. It is the conservative choice and it keeps the
-bifurcation this document would rather delete — take it only if measurement
-shows the atlas costs real frame time, and record the measurement.
+*An earlier version of this section recommended the atlas as the **only**
+strategy, on the grounds that it deletes the probe, the dual read path, the
+`strategy` getter and the fallback warning. **That recommendation was wrong.**
+The tile arithmetic was not carried through to real numbers before the
+recommendation was made; doing so at the start of implementation killed it.*
+
+The engine requests **120 frames** (`main.js:336`) and `td.bufferResolution`
+offers 320×240 / 640×360 / 640×480 / Native. Achievable atlas capacity:
+
+| `MAX_TEXTURE_SIZE` | 320×240 | 640×360 | 640×480 | Native 1920×1080 |
+|---|---|---|---|---|
+| 4096 (spec floor) | 204 ✓ | 66 | 48 | **6** |
+| 8192 (typical) | 850 ✓ | 264 ✓ | 204 ✓ | **28** |
+| 16384 (desktop) | 3468 ✓ | 1125 ✓ | 850 ✓ | 120 ✓ |
+
+**At Native buffer resolution the atlas holds 6 frames on the spec floor and 28
+on typical hardware, against the array path's 120 at any resolution** — array
+layers are limited by `MAX_ARRAY_TEXTURE_LAYERS` (typically 2048), which the
+frame count never approaches. Making the atlas universal would be a severe
+capability regression on *good* hardware to fix a path that only *broken*
+hardware takes. That is backwards.
+
+**The design, therefore:**
+
+- **The array path stays primary and is not touched.** Every real user's code
+  path is unchanged, which also collapses the reference-set risk in §10.1 — the
+  working path cannot regress if it is not modified.
+- **The atlas replaces the N-render-target fallback.** Per-pixel delay starts
+  working on backends where it previously degraded to a fixed 1-frame delay, so
+  §5's adapters become safe everywhere. That was the whole point of §4.
+- **Capacity is clamped and reported** on the atlas path: `_slots` becomes
+  `min(frames, cols × rows)` and `td.maxDelay` clamps against it (§9f). A
+  fallback backend at Native resolution gets a short history and a console line
+  saying so, rather than a knob that silently stops responding.
+- The probe, the `strategy` getter and the bifurcation **stay**. They are
+  load-bearing, not vestigial. `strategy` now reads `'array' | 'atlas'`.
+
+The consolation prize: because the atlas is GLSL1 and needs no array support, the
+per-pixel delay map now has to exist in two dialects — which forces the map
+computation into **one shared GLSL chunk** rather than two copies. That is a
+strictly better structure for §3's generalisation, and it is the reason
+`ARRAY_READ_FRAG`'s `m` block gets extracted before the plane is introduced
+rather than after.
 
 **One way §4 still fails:** the atlas's seam handling interacts with
 `setUpscaleFilter`. The tap reads the ring at buffer resolution and the
@@ -452,21 +484,28 @@ there is no terrain to walk.
 ## 8. Suggested build order (each step ships alone)
 
 **Phase 25**
-1. **Capture the reference set first.** Before touching code: PNGs of `delay`,
-   `slitscan` and `tdisp` output at several parameter settings from one fixed
-   clip, plus each of the seven `td.mode` values. This is the acceptance test and
-   it cannot be reconstructed afterwards.
-2. Atlas storage in `TimeDisplaceEngine`, behind the existing behaviour — array
-   path still live, atlas verified equal, probe still deciding. Nothing else
-   changes yet.
-3. Delete the array path, the probe, `strategy` and the fallback warning **only
-   once step 2 measures clean** (§4b if it does not).
-4. Split into `SpacetimeRing` + `SpacetimeTap`. `tdisp` is the only tap. No
-   behaviour change; the reference set must still match.
-5. Generalise `m` to the plane. Add the five params. Keep `td.mode` as a preset
-   writer. Reference set must still match on all seven modes.
-6. `delay` becomes a tap. Then `slitscan`. Then `vwarp`. One commit each, each
-   checked against its own reference images.
+1. **Extract the delay map into one shared GLSL chunk**, used by the existing
+   array read shader. Pure refactor, no behaviour change — and the precondition
+   for both step 2 and step 5 (§4b, last paragraph).
+2. **Atlas storage replacing the N-render-target fallback.** The array path is
+   not touched. `_slots` becomes capacity-aware and `td.maxDelay` clamps to it.
+3. Split into `SpacetimeRing` + `SpacetimeTap`. `tdisp` is the only tap. No
+   behaviour change.
+4. Generalise `m` to the plane, in the shared chunk from step 1. Add the five
+   params. Keep `td.mode` as a preset writer.
+5. `delay` becomes a tap — `delay.frames` is an **offset into the deeper shared
+   ring**, not its own depth (owner's decision, 2026-07-29; §12.2 resolved).
+   Then `slitscan`. Then `vwarp`. One commit each.
+6. `td.mapSource` — the free map selector (§3c).
+
+*The original step 1 was "capture a reference set of PNGs." **That is not a
+usable acceptance test for these engines** and it was dropped at the start of
+implementation: a temporal engine's output is a function of the exact frame
+sequence that preceded it, and neither a playing movie nor a wall-clock-driven
+noise source reproduces a frame sequence across runs. Exact image comparison
+would fail on correct code. §10.1 replaces it with a deterministic ring-content
+assertion, which is both reproducible and a sharper test of the thing that
+actually breaks.*
 7. `td.mapSource` — the free map selector (§3c).
 
 **Phase 26** — the source, then the panel, then the gate, then persistence.
@@ -532,22 +571,29 @@ automation rejects its self-signed cert. Use the `verify` skill. Occluded tabs
 freeze rAF, so a backgrounded tab reports 0 fps and invalidates any timing test.
 
 **Phase 25**
-1. **Adapter equivalence is the acceptance test.** The §8.1 reference set must
-   re-render identically for delay, slitscan and tdisp. vwarp's camera-preference
-   change (§5e) is the one documented expected divergence.
-2. Tile-seam inspection specifically: a high-contrast source, a delay that lands
-   the read on a tile boundary, and both upscale filters (§4a).
-3. Load a pre-Phase-25 `.imweb` and a saved Display State using each of the seven
+1. **A deterministic ring-content assertion is the acceptance test**, replacing
+   the PNG reference set (§8). Drive `capture()` by hand with N synthetic frames
+   whose content *encodes their own index* — frame *k* a solid
+   `rgb(k, k, k)` — then read at a known delay and assert the sampled value is
+   the frame that was asked for. This is exact, reproducible, needs no clip or
+   camera, and it catches the two failure modes that actually occur: an
+   off-by-one in the head/age arithmetic, and a tile index that disagrees between
+   `capture()` and the read shader. Run it against **both** strategies: force the
+   atlas path and confirm identical answers to the array path.
+2. Tile-seam inspection: a high-contrast source, a delay that lands the read on a
+   tile boundary, and both upscale filters together (§4a, §4b last paragraph).
+3. Confirm the atlas capacity clamp reports itself — force Native buffer
+   resolution on the atlas path and check `td.maxDelay` cannot be driven past the
+   achievable count, with a console line stating the ceiling (§9f).
+4. Load a pre-Phase-25 `.imweb` and a saved Display State using each of the seven
    `td.mode` values.
-4. **VRAM must go down.** Route all four temporal sources simultaneously and
+5. **VRAM must go down.** Route all four temporal sources simultaneously and
    compare `renderer.info.memory` against the pre-refactor baseline. One ring
    plus four small RTs against 30 delay targets + an N-layer array + a 960 strip
    buffer should be a clear win; if it is not, the tap output targets are
    oversized.
-5. **Frame time with slitscan active must improve**, not merely hold — the
+6. **Frame time with slitscan active must improve**, not merely hold — the
    `readPixels` is gone (§5c).
-6. Confirm the probe, `strategy` and the fallback warning are actually deleted
-   and not merely unreachable.
 
 **Phase 26**
 1. A passing boot is the `SOURCE_DISPLAY_ORDER` test (`ParameterSystem.js:538`).
@@ -637,14 +683,19 @@ sitting inside the instrument.
 
 ## 12. Open questions
 
-1. **Atlas-only, or atlas-plus-array-fast-path?** §4a recommends deleting the
-   array path; §4b keeps it. Decide on measurement at build step 3, and record
-   the number either way.
-2. **Does `delay` keep its own frame-count parameter, or read `td`'s?** Sharing
-   the ring means sharing its depth. `delay.frames` currently maxes at 30
-   (`main.js:311`) while `td` allocates 60. Keeping `delay.frames` as an *offset*
-   into a deeper shared ring is the compatible answer, but it silently raises
-   delay's ceiling — probably welcome, definitely a changelog line.
+1. ~~**Atlas-only, or atlas-plus-array-fast-path?**~~ **RESOLVED 2026-07-29,
+   before any code:** array path primary, atlas replaces the fallback. Decided on
+   arithmetic rather than measurement — the atlas caps at 6 frames (4096) / 28
+   (8192) at Native buffer resolution against the array's 120. See §4b for the
+   table and the reasoning.
+2. ~~**Does `delay` keep its own frame-count parameter, or read `td`'s?**~~
+   **RESOLVED 2026-07-29 (owner):** `delay.frames` becomes an **offset into the
+   deeper shared ring**. It currently maxes at 30 (`main.js:311`) while `td`
+   allocates 120, so delay's usable depth rises 4× — welcome, and a changelog
+   line. Note the offset must clamp to `_slots − 1`, which on the atlas path is
+   a runtime value (§9f), so a fallback backend at Native resolution can offer
+   *fewer* than the present 30. That is the one case where this decision is a
+   regression, and it needs the same console report as `td.maxDelay`.
 3. **How many taps before the read passes cost more than the rings saved?** Four
    is clearly fine. If `seq1/2/3` ever join (§5f) it is seven, and that is the
    point at which to measure rather than assume.

@@ -12,9 +12,21 @@
  * temporary k-steps-back debug read, and a render-to-layer PROBE that decides
  * between the WebGL2 array-texture path and the proven N-render-target fallback.
  *
- * Buffer strategy (decided): WebGLArrayRenderTarget (z = time) preferred; if the
- * Phase-1 probe shows render-to-layer is broken (ANGLE/Metal-on-Intel risk),
- * auto-fall back to a ring of N WebGLRenderTargets (VideoDelayLine pattern).
+ * Buffer strategy: WebGLArrayRenderTarget (z = time) preferred; if the probe
+ * shows render-to-layer is broken (ANGLE/Metal-on-Intel risk), fall back to a
+ * TILED ATLAS — one 2D texture holding a cols×rows grid of frames.
+ *
+ * Phase 25 changed that fallback. It was a ring of N WebGLRenderTargets
+ * (VideoDelayLine pattern), which cannot express a per-pixel delay at all: N
+ * separate sampler2Ds admit no per-fragment variable binding, so the path
+ * silently degraded to a fixed 1-frame delay. The atlas makes one sampler2D
+ * hold every frame, turning a frame index into a tile offset, so the gradient
+ * modes work on every backend. The array path stays PRIMARY and is unchanged —
+ * its layer count is bounded by MAX_ARRAY_TEXTURE_LAYERS (~2048) while the
+ * atlas is bounded by MAX_TEXTURE_SIZE in both axes (~6 frames at Native
+ * resolution on the 4096 spec floor), so the atlas is the compatibility path,
+ * never the preferred one. `_slots` carries the achievable depth; read it
+ * instead of `frames` anywhere a modulus or a delay clamp is involved.
  *
  * Index convention matches VideoDelayLine so the Phase-1 off-by-one check holds:
  *   _head points at the NEXT slot to write. After capture(), _head advances.
@@ -46,9 +58,65 @@ const ARRAY_READ_VERT = /* glsl */ `
     gl_Position = vec4(position, 1.0);
   }
 `;
-// Phase 3: per-pixel analytic gradient delay. d(x,y) derived from screen UV by
-// mode (slitScanX/Y ramps, warpLine band), shaped by delayCurve/direction, then
-// mapped to a ring layer. Nearest layer (floor) — frameBlend is Phase 5.
+/**
+ * The per-pixel delay map, m(uv) → 0..1, and the uniforms that shape it.
+ *
+ * ONE COPY, shared by both read shaders. The array path is GLSL3
+ * (`sampler2DArray`) and the atlas path is GLSL1 (`sampler2D`), so the two
+ * shaders differ in dialect — but the *logic* that decides how far back in time
+ * each pixel reads must not. Six hand-synced copies of the source list once
+ * existed in this project and three had drifted; this is the same hazard at
+ * shader scale, so `m` gets exactly one definition and the callers pass in the
+ * one thing that has to be sampled dialect-locally (the map texture's
+ * luminance).
+ *
+ * Phase 3 semantics preserved verbatim: d(x,y) derived from screen UV by mode
+ * (slitScanX/Y ramps, warpLine band, symmetric ramps, radial, noise), then
+ * shaped by delayCurve/direction by the caller. Nearest frame (floor) —
+ * frameBlend is Phase 5.
+ */
+const DELAY_MAP_CHUNK = /* glsl */ `
+  uniform int   uMode;       // 0 slitScanX, 1 slitScanY, 2 warpLine,
+                             // 3 slitScanXSym, 4 slitScanYSym, 5 radial, 6 noise
+  uniform float uScanPos;    // warpLine band centre (0..1, along x); radial centre x
+  uniform float uScanPosY;   // radial centre y (0..1)
+  uniform float uScanWidth;  // warpLine band width (fraction of frame)
+  uniform float uInvert;     // >0.5 flips map value
+
+  // mapLum = luminance of the map source at uv, sampled by the caller.
+  float tdDelayMap(vec2 uv, float mapLum) {
+    float m;
+    if (uMode == 0) {
+      m = uv.x;                                            // slitScanX
+    } else if (uMode == 1) {
+      m = uv.y;                                            // slitScanY
+    } else if (uMode == 2) {
+      m = (abs(uv.x - uScanPos) < uScanWidth * 0.5)
+          ? 0.0 : 1.0;                                      // warpLine: live band else full delay
+    } else if (uMode == 3 || uMode == 4) {
+      // slitScanX/Y symmetric: live band centred on uScanPos along the chosen
+      // axis, curve ramps outward toward whichever edge is farther.
+      float p       = (uMode == 3) ? uv.x : uv.y;
+      float dist    = abs(p - uScanPos);
+      float maxDist = max(uScanPos, 1.0 - uScanPos);
+      m = clamp((dist - uScanWidth * 0.5) / max(maxDist - uScanWidth * 0.5, 1e-5), 0.0, 1.0);
+    } else if (uMode == 5) {
+      // radial: live circle centred on (uScanPos, uScanPosY), curve ramps
+      // outward across both width and height
+      float dist    = length(uv - vec2(uScanPos, uScanPosY));
+      float maxDist = 0.70710678; // half-diagonal of unit square (0.5*sqrt(2))
+      m = clamp((dist - uScanWidth * 0.5) / max(maxDist - uScanWidth * 0.5, 1e-5), 0.0, 1.0);
+    } else {
+      m = mapLum;             // noise: per-pixel delay from the map source
+    }
+    if (uInvert > 0.5) m = 1.0 - m;
+    return clamp(m, 0.0, 1.0);
+  }
+
+  // Luminance weights, robust across noise.color modes.
+  float tdLuma(vec3 c) { return dot(c, vec3(0.299, 0.587, 0.114)); }
+`;
+
 const ARRAY_READ_FRAG = /* glsl */ `
   precision highp float;
   precision highp sampler2DArray;
@@ -57,52 +125,63 @@ const ARRAY_READ_FRAG = /* glsl */ `
   uniform int   uHead;       // next-write slot; newest capture = head-1
   uniform int   uN;          // ring depth
   uniform int   uCount;      // captured frames so far (clamp to real history)
-  uniform int   uMode;       // 0 slitScanX, 1 slitScanY, 2 warpLine,
-                              // 3 slitScanXSym, 4 slitScanYSym, 5 radial, 6 noise
   uniform int   uDirection;  // 0 forward, 1 backward (reflect window)
   uniform float uMaxDelay;   // frames
   uniform float uDelayCurve; // gamma on map value
-  uniform float uScanPos;    // warpLine band centre (0..1, along x); radial centre x
-  uniform float uScanPosY;   // radial centre y (0..1)
-  uniform float uScanWidth;  // warpLine band width (fraction of frame)
-  uniform float uInvert;     // >0.5 flips map value
   in  vec2 vUv;
   out vec4 outColor;
+${DELAY_MAP_CHUNK}
   void main() {
-    float m;
-    if (uMode == 0) {
-      m = vUv.x;                                           // slitScanX
-    } else if (uMode == 1) {
-      m = vUv.y;                                           // slitScanY
-    } else if (uMode == 2) {
-      m = (abs(vUv.x - uScanPos) < uScanWidth * 0.5)
-          ? 0.0 : 1.0;                                      // warpLine: live band else full delay
-    } else if (uMode == 3 || uMode == 4) {
-      // slitScanX/Y symmetric: live band centred on uScanPos along the chosen
-      // axis, curve ramps outward toward whichever edge is farther.
-      float p       = (uMode == 3) ? vUv.x : vUv.y;
-      float dist    = abs(p - uScanPos);
-      float maxDist = max(uScanPos, 1.0 - uScanPos);
-      m = clamp((dist - uScanWidth * 0.5) / max(maxDist - uScanWidth * 0.5, 1e-5), 0.0, 1.0);
-    } else if (uMode == 5) {
-      // radial: live circle centred on (uScanPos, uScanPosY), curve ramps
-      // outward across both width and height
-      float dist    = length(vUv - vec2(uScanPos, uScanPosY));
-      float maxDist = 0.70710678; // half-diagonal of unit square (0.5*sqrt(2))
-      m = clamp((dist - uScanWidth * 0.5) / max(maxDist - uScanWidth * 0.5, 1e-5), 0.0, 1.0);
-    } else {
-      // noise: per-pixel delay driven by the Noise generator's output
-      vec3 nc = texture(uNoiseTex, vUv).rgb;
-      m = dot(nc, vec3(0.299, 0.587, 0.114)); // luminance, robust across noise.color modes
-    }
-    if (uInvert > 0.5) m = 1.0 - m;
-    float d = pow(clamp(m, 0.0, 1.0), uDelayCurve) * uMaxDelay;
+    float m = tdDelayMap(vUv, tdLuma(texture(uNoiseTex, vUv).rgb));
+    float d = pow(m, uDelayCurve) * uMaxDelay;
     if (uDirection == 1) d = uMaxDelay - d;                // backward = reflect window
     float maxBack = float(max(1, min(uN - 1, uCount - 1)));
     d = clamp(d, 0.0, maxBack);
     int layer = (uHead - 1 - int(floor(d))) % uN;          // 0 → newest captured
     layer = (layer + uN) % uN;                             // wrap negative (range [-N, N-2])
     outColor = texture(tRing, vec3(vUv, float(layer)));
+  }
+`;
+
+/**
+ * Atlas read shader (GLSL1). Same delay map, same age arithmetic; the ring is
+ * a cols×rows grid of frames in ONE sampler2D instead of an array texture, so
+ * a frame index becomes a tile offset.
+ *
+ * `uInset` clamps tile-local uv by half an atlas texel so LinearFilter cannot
+ * bleed a neighbouring tile in at the edges — the seam artefact is a thin
+ * wrong-coloured line, easy to miss in motion and hard to attribute later.
+ *
+ * Index math is deliberately float: GLSL1 integer support is minimal, and
+ * `_tileOf()` in JS mirrors this exactly so capture() and the read agree.
+ */
+const ATLAS_READ_FRAG = /* glsl */ `
+  precision highp float;
+  uniform sampler2D tRing;
+  uniform sampler2D uNoiseTex;
+  uniform float uHead;       // next-write slot
+  uniform float uN;          // slot count (atlas capacity, NOT frames)
+  uniform float uCount;      // captured frames so far
+  uniform float uCols;       // tiles per row
+  uniform vec2  uTileScale;  // (1/cols, 1/rows)
+  uniform vec2  uInset;      // half-texel inset in tile-local uv
+  uniform int   uDirection;
+  uniform float uMaxDelay;
+  uniform float uDelayCurve;
+  varying vec2 vUv;
+${DELAY_MAP_CHUNK}
+  void main() {
+    float m = tdDelayMap(vUv, tdLuma(texture2D(uNoiseTex, vUv).rgb));
+    float d = pow(m, uDelayCurve) * uMaxDelay;
+    if (uDirection == 1) d = uMaxDelay - d;
+    float maxBack = max(1.0, min(uN - 1.0, uCount - 1.0));
+    d = clamp(d, 0.0, maxBack);
+    // + 2.0*uN keeps the operand positive before mod(): GLSL mod() on a
+    // negative left operand is implementation-defined in practice.
+    float idx   = mod(uHead - 1.0 - floor(d) + 2.0 * uN, uN);
+    vec2  tile  = vec2(mod(idx, uCols), floor(idx / uCols));
+    vec2  local = clamp(vUv, uInset, 1.0 - uInset);
+    gl_FragColor = texture2D(tRing, (tile + local) * uTileScale);
   }
 `;
 
@@ -123,11 +202,19 @@ export class TimeDisplaceEngine {
     this.frames   = Math.max(2, Math.floor(frames));
 
     this._head  = 0;     // next slot to write
-    this._count = 0;     // captured frames so far (saturates at this.frames)
+    this._count = 0;     // captured frames so far (saturates at this._slots)
 
     this._useArray = false;   // set by _allocate()/_probe()
     this._arrayRT  = null;    // WebGLArrayRenderTarget (array path)
-    this._ring     = null;    // WebGLRenderTarget[] (fallback path)
+    this._atlasRT  = null;    // WebGLRenderTarget, cols×rows tiles (atlas path)
+
+    // Usable ring depth. Equals `frames` on the array path; on the atlas path it
+    // is min(frames, cols*rows) — MAX_TEXTURE_SIZE bounds the grid, so a large
+    // buffer resolution buys fewer slots. Every modulus and every delay clamp
+    // reads THIS, never `frames`, or the head wraps past the end of the atlas.
+    this._slots = this.frames;
+    this._cols  = 0;
+    this._rows  = 0;
 
     // Shared fullscreen-quad rig
     this._cam   = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
@@ -171,16 +258,35 @@ export class TimeDisplaceEngine {
     this._arrayReadScene = new THREE.Scene();
     this._arrayReadScene.add(new THREE.Mesh(this._geom, this._arrayReadMat));
 
-    // Read material (fallback path) — GLSL1 passthrough from the selected RT.
-    this._rtReadMat = new THREE.ShaderMaterial({
-      uniforms:       { uTexture: { value: null } },
+    // Read material (atlas path) — GLSL1 sampler2D + tile arithmetic. Same
+    // delay map as the array path (DELAY_MAP_CHUNK), so the two agree by
+    // construction rather than by inspection.
+    this._atlasReadMat = new THREE.ShaderMaterial({
+      uniforms: {
+        tRing:       { value: null },
+        uNoiseTex:   { value: null },
+        uHead:       { value: 0 },
+        uN:          { value: this.frames },
+        uCount:      { value: 0 },
+        uCols:       { value: 1 },
+        uTileScale:  { value: new THREE.Vector2(1, 1) },
+        uInset:      { value: new THREE.Vector2(0, 0) },
+        uMode:       { value: 0 },
+        uDirection:  { value: 0 },
+        uMaxDelay:   { value: this.frames - 1 },
+        uDelayCurve: { value: 1.0 },
+        uScanPos:    { value: 0.5 },
+        uScanPosY:   { value: 0.5 },
+        uScanWidth:  { value: 0.05 },
+        uInvert:     { value: 0.0 },
+      },
       vertexShader:   VERT,
-      fragmentShader: PASSTHROUGH,
+      fragmentShader: ATLAS_READ_FRAG,
       depthTest:  false,
       depthWrite: false,
     });
-    this._rtReadScene = new THREE.Scene();
-    this._rtReadScene.add(new THREE.Mesh(this._geom, this._rtReadMat));
+    this._atlasReadScene = new THREE.Scene();
+    this._atlasReadScene.add(new THREE.Mesh(this._geom, this._atlasReadMat));
 
     // Output RT — the published source texture, at buffer res; the compositor
     // upscales it to display using _upscaleFilter.
@@ -208,7 +314,19 @@ export class TimeDisplaceEngine {
     });
   }
 
-  /** Try the array-texture path; probe it; fall back to N render targets. */
+  /**
+   * Try the array-texture path; probe it; fall back to a TILED ATLAS.
+   *
+   * The array path is preferred and stays primary: array layers are bounded by
+   * MAX_ARRAY_TEXTURE_LAYERS (~2048), which `frames` never approaches, so it
+   * holds the full ring at any buffer resolution. The atlas is bounded by
+   * MAX_TEXTURE_SIZE in BOTH axes — at Native resolution that is ~6 frames on
+   * the 4096 spec floor — so promoting it to the only strategy would trade a
+   * large capability loss on working hardware for a fix that only broken
+   * hardware needs. It replaces the old N-render-target fallback instead, which
+   * could not express a per-pixel delay at all (N separate sampler2Ds) and
+   * silently degraded to a fixed 1-frame delay.
+   */
   _allocate() {
     this._head = 0;
     this._count = 0;
@@ -231,14 +349,69 @@ export class TimeDisplaceEngine {
 
     if (arrayOK) {
       this._useArray = true;
-      this._disposeRing();
-      console.log('[TimeDisplace] buffer strategy: ARRAY-TEXTURE (render-to-layer probe passed) — N=' + this.frames);
+      this._disposeAtlas();
+      this._slots = this.frames;
+      console.log('[TimeDisplace] buffer strategy: ARRAY-TEXTURE (render-to-layer probe passed) — N=' + this._slots);
     } else {
       this._useArray = false;
       if (this._arrayRT) { this._arrayRT.dispose(); this._arrayRT = null; }
-      this._allocateRing();
-      console.warn('[TimeDisplace] buffer strategy: N-RENDER-TARGET FALLBACK (render-to-layer probe failed) — N=' + this.frames);
+      this._allocateAtlas();
+      console.warn(
+        '[TimeDisplace] buffer strategy: TILED-ATLAS FALLBACK (render-to-layer probe failed) — ' +
+        `grid ${this._cols}×${this._rows}, N=${this._slots}` +
+        (this._slots < this.frames
+          ? ` (capped from ${this.frames} by MAX_TEXTURE_SIZE at ${this._bufW}×${this._bufH} — ` +
+            'lower td.bufferResolution for a longer history)'
+          : ''),
+      );
     }
+  }
+
+  /**
+   * Lay the ring out as a cols×rows grid of tiles in one 2D texture.
+   * Grid is chosen as close to square as the tile aspect allows, then clamped
+   * so neither atlas dimension exceeds MAX_TEXTURE_SIZE. Capacity may come out
+   * below `frames`; that is reported, and `_slots` carries the truth.
+   */
+  _allocateAtlas() {
+    const gl  = this.renderer.getContext();
+    const max = gl.getParameter(gl.MAX_TEXTURE_SIZE) || 4096;
+
+    const maxCols = Math.max(1, Math.floor(max / this._bufW));
+    const maxRows = Math.max(1, Math.floor(max / this._bufH));
+
+    // Prefer a near-square grid, then clamp to what the axes allow.
+    let cols = Math.min(maxCols, Math.max(1, Math.ceil(Math.sqrt(this.frames))));
+    let rows = Math.min(maxRows, Math.ceil(this.frames / cols));
+    // If the row clamp left capacity on the table, widen back out.
+    if (cols * rows < this.frames) cols = Math.min(maxCols, Math.ceil(this.frames / rows));
+
+    this._cols  = cols;
+    this._rows  = rows;
+    this._slots = Math.max(2, Math.min(this.frames, cols * rows));
+
+    this._atlasRT = this._makeRT(cols * this._bufW, rows * this._bufH, THREE.LinearFilter);
+
+    const u = this._atlasReadMat.uniforms;
+    u.uCols.value = cols;
+    u.uTileScale.value.set(1 / cols, 1 / rows);
+    // Half an atlas texel, expressed in tile-local uv (a tile spans 1/cols of
+    // the atlas, so half a texel of the atlas is 0.5/bufW of a tile).
+    u.uInset.value.set(0.5 / this._bufW, 0.5 / this._bufH);
+  }
+
+  /**
+   * Tile (col, row) holding ring slot `idx`. MUST match ATLAS_READ_FRAG's
+   * `vec2(mod(idx, uCols), floor(idx / uCols))` — a disagreement here writes
+   * frames to one tile and reads them from another, which looks like a broken
+   * delay rather than a layout bug.
+   */
+  _tileOf(idx) {
+    return [idx % this._cols, Math.floor(idx / this._cols)];
+  }
+
+  _disposeAtlas() {
+    if (this._atlasRT) { this._atlasRT.dispose(); this._atlasRT = null; }
   }
 
   /**
@@ -269,15 +442,6 @@ export class TimeDisplaceEngine {
     }
   }
 
-  _allocateRing() {
-    this._ring = [];
-    for (let i = 0; i < this.frames; i++) this._ring.push(this._makeRT(this._bufW, this._bufH));
-  }
-
-  _disposeRing() {
-    if (this._ring) { this._ring.forEach(rt => rt.dispose()); this._ring = null; }
-  }
-
   // ── Write path (after pipeline.render, beside videoDelay.capture) ─────────
 
   /**
@@ -294,21 +458,35 @@ export class TimeDisplaceEngine {
       r.setRenderTarget(this._arrayRT, this._head);
       r.render(this._writeScene, this._cam);
     } else {
-      r.setRenderTarget(this._ring[this._head]);
+      // Atlas: blit the full-screen quad into just this frame's tile. Scissor as
+      // well as viewport — the viewport alone scales the quad into the tile but
+      // does not stop a clear or an out-of-range fragment touching neighbours.
+      const [col, row] = this._tileOf(this._head);
+      const x = col * this._bufW;
+      const y = row * this._bufH;
+      r.setRenderTarget(this._atlasRT);
+      r.setViewport(x, y, this._bufW, this._bufH);
+      r.setScissor(x, y, this._bufW, this._bufH);
+      r.setScissorTest(true);
       r.render(this._writeScene, this._cam);
+      r.setScissorTest(false);
+      // Restore the full-target viewport: three.js only re-derives it when the
+      // render target changes, so leaving it tile-sized would clip whatever
+      // renders next into this same target.
+      r.setViewport(0, 0, this._atlasRT.width, this._atlasRT.height);
     }
     r.setRenderTarget(prevRT);
 
-    this._head = (this._head + 1) % this.frames;
-    if (this._count < this.frames) this._count++;
+    this._head = (this._head + 1) % this._slots;
+    if (this._count < this._slots) this._count++;
   }
 
   // ── Read path (before pipeline.render, beside sdfGen.tick) ────────────────
 
   /**
-   * Read path. Array path: per-pixel analytic gradient delay (td.mode shapes
-   * d(x,y) in the shader). Fallback path: fixed 1-frame delay only
-   * (per-pixel gradient is not expressible with sampler2D).
+   * Read path. Per-pixel analytic gradient delay (td.mode shapes d(x,y)) on
+   * BOTH strategies — the atlas path expresses it with tile arithmetic, so the
+   * old "gradient modes are array-texture only" degradation is gone.
    * @param {THREE.Texture|null} noiseTex  current Noise generator output,
    *   sampled when td.mode === "Noise" (6).
    */
@@ -317,52 +495,67 @@ export class TimeDisplaceEngine {
 
     const r = this.renderer;
     const prevRT = r.getRenderTarget();
+    const scene = this._useArray ? this._arrayReadScene : this._atlasReadScene;
+    const u     = this._useArray ? this._arrayReadMat.uniforms
+                                 : this._atlasReadMat.uniforms;
 
-    if (this._useArray) {
-      const u = this._arrayReadMat.uniforms;
-      u.tRing.value       = this._arrayRT.texture;
-      u.uNoiseTex.value   = noiseTex ?? null;
-      u.uHead.value       = this._head;
-      u.uN.value          = this.frames;
-      u.uCount.value      = this._count;
-      u.uMode.value       = ps.get('td.mode')?.value ?? 0;
-      u.uDirection.value  = ps.get('td.direction')?.value ?? 0;
-      u.uMaxDelay.value   = Math.min(ps.get('td.maxDelay')?.value ?? (this.frames - 1), this.frames - 1);
-      u.uDelayCurve.value = ps.get('td.delayCurve')?.value ?? 1.0;
-      u.uScanPos.value    = ps.get('td.scanPosition')?.value ?? 0.5;
-      u.uScanPosY.value   = ps.get('td.scanPosY')?.value ?? 0.5;
-      u.uScanWidth.value  = ps.get('td.scanWidth')?.value ?? 0.05;
-      u.uInvert.value     = ps.get('td.invertMap')?.value ? 1.0 : 0.0;
-      r.setRenderTarget(this._outRT);
-      r.render(this._arrayReadScene, this._cam);
-    } else {
-      // Fallback: fixed 1-frame delay; gradient modes unavailable here.
-      if (!this._fallbackGradientWarned) {
-        console.warn('[TimeDisplace] gradient modes are array-texture only; fallback path shows a fixed 1-frame delay.');
-        this._fallbackGradientWarned = true;
-      }
-      const maxBack = Math.max(1, Math.min(this.frames - 1, this._count - 1));
-      const k = Math.max(1, Math.min(maxBack, 1));
-      const idx = (this._head - k + this.frames) % this.frames;
-      this._rtReadMat.uniforms.uTexture.value = this._ring[idx].texture;
-      r.setRenderTarget(this._outRT);
-      r.render(this._rtReadScene, this._cam);
-    }
+    // Shared: the delay map and its shaping. `_slots`, not `frames` — on the
+    // atlas path the achievable depth can be lower, and clamping to `frames`
+    // would ask for a slot that does not exist (§9f in the blueprint).
+    u.tRing.value       = this._useArray ? this._arrayRT.texture : this._atlasRT.texture;
+    u.uNoiseTex.value   = noiseTex ?? null;
+    u.uHead.value       = this._head;
+    u.uN.value          = this._slots;
+    u.uCount.value      = this._count;
+    u.uMode.value       = ps.get('td.mode')?.value ?? 0;
+    u.uDirection.value  = ps.get('td.direction')?.value ?? 0;
+    u.uMaxDelay.value   = this.clampDelay(ps.get('td.maxDelay')?.value ?? (this._slots - 1));
+    u.uDelayCurve.value = ps.get('td.delayCurve')?.value ?? 1.0;
+    u.uScanPos.value    = ps.get('td.scanPosition')?.value ?? 0.5;
+    u.uScanPosY.value   = ps.get('td.scanPosY')?.value ?? 0.5;
+    u.uScanWidth.value  = ps.get('td.scanWidth')?.value ?? 0.05;
+    u.uInvert.value     = ps.get('td.invertMap')?.value ? 1.0 : 0.0;
+
+    r.setRenderTarget(this._outRT);
+    r.render(scene, this._cam);
     r.setRenderTarget(prevRT);
   }
+
+  /**
+   * Clamp a requested frame offset to what the ring can actually serve.
+   * Public because the taps (and `delay.frames`, once it is an offset into this
+   * shared ring) need the same ceiling, and because on the atlas path it is a
+   * runtime value rather than a constant. Warns once per ceiling so a knob that
+   * stops responding has a reason in the console.
+   */
+  clampDelay(frames) {
+    const ceiling = this._slots - 1;
+    if (frames > ceiling && this._delayCapWarnedAt !== ceiling) {
+      console.warn(
+        `[TimeDisplace] delay request ${frames} exceeds ring depth; clamped to ${ceiling} ` +
+        `(strategy=${this.strategy}, buffer=${this._bufW}×${this._bufH}).`,
+      );
+      this._delayCapWarnedAt = ceiling;
+    }
+    return Math.max(0, Math.min(frames, ceiling));
+  }
+
+  /** Usable ring depth — `frames` on the array path, possibly less on atlas. */
+  get slots() { return this._slots; }
 
   /** Published source texture. */
   get texture() { return this._outRT.texture; }
 
-  /** Which buffer path is live ('array' | 'fallback'). */
-  get strategy() { return this._useArray ? 'array' : 'fallback'; }
+  /** Which buffer path is live ('array' | 'atlas'). */
+  get strategy() { return this._useArray ? 'array' : 'atlas'; }
 
   // ── Lifecycle ─────────────────────────────────────────────────────────────
 
   /** Reallocate after WebGL context restore (GPU/display switch). Re-probes. */
   reinit() {
     if (this._arrayRT) { this._arrayRT.dispose(); this._arrayRT = null; }
-    this._disposeRing();
+    this._disposeAtlas();
+    this._delayCapWarnedAt = undefined;
     this._allocate();
   }
 
@@ -386,7 +579,8 @@ export class TimeDisplaceEngine {
     this._bufW = w;
     this._bufH = h;
     if (this._arrayRT) { this._arrayRT.dispose(); this._arrayRT = null; }
-    this._disposeRing();
+    this._disposeAtlas();
+    this._delayCapWarnedAt = undefined;  // ceiling moves with buffer resolution
     this._outRT.setSize(w, h);
     this._allocate();
   }
@@ -407,11 +601,11 @@ export class TimeDisplaceEngine {
 
   dispose() {
     if (this._arrayRT) this._arrayRT.dispose();
-    this._disposeRing();
+    this._disposeAtlas();
     this._outRT.dispose();
     this._writeMat.dispose();
     this._arrayReadMat.dispose();
-    this._rtReadMat.dispose();
+    this._atlasReadMat.dispose();
     this._geom.dispose();
     this._probeTex.dispose();
   }

@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<!-- Phase 25 acceptance test — docs/ImWeb-Spacetime-Blueprint.md §10.1.
+
+     Deterministic ring-content assertion. Each captured frame is a solid colour
+     encoding its own index, so a read at a known delay has exactly one correct
+     answer. This replaces the PNG reference set the blueprint originally
+     proposed: a temporal engine's output depends on the exact frame sequence
+     that preceded it, and neither a playing movie nor a wall-clock noise source
+     reproduces a sequence across runs, so image comparison would fail on
+     correct code.
+
+     Catches the two failures that actually occur: an off-by-one in the head/age
+     arithmetic, and a tile index that disagrees between capture() and the read
+     shader. Runs against BOTH strategies plus a grid re-computation.
+
+     NOT covered here: tile-seam bleed (needs non-solid frame content — see
+     blueprint §10.2) and the array path's GLSL3 dialect beyond compilation.
+
+     Run:  npx vite --port 5199
+           open http://localhost:5199/tests/spacetime-ring.html
+     Re-run after every Phase 25 step (tap split, plane, each adapter). -->
+<meta charset="utf-8">
+<title>TD ring test</title>
+<body style="background:#111;color:#ddd;font:12px monospace;white-space:pre"></body>
+<script type="module">
+import * as THREE from 'three';
+import { TimeDisplaceEngine } from '/src/inputs/TimeDisplaceEngine.js';
+
+const out = [];
+const log = (s) => { out.push(s); document.body.textContent = out.join('\n'); };
+
+const W = 32, H = 32, N = 8;
+const renderer = new THREE.WebGLRenderer({ antialias: false });
+renderer.setSize(W, H);
+
+// Minimal ParameterSystem stub — tick() only ever calls ps.get(id).value
+const vals = {
+  'td.enabled': 1, 'td.mode': 0, 'td.direction': 0,
+  'td.maxDelay': N - 1, 'td.delayCurve': 1.0,
+  'td.scanPosition': 0.5, 'td.scanPosY': 0.5, 'td.scanWidth': 0.05,
+  'td.invertMap': 0,
+};
+const ps = { get: (id) => (id in vals ? { value: vals[id] } : undefined) };
+
+/** A solid 1x1 texture whose red channel encodes the frame index. */
+const frameTex = (k) => {
+  const t = new THREE.DataTexture(
+    new Uint8Array([20 * k + 10, 0, 0, 255]), 1, 1, THREE.RGBAFormat,
+  );
+  t.needsUpdate = true;
+  return t;
+};
+
+/** Force the compatibility path without touching production code. */
+const forceAtlasOn = (eng) => {
+  if (eng._arrayRT) { eng._arrayRT.dispose(); eng._arrayRT = null; }
+  eng._useArray = false;
+  eng._allocateAtlas();
+  eng._head = 0; eng._count = 0;
+};
+
+function runOne(label, forceAtlas, reallocTo = null) {
+  const eng = new TimeDisplaceEngine(renderer, W, H, N);
+
+  if (forceAtlas) forceAtlasOn(eng);
+
+  if (reallocTo) {
+    // Buffer-resolution change on the atlas path: the grid is recomputed and
+    // the read shader's uCols/uTileScale/uInset must follow, or capture() and
+    // the read disagree about tile layout. setBufferResolution() re-probes and
+    // would flip back to array on healthy hardware, so drive the atlas half.
+    eng._bufW = reallocTo[0]; eng._bufH = reallocTo[1];
+    eng._outRT.setSize(reallocTo[0], reallocTo[1]);
+    eng._disposeAtlas();
+    eng._allocateAtlas();
+    eng._head = 0; eng._count = 0;
+  }
+
+  log(`\n── ${label} — strategy=${eng.strategy}, slots=${eng.slots}` +
+      (eng.strategy === 'atlas'
+        ? `, grid=${eng._cols}x${eng._rows}, tile=${eng._bufW}x${eng._bufH}`
+        : ''));
+
+  // Write M > N frames so the head has wrapped — wrapping is where off-by-one
+  // and negative-modulus bugs live.
+  const M = N + 3;
+  for (let k = 0; k < M; k++) eng.capture(frameTex(k));
+  log(`   wrote ${M} frames (head=${eng._head}, count=${eng._count})`);
+
+  vals['td.maxDelay'] = eng.slots - 1;
+  eng.tick(ps, 1 / 60, null);
+
+  // Read a row of pixels and compare each against the frame that d(x) selects.
+  const rw = eng._bufW, rh = eng._bufH;
+  const buf = new Uint8Array(rw * rh * 4);
+  renderer.readRenderTargetPixels(eng._outRT, 0, 0, rw, rh, buf);
+
+  const maxDelay = eng.slots - 1;
+  const maxBack  = Math.max(1, Math.min(eng.slots - 1, eng._count - 1));
+  let fails = 0, checked = 0;
+
+  for (let i = 0; i < rw; i++) {
+    const uvx = (i + 0.5) / rw;              // texel centre
+    let d = uvx * maxDelay;                  // mode 0 (slitScanX), curve 1
+    d = Math.min(Math.max(d, 0), maxBack);
+    const age  = Math.floor(d);
+    const slot = ((eng._head - 1 - age) % eng.slots + eng.slots) % eng.slots;
+    // Slot `slot` last received frame index k where k % slots === slot and k < M
+    let k = -1;
+    for (let c = M - 1; c >= 0; c--) if (c % eng.slots === slot) { k = c; break; }
+    const expect = 20 * k + 10;
+
+    // Sample mid-height; row-major from bottom-left.
+    const px = buf[((rh >> 1) * rw + i) * 4];
+    checked++;
+    if (Math.abs(px - expect) > 2) {
+      fails++;
+      if (fails <= 6) log(`   FAIL x=${i} uv=${uvx.toFixed(3)} age=${age} slot=${slot} expect=${expect} got=${px}`);
+    }
+  }
+  log(fails === 0 ? `   PASS — ${checked}/${checked} pixels read the frame they asked for`
+                  : `   ${fails}/${checked} pixels wrong`);
+  eng.dispose();
+  return fails === 0;
+}
+
+const a = runOne('ARRAY path (primary)', false);
+const b = runOne('ATLAS path (forced fallback)', true);
+// Non-square tile, and a grid re-computation after the tile size changed.
+const c = runOne('ATLAS after buffer-res change (48x20)', true, [48, 20]);
+const all = a && b && c;
+log(`\n=== RESULT: ${all ? 'ALL PASS' : 'FAILURE'} ===`);
+log(`array=${a ? 'pass' : 'FAIL'} atlas=${b ? 'pass' : 'FAIL'} atlas-realloc=${c ? 'pass' : 'FAIL'}`);
+window.__tdResult = { array: a, atlas: b, atlasRealloc: c };
+</script>
