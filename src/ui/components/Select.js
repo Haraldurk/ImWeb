@@ -80,9 +80,34 @@ export function mkSelect(opts, initVal, onChangeVal, extraClass = '', order = nu
     if (!menu) _buildMenu();
     const rect = trigger.getBoundingClientRect();
     menu.style.display = 'block';
-    menu.style.left  = rect.left + 'px';
-    menu.style.top   = (rect.bottom + 2) + 'px';
     menu.style.minWidth = rect.width + 'px';
+
+    // ── Keep the menu inside the viewport ────────────────────────────────────
+    // It is position:fixed, so anything past an edge is simply unreachable —
+    // the page cannot scroll to it and the menu's own scrollbar is on a box that
+    // is itself partly offscreen. Opening downward unconditionally therefore
+    // truncated the list whenever the trigger sat low on the screen, silently
+    // hiding the tail. The longer the list the worse it got, and the newest
+    // options are always at the tail because these lists are append-only.
+    const GAP = 2, EDGE = 6;
+    menu.style.maxHeight = 'none';               // measure the natural height
+    const wantH = menu.offsetHeight;
+    const below = window.innerHeight - rect.bottom - GAP - EDGE;
+    const above = rect.top - GAP - EDGE;
+
+    // Prefer downward; flip up only when that genuinely buys more room.
+    const flip = wantH > below && above > below;
+    const room = Math.max(96, flip ? above : below);
+    const useH = Math.min(wantH, room);
+    menu.style.maxHeight = useH + 'px';
+    menu.style.top = (flip ? rect.top - GAP - useH : rect.bottom + GAP) + 'px';
+
+    // Same treatment horizontally: a menu wider than its trigger can overhang
+    // the right edge, which detached panels near the screen edge do hit.
+    const w = menu.offsetWidth;
+    menu.style.left =
+      Math.max(EDGE, Math.min(rect.left, window.innerWidth - w - EDGE)) + 'px';
+
     // Scroll selected item into view
     menu.querySelector(`.imw-sel-item[data-idx="${state.v}"]`)
       ?.scrollIntoView({ block: 'nearest' });
