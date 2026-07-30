@@ -954,6 +954,7 @@ export class Pipeline {
     if (key === 'vwarp'     && inputs.vwarp)     return inputs.vwarp;
     if (key === 'analog'    && inputs.analog)    return inputs.analog;
     if (key === 'tdisp'     && inputs.tdisp)     return inputs.tdisp;
+    if (key === 'rutt'      && inputs.rutt)      return inputs.rutt;
     return inputs.color ?? this._getFallbackTexture();
   }
 
