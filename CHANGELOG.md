@@ -94,6 +94,21 @@ git tag and nothing else. Design doc: `docs/ImWeb-Spacetime-Blueprint.md` §6.*
   re-scales when the options list grows. Pre-existing, and identical for every
   source append; the base stamp does not address it.
 
+### UI
+- **Rutt-Etra's 23 controls sit in four collapsible groups** — Scan · Depth ·
+  Camera · Phosphor — one panel section with four subsections, the shape the Warp
+  section already uses.
+- **Subsections collapse anywhere in the app** (Color/Gradient, Text, Warp, Video
+  Delay, Performative Draw and the rest). They still do not detach or stick;
+  main.js sweeps the two header classes separately so a subsection cannot become
+  a detach target inside its own parent. Default expanded.
+- Subsection headings are legible — a four-way split was reported as "the
+  sections are not there" while all four headings were on screen at 9px in
+  `--text-2`.
+- `.param-row` uses `min-height` rather than a fixed height: `.param-btn-group`
+  wraps, and against a fixed height a wrapped group silently painted over the
+  rows beneath it.
+
 ---
 
 ## [0.14.0] — 2026-07-29 — The Movie Library
