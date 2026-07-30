@@ -378,11 +378,48 @@ every param id stay. Behind them:
 Gains the plane params of §3c. Its panel becomes the place the plane is played;
 `td.mode` remains at the top as the preset row.
 
-### 5b. `delay` (13) — a flat plane, offset in t
-`delay.frames` writes the tap's constant offset. `VideoDelayLine.getTexture(n)`
-is called from exactly one place (`main.js:7151`), so the class becomes a thin
-shim behind its existing signature, or retires. **This is where the VRAM comes
-back:** 30 full-res render targets collapse into a share of one ring.
+### 5b. CORRECTION — `delay` (13) is not a tap either. It needed the ring's
+### *other* feature.
+
+*This section said `delay` becomes a flat-plane tap and that "this is where the
+VRAM comes back". **Both wrong**, established 2026-07-30 by costing it. With §5c
+and §5d that makes **three of the four adapters retracted**; only the ring/tap
+split itself (§2) survived contact.*
+
+Two reasons it must not become a tap:
+
+1. **A tap adds a fullscreen pass for nothing.** `getTexture(n)` already returns a
+   ring texture *directly*, at zero cost, because a uniform delay needs no
+   per-pixel map. Routing it through a tap would be strictly more expensive for
+   the one case that does not need the machinery.
+2. **Taps share the ring and therefore its capture source** (§5e). Delay wants its
+   *own* source — an echo of the camera while `tdisp` works on the output — which
+   a shared ring cannot give it.
+
+**The real defect was the ring's other feature: resolution decoupled from the
+canvas.** `VideoDelayLine` ran at full canvas size, so **30 frames at 1920×1080 is
+237 MB for HALF A SECOND** — the most expensive buffer in the instrument, buying
+almost nothing. Decoupled, the same VRAM buys **240 frames (4 s) at 640×480**, or
+**8 s at 320×240 for less**. Resolution, not frame count, is the lever.
+
+**What shipped:** `delay.source` (default 8 = Output, the old wiring),
+`delay.size` (30–480 frames), `delay.bufferResolution` (Native / 640×480 /
+640×360 / 320×240), `delay.frames` ceiling 30 → 480, a 768 MB budget clamp, and
+`resize()` demoted to a no-op so a display change no longer wipes the echo. The
+softness/depth trade is exposed rather than chosen: the delay composites at full
+canvas size, and the default stays Native/30 so the existing picture is unchanged.
+
+**Two things found only by testing**, both recorded because they are the kind that
+survive review:
+
+- **The controls did not commute.** Asking for 120 frames at Native clamps to 97,
+  and lowering the resolution afterwards left you stuck at 97 rather than granting
+  the 120 that now fits — so the result depended on which knob you touched first.
+  `VideoDelayLine` now stores the *requested* depth and re-derives on every
+  realloc.
+- **A request past the history returned `null`**, dropping the source entirely
+  rather than reaching the oldest frame — so raising the new 480 ceiling made the
+  control stop working instead of stop deepening. It now saturates.
 
 ### 5c. CORRECTION — `slitscan` (15) is NOT a tap, and must not become one
 

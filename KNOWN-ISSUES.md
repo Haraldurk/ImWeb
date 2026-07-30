@@ -37,13 +37,40 @@ sentinel from the xController write.
 
 ---
 
-### VasulkaWarp architecture (design decision pending, not a crash bug)
-**Current state:** VasulkaWarp.js and `vwarp.*` params exist and run; feature
-intentionally hidden from UI pending architecture decision
-**Problem:** strip-buffer approach conflicts with the pipeline source model
-**Candidate direction:** treat as a Sequence slot backed by IndexedDB rather
-than a live GPU ring buffer
-**Related files:** src/inputs/VasulkaWarp.js, src/core/Pipeline.js
+### ~~VasulkaWarp architecture (design decision pending)~~ — RESOLVED 2026-07-30
+**Every claim in the old entry was wrong**, which is why it sat open since before
+v0.9. It read: *"intentionally hidden from UI pending architecture decision;
+strip-buffer approach conflicts with the pipeline source model; candidate
+direction: treat as a Sequence slot backed by IndexedDB."*
+
+- **Not hidden** — the panel was restored in Phase 24 (`index.html`), and the
+  source has been live in the inputs bag throughout.
+- **The strip buffer is the CORRECT structure, not a conflict.** It stores one
+  column per time step: 8.3 MB buys ~1920 steps at full resolution, where the
+  frame ring stores a whole frame per step (~147 MB for 120). For an axis-aligned
+  shear it is ~18× cheaper and sharper. It is the fast path; TimeDisplaceEngine is
+  the general case. The IndexedDB candidate is struck.
+- **It is not a slit-scan** despite the name. A slit-scan multiplies ONE fixed
+  column across space (`SlitScanBuffer`); this offsets each column in time at its
+  own position — a shear, the same operation as `td.mode = "Shear X"`.
+
+Renamed to **Warp Tape**, under the new `Warp` panel family that also holds Time
+Displace, Slit Scan and Video Delay. See `docs/ImWeb-Spacetime-Blueprint.md` §5d.
+
+Real bugs found and fixed while resolving it: the tape was allocated at canvas
+width while the head wrapped at `bufSize`, so any setting below 1920 swept only
+part of the frame; `resize()` overwrote the time depth; the boot construction
+ignored the saved `vwarp.bufsize`; capture had no null guard, so an inactive
+source erased the tape one column per frame; and the write head never reached the
+read shader. Gained `vwarp.source`, `anchor`, `pos`, `span`, `clear`.
+
+**Still open, deliberately:** a *vertical time* axis, and `vwarp.angle`. Both need
+`capture()` to scissor along a different axis — the tape conflates "which source
+column" with "which moment" on one axis, so rotating the read rotates the picture
+and time together. Capture-side work, not a uniform. Note the existing
+`Warp axis` control is NOT that: it redirects the read controls onto the picture's
+y, which is a second geometric axis and works as intended.
+**Related files:** src/inputs/VasulkaWarp.js, tests/vasulka-tape.html
 
 ---
 
