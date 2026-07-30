@@ -33,6 +33,12 @@ git tag and nothing else. Design doc: `docs/ImWeb-Spacetime-Blueprint.md` §6.*
   only in front of it — valleys as well as ridges. Both act on geometry alone:
   the beam stays as bright as the signal that deflected it. Defaults (1.0 / 0)
   are a bit-exact identity.
+- **`rutt.bleed` ("Spread")** — spatial phosphor decay. The trail now diffuses as
+  it fades instead of dimming in place, which is the difference between a ghost
+  image and a glow. The kernel's weights sum to exactly 1, so it redistributes
+  energy and cannot add any — necessary, because the lattice is drawn additively
+  on top of this buffer every frame and a kernel with gain above 1 would compound
+  into a runaway to white. Does nothing at Persist 0, having no trail to spread.
 
 ### Changed
 - **Every project, bank and Display State now records the capture-index base it

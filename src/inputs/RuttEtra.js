@@ -112,8 +112,32 @@ void main() { vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }
 const DECAY_FRAG = `
 uniform sampler2D tPrev;
 uniform float uDecay;
+uniform float uBleed;
+uniform vec2  uTexel;
 varying vec2 vUv;
-void main() { gl_FragColor = vec4(texture2D(tPrev, vUv).rgb * uDecay, 1.0); }
+
+void main() {
+  // Spatial phosphor decay: the trail DIFFUSES as it fades instead of just
+  // dimming in place, which is the difference between a ghost image and a glow.
+  //
+  // The weights sum to exactly 1.0, so this redistributes energy and cannot add
+  // any. That matters more here than it looks: the lattice is drawn with
+  // ADDITIVE blending on top of this buffer every frame, so a kernel with gain
+  // above 1 would compound with the accumulation and run the buffer away to
+  // white — the same failure rutt.decay is capped at 0.98 to avoid.
+  //
+  // At uBleed 0 every tap lands on the same texel and the sum is the centre
+  // value back (exact but for float summation order), so the knob is its own
+  // identity with no branch. At the default decay of 0 the pass outputs black
+  // regardless, so nothing accumulates until trails are asked for.
+  vec2 o = uTexel * uBleed;
+  vec3 c = texture2D(tPrev, vUv).rgb                        * 0.4
+         + texture2D(tPrev, vUv + vec2( o.x, 0.0)).rgb      * 0.15
+         + texture2D(tPrev, vUv + vec2(-o.x, 0.0)).rgb      * 0.15
+         + texture2D(tPrev, vUv + vec2( 0.0,  o.y)).rgb     * 0.15
+         + texture2D(tPrev, vUv + vec2( 0.0, -o.y)).rgb     * 0.15;
+  gl_FragColor = vec4(c * uDecay, 1.0);
+}
 `;
 
 /** Horizontal sample count for a given line count. */
@@ -173,7 +197,12 @@ export class RuttEtra {
 
     // Decay pass — its own tiny scene, drawn before the lattice each frame.
     this._decayMat = new THREE.ShaderMaterial({
-      uniforms: { tPrev: { value: null }, uDecay: { value: 0 } },
+      uniforms: {
+        tPrev:  { value: null },
+        uDecay: { value: 0 },
+        uBleed: { value: 0 },
+        uTexel: { value: new THREE.Vector2(1 / width, 1 / height) },
+      },
       vertexShader:   DECAY_VERT,
       fragmentShader: DECAY_FRAG,
       depthTest:  false,
@@ -280,6 +309,7 @@ export class RuttEtra {
     r.clear(true, true, true);
     this._decayMat.uniforms.tPrev.value  = prev.texture;
     this._decayMat.uniforms.uDecay.value = ps.get('rutt.decay').value;
+    this._decayMat.uniforms.uBleed.value = ps.get('rutt.bleed').value;
     r.render(this._decayScene, this._decayCam);
     r.render(this._scene, this._camera);
     r.setRenderTarget(null);
@@ -294,6 +324,7 @@ export class RuttEtra {
     this._rtA.setSize(w, h);
     this._rtB.setSize(w, h);
     this._mat.uniforms.uResolution.value.set(w, h);
+    this._decayMat.uniforms.uTexel.value.set(1 / w, 1 / h);
     this._aspect = w / h;
     if (this._mesh) this._mesh.scale.x = this._aspect;
     this._camera.aspect = this._aspect;
