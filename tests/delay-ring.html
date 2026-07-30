@@ -63,6 +63,25 @@ log(`── age arithmetic`);
   d.dispose();
 }
 
+// ── 1b. A request past the history SATURATES, it does not vanish ────────────
+log(`\n── request beyond the ring saturates`);
+{
+  const d = new VideoDelayLine(renderer, 8, 8, 16);
+  const empty = d.getTexture(5);                       // nothing captured yet
+  for (let k = 1; k <= 6; k++) d.capture(frameTex(k * 20));  // only 6 frames in a 16 ring
+  const within = readOne(d.getTexture(3));             // 3 back = frame 4 => 80
+  const beyond = readOne(d.getTexture(400));           // way past both count and ring
+  const oldest = readOne(d.getTexture(6));             // the oldest we hold => 20
+  log(`   before any capture: ${empty === null ? 'null (correct)' : 'NOT null'}`);
+  log(`   getTexture(3)   = ${within}  (want 80)`);
+  log(`   getTexture(400) = ${beyond}  (want ${oldest}, the oldest held)`);
+  const ok = empty === null && Math.abs(within - 80) <= 2 && beyond === oldest;
+  log(ok ? '   PASS — saturates at the oldest frame instead of returning null'
+         : '   FAIL — out-of-range request did not saturate');
+  window.__satOk = ok;
+  d.dispose();
+}
+
 // ── 2. Depth and resolution reallocate; resize does NOT ─────────────────────
 log(`\n── depth, buffer resolution, and display resize`);
 {
@@ -105,7 +124,7 @@ log(`\n── VRAM budget`);
   d.dispose();
 }
 
-const all = window.__ageOk && window.__lifecycleOk && window.__clampOk;
+const all = window.__ageOk && window.__satOk && window.__lifecycleOk && window.__clampOk;
 log(`\n=== RESULT: ${all ? 'ALL PASS' : 'FAILURE'} ===`);
-window.__delayResult = { age: window.__ageOk, lifecycle: window.__lifecycleOk, clamp: window.__clampOk, all };
+window.__delayResult = { age: window.__ageOk, saturate: window.__satOk, lifecycle: window.__lifecycleOk, clamp: window.__clampOk, all };
 </script>

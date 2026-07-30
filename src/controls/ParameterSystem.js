@@ -3624,7 +3624,11 @@ export function registerCoreParameters(ps) {
   // ── Video Delay Line ──────────────────────────────────────────────────────
   ps.register({
     id: "delay.frames",
-    label: "DelayFrames",
+    // "DelayFrames" was 11 characters and overflowed the panel's label column,
+    // rendering as "DelayFram…" — the same overflow the Phase 24 warp params hit.
+    // Everything else in this panel is 9-10.
+    label: "Delay",
+    unit: "fr",
     group: "delay",
     min: 1,
     // Ceiling is the deepest ring delay.size can allocate. The ACHIEVABLE depth
