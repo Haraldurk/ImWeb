@@ -345,6 +345,9 @@ export class ParameterSystem extends EventTarget {
     const p = new Parameter(config);
     this.params.set(p.id, p);
     this._allParamsDirty = true;
+    // Identity, not a name test: only the shared CAPTURE_SOURCES array carries
+    // the indirect tail that migrateCaptureBase() has to keep in register.
+    if (config.options === CAPTURE_SOURCES) CAPTURE_PARAM_IDS.push(p.id);
     if (p.group) {
       if (!this.groups.has(p.group)) this.groups.set(p.group, []);
       this.groups.get(p.group).push(p.id);
@@ -582,6 +585,65 @@ export const CAPTURE_SOURCES = [...SOURCES, ...CAPTURE_INDIRECT];
 
 /** First indirect index — anything >= this is a layer reference, not a source. */
 export const CAPTURE_INDIRECT_BASE = SOURCES.length;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Capture-base migration (Phase 26 Step 0)
+// ─────────────────────────────────────────────────────────────────────────────
+// SOURCE_DEFS is append-only, so indices 0..N-1 are stable forever. The indirect
+// tail is NOT: it is pinned to SOURCES.length, so appending one source slides
+// "FG Src / BG Src / DS Src" up by one and every saved capture value in the old
+// tail silently re-reads as the newly appended source.
+//
+// The fix is a stamp, not a frozen constant: every file, bank and state records
+// the base it was written at, and load shifts the tail back into register. That
+// keeps CAPTURE_SOURCES dense — a sparse array with a high fixed base would put
+// holes in five dropdowns and in the controller travel of every SELECT over it.
+//
+// Written 2026-07-30, BEFORE the first source append, so it ships as an identity
+// transform (29 → 29) and can be verified without a new source confusing it.
+
+/** SOURCES.length when the indirect entries shipped (c606479). Never changes. */
+export const LEGACY_CAPTURE_BASE = 29;
+
+/**
+ * Ids of every param whose options are CAPTURE_SOURCES, collected at
+ * registration by identity on the shared array — the same `options === SOURCES`
+ * test UI.js and ParamRow.js already use to pick a display order.
+ *
+ * Self-maintaining ON PURPOSE. A new selector declared `options:
+ * CAPTURE_SOURCES` joins the migration by existing; a hand-written list here is
+ * exactly how six copies of SOURCE_DEFS once drifted apart.
+ */
+export const CAPTURE_PARAM_IDS = [];
+
+/**
+ * Shift a `{ paramId: value }` map's capture indices from the base it was saved
+ * at onto the current one. Mutates and returns `values`.
+ *
+ * Absent stamp ⇒ LEGACY_CAPTURE_BASE: the indirect entries have never existed at
+ * any other base, so every file written before this stamp was written at 29.
+ * Idempotent — a re-saved bank carries the current base and shifts by zero.
+ */
+export function migrateCaptureBase(values, savedBase) {
+  if (!values) return values;
+  const base = savedBase ?? LEGACY_CAPTURE_BASE;
+  const shift = CAPTURE_INDIRECT_BASE - base;
+  if (shift === 0) return values;
+  for (const id of CAPTURE_PARAM_IDS) {
+    const v = values[id];
+    // `>= base` and not `> base`: the first indirect entry is AT the base.
+    if (typeof v === 'number' && v >= base) values[id] = v + shift;
+  }
+  return values;
+}
+
+/** migrateCaptureBase over a Display State array. Mutates and returns `states`. */
+export function migrateStatesCaptureBase(states, savedBase) {
+  if (Array.isArray(states)) {
+    for (const s of states) if (s?.values) migrateCaptureBase(s.values, savedBase);
+  }
+  return states;
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // registerCoreParameters  — defines all Phase 1 parameters

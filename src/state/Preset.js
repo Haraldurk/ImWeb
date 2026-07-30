@@ -5,6 +5,12 @@
 
 // DemoPresets removed — first-launch seeding now uses MasterProject.imweb
 
+import {
+  CAPTURE_INDIRECT_BASE,
+  migrateCaptureBase,
+  migrateStatesCaptureBase,
+} from '../controls/ParameterSystem.js';
+
 export const MAX_STATES = 32;
 
 // ── IndexedDB storage ─────────────────────────────────────────────────────────
@@ -118,12 +124,15 @@ export class Preset {
       created:     this.created,
       modified:    this.modified,
       thumbnail:   this.thumbnail,
+      // Which capture-index base these states' values are expressed in.
+      sourceCount: CAPTURE_INDIRECT_BASE,
     };
   }
 
   exportBank(modelAsset = null) {
     const data = { __type: 'imbank', version: 1, name: this.name,
-                   states: this.states, activeState: this.activeState, exported: Date.now() };
+                   states: this.states, activeState: this.activeState,
+                   sourceCount: CAPTURE_INDIRECT_BASE, exported: Date.now() };
     if (modelAsset) data.modelAsset = modelAsset;
     return data;
   }
@@ -131,14 +140,20 @@ export class Preset {
   static importBank(data, targetIndex) {
     const p = new Preset(targetIndex);
     p.name        = data.name   || `Bank ${targetIndex + 1}`;
-    p.states      = data.states || [];
+    p.states      = migrateStatesCaptureBase(data.states || [], data.sourceCount);
     p.activeState = data.activeState ?? 0;
     return p;
   }
 
+  /**
+   * The single choke point for stored banks: IndexedDB (`Preset.load`/`loadAll`)
+   * and the `presets` array of a .imweb both land here, so the capture-base
+   * migration is applied once, in one place, for both.
+   */
   static deserialize(data) {
     const p = new Preset(data.index);
     Object.assign(p, data);
+    migrateStatesCaptureBase(p.states, data.sourceCount);
     return p;
   }
 
@@ -454,10 +469,12 @@ export class PresetManager extends EventTarget {
   exportState(stateIndex) {
     const state = this.current?.getState(stateIndex);
     if (!state) return null;
-    return { __type: 'imstate', version: 1, ...state, exported: Date.now() };
+    return { __type: 'imstate', version: 1, ...state,
+             sourceCount: CAPTURE_INDIRECT_BASE, exported: Date.now() };
   }
 
   importState(data, targetSlot = null) {
+    migrateCaptureBase(data.values, data.sourceCount);
     if ('output.transfer' in data.values) {
       data.values['feedback.mode'] = data.values['output.transfer'];
       delete data.values['output.transfer'];

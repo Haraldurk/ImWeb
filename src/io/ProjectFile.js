@@ -18,6 +18,8 @@
  *   - 3D imported models
  */
 
+import { CAPTURE_INDIRECT_BASE, migrateCaptureBase } from '../controls/ParameterSystem.js';
+
 const FORMAT_VERSION = 3;
 
 export class ProjectFile {
@@ -119,6 +121,9 @@ export class ProjectFile {
       _version:     FORMAT_VERSION,
       _name:        name,
       _date:        new Date().toISOString(),
+      // Capture-index base for `params` below. The banks in `presets` carry
+      // their own, stamped by Preset.serialize().
+      _sourceCount: CAPTURE_INDIRECT_BASE,
       activePreset: this.presets.currentIndex,
       params:       this.ps.captureState(),
       presets,
@@ -206,6 +211,7 @@ export class ProjectFile {
 
     // Restore live params (overlay on top of preset)
     if (data.params) {
+      migrateCaptureBase(data.params, data._sourceCount);
       this.ps.restoreState(data.params);
     }
 
