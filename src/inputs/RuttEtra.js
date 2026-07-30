@@ -54,6 +54,8 @@ import * as THREE from 'three';
 const SCAN_VERT = `
 uniform sampler2D uSrc;
 uniform float uZGain;
+uniform float uZCurve;
+uniform float uZPivot;
 uniform float uThickness;
 uniform vec2  uResolution;
 attribute float aSide;
@@ -65,10 +67,27 @@ void main() {
   // the compositor is upright here.
   vec2 uv = position.xy * 0.5 + 0.5;
   float luma = dot(texture2D(uSrc, uv).rgb, vec3(0.2126, 0.7152, 0.0722));
+
+  // vLuma stays the RAW luminance: the beam is as bright as the signal that
+  // deflected it, and shaping the depth must not also dim the picture. Curve
+  // and pivot act on geometry only — which is what the harness asserts by
+  // driving them at uZGain 0 and requiring no change at all.
   vLuma = luma;
 
+  // The transfer function, following td.delayCurve's precedent: gamma on the
+  // normalised value BEFORE it is scaled. Luminance-as-depth flattens midtones
+  // into a slab, and this is the knob that makes a face read as a face.
+  // Branched rather than pow(x, 1.0) so the default is bit-exact, for the same
+  // reason td.angle's default rotation is (Blueprint §3d).
+  float shaped = (uZCurve == 1.0) ? luma : pow(max(luma, 0.0), uZCurve);
+
+  // Pivot moves the zero plane, so the relief can sit AROUND the sheet instead
+  // of only in front of it — valleys as well as ridges. Default 0 keeps the
+  // one-sided behaviour every existing patch was built on.
+  float z = (shaped - uZPivot) * uZGain;
+
   vec4 clip = projectionMatrix * modelViewMatrix
-            * vec4(position.x, position.y, luma * uZGain, 1.0);
+            * vec4(position.x, position.y, z, 1.0);
 
   // Ribbon expansion in clip space — see note 1 in the header.
   clip.y += aSide * uThickness * clip.w / max(uResolution.y * 0.5, 1.0);
@@ -121,6 +140,8 @@ export class RuttEtra {
       uniforms: {
         uSrc:        { value: new THREE.DataTexture(new Uint8Array([0, 0, 0, 255]), 1, 1) },
         uZGain:      { value: 0.5 },
+        uZCurve:     { value: 1.0 },
+        uZPivot:     { value: 0.0 },
         uThickness:  { value: 1.5 },
         uResolution: { value: new THREE.Vector2(width, height) },
       },
@@ -231,6 +252,8 @@ export class RuttEtra {
     const u = this._mat.uniforms;
     if (srcTex) u.uSrc.value = srcTex;
     u.uZGain.value     = ps.get('rutt.zgain').value;
+    u.uZCurve.value    = ps.get('rutt.zcurve').value;
+    u.uZPivot.value    = ps.get('rutt.zpivot').value;
     u.uThickness.value = ps.get('rutt.thickness').value;
 
     const az   = ps.get('rutt.angle').value * (Math.PI / 180);

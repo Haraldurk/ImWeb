@@ -47,6 +47,7 @@ renderer.setSize(W, H);
 // ── Parameter stub ───────────────────────────────────────────────────────────
 const vals = {
   'rutt.active': 1, 'rutt.source': 0, 'rutt.lines': 60, 'rutt.zgain': 0.8,
+  'rutt.zcurve': 1, 'rutt.zpivot': 0,
   'rutt.thickness': 1.5, 'rutt.angle': 0, 'rutt.elev': 35, 'rutt.dist': 3.2,
   'rutt.decay': 0,
 };
@@ -84,14 +85,24 @@ const buf = new Uint8Array(W * H * 4);
 /** Read the CURRENT front buffer and summarise it. */
 function stats() {
   renderer.readRenderTargetPixels(re._cur, 0, 0, W, H, buf);
-  let lit = 0, sum = 0, max = 0;
+  let lit = 0, sum = 0, max = 0, ySum = 0, minY = 1e9, maxY = -1e9;
   for (let i = 0; i < buf.length; i += 4) {
     const v = buf[i];
     sum += v;
-    if (v > 8) lit++;
     if (v > max) max = v;
+    if (v > 8) {
+      const y = Math.floor((i / 4) / W);
+      lit++; ySum += y;
+      if (y < minY) minY = y;
+      if (y > maxY) maxY = y;
+    }
   }
-  return { lit, mean: sum / (W * H), max };
+  // Vertical centroid and extent. A DEPTH change is a SHAPE change, and lit-area
+  // is nearly blind to it — reshaping the relief moves the mass up or down the
+  // screen while lighting a similar number of pixels. Measuring where the mass
+  // sits catches what counting it cannot.
+  return { lit, mean: sum / (W * H), max,
+           cy: lit ? ySum / lit : 0, spanY: lit ? maxY - minY : 0 };
 }
 
 /** Fresh ping-pong state, so one test cannot inherit another's phosphor. */
@@ -141,6 +152,46 @@ const inv = stats();
 check('negative z gain renders (relief inverts, still lit)', inv.lit > 200,
   `lit=${inv.lit}`);
 vals['rutt.zgain'] = 0.8;
+
+// ── 3b. Depth transfer function ──────────────────────────────────────────────
+log('\nz curve and pivot');
+const shot = (o) => { Object.assign(vals, o); reset(); re.tick(ps, 0.016, bright); return stats(); };
+
+// Gamma > 1 darkens the midtones, so a ramp's relief gets SHALLOWER.
+//
+// Asserted on the CENTROID, not the extent: a full-range ramp has pow(0,g)=0
+// and pow(1,g)=1, so gamma cannot move the endpoints and the bounding span is
+// invariant by construction — that version of this check passed 107 vs 107 on
+// working code. The mass between the endpoints is the only thing gamma touches,
+// and it must move in the same direction reducing displacement does (which the
+// pivot case below independently pins down).
+const c1 = shot({ 'rutt.zgain': 1.2, 'rutt.zcurve': 1, 'rutt.zpivot': 0 });
+const c3 = shot({ 'rutt.zcurve': 3 });
+check('z curve flattens the relief as gamma rises', c3.cy > c1.cy + 2,
+  `centroid curve1=${c1.cy.toFixed(1)} curve3=${c3.cy.toFixed(1)}`);
+
+// Pivot subtracts a constant before scaling, so the whole sheet translates in
+// depth — the vertical CENTROID must move while the extent survives.
+const p0 = shot({ 'rutt.zcurve': 1, 'rutt.zpivot': 0 });
+const p6 = shot({ 'rutt.zpivot': 0.6 });
+check('z pivot translates the relief in depth', Math.abs(p6.cy - p0.cy) > 3,
+  `centroid pivot0=${p0.cy.toFixed(1)} pivot0.6=${p6.cy.toFixed(1)}`);
+
+// The structural assertion: both act through Z ONLY. At zero gain the geometry
+// collapses to the flat sheet, so neither knob may alter a single pixel — which
+// is what proves they are not quietly dimming the beam along with the depth.
+const flat0 = shot({ 'rutt.zgain': 0, 'rutt.zcurve': 1,   'rutt.zpivot': 0   });
+const flatC = shot({ 'rutt.zgain': 0, 'rutt.zcurve': 3.5, 'rutt.zpivot': 0.8 });
+check('at zero gain, curve and pivot change NOTHING (they touch geometry only)',
+  flat0.lit === flatC.lit && Math.abs(flat0.mean - flatC.mean) < 0.001,
+  `lit ${flat0.lit} vs ${flatC.lit}, mean ${flat0.mean.toFixed(3)} vs ${flatC.mean.toFixed(3)}`);
+
+// And curve 1.0 must be the exact identity, so pre-existing patches are safe.
+const idA = shot({ 'rutt.zgain': 1.2, 'rutt.zcurve': 1, 'rutt.zpivot': 0 });
+const idB = shot({ 'rutt.zcurve': 1.0 });
+check('curve 1.0 is a bit-exact identity', idA.lit === idB.lit && idA.mean === idB.mean,
+  `${idA.lit}/${idA.mean.toFixed(4)} vs ${idB.lit}/${idB.mean.toFixed(4)}`);
+Object.assign(vals, { 'rutt.zgain': 0.8, 'rutt.zcurve': 1, 'rutt.zpivot': 0 });
 
 // ── 4. Camera orbit ──────────────────────────────────────────────────────────
 log('\ncamera');

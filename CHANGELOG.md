@@ -26,6 +26,13 @@ git tag and nothing else. Design doc: `docs/ImWeb-Spacetime-Blueprint.md` §6.*
 - Scanning its own output is legal and frame-delayed rather than a feedback
   conflict, because the tap resolves to the front buffer while the back one is
   being written.
+- **`rutt.zcurve` / `rutt.zpivot`** — the depth transfer function. Curve is a
+  gamma on luminance before it is scaled (the `td.delayCurve` pattern), which is
+  what stops midtones flattening into a slab and makes a face read as a face.
+  Pivot moves the zero plane so the relief sits *around* the sheet rather than
+  only in front of it — valleys as well as ridges. Both act on geometry alone:
+  the beam stays as bright as the signal that deflected it. Defaults (1.0 / 0)
+  are a bit-exact identity.
 
 ### Changed
 - **Every project, bank and Display State now records the capture-index base it
