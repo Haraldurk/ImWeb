@@ -717,7 +717,11 @@ button.ws-open:hover {
     grid-template-columns: 1fr 52px 36px 36px 58px;
     align-items: center;
     padding: 0 10px;
-    height: 28px;
+    /* min-height, not height: .param-btn-group wraps, and against a FIXED height
+       a wrapped group overflowed the row and painted on top of the next two —
+       which is what seven surface names did to Draw and Lines. Rows that fit are
+       unaffected; the ones that did not now grow instead of colliding. */
+    min-height: 28px;
     border-bottom: 1px solid var(--bg-1);
     gap: 4px;
     cursor: default;
