@@ -71,6 +71,8 @@ const OUT_FRAG = `
   uniform int   uAxis;        // 0=H (columns), 1=V (rows)
   uniform float uFlip;        // 1.0 = reverse time direction
   uniform float uHeadNorm;    // write head as a fraction of the tape (0..1)
+  uniform float uPos;         // scrub: rotate which moment sits at which column
+  uniform float uSpan;        // how much of the tape covers the frame (0..1)
 
   varying vec2 vUv;
 
@@ -94,7 +96,20 @@ const OUT_FRAG = `
     // is stationary while the tape keeps moving underneath it. Oldest at coord 0,
     // newest approaching coord 1, and the single wrap sits exactly on the edge
     // where it is invisible instead of in the middle of the frame.
-    float readOffset = fract(uHeadNorm + coord);
+    // uSpan narrows the window: 1.0 spreads the whole tape across the frame, 0.1
+    // spreads a tenth of it (a ~3s slice of a 32s tape), so the shear steepens
+    // without the tape getting shorter. The window is anchored at the NEWEST end
+    // and extends backwards — hence the -uSpan. Anchoring it at the head and
+    // extending forwards instead would show the OLDEST slice, which is the
+    // opposite of what narrowing a window is for.
+    //
+    // uPos then slides that window through the recording: an LFO on it scrubs
+    // time, and running it at the write rate reproduces the old travelling look
+    // deliberately instead of unavoidably.
+    //
+    // At uSpan = 1 this reduces to fract(uHeadNorm + uPos + coord), since fract
+    // discards the integer -1 — so the anchored behaviour above is unchanged.
+    float readOffset = fract(uHeadNorm + uPos - uSpan + coord * uSpan);
 
     vec2 stripUv = (uAxis == 0)
       ? vec2(readOffset, vUv.y)
@@ -172,6 +187,8 @@ export class VasulkaWarp {
         uAxis:      { value: 0 },
         uFlip:      { value: 0.0 },
         uHeadNorm:  { value: 0.0 },
+        uPos:       { value: 0.0 },
+        uSpan:      { value: 1.0 },
       },
       depthTest: false, depthWrite: false,
     });
@@ -247,6 +264,21 @@ export class VasulkaWarp {
     u.uAxis.value = ps.get('vwarp.axis').value;
     u.uFlip.value = ps.get('vwarp.flip').value ? 1.0 : 0.0;
     u.uMix.value  = ps.get('vwarp.mix').value;
+    u.uPos.value  = ps.get('vwarp.pos')?.value ?? 0.0;
+    // Guard the low end: span 0 would collapse the frame onto a single tape
+    // column — a flat field, and indistinguishable from the effect having died.
+    u.uSpan.value = Math.max(0.01, ps.get('vwarp.span')?.value ?? 1.0);
+  }
+
+  /** Wipe the tape (vwarp.clear). Parity with slitscan.clear. */
+  clear() {
+    const r = this._renderer;
+    const prev = r.getRenderTarget();
+    r.setRenderTarget(this._stripRT);
+    r.setClearColor(0x000000, 1);
+    r.clear(true, false, false);
+    r.setRenderTarget(prev);
+    this._writeIdx = 0;
   }
 
   /**

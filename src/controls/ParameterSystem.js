@@ -4096,6 +4096,37 @@ export function registerCoreParameters(ps) {
     value: 1,
     step: 1,
   });
+  // Scrub: rotate which moment of the tape sits at which column. Only meaningful
+  // now that the read is anchored to the write head (3db09f2) — before that the
+  // mapping already drifted on its own. An LFO here sweeps through the recording;
+  // at the write rate it reproduces the old travelling tear deliberately.
+  ps.register({
+    id: "vwarp.pos",
+    label: "Position",
+    group: "vwarp",
+    min: 0,
+    max: 1,
+    value: 0,
+    step: 0.001,
+  });
+  // How much of the tape covers the frame. 1 = the whole recording; 0.1 = a tenth
+  // of it, so the shear steepens without the tape getting shorter. With
+  // bufsize "1920 cols (32s)" this is a ~3s window on a 32s tape.
+  ps.register({
+    id: "vwarp.span",
+    label: "Span",
+    group: "vwarp",
+    min: 0.01,
+    max: 1,
+    value: 1,
+    step: 0.01,
+  });
+  ps.register({
+    id: "vwarp.clear",
+    label: "Clear tape",
+    group: "vwarp",
+    type: PARAM_TYPE.TRIGGER,
+  });
 
   // ── Sequence Buffers ──────────────────────────────────────────────────────
   const SEQ_SOURCES = [
