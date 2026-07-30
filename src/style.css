@@ -418,8 +418,10 @@ button {
    Level 1  .panel-group / .group-header      "Live In", "Media", …
    Level 2  .panel-section / .section-header  a routable source (collapsible)
    Level 3  .panel-subsection / .subsection-header   part OF a source
-   Only level 2 is an accordion — main.js sweeps `.section-header` for the
-   collapse + detach wiring, so levels 1 and 3 must NOT use that class. */
+   Levels 2 and 3 both collapse; only level 2 DETACHES and sticks. main.js
+   sweeps the two header classes separately, so levels 1 and 3 must still never
+   use `.section-header` — doing so would give a subsection its own detach
+   button and make it a second detach target inside its own parent. */
 
 .panel-group {
     border-bottom: 1px solid var(--border-hi, var(--border));
@@ -459,13 +461,31 @@ button {
     margin-top: 2px;
     border-top: 1px solid var(--border);
     user-select: none;
+    cursor: pointer;
     /* Weight, tracking and a rule above — NOT size or colour alone. At 9px in
        --text-2 these read as noise rather than structure: a four-way split of
        the Rutt-Etra panel was reported as "the sections are not there" while
        all four headings were on screen. The level-3 distinction still comes
        from size, indent and the left rule, so this stays clearly subordinate
        to a .section-header without being invisible. */
-    /* not sticky, not clickable — a sub-section is never an accordion */
+    /* Collapsible since 2026-07-30 (owner's request), but NOT sticky and with
+       no detach button — those stay level-2 only. main.js sweeps this class
+       separately from .section-header precisely so a subsection does not
+       inherit the detach wiring and become a second detach target. */
+}
+.subsection-header:hover {
+    color: var(--accent, var(--text-1));
+}
+.subsection-header.collapsed::after {
+    content: " ▸";
+    opacity: 0.7;
+}
+.subsection-header:not(.collapsed)::after {
+    content: " ▾";
+    opacity: 0.7;
+}
+.panel-subsection.collapsed > *:not(.subsection-header) {
+    display: none !important;
 }
 /* No rule above the first heading in a section — it would double the
    .panel-section border immediately above it. */

@@ -1384,6 +1384,19 @@ async function main() {
     hdr.appendChild(btns);
   });
 
+  // Level-3 accordion. A SEPARATE sweep from the one above, not a widened
+  // selector: subsections collapse but must not detach, and reusing
+  // .section-header would give each one its own ⊞ and make it a detach target
+  // nested inside its own parent's. They also start expanded, so adding the
+  // capability changes nothing until a header is actually clicked.
+  document.querySelectorAll(".subsection-header").forEach((hdr) => {
+    hdr.addEventListener("click", (e) => {
+      if (e.target.tagName === "BUTTON") return;
+      hdr.closest(".panel-subsection")?.classList.toggle("collapsed");
+      hdr.classList.toggle("collapsed");
+    });
+  });
+
   // ── Contextual workspace router (Phase 24) ────────────────────────────────
   // Large source editors are no longer top-level tabs. Each is opened from its
   // row in Sources (or Effects, for Live GLSL) and appears as a sixth,
