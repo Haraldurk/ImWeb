@@ -4694,6 +4694,11 @@ export function registerCoreParameters(ps) {
     label: "Shape",
     group: "rutt",
     type: PARAM_TYPE.SELECT,
+    // Dropdown, not a button group. ParamRow renders <= 8 options as buttons
+    // unless this is set, and seven surface names do not fit a panel row: they
+    // wrap, and the row is a fixed height, so they land on top of Draw and
+    // Lines. Same reason scene3d.geo sets it for its thirteen geometries.
+    select: true,
     options: ["Plane", "Sphere", "Cylinder", "Torus", "Catenoid", "Helicoid", "Gyroid"],
     value: 0,
   });
