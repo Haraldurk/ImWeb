@@ -3710,8 +3710,27 @@ async function main() {
   let _liveTick = 0; // frame counter for throttled thumbnail updates
 
   /** Resolve a raw layer-source index to its current texture (matches Pipeline._resolveSource). */
+  /**
+   * Resolve a SOURCE_DEFS index to a live texture.
+   *
+   * Secondary resolver: the pipeline's own layer path goes through
+   * `Pipeline._resolveSource()` against the inputs bag. This one serves the
+   * consumers that need a texture OUTSIDE the pipeline — 3D material texsrc, the
+   * SDF's texture/refraction sources, the Analog source, the particle luma mask,
+   * `td.mapSource`, `slitscan.source`, `vwarp.source`.
+   *
+   * It must cover EVERY source. It used to handle 16 of 29 and fall through to
+   * `pipeline.prev` for the other 13 (Color, Color2, BG1, BG2, Text, Sound,
+   * Delay, Scope, SlitScan, Particles, 3D Depth, SDF, Vasulka Warp) — silently,
+   * so every one of those selections quietly produced the composited output
+   * instead of the thing named in the dropdown. Latent across all the consumers
+   * above; newly visible because three source selectors were added in Phase 25.
+   *
+   * Keys come from SOURCE_KEYS, derived from the canonical SOURCE_DEFS — no
+   * hand-copy to drift. Keep the expressions in step with the inputs bag; the
+   * assertion below fails the build-time audit if a source is ever missed.
+   */
   function _resolveLayerTex(idx) {
-    // Derived from the canonical SOURCE_DEFS list — no hand-copy to drift.
     const key = SOURCE_KEYS[idx];
     if (key === "camera")
       return camera3d.active ? camera3d.currentTexture : null;
@@ -3720,10 +3739,24 @@ async function main() {
     if (key === "movieB")
       return movieInputB.active ? movieInputB.currentTexture : null;
     if (key === "scene3d") return scene3d.texture;
+    if (key === "depth3d") return scene3d.depthTexture;
     if (key === "draw") return drawLayer.texture;
+    if (key === "text") return textLayer.texture;
     if (key === "buffer") return stillsBuffer.texture;
+    if (key === "bg1") return stillsBuffer.bgTexture(0);
+    if (key === "bg2") return stillsBuffer.bgTexture(1);
+    if (key === "color") return colorTexture;
+    if (key === "color2") return color2Texture;
     if (key === "noise") return noiseTexture;
+    if (key === "sound") return soundTexture;
     if (key === "output") return pipeline.prev.texture;
+    if (key === "delay")
+      return videoDelay.getTexture(ps.get("delay.frames").value);
+    if (key === "scope") return vectorscope.texture;
+    if (key === "slitscan") return slitScan.texture;
+    if (key === "vwarp") return vasulkaWarp.outputRT.texture;
+    if (key === "particles") return particles.texture;
+    if (key === "sdf") return sdfGen.texture;
     if (key === "seq1") return seq1.texture;
     if (key === "seq2") return seq2.texture;
     if (key === "seq3") return seq3.texture;
@@ -3732,8 +3765,23 @@ async function main() {
     if (key === "mixbus") return pipeline.mixTextureAt(0);
     if (key === "mixbus2") return pipeline.mixTextureAt(1);
     if (key === "mixbus3") return pipeline.mixTextureAt(2);
-    return pipeline.prev.texture;
+    return pipeline.prev.texture;   // unreachable while the audit passes
   }
+
+  /**
+   * Drop a texture that IS the consumer's own output.
+   *
+   * Completing `_resolveLayerTex` created exactly two new self-reference routes,
+   * both of the shape "an engine's source is a *layer*, and that layer happens to
+   * be the engine": `sdf.texSrc = "FG Src"` with `layer.fg = SDF`, and
+   * `particle.masksrc = "FG Src"` with `layer.fg = Particles`. Both previously
+   * landed on the Output fall-through and were therefore accidentally safe.
+   *
+   * Identity check rather than an index comparison or a flag: it depends on the
+   * value actually about to be sampled, so it holds however the index was
+   * reached — through a layer, through a map, through anything added later.
+   */
+  const _notSelf = (tex, own) => (tex && tex === own ? null : tex);
 
   /** Resolve texture for source key. */
   function texForSource(src) {
@@ -7070,7 +7118,12 @@ void main() {
     const PARTICLE_IDX = 16;
     const _particlesUsed = _srcUsed(PARTICLE_IDX);
     if (_particlesUsed) {
-      particles.tick(ps, dt, _pmSrcMap[ps.get("particle.masksrc").value] ?? null);
+      // Same self-reference guard as the SDF: masksrc = "FG Src" with
+      // layer.fg = Particles would hand the system its own output.
+      particles.tick(
+        ps, dt,
+        _notSelf(_pmSrcMap[ps.get("particle.masksrc").value] ?? null, particles.texture),
+      );
     }
     // SDF dedicated texture source routing (decouples from layer.fg / layer.bg).
     // SELECT index 0 = follow the pipeline FG/BG layer (default, preserves old behaviour).
@@ -7093,7 +7146,16 @@ void main() {
           : null;
     const SDF_IDX = 21;
     const _sdfUsed = _srcUsed(SDF_IDX);
-    if (_sdfUsed) sdfGen.tick(ps, dt, _sdfTex, _sdfRef);
+    // Never feed the raymarcher its own output — reachable as soon as
+    // _resolveLayerTex resolves "SDF" properly: sdf.texSrc = "FG Src" with
+    // layer.fg = SDF. Before that it landed on the Output fall-through and was
+    // accidentally safe.
+    if (_sdfUsed)
+      sdfGen.tick(
+        ps, dt,
+        _notSelf(_sdfTex, sdfGen.texture),
+        _notSelf(_sdfRef, sdfGen.texture),
+      );
 
     // Analog TV — on-demand rendering (source index 23)
     const ANALOG_IDX = 23;
