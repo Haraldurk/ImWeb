@@ -6,6 +6,46 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
 
 ---
 
+## [Unreleased] — Phase 26 — The Scan Processor
+
+*Rutt-Etra (1972) sat beside the Sandin Image Processor and the Paik/Abe
+synthesiser in the lineage this project claims, and was the only one of the three
+with no representation in the instrument — it existed as a bare `pre-rutt-etra`
+git tag and nothing else. Design doc: `docs/ImWeb-Spacetime-Blueprint.md` §6.*
+
+### Added
+- **Rutt-Etra Scan Processor** (Sources ▸ Rutt-Etra, source index 29) —
+  horizontal scanlines deflected by the luminance of any source and viewed
+  through an orbiting perspective camera. Faithful before general, deliberately:
+  the machine is beautiful *because it lies about depth*, and generalising to
+  "any channel displaces any primitive" before living with the historical
+  instrument produces something configurable that nobody plays.
+- Controls: `rutt.source` (any source, including FG/BG/DS Src), `rutt.lines`,
+  `rutt.zgain` (signed — negative inverts the relief), `rutt.thickness`,
+  `rutt.angle`, `rutt.elev`, `rutt.dist`, `rutt.decay` (phosphor persistence).
+- Scanning its own output is legal and frame-delayed rather than a feedback
+  conflict, because the tap resolves to the front buffer while the back one is
+  being written.
+
+### Changed
+- **Every project, bank and Display State now records the capture-index base it
+  was written at.** `SOURCE_DEFS` is append-only so source indices are stable,
+  but the "FG Src / BG Src / DS Src" entries `CAPTURE_SOURCES` appends *after*
+  the source list are pinned to `SOURCES.length` — so adding Rutt-Etra at index
+  29 would have slid them to 30/31/32 and silently re-pointed every saved
+  `td.captureSource`, `td.mapSource`, `slitscan.source`, `vwarp.source` and
+  `delay.source` in the old tail at the new source. Load now shifts them back
+  into register; files written before the stamp are read at base 29, which is
+  the only base those entries have ever had. No file on disk was affected — the
+  exposure was banks live in IndexedDB.
+
+### Known limitation
+- A controller mapped to a capture selector stores a *normalised* value, which
+  re-scales when the options list grows. Pre-existing, and identical for every
+  source append; the base stamp does not address it.
+
+---
+
 ## [0.14.0] — 2026-07-29 — The Movie Library
 
 *Movies had no home. There was a list of clips inside Deck A, a second deck with

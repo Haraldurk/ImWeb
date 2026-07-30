@@ -510,6 +510,10 @@ export const SOURCE_DEFS = [
   { key: "mixbus",    label: "Mix 1"     }, // 26 — not in inputs bag
   { key: "mixbus2",   label: "Mix 2"     }, // 27 — not in inputs bag
   { key: "mixbus3",   label: "Mix 3"     }, // 28 — not in inputs bag
+  // 29 — the Rutt-Etra Scan Processor (1972). Appended at the true end, and the
+  // indirect capture entries that used to sit at 29 moved with it, kept in
+  // register by the base stamp in migrateCaptureBase().
+  { key: "rutt",      label: "Rutt-Etra" }, // 29
 ];
 
 /** Source indices of the three mix buses, in evaluation order (1 → 2 → 3). */
@@ -533,7 +537,7 @@ export const SOURCE_DISPLAY_ORDER = [
   { header: "Generators" },     3 /* Color */, 4 /* Color2 */, 5 /* Noise */,
                                 16 /* Particles */, 21 /* SDF */, 11 /* Text */,
                                 7 /* Draw */, 6 /* 3D Scene */, 20 /* 3D Depth */,
-                                23 /* Analog */,
+                                23 /* Analog */, 29 /* Rutt-Etra */,
   { header: "From the Signal" }, 8 /* Output */, 13 /* Delay */, 24 /* TimeDisp */,
                                 15 /* SlitScan */, 17 /* Seq1 */, 18 /* Seq2 */,
                                 19 /* Seq3 */, 14 /* Scope */, 22 /* VWarp */,
@@ -4656,6 +4660,98 @@ export function registerCoreParameters(ps) {
     min: 0,
     max: 1,
     value: 1,
+  });
+
+  // ── Rutt-Etra Scan Processor (Phase 26) ───────────────────────────────────
+  // See src/inputs/RuttEtra.js. Group 'rutt', so all of these are captured by
+  // Display States — continuous quantities with fixed meaning, plus one SELECT
+  // into CAPTURE_SOURCES, which is append-only and not user-editable (§9d).
+  ps.register({
+    id: "rutt.active",
+    label: "Rutt-Etra",
+    group: "rutt",
+    type: PARAM_TYPE.TOGGLE,
+    value: false,
+  });
+  ps.register({
+    id: "rutt.source",
+    label: "Source",
+    group: "rutt",
+    type: PARAM_TYPE.SELECT,
+    options: CAPTURE_SOURCES,
+    value: 0,
+  }); // default: Camera
+  ps.register({
+    id: "rutt.lines",
+    label: "Lines",
+    group: "rutt",
+    min: 16,
+    max: 480,
+    value: 120,
+    step: 1,
+  });
+  // Signed: negative inverts the relief, so highlights become valleys. Cheap,
+  // and it is half the expressive range of the machine.
+  ps.register({
+    id: "rutt.zgain",
+    label: "Z Gain",
+    group: "rutt",
+    min: -2,
+    max: 2,
+    value: 0.5,
+    step: 0.01,
+  });
+  ps.register({
+    id: "rutt.thickness",
+    label: "Beam",
+    group: "rutt",
+    min: 0.5,
+    max: 8,
+    value: 1.5,
+    step: 0.1,
+    unit: "px",
+  });
+  ps.register({
+    id: "rutt.angle",
+    label: "Orbit",
+    group: "rutt",
+    min: 0,
+    max: 360,
+    value: 0,
+    step: 0.5,
+    unit: "°",
+  });
+  // Elevation is not decoration: at elev 0 the camera looks straight down the
+  // deflection axis and the relief is invisible. The default tilts into it.
+  ps.register({
+    id: "rutt.elev",
+    label: "Tilt",
+    group: "rutt",
+    min: -89,
+    max: 89,
+    value: 35,
+    step: 0.5,
+    unit: "°",
+  });
+  ps.register({
+    id: "rutt.dist",
+    label: "Distance",
+    group: "rutt",
+    min: 1,
+    max: 10,
+    value: 3.2,
+    step: 0.05,
+  });
+  // Capped below 1.0 on purpose: at exactly 1.0 the phosphor never fades and
+  // the buffer saturates to white within seconds under an additive blend.
+  ps.register({
+    id: "rutt.decay",
+    label: "Persist",
+    group: "rutt",
+    min: 0,
+    max: 0.98,
+    value: 0,
+    step: 0.01,
   });
 
   return ps;
