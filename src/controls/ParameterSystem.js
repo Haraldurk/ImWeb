@@ -4786,9 +4786,12 @@ export function registerCoreParameters(ps) {
     value: 0,
     step: 0.01,
   });
+  // Ids stay angle/elev — they are in saved states, banks and MIDI maps, and a
+  // label is presentation. X and Y here name the SCREEN direction the camera
+  // travels, not the axis it turns about.
   ps.register({
     id: "rutt.angle",
-    label: "Orbit",
+    label: "Orbit X",
     group: "rutt",
     min: 0,
     max: 360,
@@ -4796,17 +4799,51 @@ export function registerCoreParameters(ps) {
     step: 0.5,
     unit: "°",
   });
-  // Elevation is not decoration: at elev 0 the camera looks straight down the
-  // deflection axis and the relief is invisible. The default tilts into it.
+  // Not decoration: at 0 the camera looks straight down the deflection axis and
+  // the relief is invisible. The default turns into it.
+  //
+  // −180…180 rather than 0…360, which is the same full turn but keeps every
+  // saved value: this was −89…89 and existing patches hold negative angles, so
+  // a 0…360 range would clamp a stored −53 to 0 and silently reframe them.
   ps.register({
     id: "rutt.elev",
-    label: "Tilt",
+    label: "Orbit Y",
     group: "rutt",
-    min: -89,
-    max: 89,
+    min: -180,
+    max: 180,
     value: 35,
     step: 0.5,
     unit: "°",
+  });
+  // Placement. Moves the lattice, not the camera, so it swings through
+  // perspective rather than sliding flatly — and Z is not Distance: this pushes
+  // the object through the scene while Distance dollies the camera.
+  ps.register({
+    id: "rutt.moveX",
+    label: "Move X",
+    group: "rutt",
+    min: -2,
+    max: 2,
+    value: 0,
+    step: 0.01,
+  });
+  ps.register({
+    id: "rutt.moveY",
+    label: "Move Y",
+    group: "rutt",
+    min: -2,
+    max: 2,
+    value: 0,
+    step: 0.01,
+  });
+  ps.register({
+    id: "rutt.moveZ",
+    label: "Move Z",
+    group: "rutt",
+    min: -2,
+    max: 2,
+    value: 0,
+    step: 0.01,
   });
   ps.register({
     id: "rutt.dist",

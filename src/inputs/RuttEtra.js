@@ -269,12 +269,24 @@ export class RuttEtra {
 
     this._scene  = new THREE.Scene();
     this._camera = new THREE.PerspectiveCamera(50, width / height, 0.1, 100);
+    // YXZ so that y reads as orbit and x as elevation, applied in that order.
+    // Set once: assigning .order re-derives the quaternion, and doing it per
+    // frame would be churn for a constant.
+    this._camera.rotation.order = 'YXZ';
+
+    // Both lattices live under one group, which carries the aspect scale and
+    // the Move offset. Two objects that must agree on placement is two chances
+    // to forget one — and _rebuild() replaces them, so per-object transforms
+    // would have to be reapplied on every line-count change.
+    this._rig = new THREE.Group();
+    this._scene.add(this._rig);
 
     // The lattice is authored square and scaled to the frame's aspect, so a
     // 16:9 source is scanned at 16:9 instead of being squeezed into a square
     // raster floating in a wide frame. uv comes from the UNSCALED attribute, so
     // this changes the shape of the raster without reaching the sampling.
     this._aspect = width / height;
+    this._rig.scale.x = this._aspect;
     this._lines  = 0;              // forces the first _rebuild()
     this._mesh   = null;
     this._points = null;
@@ -401,13 +413,12 @@ export class RuttEtra {
     geo.boundingSphere = new THREE.Sphere(new THREE.Vector3(), 8);
 
     if (this._mesh) {
-      this._scene.remove(this._mesh);
+      this._rig.remove(this._mesh);
       this._mesh.geometry.dispose();
     }
     this._mesh = new THREE.Mesh(geo, this._mat);
     this._mesh.frustumCulled = false;
-    this._mesh.scale.x = this._aspect;
-    this._scene.add(this._mesh);
+    this._rig.add(this._mesh);
 
     // Point lattice: one vertex per sample rather than the ribbon's pair, so
     // Points mode does not draw every dot twice at the ±aSide offsets. aSide is
@@ -430,13 +441,12 @@ export class RuttEtra {
     pGeo.boundingSphere = new THREE.Sphere(new THREE.Vector3(), 8);
 
     if (this._points) {
-      this._scene.remove(this._points);
+      this._rig.remove(this._points);
       this._points.geometry.dispose();
     }
     this._points = new THREE.Points(pGeo, this._mat);
     this._points.frustumCulled = false;
-    this._points.scale.x = this._aspect;
-    this._scene.add(this._points);
+    this._rig.add(this._points);
   }
 
   /**
@@ -512,15 +522,37 @@ export class RuttEtra {
       1 + (this._hueCol.b - 1) * sat,
     );
 
+    // Orientation from Euler angles, NOT lookAt.
+    //
+    // lookAt needs an up vector, and at ±90° elevation the camera's forward is
+    // colinear with it: the orientation is undefined and the picture flips or
+    // goes to NaN. That is the only reason Orbit Y was ever clamped to ±89 —
+    // a wall in the middle of a control that should turn freely.
+    //
+    // Rotating the camera and then backing it off along its own +Z instead is
+    // defined everywhere, poles included, and it is not an approximation of the
+    // old rig: for order YXZ, R = Ry(az)·Rx(-el) sends local +Z to
+    // (cos el·sin az, sin el, cos el·cos az) — the exact spherical position the
+    // previous code wrote by hand. Every angle that worked before is unchanged;
+    // the rest simply now exist. Past 90° the picture inverts as you pass over
+    // the top, which is the point of letting it go round.
     const az   = ps.get('rutt.angle').value * (Math.PI / 180);
     const el   = ps.get('rutt.elev').value  * (Math.PI / 180);
     const dist = ps.get('rutt.dist').value;
-    this._camera.position.set(
-      dist * Math.cos(el) * Math.sin(az),
-      dist * Math.sin(el),
-      dist * Math.cos(el) * Math.cos(az),
+    const cam  = this._camera;
+    cam.rotation.set(-el, az, 0);      // order 'YXZ', set once in the constructor
+    cam.position.set(0, 0, 0);
+    cam.translateZ(dist);
+
+    // Placement. Moves the lattice rather than the camera, so it swings through
+    // perspective as it goes rather than sliding flatly across — and it composes
+    // with the orbit instead of fighting it. Z is distinct from Distance: this
+    // pushes the object through the scene, Distance dollies the camera.
+    this._rig.position.set(
+      ps.get('rutt.moveX').value,
+      ps.get('rutt.moveY').value,
+      ps.get('rutt.moveZ').value,
     );
-    this._camera.lookAt(0, 0, 0);
 
     // Ping-pong: last frame decayed into the back buffer, this frame's lattice
     // additively on top, then flip. Reading _cur while writing the other target
@@ -553,7 +585,7 @@ export class RuttEtra {
     this._mat.uniforms.uResolution.value.set(w, h);
     this._decayMat.uniforms.uTexel.value.set(1 / w, 1 / h);
     this._aspect = w / h;
-    if (this._mesh) this._mesh.scale.x = this._aspect;
+    this._rig.scale.x = this._aspect;
     this._camera.aspect = this._aspect;
     this._camera.updateProjectionMatrix();
   }
