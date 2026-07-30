@@ -384,12 +384,58 @@ is called from exactly one place (`main.js:7151`), so the class becomes a thin
 shim behind its existing signature, or retires. **This is where the VRAM comes
 back:** 30 full-res render targets collapse into a share of one ring.
 
-### 5c. `slitscan` (15) — a linear plane, and a readback deleted
-`SlitScanBuffer` is CPU-based — it takes no renderer, does a `readPixels` into
-`_pixBuf` and writes a canvas-2D `CanvasTexture` every tick. That is a GPU→CPU
-stall per frame whenever slitscan is active. As a tap it is a fragment shader.
-**The consolidation buys frame time here, not just tidiness**, and §10 tests for
-an improvement rather than mere parity.
+### 5c. CORRECTION — `slitscan` (15) is NOT a tap, and must not become one
+
+*An earlier version of this section said SlitScan becomes "a tap with a linear
+plane," deleting its `readPixels` and buying frame time. **That was wrong on both
+counts, and implementing it would have degraded the feature.** Established
+2026-07-30, before writing any code. What shipped instead is a source selector.*
+
+**A tap preserves spatial position; a slit-scan remaps it.** A tap computes
+`out(uv) = ring[age(uv)](uv)` — the same coordinate at a different time.
+SlitScan computes `out(x, y) = frame_at_tick(x)(scanPos, y)` — output column *x*
+shows **source column `scanPos`**, from a different time. One fixed source column
+spread across every output column. Those are different operations. `td.mode`'s
+"Slit X" is a time-displacement *gradient* (each column shows its own pixels at
+its own age), which resembles a slit-scan on some material but is not one — and
+that resemblance, with both things named "slit", is exactly the confusion the
+owner reported from the panel.
+
+**The time depths differ by an order of magnitude, in the canvas's favour.**
+SlitScan's canvas holds `W / stripW` time steps — 1280 wide with 2 px strips is
+**640 ticks**, ~30 s at 21 fps. The ring holds `slots` = **120** frames. Matching
+that depth needs 640 frames, which at 640×480 is ~786 MB. The canvas reaches it
+because it stores **one column per tick** — `1/W` of the memory per time step.
+Storing whole frames in order to read a single column from each is precisely the
+waste the canvas avoids. **The canvas is the correct data structure for a
+slit-scan**, and the `readPixels` is the price of a 5× longer window at 1/W the
+memory. That is a good trade, not a defect.
+
+**The real defect was narrower: no source.** SlitScan's input was hardwired to
+`pipeline.prev`, the composite — so routing a layer to SlitScan made it sample its
+own already-scrolled canvas. Self-referential, and unable to bootstrap from black:
+black in, black out, permanently. It was the only temporal engine without a source
+selector (`td.captureSource` picks freely; sequence buffers have a per-seq source).
+
+**What shipped:** `slitscan.source`, SELECT over `SOURCES`, default **8
+("Output")** — byte-identical to the old wiring. Resolved through the same
+`_resolveLayerTex()` the layers use. `SlitScanBuffer.tick()` now accepts either a
+`WebGLRenderTarget` (passed straight through — the Output path stays
+allocation-free) or a `Texture`, which it blits into a lazily-allocated scratch RT
+because `readRenderTargetPixels` needs a target. The blit runs after the rate
+gate, so it costs one pass per *tick* rather than per frame.
+
+`_direct()` gains a `_cSlit` term so the chosen source is part of the consumption
+fixpoint. The call site stays where it is, ahead of the SDF/Analog/Noise ticks, so
+those sources are sampled one frame late — deliberate, since slitscan is
+rate-limited and accumulative, and leaving it in place keeps the change additive
+rather than reordering the render loop.
+
+**One way this still fails:** a source whose texture is a different size from the
+canvas is blitted to canvas dimensions, so a non-matching aspect ratio is
+stretched rather than letterboxed before the strip is cut. Acceptable for a
+strip-sampler, but it will look wrong to anyone slit-scanning a 4:3 source on a
+16:9 canvas.
 
 ### 5d. `vwarp` (22) — the open question, closed
 `KNOWN-ISSUES.md` has carried "strip-buffer approach conflicts with the pipeline

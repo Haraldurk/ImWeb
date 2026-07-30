@@ -3782,6 +3782,23 @@ export function registerCoreParameters(ps) {
     unit: "%",
   });
 
+  // What the slit samples. Was hardwired to the composited output, which made
+  // the engine self-referential: route a layer to SlitScan and the strip it
+  // grabs is a column of its own already-scrolled canvas, so it scans itself
+  // and can never bootstrap from black. Resolved through the same
+  // _resolveLayerTex() the layers use.
+  // Default 8 ("Output") reproduces the old wiring exactly.
+  // Group 'slitscan', so captured by Display States — this indexes SOURCES,
+  // which is append-only and not user-editable, so it cannot drift under a
+  // saved state. Same reasoning as mix.srcA and td.mapSource.
+  ps.register({
+    id: "slitscan.source",
+    label: "Slit src",
+    group: "slitscan",
+    type: PARAM_TYPE.SELECT,
+    options: SOURCES,
+    value: 8,
+  });
   ps.register({
     id: "slitscan.active",
     label: "SlitScan",

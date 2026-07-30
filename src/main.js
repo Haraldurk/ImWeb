@@ -6744,8 +6744,15 @@ void main() {
       (ps.get("td.mode").value === TD_MODE_NOISE ||
         ps.get("td.mapAmount").value > 0);
     const _cTdMap = _tdMapLive ? ps.get("td.mapSource").value : -1;
+    // slitscan.source is a consumer too (Phase 25 step 5) — the same reasoning
+    // as _cTdMap. Only while the engine is running: switched off, its tick
+    // returns before reading anything.
+    const _cSlit = ps.get("slitscan.active").value
+      ? ps.get("slitscan.source").value
+      : -1;
     const _direct = (i) =>
-      _cFg === i || _cBg === i || _cDs === i || _cTd === i || _cTdMap === i;
+      _cFg === i || _cBg === i || _cDs === i || _cTd === i || _cTdMap === i ||
+      _cSlit === i;
 
     // Per-bus inputs. Which one can actually reach the bus output? MIXBUS
     // computes mix(a, modeResult, xfade): xfade=0 is pure srcA (srcB hidden),
@@ -6998,7 +7005,32 @@ void main() {
     vectorscope.tick(ps);
 
     // Tick slit scan (reads from pipeline.prev render target)
-    slitScan.tick(renderer, pipeline.prev, ps, dt);
+    // Slit scan — samples slitscan.source (Phase 25 step 5). "Output" passes the
+    // render target straight through, which is both the default and the
+    // historical behaviour; any other source arrives as a texture and the buffer
+    // blits it to a scratch target, since readRenderTargetPixels needs a target.
+    //
+    // Giving it a source is the fix for a real bug, not a nicety: with the input
+    // hardwired to the composite, routing a layer to SlitScan made it sample its
+    // own already-scrolled canvas — self-referential, and unable to bootstrap
+    // from black.
+    //
+    // This call site sits BEFORE the SDF (:7075), Analog (:7093) and Noise
+    // (:7111) ticks, so those sources are sampled one frame late. Deliberate:
+    // slitscan is rate-limited to slitscan.speed (~21 ticks/s by default) and
+    // accumulative, so a frame of latency on one strip is invisible, and leaving
+    // the call in place keeps this change purely additive rather than reordering
+    // the render loop. A source that has not been ticked yet resolves to null and
+    // the buffer skips the tick, so the first frames are safe too.
+    const _slitSrcIdx = ps.get("slitscan.source").value;
+    slitScan.tick(
+      renderer,
+      SOURCE_KEYS[_slitSrcIdx] === "output"
+        ? pipeline.prev
+        : _resolveLayerTex(_slitSrcIdx),
+      ps,
+      dt,
+    );
 
     // td.captureSource may point at a conditionally-ticked generator (Noise, 3D Scene,
     // 3D Depth, SDF, Analog, Particles) that would otherwise stay null/stale unless a

@@ -19,6 +19,7 @@
  */
 
 import * as THREE from 'three';
+import { VERT, PASSTHROUGH } from '../shaders/index.js';
 
 export class SlitScanBuffer {
   constructor(width, height) {
@@ -38,19 +39,28 @@ export class SlitScanBuffer {
   }
 
   /**
-   * Main tick — reads a strip from the render target and shifts the canvas.
+   * Main tick — reads a strip from the source and shifts the canvas.
    * @param {THREE.WebGLRenderer} renderer
-   * @param {THREE.WebGLRenderTarget} rt  — the source render target
+   * @param {THREE.WebGLRenderTarget|THREE.Texture} source  what to sample.
+   *   A render target is read directly (the historical path, when
+   *   slitscan.source is "Output"). Any other source arrives as a Texture,
+   *   which cannot be read back directly — readRenderTargetPixels needs a
+   *   target — so it is blitted into a scratch RT first. The blit happens AFTER
+   *   the rate gate below, so it costs one pass per *tick* (≈21/s at the default
+   *   speed) rather than one per frame.
    * @param {ParameterSystem} ps
    * @param {number} dt
    */
-  tick(renderer, rt, ps, dt) {
+  tick(renderer, source, ps, dt) {
     if (!ps.get('slitscan.active').value) return;
 
     const rate = Math.max(0.01, ps.get('slitscan.speed').value);
     this._timer += dt;
     if (this._timer < 1 / rate) return;
     this._timer = 0;
+
+    const rt = this._resolveRT(renderer, source);
+    if (!rt) return;   // nothing routed / source not ticked this frame
 
     const axis   = ps.get('slitscan.axis').value;     // 0=vert, 1=horiz
     const pos01  = ps.get('slitscan.pos').value / 100;
@@ -120,6 +130,9 @@ export class SlitScanBuffer {
     this._ctx.fillStyle = '#000';
     this._ctx.fillRect(0, 0, w, h);
     this._pixBuf = null;
+    // The scratch RT is read at canvas coordinates, so it has to track the
+    // canvas or the strip would be sampled from the wrong place.
+    if (this._srcRT) this._srcRT.setSize(w, h);
     this.texture.needsUpdate = true;
   }
 
@@ -130,6 +143,49 @@ export class SlitScanBuffer {
   }
 
   // ── Private ────────────────────────────────────────────────────────────────
+
+  /**
+   * Normalise the source to something readRenderTargetPixels can read.
+   *
+   * A WebGLRenderTarget passes straight through — that is the "Output" default,
+   * and it keeps the historical path allocation-free and byte-identical. A
+   * Texture (camera, movie, noise, SDF…) is blitted into a scratch RT.
+   *
+   * The scratch RT is allocated lazily, so a project that leaves slitscan.source
+   * on Output never pays for it.
+   */
+  _resolveRT(renderer, source) {
+    if (!source) return null;
+    if (!source.isTexture) return source;          // already a render target
+
+    if (!this._srcRT) {
+      this._srcRT = new THREE.WebGLRenderTarget(this.width, this.height, {
+        minFilter: THREE.LinearFilter,
+        magFilter: THREE.LinearFilter,
+        format:    THREE.RGBAFormat,
+        type:      THREE.UnsignedByteType,
+        depthBuffer: false,
+        generateMipmaps: false,
+      });
+      this._blitMat = new THREE.ShaderMaterial({
+        uniforms:       { uTexture: { value: null } },
+        vertexShader:   VERT,
+        fragmentShader: PASSTHROUGH,
+        depthTest:  false,
+        depthWrite: false,
+      });
+      this._blitScene = new THREE.Scene();
+      this._blitScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), this._blitMat));
+      this._blitCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+    }
+
+    this._blitMat.uniforms.uTexture.value = source;
+    const prev = renderer.getRenderTarget();
+    renderer.setRenderTarget(this._srcRT);
+    renderer.render(this._blitScene, this._blitCam);
+    renderer.setRenderTarget(prev);
+    return this._srcRT;
+  }
 
   _read(renderer, rt, x, y, w, h) {
     const len = w * h * 4;

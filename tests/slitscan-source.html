@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<!-- Phase 25 step 5 acceptance test — SlitScan source selector.
+
+     Drives SlitScanBuffer.tick() DIRECTLY rather than through the app, so it
+     does not depend on requestAnimationFrame. That matters: a backgrounded tab
+     suspends rAF entirely (document.hidden ⇒ 0 fps), which silently invalidated
+     an earlier attempt to test this through the running app.
+
+     Three things under test:
+       1. The historical path — a WebGLRenderTarget source — still works.
+       2. The new path — a Texture source, blitted to a scratch RT — works.
+       3. ORIENTATION AGREES between them. This is the real risk: three.js
+          applies UNPACK_FLIP_Y to canvas/video/data textures but not to render
+          target textures, so a naive blit can come out vertically mirrored
+          relative to the historical path.
+
+     Run:  npx vite --port 5199
+           open http://localhost:5199/tests/slitscan-source.html
+-->
+<meta charset="utf-8">
+<title>SlitScan source test</title>
+<body style="background:#111;color:#ddd;font:12px monospace;white-space:pre"></body>
+<script type="module">
+import * as THREE from 'three';
+import { SlitScanBuffer } from '/src/inputs/SlitScanBuffer.js';
+import { VERT } from '/src/shaders/index.js';
+
+const out = [];
+const log = (s) => { out.push(s); document.body.textContent = out.join('\n'); };
+
+const W = 64, H = 32;
+const renderer = new THREE.WebGLRenderer({ antialias: false });
+renderer.setSize(W, H);
+
+const vals = {
+  'slitscan.active': 1, 'slitscan.source': 8, 'slitscan.pos': 50,
+  'slitscan.speed': 60, 'slitscan.axis': 0, 'slitscan.width': 4,
+};
+const ps = { get: (id) => (id in vals ? { value: vals[id] } : undefined) };
+
+/** A render target whose brightness ramps with uv.y (dark at uv.y=0). */
+function gradientRT() {
+  const rt = new THREE.WebGLRenderTarget(W, H, {
+    minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter,
+    format: THREE.RGBAFormat, type: THREE.UnsignedByteType, depthBuffer: false,
+  });
+  const mat = new THREE.ShaderMaterial({
+    vertexShader: VERT,
+    fragmentShader: `
+      varying vec2 vUv;
+      void main() { gl_FragColor = vec4(vec3(vUv.y), 1.0); }`,
+  });
+  const scene = new THREE.Scene();
+  scene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), mat));
+  const cam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+  renderer.setRenderTarget(rt);
+  renderer.render(scene, cam);
+  renderer.setRenderTarget(null);
+  return rt;
+}
+
+/**
+ * A DataTexture representing the SAME field: brightness ramps with uv.y.
+ * flipY defaults to false on DataTexture, so array row r maps to uv.y = r/H —
+ * row 0 is uv.y 0, matching the render target's bottom row.
+ */
+function gradientTexture() {
+  const data = new Uint8Array(W * H * 4);
+  for (let r = 0; r < H; r++) {
+    const v = Math.round((r / (H - 1)) * 255);
+    for (let c = 0; c < W; c++) {
+      const i = (r * W + c) * 4;
+      data[i] = data[i + 1] = data[i + 2] = v; data[i + 3] = 255;
+    }
+  }
+  const t = new THREE.DataTexture(data, W, H, THREE.RGBAFormat, THREE.UnsignedByteType);
+  t.minFilter = t.magFilter = THREE.NearestFilter;
+  t.needsUpdate = true;
+  return t;
+}
+
+/** Vertical brightness profile of the freshly pasted strip (canvas right edge). */
+function stripProfile(slit) {
+  const stripW = vals['slitscan.width'];
+  const d = slit._ctx.getImageData(W - stripW, 0, 1, H).data;
+  const prof = [];
+  for (let y = 0; y < H; y++) prof.push(d[y * 4]);
+  return prof;
+}
+
+function run(label, source) {
+  const slit = new SlitScanBuffer(W, H);
+  // dt well past 1/speed so every call produces a tick.
+  slit.tick(renderer, source, ps, 1);
+  const prof = stripProfile(slit);
+  const top = prof[0], bottom = prof[H - 1];
+  const monotonic = prof.every((v, i) => i === 0 || v >= prof[i - 1] - 2) ||
+                    prof.every((v, i) => i === 0 || v <= prof[i - 1] + 2);
+  log(`\n── ${label}`);
+  log(`   canvas row 0 (top) = ${top}, row ${H - 1} (bottom) = ${bottom}`);
+  log(`   monotonic vertical ramp: ${monotonic ? 'yes' : 'NO'}`);
+  const drew = !(top === 0 && bottom === 0);
+  log(drew ? '   PASS — a strip was written' : '   FAIL — nothing was written');
+  return { prof, top, bottom, drew, monotonic };
+}
+
+const rt  = gradientRT();
+const tex = gradientTexture();
+
+const a = run('RENDER TARGET source (historical "Output" path)', rt);
+const b = run('TEXTURE source (new path, blitted to scratch RT)', tex);
+
+// The claim that matters: both paths agree on which way is up.
+let maxDiff = 0;
+for (let i = 0; i < a.prof.length; i++) maxDiff = Math.max(maxDiff, Math.abs(a.prof[i] - b.prof[i]));
+const agree = maxDiff <= 6;   // allow for filtering/rounding, not a flip
+log(`\n── ORIENTATION AGREEMENT`);
+log(`   max per-row difference between the two paths: ${maxDiff}`);
+log(agree ? '   PASS — texture path matches the render-target path'
+          : '   FAIL — paths disagree; the texture path is flipped or offset');
+if (!agree) {
+  log(`   RT  profile: ${a.prof.slice(0, 8).join(',')} … ${a.prof.slice(-4).join(',')}`);
+  log(`   TEX profile: ${b.prof.slice(0, 8).join(',')} … ${b.prof.slice(-4).join(',')}`);
+}
+
+const all = a.drew && b.drew && a.monotonic && b.monotonic && agree;
+log(`\n=== RESULT: ${all ? 'ALL PASS' : 'FAILURE'} ===`);
+window.__slitResult = { rtPath: a.drew, texPath: b.drew, orientationAgrees: agree, maxDiff };
+</script>
