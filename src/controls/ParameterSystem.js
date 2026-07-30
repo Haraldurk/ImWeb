@@ -4701,6 +4701,27 @@ export function registerCoreParameters(ps) {
     value: 0.5,
     step: 0.01,
   });
+  // The depth transfer function. Same shape as td.delayCurve: gamma applied to
+  // the normalised value before scaling. 1.0 is a bit-exact identity, so every
+  // patch made before this existed renders unchanged.
+  ps.register({
+    id: "rutt.zcurve",
+    label: "Z Curve",
+    group: "rutt",
+    min: 0.1,
+    max: 4,
+    value: 1,
+    step: 0.01,
+  });
+  ps.register({
+    id: "rutt.zpivot",
+    label: "Z Pivot",
+    group: "rutt",
+    min: 0,
+    max: 1,
+    value: 0,
+    step: 0.01,
+  });
   ps.register({
     id: "rutt.thickness",
     label: "Beam",
