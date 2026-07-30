@@ -3883,6 +3883,7 @@ async function main() {
     });
   };
   ps.get("vwarp.bufsize").onChange(_vwarpReinit);
+  ps.get("vwarp.clear").onTrigger(() => vasulkaWarp.clear());
 
   // Sequence buffer param listeners
   [1, 2, 3].forEach((n) => {

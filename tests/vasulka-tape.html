@@ -41,7 +41,11 @@ const solid = (v) => {
   return t;
 };
 
-const ps = { get: (id) => ({ value: { 'vwarp.axis': 0, 'vwarp.flip': 0, 'vwarp.mix': 1 }[id] }) };
+const pvals = {
+  'vwarp.axis': 0, 'vwarp.flip': 0, 'vwarp.mix': 1,
+  'vwarp.pos': 0, 'vwarp.span': 1,
+};
+const ps = { get: (id) => (id in pvals ? { value: pvals[id] } : undefined) };
 
 function run(bufSize) {
   const vw = new VasulkaWarp(renderer, CANVAS_W, CANVAS_H, bufSize);
@@ -152,10 +156,53 @@ log(`   expected ≥ ${edge} for every head position`);
 log(anchored ? '   PASS — newest column pinned to the trailing edge, head-independent'
              : '   FAIL — newest column moves with the head (read not anchored)');
 
-const all = results.every(Boolean) && kept && held && anchored;
+/**
+ * span magnifies, pos scrubs.
+ *
+ * One bright column again. With span = 1 it occupies one tape column's worth of
+ * the frame; at span = 0.25 the same column must cover 4x as many pixels, because
+ * a quarter of the tape is now spread across the whole frame. And pos must move
+ * where it lands, which is what makes it playable.
+ */
+function brightRun(span, pos) {
+  const v = new VasulkaWarp(renderer, OW, 8, OB);
+  const dark = solid(30), bright = solid(240);
+  for (let i = 0; i < OB; i++) v.capture(dark, 1);
+  v.capture(bright, 1);
+  pvals['vwarp.span'] = span;
+  pvals['vwarp.pos'] = pos;
+  v.applyParams(ps);
+  v.render(dark);
+  const row = new Uint8Array(OW * 4);
+  renderer.readRenderTargetPixels(v.outputRT, 0, 4, OW, 1, row);
+  let count = 0, argmax = 0, peak = -1;
+  for (let x = 0; x < OW; x++) {
+    if (row[x * 4] > 120) count++;
+    if (row[x * 4] > peak) { peak = row[x * 4]; argmax = x; }
+  }
+  v.dispose();
+  return { count, argmax };
+}
+
+log(`\n── span magnifies the window, pos scrubs it`);
+const sFull = brightRun(1.0, 0);
+const sQtr  = brightRun(0.25, 0);
+const pHalf = brightRun(1.0, 0.5);
+pvals['vwarp.span'] = 1; pvals['vwarp.pos'] = 0;   // restore
+log(`   span 1.00  → bright width ${sFull.count}px at x=${sFull.argmax}`);
+log(`   span 0.25  → bright width ${sQtr.count}px at x=${sQtr.argmax}   (expect ~4x wider)`);
+log(`   pos  0.50  → bright at x=${pHalf.argmax}   (expect ~half a frame from ${sFull.argmax})`);
+const magnifies = sQtr.count >= sFull.count * 2.5;
+const scrubs = Math.abs(pHalf.argmax - sFull.argmax) > OW * 0.25;
+log(magnifies ? '   PASS — narrowing the span magnifies the slice'
+              : '   FAIL — span did not magnify');
+log(scrubs ? '   PASS — pos moves the window'
+           : '   FAIL — pos had no effect');
+
+const all = results.every(Boolean) && kept && held && anchored && magnifies && scrubs;
 log(`\n=== RESULT: ${all ? 'ALL PASS' : 'FAILURE'} ===`);
 window.__vwResult = {
   coverage: results, resizeKeepsDepth: kept, nullHolds: held,
-  anchored, headPositions: positions, all,
+  anchored, headPositions: positions, magnifies, scrubs, all,
 };
 </script>
