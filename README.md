@@ -80,6 +80,7 @@ Firefox and Safari supported in WebGL mode with minor limitations.
 - GPU particle system
 - Sequencer buffers ×3 — record and loop any source; variable frame count (4–480 frames)
 - SDF raymarching generator — GPU-raymarched metaballs routable as pipeline source; Sphere/Box/Torus shapes; KIFS fractal folding; camera navigation; domain repetition; surface displacement; luma warp; triplanar video texturing; AO + glow; HSV colour; glass refraction + Fresnel; dedicated texSrc/refractSrc routing
+- Rutt-Etra Scan Processor — the 1972 scan processor, scanlines deflected by the luminance of any source and viewed through an orbiting perspective camera; drawn as beams or spherically shaded dots with independent widths; depth transfer function (gamma + pivot); asymmetric temporal slew in seconds, so live video becomes a viscous topography rather than jittery spikes; phosphor persistence with spatial bleed; phosphor tint or the source's own colour; full 360° orbit on both axes and free placement; and the raster wraps onto a Plane, Sphere, Cylinder, Torus, Catenoid, Helicoid or Gyroid
 - Drag-and-drop to load video/image files
 
 ### Effects Chain

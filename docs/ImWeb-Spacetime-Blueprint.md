@@ -634,6 +634,61 @@ performance instrument: the splat as a **live-video render primitive**, with non
 of the reconstruction, training, feature distillation or uncertainty machinery
 (§11).
 
+### 6a. SHIPPED 2026-07-30 — and one thing §6 did not foresee
+
+*Owner-confirmed working the same day. `src/inputs/RuttEtra.js`, source index 29,
+23 parameters, 56 checks in `tests/rutt-etra.html`.*
+
+**The blocker §6 missed.** "Append to `SOURCE_DEFS` (index 29)" was written before
+Phase 25 appended `FG Src / BG Src / DS Src` to `CAPTURE_SOURCES` at
+`CAPTURE_INDIRECT_BASE = SOURCES.length` — which is 29. Adding a source there
+slides that tail up by one and silently re-points every saved `td.captureSource`,
+`td.mapSource`, `slitscan.source`, `vwarp.source` and `delay.source` holding an
+old tail index. **The append-only rule protects a list's own indices, not indices
+in a list built by appending something after it.** Fixed first, alone, as an
+identity transform: every file, bank and state now stamps the base it was written
+at and load shifts the tail back (`migrateCaptureBase`). Any future source append
+depends on that staying correct.
+
+**Two resolvers, not one.** §6 says "source selection reuses `_resolveLayerTex`,
+exactly as `mix.srcA` does" — true for the engine's own selector, and silent about
+the layer path, which goes through `Pipeline._resolveSource()`. Wiring only the
+second made Rutt-Etra render a flat RED FRAME on the Foreground, because that
+resolver's fall-through is `inputs.color` and the patch's Color generator was at
+hue 0. The audit reported a clean 30/30 throughout, because it parsed only
+`_resolveLayerTex`. It now checks both.
+
+**Built beyond §6's control list**, in the order the owner reached for them:
+depth transfer function (gamma + pivot), spatial phosphor decay, colour (phosphor
+tint ↔ source chroma), asymmetric temporal slew in seconds, points/both draw mode
+with independent dot size, round spherically-shaded dots, full 360° orbit on both
+axes via an Euler rig replacing `lookAt`, Move X/Y/Z, and parametric surfaces.
+
+**The camera rig is worth keeping.** Orbit Y was clamped to ±89 only because
+`lookAt` needs an up vector that goes undefined at the pole. Orienting from Euler
+angles and backing off along the camera's own +Z is defined everywhere and is
+*exact*, not approximate: for order YXZ, `R = Ry(az)·Rx(−el)` sends local +Z to
+`(cos el·sin az, sin el, cos el·cos az)` — the spherical position the old code
+wrote by hand, verified at nine angles to 5.1e-16.
+
+**Surfaces, and why imported meshes are still not in.** The raster wraps onto
+Plane / Sphere / Cylinder / Torus / Catenoid / Helicoid / Gyroid, displaced along
+the surface normal. Every one has a natural family of curves at constant v, so
+the SCAN survives the shape change — which is the whole distinction from the 3D
+Scene, which already has 13 primitives, GLTF import and texture-driven vertex
+displacement. A displaced sphere there is a lumpy sphere; here it is a stack of
+latitude rings. An arbitrary mesh has no such family, so it is either duplication
+of `scene3d` or it needs real slicing (see below). Gyroid is the honest
+exception: no closed-form parameterisation exists, so it is solved as a height
+field and gives ONE SHEET rather than the full labyrinth.
+
+**Still open:** the peak tracker ("one point at the top" — isolate the vertex of
+maximum luminance and draw it alone; should run on the *slewed* field so it
+glides rather than snapping between rival maxima); the anisotropic splat
+increment above; and mesh slicing — intersecting an imported model with N
+parallel planes in object space, cached at load, which is the only route that
+keeps the scan structure on an arbitrary object. None started.
+
 ---
 
 ## 7. Phase 27 — State terrain
