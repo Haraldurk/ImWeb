@@ -4732,6 +4732,37 @@ export function registerCoreParameters(ps) {
     step: 0.1,
     unit: "px",
   });
+  // Colour. The machine was monochrome, but its output was routinely run through
+  // colourisers — a phosphor tint is period-plausible, and Src Color is the one
+  // frank departure. Defaults (sat 0, amt 0) are the original white monochrome.
+  ps.register({
+    id: "rutt.hue",
+    label: "Tint Hue",
+    group: "rutt",
+    min: 0,
+    max: 360,
+    value: 0,
+    step: 1,
+    unit: "°",
+  });
+  ps.register({
+    id: "rutt.sat",
+    label: "Tint",
+    group: "rutt",
+    min: 0,
+    max: 1,
+    value: 0,
+    step: 0.01,
+  });
+  ps.register({
+    id: "rutt.colorAmt",
+    label: "Src Color",
+    group: "rutt",
+    min: 0,
+    max: 1,
+    value: 0,
+    step: 0.01,
+  });
   ps.register({
     id: "rutt.angle",
     label: "Orbit",

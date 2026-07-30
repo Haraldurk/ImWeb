@@ -50,6 +50,7 @@ const vals = {
   'rutt.zcurve': 1, 'rutt.zpivot': 0,
   'rutt.thickness': 1.5, 'rutt.angle': 0, 'rutt.elev': 35, 'rutt.dist': 3.2,
   'rutt.decay': 0, 'rutt.bleed': 0,
+  'rutt.hue': 0, 'rutt.sat': 0, 'rutt.colorAmt': 0,
 };
 const ps = { get: (id) => (id in vals ? { value: vals[id] } : undefined) };
 
@@ -79,6 +80,28 @@ function rampRT(scale = 1) {
 const bright = rampRT(1).texture;
 const black  = rampRT(0).texture;
 
+/** A source with genuine CHROMA — red on the left, blue on the right — so that
+ *  "carries the source's colour" can be told apart from "applies a tint". */
+function chromaRT() {
+  const rt = new THREE.WebGLRenderTarget(W, H, {
+    minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter,
+    format: THREE.RGBAFormat, type: THREE.UnsignedByteType, depthBuffer: false,
+  });
+  const mat = new THREE.ShaderMaterial({
+    vertexShader: `varying vec2 vUv;
+      void main() { vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }`,
+    fragmentShader: `varying vec2 vUv;
+      void main() { gl_FragColor = vec4(1.0 - vUv.x, 0.35, vUv.x, 1.0); }`,
+  });
+  const scene = new THREE.Scene();
+  scene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), mat));
+  renderer.setRenderTarget(rt);
+  renderer.render(scene, new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1));
+  renderer.setRenderTarget(null);
+  return rt.texture;
+}
+const chroma = chromaRT();
+
 const re = new RuttEtra(renderer, W, H);
 const buf = new Uint8Array(W * H * 4);
 
@@ -86,9 +109,15 @@ const buf = new Uint8Array(W * H * 4);
 function stats() {
   renderer.readRenderTargetPixels(re._cur, 0, 0, W, H, buf);
   let lit = 0, sum = 0, max = 0, ySum = 0, minY = 1e9, maxY = -1e9;
+  let sR = 0, sG = 0, sB = 0, sChroma = 0;
   for (let i = 0; i < buf.length; i += 4) {
-    const v = buf[i];
-    sum += v;
+    const v = buf[i], g = buf[i + 1], b = buf[i + 2];
+    sum += v; sR += v; sG += g; sB += b;
+    // PER-PIXEL colour spread. Channel MEANS are blind to a symmetric source:
+    // red-left/blue-right averages to mean R == mean B, so a grey render and a
+    // fully chromatic one score identically — this check passed for the wrong
+    // reason until it was measured per pixel.
+    sChroma += Math.abs(v - g) + Math.abs(g - b) + Math.abs(v - b);
     if (v > max) max = v;
     if (v > 8) {
       const y = Math.floor((i / 4) / W);
@@ -101,8 +130,10 @@ function stats() {
   // is nearly blind to it — reshaping the relief moves the mass up or down the
   // screen while lighting a similar number of pixels. Measuring where the mass
   // sits catches what counting it cannot.
-  return { lit, mean: sum / (W * H), max,
-           cy: lit ? ySum / lit : 0, spanY: lit ? maxY - minY : 0 };
+  const n = W * H;
+  return { lit, mean: sum / n, max,
+           cy: lit ? ySum / lit : 0, spanY: lit ? maxY - minY : 0,
+           r: sR / n, g: sG / n, b: sB / n, chroma: sChroma / n };
 }
 
 /** Fresh ping-pong state, so one test cannot inherit another's phosphor. */
@@ -192,6 +223,39 @@ const idB = shot({ 'rutt.zcurve': 1.0 });
 check('curve 1.0 is a bit-exact identity', idA.lit === idB.lit && idA.mean === idB.mean,
   `${idA.lit}/${idA.mean.toFixed(4)} vs ${idB.lit}/${idB.mean.toFixed(4)}`);
 Object.assign(vals, { 'rutt.zgain': 0.8, 'rutt.zcurve': 1, 'rutt.zpivot': 0 });
+
+// ── 3c. Colour ───────────────────────────────────────────────────────────────
+log('\ncolour');
+const shotC = (o, tex) => { Object.assign(vals, o); reset(); re.tick(ps, 0.016, tex); return stats(); };
+const MONO = { 'rutt.hue': 0, 'rutt.sat': 0, 'rutt.colorAmt': 0 };
+
+// Structural: at Src Color 0 a chroma source must come out perfectly grey. This
+// is what proves the source's hue reaches the picture ONLY through that control.
+const grey = shotC({ ...MONO }, chroma);
+check('src color 0 renders a chroma source as pure grey', grey.chroma < 0.5,
+  `per-pixel chroma=${grey.chroma.toFixed(2)}`);
+
+const full = shotC({ ...MONO, 'rutt.colorAmt': 1 }, chroma);
+check('src color 1 carries the source chroma through', full.chroma > 20,
+  `per-pixel chroma ${grey.chroma.toFixed(2)} -> ${full.chroma.toFixed(2)}`);
+
+// Tint on a GREY source, so any chroma in the output can only have come from it.
+const tinted = shotC({ 'rutt.hue': 0, 'rutt.sat': 1, 'rutt.colorAmt': 0 }, bright);
+check('tint colours a monochrome source', tinted.r > tinted.g * 1.5 && tinted.r > tinted.b * 1.5,
+  `rgb ${tinted.r.toFixed(2)}/${tinted.g.toFixed(2)}/${tinted.b.toFixed(2)}`);
+
+const tinted2 = shotC({ 'rutt.hue': 220, 'rutt.sat': 1, 'rutt.colorAmt': 0 }, bright);
+check('tint hue is honoured (220 gives blue, not red)', tinted2.b > tinted2.r * 1.5,
+  `rgb ${tinted2.r.toFixed(2)}/${tinted2.g.toFixed(2)}/${tinted2.b.toFixed(2)}`);
+
+// Tint is a lerp from WHITE, so hue is inert at saturation 0 — and the default
+// is therefore the original monochrome no matter where hue sits.
+const h0 = shotC({ 'rutt.hue': 0,   'rutt.sat': 0, 'rutt.colorAmt': 0 }, bright);
+const h9 = shotC({ 'rutt.hue': 290, 'rutt.sat': 0, 'rutt.colorAmt': 0 }, bright);
+check('hue is inert at zero saturation (the default is exactly monochrome)',
+  h0.r === h9.r && h0.g === h9.g && h0.b === h9.b && Math.abs(h0.r - h0.b) < 0.01,
+  `hue0 ${h0.r.toFixed(3)}/${h0.b.toFixed(3)} vs hue290 ${h9.r.toFixed(3)}/${h9.b.toFixed(3)}`);
+Object.assign(vals, MONO);
 
 // ── 4. Camera orbit ──────────────────────────────────────────────────────────
 log('\ncamera');

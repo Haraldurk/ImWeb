@@ -39,6 +39,14 @@ git tag and nothing else. Design doc: `docs/ImWeb-Spacetime-Blueprint.md` §6.*
   energy and cannot add any — necessary, because the lattice is drawn additively
   on top of this buffer every frame and a kernel with gain above 1 would compound
   into a runaway to white. Does nothing at Persist 0, having no trail to spread.
+- **`rutt.hue` / `rutt.sat` / `rutt.colorAmt`** — colour. Tint is a lerp from
+  white toward a pure hue, so saturation 0 is exactly the original monochrome and
+  hue is inert there. Src Color carries the source's own chroma through per
+  vertex instead. The machine was monochrome but its output was routinely run
+  through colourisers, so the tint is period-plausible; Src Color is the one
+  frank departure. Tinting is per line, before accumulation, so densely
+  overlapped regions climb toward white — what an over-driven CRT does when the
+  beam retraces the same phosphor.
 
 ### Changed
 - **Every project, bank and Display State now records the capture-index base it
