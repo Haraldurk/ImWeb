@@ -495,7 +495,12 @@ export const SOURCE_DEFS = [
   { key: "seq3",      label: "Seq3"      }, // 19
   { key: "depth3d",   label: "3D Depth"  }, // 20
   { key: "sdf",       label: "SDF"       }, // 21
-  { key: "vwarp",     label: "Vasulka Warp" }, // 22 — matches its panel header
+  // 22 — "Warp Tape", not "Vasulka Warp": the honorific moved to the panel
+  // FAMILY (Sources ▸ From the Signal ▸ Warp), which holds all four engines that
+  // invert time into space. Labels may change freely; indices may not.
+  // Longer than the "Tape" subsection header on purpose — this one has to stand
+  // alone in a flat source dropdown next to Camera, Movie, Noise, SDF.
+  { key: "vwarp",     label: "Warp Tape" },    // 22
   { key: "analog",    label: "Analog"    }, // 23
   { key: "tdisp",     label: "TimeDisp"  }, // 24
   { key: "movieB",    label: "Movie B"   }, // 25
@@ -3704,7 +3709,14 @@ export function registerCoreParameters(ps) {
   // Attractors replaced by Ghost 1/2/3 in the GPU Engine section.
 
   // ── Slit Scan ─────────────────────────────────────────────────────────────
-  // ── Vasulka Warp ──────────────────────────────────────────────────────────
+  // ── Sine Warp FX pass (`vasulka.*`) — DEAD, and NOT the Warp Tape ─────────
+  // A sine-displacement post-effect (freqh/freqv/amph/ampv), unrelated to the
+  // tape engine in `vwarp.*` despite both having been called "Vasulka Warp".
+  // Its handler is `_FX.vasulka` (Pipeline.js:59), which is commented out of
+  // DEFAULT_FX_ORDER (Pipeline.js:35) — so `vasulka.active` is read by code that
+  // never runs. Params stay registered so old presets referencing them still
+  // load without throwing; do not wire them back up without deciding what the
+  // effect is FOR, which is why it was shelved.
   ps.register({
     id: "vasulka.active",
     label: "Vasulka",
@@ -3881,7 +3893,14 @@ export function registerCoreParameters(ps) {
     group: "td",
     type: PARAM_TYPE.SELECT,
     select: true,
-    options: ["Slit X", "Slit Y", "Warp Line", "Slit X Sym", "Slit Y Sym", "Radial", "Noise"],
+    // "Shear", not "Slit": these are time-displacement gradients — each column
+    // reads its own pixels at its own age. A slit-scan takes ONE fixed column and
+    // multiplies it across space, which is the separate Slit Scan engine two
+    // subsections below. Calling both "Slit" is what made TimeDisplace look like
+    // it was taking over from slitscan.
+    // Labels only — SELECT persists the index, so saved states, Display States,
+    // .imweb projects and MIDI mappings are untouched.
+    options: ["Shear X", "Shear Y", "Warp Line", "Shear X Sym", "Shear Y Sym", "Radial", "Noise"],
     value: 0,
   });
   // Phase 5a — buffer/output resolution decoupling. bufferResolution sets the
@@ -4008,7 +4027,11 @@ export function registerCoreParameters(ps) {
     step: 0.01,
   });
 
-  // ── Vasulka Warp (Temporal Slit-Scan) ────────────────────────────────────
+  // ── Warp Tape (`vwarp.*`) — source 22, panel "Warp ▸ Tape" ────────────────
+  // A tape whose horizontal axis is time: one column written per frame at a
+  // moving head, the whole tape read as a frame. NOT a slit-scan (that is
+  // `slitscan.*`, which multiplies ONE fixed column across space) — this offsets
+  // each column in time at its own position, a shear. See VasulkaWarp.js.
   // What gets written onto the tape. Replaces a hardcoded
   // `camera3d.active ? camera : pipeline.prev` heuristic in main.js that no
   // parameter could reach — so with a camera attached the engine could only ever
