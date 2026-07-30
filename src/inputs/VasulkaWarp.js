@@ -1,20 +1,41 @@
 /**
- * VasulkaWarp — Strip-Buffer Temporal Slit-Scan
+ * VasulkaWarp — Strip-Buffer Temporal Displacement
  *
- * Faithful to the original Image/Ine (ImOs9) mechanism:
- *   - A strip buffer stores one column (or row) of video per frame
- *   - writeIdx advances by `speed` strips per frame, cycling over bufSize positions
- *   - Output reads the entire strip buffer as a full frame:
- *       column X → video captured (bufSize - X) frames ago
- *   - Static content: no distortion (same pixel value every frame)
- *   - Moving content: temporal smear proportional to speed of movement
+ * A TAPE whose horizontal axis is time. Faithful to the original Image/ine
+ * (ImOs9) mechanism:
+ *   - one column of video is written per frame at a moving write head
+ *   - the head advances by `speed` columns per frame, wrapping at bufSize
+ *   - the output reads the whole tape as a frame:
+ *       output column X → source column X, captured (writeIdx − X) frames ago
+ *   - static content: untouched (every column holds the same pixels)
+ *   - moving content: horizontal shear, because each column is a different moment
  *
- * Architecture:
- *   - _stripRT: WebGLRenderTarget(bufSize, outputH)  — the tape
+ * ── NOT a slit-scan, despite the historical name ──
+ * A slit-scan takes ONE FIXED source column and spreads it across every output
+ * column (that is `SlitScanBuffer`, which remaps space). This offsets each column
+ * in time at its own position, which is a time-displacement GRADIENT — the same
+ * operation as `td.mode = "Slit X"` in TimeDisplaceEngine.
+ *
+ * ── Why it coexists with TimeDisplaceEngine (deliberate, 2026-07-30) ──
+ * The two overlap functionally and neither should absorb the other:
+ *   - This engine stores ONE COLUMN per time step. 1920×1080×4 ≈ 8.3 MB buys
+ *     1920 time steps at full resolution.
+ *   - TimeDisplaceEngine stores a WHOLE FRAME per time step, because its delay
+ *     map is arbitrary per-pixel (radial, noise, any angle) and every pixel of a
+ *     stored frame may be needed. 120 frames at 640×480 is ~147 MB.
+ * So for an axis-aligned monotonic gradient this is ~18× cheaper and sharper;
+ * for anything else it cannot express the map at all. This is the fast path, the
+ * ring is the general case. Do not "consolidate" one into the other without
+ * re-deriving those numbers — see docs/ImWeb-Spacetime-Blueprint.md §5d.
+ *
+ * ── Architecture ──
+ *   - _stripRT: WebGLRenderTarget(bufSize, outputH) — the tape
  *   - capture(): scissor-render 1+ columns of live video into _stripRT (GPU-only)
- *   - render():  sample _stripRT with writeIdx-based UV offset (GLSL1 shader)
+ *   - render():  sample the tape across the full frame (GLSL1 shader)
  *
- * Memory: 1920×1080×4 = 8.3 MB. No CPU readback. No downsampling.
+ * The tape is bufSize wide, NOT canvas width: bufSize is a TIME depth, so at
+ * 480 columns on a 1920 canvas the tape is resampled up on read (softer, and 4×
+ * faster through time). No CPU readback.
  */
 
 import * as THREE from 'three';
@@ -79,16 +100,28 @@ export class VasulkaWarp {
     this._renderer = renderer;
     this._fullW    = fullW;
     this._fullH    = fullH;
-    this._bufSize     = fullW;       // strip RT is always screen-width; readIdx wraps here
-    this._activeWidth = bufSize;     // write head cycles through only this many columns
+    /**
+     * Tape length in columns = time depth. ONE value, used for both the strip
+     * target's width and the write head's wrap.
+     *
+     * This used to be two: the target was allocated at canvas width while the
+     * head wrapped at bufSize, and the output shader read the target's FULL
+     * width. So any bufSize below the canvas width left every column past it
+     * unwritten — the sweep ran from the left edge to column bufSize and
+     * restarted, with black beyond. Only "1920 cols" on a 1920-wide canvas
+     * happened to line up, which is why the effect appeared to work at exactly
+     * one setting.
+     */
+    this._bufSize  = Math.max(1, Math.floor(bufSize));
     this._writeIdx = 0;
 
-    this._build(fullW, fullH, bufSize);
+    this._build(fullW, fullH);
   }
 
-  _build(fullW, fullH, bufSize) {
-    // Strip render target: always fullW wide — 1:1 screen-to-buffer column mapping
-    this._stripRT = new THREE.WebGLRenderTarget(fullW, fullH, {
+  _build(fullW, fullH) {
+    // The tape: bufSize columns wide. Narrower than the canvas means a shorter
+    // tape resampled across the frame on read, not a partially-written one.
+    this._stripRT = new THREE.WebGLRenderTarget(this._bufSize, fullH, {
       minFilter: THREE.LinearFilter,
       magFilter: THREE.LinearFilter,
       format:    THREE.RGBAFormat,
@@ -154,7 +187,8 @@ export class VasulkaWarp {
       const x = this._writeIdx;
       gl.scissor(x, 0, 1, this._stripRT.height);
       renderer.render(this._blitScene, this._cam);
-      this._writeIdx = (this._writeIdx + 1) % this._activeWidth;
+      // Wraps at the tape's own width, so every column is reached.
+      this._writeIdx = (this._writeIdx + 1) % this._bufSize;
     }
     gl.disable(gl.SCISSOR_TEST);
 
@@ -187,13 +221,20 @@ export class VasulkaWarp {
     u.uMix.value  = ps.get('vwarp.mix').value;
   }
 
-  /** Resize output to match canvas. */
+  /**
+   * Resize output to match the canvas.
+   *
+   * The OUTPUT follows the canvas; the TAPE does not. Its width is a time depth
+   * (vwarp.bufsize), so only its height tracks the canvas — the previous version
+   * overwrote _bufSize with the canvas width here, which silently retuned the
+   * time depth on every resolution change and left the head's wrap out of step
+   * with it.
+   */
   resize(w, h) {
     this._fullW = w;
     this._fullH = h;
     this.outputRT.setSize(w, h);
-    this._bufSize = w;
-    this._stripRT.setSize(w, h);
+    this._stripRT.setSize(this._bufSize, h);
   }
 
   dispose() {
