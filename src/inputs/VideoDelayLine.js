@@ -63,8 +63,24 @@ export class VideoDelayLine {
    * Returns null if not enough frames have been captured yet.
    */
   getTexture(framesAgo) {
-    const n = Math.round(Math.max(1, framesAgo));
-    if (n > this._count) return null;
+    if (this._count === 0) return null;      // nothing captured yet
+
+    // SATURATE, do not fall off a cliff. delay.frames goes to 480 while the ring
+    // may hold 30, and the history is shorter still for the first seconds after a
+    // realloc — this used to `return null` for any request past the end, so
+    // pushing the knob up dropped the source entirely instead of reaching the
+    // oldest frame available. Clamping keeps the control continuous: it stops
+    // getting deeper, rather than stopping working.
+    const want = Math.round(Math.max(1, framesAgo));
+    const n = Math.min(want, this._count);
+    if (want > this._count && this._satWarnedAt !== this._count) {
+      console.warn(
+        `[VideoDelay] ${want} frames requested, ${this._count} captured ` +
+        `(ring holds ${this.maxFrames}) — holding at the oldest frame. ` +
+        'Raise Ring depth, or wait for the ring to fill.',
+      );
+      this._satWarnedAt = this._count;
+    }
     // _writeIdx points to the *next* slot to write — step back n slots
     const idx = (this._writeIdx - n + this.maxFrames * 2) % this.maxFrames;
     return this._ring[idx].texture;
@@ -122,6 +138,7 @@ export class VideoDelayLine {
     this.height = h;
     this._count    = 0;   // history is stale
     this._writeIdx = 0;
+    this._satWarnedAt = undefined;   // the saturation ceiling just moved
   }
 
   /** Ring depth in frames (delay.size). May be clamped by the VRAM budget. */
