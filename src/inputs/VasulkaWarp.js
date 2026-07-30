@@ -71,6 +71,7 @@ const OUT_FRAG = `
   uniform int   uAxis;        // 0=H (columns), 1=V (rows)
   uniform float uFlip;        // 1.0 = reverse time direction
   uniform float uHeadNorm;    // write head as a fraction of the tape (0..1)
+  uniform float uAnchor;      // 0 = picture fixed, tear sweeps; 1 = age fixed, picture slides
   uniform float uPos;         // scrub: rotate which moment sits at which column
   uniform float uSpan;        // how much of the tape covers the frame (0..1)
 
@@ -80,36 +81,46 @@ const OUT_FRAG = `
     float coord = (uAxis == 0) ? vUv.x : vUv.y;
     if (uFlip > 0.5) coord = 1.0 - coord;
 
-    // ── Anchor the read to the write head ────────────────────────────────────
+    // ── uAnchor: which of the two things you want held still ─────────────────
     // NOTE: no backticks in this comment. It lives inside a JS template literal,
     // so one would close the string and break the module at import time.
     //
-    // The read used to be simply readOffset = coord: a fixed mapping that never
-    // learned where the head was. The age of a given output column therefore
-    // changed as the head moved, and the discontinuity between "one frame old"
-    // and "a whole tape old" TRAVELLED across the picture at the write speed.
-    // That was the sliding tear.
+    // A tape column holds SOURCE column c captured when the head was at c, so the
+    // read picks both WHICH COLUMN you see and HOW OLD it is. You cannot hold
+    // both still. The two ends of uAnchor are the two ways to spend that:
     //
-    // Offsetting by the head makes age a function of position alone. Tape column
-    // c has age ((head - c - 1) mod B) + 1; sampling column (head + coord*B) mod B
-    // gives age = B*(1 - coord), which has no head term at all -- so the mapping
-    // is stationary while the tape keeps moving underneath it. Oldest at coord 0,
-    // newest approaching coord 1, and the single wrap sits exactly on the edge
-    // where it is invisible instead of in the middle of the frame.
+    //   uAnchor = 0  readOffset = coord. Output column x always shows source
+    //                column x, so the picture is spatially TRUE. Age is
+    //                ((head - x - 1) mod B) + 1, so a wave of freshness sweeps
+    //                across and the tear between "one frame old" and "a whole
+    //                tape old" travels with the head. This is the historical
+    //                Image/ine behaviour and the default.
+    //
+    //   uAnchor = 1  readOffset = head + coord. Age becomes B*(1 - coord) with no
+    //                head term, so the temporal gradient is stationary — oldest
+    //                at one edge, newest at the other, wrap on the boundary. The
+    //                cost is that output column x now shows source column
+    //                (head + x), so the PICTURE slides sideways as the head runs.
+    //
+    // Shipped as 1 by mistake in 3db09f2, on a misreading of a bug report: the
+    // travelling tear was assumed to be the defect when the actual defect was
+    // that it only crossed part of the frame (the bufSize coverage bug, 8e31bbf).
+    // Default restored to 0. Kept as a continuous control rather than a toggle
+    // because intermediate values drift the gradient slowly, which is playable.
+    //
+    // ── uSpan / uPos ─────────────────────────────────────────────────────────
     // uSpan narrows the window: 1.0 spreads the whole tape across the frame, 0.1
     // spreads a tenth of it (a ~3s slice of a 32s tape), so the shear steepens
     // without the tape getting shorter. The window is anchored at the NEWEST end
-    // and extends backwards — hence the -uSpan. Anchoring it at the head and
-    // extending forwards instead would show the OLDEST slice, which is the
-    // opposite of what narrowing a window is for.
+    // and extends backwards -- hence the -uSpan. Anchoring it at the head and
+    // extending forwards would show the OLDEST slice, the opposite of what
+    // narrowing a window is for.
     //
-    // uPos then slides that window through the recording: an LFO on it scrubs
-    // time, and running it at the write rate reproduces the old travelling look
-    // deliberately instead of unavoidably.
+    // uPos slides that window through the recording: an LFO on it scrubs time.
     //
-    // At uSpan = 1 this reduces to fract(uHeadNorm + uPos + coord), since fract
-    // discards the integer -1 — so the anchored behaviour above is unchanged.
-    float readOffset = fract(uHeadNorm + uPos - uSpan + coord * uSpan);
+    // At uAnchor = 0, uSpan = 1, uPos = 0 this is fract(-1 + coord) = coord --
+    // bit-identical to the pre-Phase-25 read.
+    float readOffset = fract(uAnchor * uHeadNorm + uPos - uSpan + coord * uSpan);
 
     vec2 stripUv = (uAxis == 0)
       ? vec2(readOffset, vUv.y)
@@ -187,6 +198,7 @@ export class VasulkaWarp {
         uAxis:      { value: 0 },
         uFlip:      { value: 0.0 },
         uHeadNorm:  { value: 0.0 },
+        uAnchor:    { value: 0.0 },
         uPos:       { value: 0.0 },
         uSpan:      { value: 1.0 },
       },
@@ -264,7 +276,8 @@ export class VasulkaWarp {
     u.uAxis.value = ps.get('vwarp.axis').value;
     u.uFlip.value = ps.get('vwarp.flip').value ? 1.0 : 0.0;
     u.uMix.value  = ps.get('vwarp.mix').value;
-    u.uPos.value  = ps.get('vwarp.pos')?.value ?? 0.0;
+    u.uPos.value    = ps.get('vwarp.pos')?.value ?? 0.0;
+    u.uAnchor.value = ps.get('vwarp.anchor')?.value ?? 0.0;
     // Guard the low end: span 0 would collapse the frame onto a single tape
     // column — a flat field, and indistinguishable from the effect having died.
     u.uSpan.value = Math.max(0.01, ps.get('vwarp.span')?.value ?? 1.0);

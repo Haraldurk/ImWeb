@@ -4096,10 +4096,26 @@ export function registerCoreParameters(ps) {
     value: 1,
     step: 1,
   });
-  // Scrub: rotate which moment of the tape sits at which column. Only meaningful
-  // now that the read is anchored to the write head (3db09f2) — before that the
-  // mapping already drifted on its own. An LFO here sweeps through the recording;
-  // at the write rate it reproduces the old travelling tear deliberately.
+  // Which of the two things the read holds still. A tape column holds SOURCE
+  // column c captured when the head was at c, so the read picks both WHICH column
+  // you see and HOW OLD it is — you cannot fix both.
+  //   0 = picture spatially true, wave of freshness sweeps across (historical
+  //       Image/ine behaviour, and the default)
+  //   1 = temporal gradient stationary, oldest edge to newest edge, but the
+  //       picture slides sideways as the head runs
+  // Continuous rather than a toggle: intermediate values drift the gradient
+  // slowly, which is playable.
+  ps.register({
+    id: "vwarp.anchor",
+    label: "Anchor",
+    group: "vwarp",
+    min: 0,
+    max: 1,
+    value: 0,
+    step: 0.01,
+  });
+  // Scrub: rotate which moment of the tape sits at which column. An LFO here
+  // sweeps through the recording.
   ps.register({
     id: "vwarp.pos",
     label: "Position",
