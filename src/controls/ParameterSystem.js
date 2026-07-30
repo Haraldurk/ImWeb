@@ -4723,8 +4723,7 @@ export function registerCoreParameters(ps) {
     step: 0.01,
   });
   // Lines is the machine as built; Points is the same lattice drawn as a dot
-  // cloud, which scan processors of the period also did. Beam sizes both — it is
-  // the same beam, so this needs no second width control.
+  // cloud, which scan processors of the period also did.
   ps.register({
     id: "rutt.drawMode",
     label: "Draw",
@@ -4740,6 +4739,19 @@ export function registerCoreParameters(ps) {
     min: 0.5,
     max: 8,
     value: 1.5,
+    step: 0.1,
+    unit: "px",
+  });
+  // Separate from Beam, not derived from it: Both mode wants a thin ribbon under
+  // prominent dots. Defaults larger than Beam because a dot is not continuous —
+  // at equal width a dot lattice reads far fainter than a line one.
+  ps.register({
+    id: "rutt.pointSize",
+    label: "Dot",
+    group: "rutt",
+    min: 0.5,
+    max: 16,
+    value: 3,
     step: 0.1,
     unit: "px",
   });
