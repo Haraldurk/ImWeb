@@ -95,6 +95,12 @@ void main() {
   // Ribbon expansion in clip space — see note 1 in the header.
   clip.y += aSide * uThickness * clip.w / max(uResolution.y * 0.5, 1.0);
   gl_Position = clip;
+
+  // Points draw from this same material and shader. aSide is 0 in the point
+  // geometry, so the ribbon term above contributes nothing there, and setting
+  // gl_PointSize is simply ignored when the draw is triangles — which is what
+  // lets one material serve both modes instead of two that must be kept in step.
+  gl_PointSize = uThickness;
 }
 `;
 
@@ -266,6 +272,7 @@ export class RuttEtra {
     this._aspect = width / height;
     this._lines  = 0;              // forces the first _rebuild()
     this._mesh   = null;
+    this._points = null;
     this._hueCol = new THREE.Color(); // scratch, so tick() allocates nothing
     this._rebuild(120);
 
@@ -396,6 +403,35 @@ export class RuttEtra {
     this._mesh.frustumCulled = false;
     this._mesh.scale.x = this._aspect;
     this._scene.add(this._mesh);
+
+    // Point lattice: one vertex per sample rather than the ribbon's pair, so
+    // Points mode does not draw every dot twice at the ±aSide offsets. aSide is
+    // 0 throughout, which is what makes the shared material behave.
+    const pPos  = new Float32Array(lines * cols * 3);
+    const pSide = new Float32Array(lines * cols);   // all zero
+    let q = 0;
+    for (let li = 0; li < lines; li++) {
+      const y = lines === 1 ? 0 : 1 - (2 * li) / (lines - 1);
+      for (let ci = 0; ci < cols; ci++) {
+        pPos[q * 3]     = -1 + (2 * ci) / (cols - 1);
+        pPos[q * 3 + 1] = y;
+        pPos[q * 3 + 2] = 0;
+        q++;
+      }
+    }
+    const pGeo = new THREE.BufferGeometry();
+    pGeo.setAttribute('position', new THREE.BufferAttribute(pPos, 3));
+    pGeo.setAttribute('aSide',    new THREE.BufferAttribute(pSide, 1));
+    pGeo.boundingSphere = new THREE.Sphere(new THREE.Vector3(), 8);
+
+    if (this._points) {
+      this._scene.remove(this._points);
+      this._points.geometry.dispose();
+    }
+    this._points = new THREE.Points(pGeo, this._mat);
+    this._points.frustumCulled = false;
+    this._points.scale.x = this._aspect;
+    this._scene.add(this._points);
   }
 
   /**
@@ -408,6 +444,12 @@ export class RuttEtra {
     if (!this.active) return;
 
     this._rebuild(Math.max(2, Math.round(ps.get('rutt.lines').value)));
+
+    // 0 Lines · 1 Points · 2 Both. Both is free — the two draws share a
+    // material and the same additive target.
+    const mode = ps.get('rutt.drawMode').value;
+    this._mesh.visible   = mode !== 1;
+    this._points.visible = mode !== 0;
 
     const u = this._mat.uniforms;
 
@@ -521,5 +563,6 @@ export class RuttEtra {
     this._decayMat.dispose();
     this._decayScene.children[0].geometry.dispose();
     if (this._mesh) this._mesh.geometry.dispose();
+    if (this._points) this._points.geometry.dispose();
   }
 }

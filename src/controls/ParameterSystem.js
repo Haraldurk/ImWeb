@@ -4722,6 +4722,17 @@ export function registerCoreParameters(ps) {
     value: 0,
     step: 0.01,
   });
+  // Lines is the machine as built; Points is the same lattice drawn as a dot
+  // cloud, which scan processors of the period also did. Beam sizes both — it is
+  // the same beam, so this needs no second width control.
+  ps.register({
+    id: "rutt.drawMode",
+    label: "Draw",
+    group: "rutt",
+    type: PARAM_TYPE.SELECT,
+    options: ["Lines", "Points", "Both"],
+    value: 0,
+  });
   ps.register({
     id: "rutt.thickness",
     label: "Beam",
