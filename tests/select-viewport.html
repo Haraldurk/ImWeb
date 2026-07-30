@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<!-- mkSelect must keep its menu inside the viewport.
+
+     The menu is position:fixed, so anything past an edge is unreachable — the
+     page cannot scroll to it, and the menu's own scrollbar sits on a box that is
+     itself partly offscreen. Opening downward unconditionally truncated long
+     lists whenever the trigger sat low on the screen, hiding the TAIL. These
+     lists are append-only, so the tail is always the newest options.
+
+     Asserts the menu's rect stays within the viewport for a trigger at the top,
+     middle and bottom of the screen, with a list long enough to overflow.
+
+     Run:  npx vite --port 5199
+           open http://localhost:5199/tests/select-viewport.html
+-->
+<meta charset="utf-8">
+<title>Select viewport test</title>
+<style>
+  body { background:#111; color:#ddd; font:12px monospace; margin:0; }
+  #log { white-space:pre; padding:8px; position:relative; z-index:1; }
+  .imw-sel-menu { background:#222; border:1px solid #555; }
+  .imw-sel-item { padding:4px 10px; }
+  .imw-sel-trigger, .imw-sel { display:inline-block; }
+</style>
+<body><div id="log"></div></body>
+<script type="module">
+import { mkSelect } from '/src/ui/components/Select.js';
+
+const out = [];
+const log = (s) => { out.push(s); document.getElementById('log').textContent = out.join('\n'); };
+
+// 32 entries — the real length of a capture-source list.
+const opts = Array.from({ length: 32 }, (_, i) => `Option ${i}`);
+
+function probe(label, topPx) {
+  const host = document.createElement('div');
+  host.style.cssText = `position:fixed;left:40px;top:${topPx}px;width:160px;`;
+  document.body.appendChild(host);
+  const wrap = mkSelect(opts, 0, () => {}, '');   // returns the wrap element
+  host.appendChild(wrap);
+
+  const trigger = wrap.firstElementChild;        // the clickable trigger
+  trigger.click();                                   // open
+
+  const menu = [...document.querySelectorAll('.imw-sel-menu')]
+    .filter((m) => m.style.display !== 'none').pop();
+  const r = menu.getBoundingClientRect();
+  const fits = r.top >= -1 && r.bottom <= window.innerHeight + 1 &&
+               r.left >= -1 && r.right <= window.innerWidth + 1;
+  // The tail must be reachable: either fully visible, or scrollable within a box
+  // that is itself on screen.
+  const scrollable = menu.scrollHeight > menu.clientHeight;
+  const tailReachable = fits && (r.height >= menu.scrollHeight - 1 || scrollable);
+
+  log(`\n── trigger at y=${topPx} (viewport ${window.innerHeight}px)`);
+  log(`   menu rect: top ${r.top.toFixed(0)}  bottom ${r.bottom.toFixed(0)}  ` +
+      `height ${r.height.toFixed(0)}  (content ${menu.scrollHeight})`);
+  log(`   inside viewport: ${fits ? 'yes' : 'NO'}   scrollable: ${scrollable ? 'yes' : 'no'}`);
+  log(tailReachable ? '   PASS — whole list reachable' : '   FAIL — tail is off screen');
+
+  trigger.click();                                   // close
+  wrap._destroy?.();
+  host.remove();
+  return tailReachable;
+}
+
+const results = [
+  probe('top', 10),
+  probe('middle', Math.round(window.innerHeight / 2)),
+  probe('near bottom', window.innerHeight - 60),     // the reported case
+  probe('very bottom', window.innerHeight - 24),
+];
+
+const all = results.every(Boolean);
+log(`\n=== RESULT: ${all ? 'ALL PASS' : 'FAILURE'} ===`);
+window.__selResult = { results, all };
+</script>
