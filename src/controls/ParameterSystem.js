@@ -555,6 +555,34 @@ export const SOURCES = SOURCE_DEFS.map((s) => s.label);
 /** inputs-bag keys, index-aligned to SOURCE_DEFS. */
 export const SOURCE_KEYS = SOURCE_DEFS.map((s) => s.key);
 
+/**
+ * Indirect entries appended to the capture-source lists: "whatever that layer is
+ * currently showing" rather than a fixed source.
+ *
+ * They are NOT sources and must never enter SOURCE_DEFS — `layer.fg = "FG Src"`
+ * would be self-referential nonsense, and SOURCE_DEFS is what the layer selectors
+ * are built from. They live only in CAPTURE_SOURCES below.
+ *
+ * Precedent: the particle luma mask has offered "FG Src / BG Src / DS Src" all
+ * along (`_pmSrcMap` in main.js), and the SDF's texture source uses FG at index 0.
+ * The idea existed; the newer capture selectors just did not expose it.
+ */
+export const CAPTURE_INDIRECT = ["FG Src", "BG Src", "DS Src"];
+
+/**
+ * Options for selectors that choose what an ENGINE records or samples —
+ * td.captureSource, td.mapSource, slitscan.source, vwarp.source, delay.source.
+ *
+ * APPEND-ONLY, and appended AFTER the full source list, so every index 0..28
+ * keeps the meaning it has in every saved state, bank, .imweb file and MIDI
+ * mapping. Indices 29-31 are the indirect entries, resolved through the layer
+ * they name at read time.
+ */
+export const CAPTURE_SOURCES = [...SOURCES, ...CAPTURE_INDIRECT];
+
+/** First indirect index — anything >= this is a layer reference, not a source. */
+export const CAPTURE_INDIRECT_BASE = SOURCES.length;
+
 // ─────────────────────────────────────────────────────────────────────────────
 // registerCoreParameters  — defines all Phase 1 parameters
 // ─────────────────────────────────────────────────────────────────────────────
@@ -3649,7 +3677,7 @@ export function registerCoreParameters(ps) {
     label: "Delay src",
     group: "delay",
     type: PARAM_TYPE.SELECT,
-    options: SOURCES,
+    options: CAPTURE_SOURCES,
     value: 8,
   });
   // Ring depth. Seconds assume 60 fps.
@@ -3853,7 +3881,7 @@ export function registerCoreParameters(ps) {
     label: "Slit src",
     group: "slitscan",
     type: PARAM_TYPE.SELECT,
-    options: SOURCES,
+    options: CAPTURE_SOURCES,
     value: 8,
   });
   ps.register({
@@ -3927,7 +3955,7 @@ export function registerCoreParameters(ps) {
     label: "Capture src",
     group: "td",
     type: PARAM_TYPE.SELECT,
-    options: SOURCES,
+    options: CAPTURE_SOURCES,
     value: 0,
   });
   // Phase 3 — analytic gradient read (array-texture path). mode shapes the
@@ -4056,7 +4084,7 @@ export function registerCoreParameters(ps) {
     label: "Map src",
     group: "td",
     type: PARAM_TYPE.SELECT,
-    options: SOURCES,
+    options: CAPTURE_SOURCES,
     value: 5,
   });
   // Blend the map source into the analytic shapes (modes 0-5) — a slit-scan
@@ -4090,7 +4118,7 @@ export function registerCoreParameters(ps) {
     label: "Tape src",
     group: "vwarp",
     type: PARAM_TYPE.SELECT,
-    options: SOURCES,
+    options: CAPTURE_SOURCES,
     value: 0,
   });
   ps.register({

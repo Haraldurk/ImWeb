@@ -65,4 +65,38 @@ if (stray.length) {
   process.exit(1);
 }
 
+/**
+ * CAPTURE_SOURCES must be SOURCES plus the indirect entries, in that order.
+ *
+ * The indices are persisted in saved states, banks, .imweb files and MIDI
+ * mappings, so the indirect entries have to stay APPENDED. Inserting anything
+ * ahead of them — or, worse, adding "FG Src" to SOURCE_DEFS itself, which would
+ * also make it selectable as a layer — silently re-points every stored value.
+ */
+const capBlock = psrc.slice(
+  psrc.indexOf('export const CAPTURE_SOURCES'),
+  psrc.indexOf('\n', psrc.indexOf('export const CAPTURE_SOURCES')),
+);
+if (!/\[\s*\.\.\.SOURCES\s*,\s*\.\.\.CAPTURE_INDIRECT\s*\]/.test(capBlock)) {
+  console.error(
+    '\nFAIL — CAPTURE_SOURCES must be exactly [...SOURCES, ...CAPTURE_INDIRECT].\n' +
+    `  found: ${capBlock.trim()}\n` +
+    '  The indirect entries are persisted as indices and must stay appended.',
+  );
+  process.exit(1);
+}
+
+// The layer selectors must NOT offer the indirect entries: layer.fg = "FG Src"
+// is self-referential, and SOURCE_DEFS is what they are built from.
+const layerBad = ['layer.fg', 'layer.bg', 'layer.ds'].filter((id) => {
+  const at = main.length && psrc.indexOf(`id: "${id}"`);
+  if (at < 0) return false;
+  return /options: CAPTURE_SOURCES/.test(psrc.slice(at, at + 400));
+});
+if (layerBad.length) {
+  console.error(`\nFAIL — layer selector(s) offer indirect entries: ${layerBad.join(', ')}`);
+  process.exit(1);
+}
+
 console.log('\nPASS — every source resolves to itself, none silently to Output.');
+console.log('PASS — CAPTURE_SOURCES appends the indirect entries; layers do not offer them.');
