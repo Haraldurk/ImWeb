@@ -342,7 +342,16 @@ async function main() {
   ps.get("td.upscaleFilter").onChange((v) => tdEngine.setUpscaleFilter(v));
   const vectorscope = new VectorscopeInput();
   const slitScan = new SlitScanBuffer(W, H);
-  const vasulkaWarp = new VasulkaWarp(renderer, W, H, 960);
+  // Tape lengths for vwarp.bufsize, index-aligned to that param's options
+  // ("480 cols (8s)" / "960 cols (16s)" / "1920 cols (32s)"). ONE copy — the
+  // reinit handler below reads the same array, and the boot construction used to
+  // hardcode 960 and ignore the saved value entirely, so a project stored at 480
+  // ran a 960-column tape until the param happened to change.
+  const VWARP_BUFSIZES = [480, 960, 1920];
+  const vasulkaWarp = new VasulkaWarp(
+    renderer, W, H,
+    VWARP_BUFSIZES[ps.get("vwarp.bufsize").value] ?? 960,
+  );
   const particles = new ParticleEngine(renderer, ps);
   const sdfGen = new SDFGenerator(renderer, W, H);
   const analogTV      = new AnalogTV(renderer);
@@ -3815,8 +3824,7 @@ async function main() {
 
   // Vasulka Warp — reinit on buf size change
   const _vwarpReinit = () => {
-    const bufsizeOptions = [480, 960, 1920];
-    const bufSize = bufsizeOptions[ps.get("vwarp.bufsize").value] ?? 960;
+    const bufSize = VWARP_BUFSIZES[ps.get("vwarp.bufsize").value] ?? 960;
     const w = vasulkaWarp._fullW,
       h = vasulkaWarp._fullH;
     vasulkaWarp.dispose();

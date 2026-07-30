@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<!-- VasulkaWarp tape-coverage test.
+
+     The bug: the strip target was allocated at CANVAS width while the write head
+     wrapped at bufSize, and the output shader read the target's full width. Any
+     bufSize below the canvas width therefore left every column past it unwritten
+     — the sweep ran from the left edge to column bufSize and restarted, black
+     beyond. Only "1920 cols" on a 1920-wide canvas lined up.
+
+     So the assertion is coverage: after bufSize writes, EVERY column of the tape
+     must hold live content, at every bufSize — not just the one that matches the
+     canvas width.
+
+     Driven directly, no requestAnimationFrame: a backgrounded tab suspends rAF
+     (document.hidden ⇒ 0 fps) and would make this pass vacuously.
+
+     Run:  npx vite --port 5199
+           open http://localhost:5199/tests/vasulka-tape.html
+-->
+<meta charset="utf-8">
+<title>VasulkaWarp tape test</title>
+<body style="background:#111;color:#ddd;font:12px monospace;white-space:pre"></body>
+<script type="module">
+import * as THREE from 'three';
+import { VasulkaWarp } from '/src/inputs/VasulkaWarp.js';
+
+const out = [];
+const log = (s) => { out.push(s); document.body.textContent = out.join('\n'); };
+
+// A deliberately WIDE canvas so bufSize 480/960 are both below it — the exact
+// configuration that used to fail.
+const CANVAS_W = 1920, CANVAS_H = 64;
+const renderer = new THREE.WebGLRenderer({ antialias: false });
+renderer.setSize(256, 64);
+
+/** Solid mid-grey source, so "written" is unambiguous against the black tape. */
+const solid = (v) => {
+  const t = new THREE.DataTexture(
+    new Uint8Array([v, v, v, 255]), 1, 1, THREE.RGBAFormat, THREE.UnsignedByteType);
+  t.needsUpdate = true;
+  return t;
+};
+
+const ps = { get: (id) => ({ value: { 'vwarp.axis': 0, 'vwarp.flip': 0, 'vwarp.mix': 1 }[id] }) };
+
+function run(bufSize) {
+  const vw = new VasulkaWarp(renderer, CANVAS_W, CANVAS_H, bufSize);
+  const src = solid(200);
+
+  log(`\n── bufSize ${bufSize} on a ${CANVAS_W}-wide canvas`);
+  log(`   tape target: ${vw._stripRT.width}×${vw._stripRT.height}` +
+      (vw._stripRT.width === bufSize ? '  (= bufSize)' : `  EXPECTED width ${bufSize}`));
+
+  // Exactly bufSize single-column writes should fill the tape once.
+  for (let i = 0; i < bufSize; i++) vw.capture(src, 1);
+
+  // Read the tape itself and count columns that received content.
+  const buf = new Uint8Array(vw._stripRT.width * 1 * 4);
+  renderer.readRenderTargetPixels(vw._stripRT, 0, vw._stripRT.height >> 1, vw._stripRT.width, 1, buf);
+  let written = 0, firstBlank = -1;
+  for (let x = 0; x < vw._stripRT.width; x++) {
+    if (buf[x * 4] > 100) written++;
+    else if (firstBlank < 0) firstBlank = x;
+  }
+  const total = vw._stripRT.width;
+  const full = written === total;
+  log(`   columns written: ${written}/${total}` +
+      (full ? '' : `  — first blank column at x=${firstBlank}`));
+  log(`   head wrapped back to 0: ${vw._writeIdx === 0 ? 'yes' : 'no (' + vw._writeIdx + ')'}`);
+  log(full ? '   PASS — whole tape covered' : '   FAIL — tape only partly written');
+
+  vw.dispose();
+  return full && vw._stripRT.width === bufSize;
+}
+
+const results = [480, 960, 1920].map(run);
+
+// Resize must not retune the time depth (it used to overwrite _bufSize with w).
+log(`\n── resize keeps the tape length`);
+const vw = new VasulkaWarp(renderer, CANVAS_W, CANVAS_H, 480);
+const before = vw._bufSize;
+vw.resize(1280, 96);
+const after = vw._bufSize;
+const kept = before === after && vw._stripRT.width === 480 && vw._stripRT.height === 96;
+log(`   bufSize ${before} → ${after}; tape now ${vw._stripRT.width}×${vw._stripRT.height}`);
+log(kept ? '   PASS — width is time depth, only height follows the canvas'
+         : '   FAIL — resize altered the tape length');
+vw.dispose();
+
+const all = results.every(Boolean) && kept;
+log(`\n=== RESULT: ${all ? 'ALL PASS' : 'FAILURE'} ===`);
+window.__vwResult = { coverage: results, resizeKeepsDepth: kept, all };
+</script>

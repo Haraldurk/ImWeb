@@ -444,15 +444,74 @@ that commit ran in a backgrounded tab (`document.hidden`, measured 0 fps), so
 nothing. The direct-driven harness (`tests/slitscan-source.html`) covered the
 read/blit/orientation logic; the owner covered the runtime.
 
-### 5d. `vwarp` (22) — the open question, closed
-`KNOWN-ISSUES.md` has carried "strip-buffer approach conflicts with the pipeline
-source model" since before v0.9, with "treat as a Sequence slot backed by
-IndexedDB" as the candidate direction. **That candidate is wrong and should be
-struck.** The conflict was never about where the frames live; it was that the
-strip buffer is a *private* history with a *private* read. As a tap on the shared
-ring, both halves dissolve. The `vasulka` entry commented out of
-`DEFAULT_FX_ORDER` (`Pipeline.js:35`) stays commented out — that is a separate,
-genuinely deprecated FX-chain pass, not the source.
+### 5d. CORRECTION — `vwarp` (22) is not a tap either. It is the fast path.
+
+*This section previously said vwarp becomes a tap on the shared ring, closing the
+KNOWN-ISSUES architecture question. **Wrong, for the same reason as §5c**, and
+established 2026-07-30 by reading the engine rather than its reputation. Owner's
+decision the same day: keep both engines, document the overlap.*
+
+**What vwarp actually is.** A tape whose horizontal axis is time. One column of
+video per frame at a moving write head; the output reads the whole tape, so
+`out(x, y) = src(x, y)` captured `(writeIdx − x)` frames ago. Static content is
+untouched; motion shears horizontally.
+
+**It is not a slit-scan**, despite the name and despite sitting next to one. A
+slit-scan spreads ONE FIXED source column across every output column (space
+remap). This offsets each column in time *at its own position* — a
+time-displacement gradient, i.e. functionally identical to
+`td.mode = "Slit X"`.
+
+**Why it must not be folded into the ring.** It stores **one column per time
+step**: 1920×1080×4 ≈ 8.3 MB buys **1920** time steps at full resolution.
+TimeDisplaceEngine stores a **whole frame** per time step, because its map is
+arbitrary per-pixel and any pixel of a stored frame may be needed — 120 frames at
+640×480 is ~147 MB for **120** steps. For an axis-aligned monotonic gradient
+vwarp is roughly **18× cheaper and sharper**; for anything else it cannot express
+the map at all.
+
+So the relationship is fast-path / general-case, not duplication:
+
+| | stores | time steps | expresses |
+|---|---|---|---|
+| `vwarp` | 1 column / step | ~1920 | axis-aligned monotonic gradient only |
+| `tdisp` | 1 frame / step | 120 | any per-pixel map — radial, noise, any angle |
+| `slitscan` | 1 column / step | ~640 | a different operation (space remap) |
+
+**Net effect on Phase 25: only `delay` is a genuine tap.** Two of the four
+adapters this document originally promised would have been regressions. The
+consolidation that survives is the ring/tap split (§2) plus `delay`, and that is
+the honest scope.
+
+**The KNOWN-ISSUES entry should still be rewritten, but not as "resolved by
+consolidation".** Its "treat as a Sequence slot backed by IndexedDB" candidate is
+wrong and should be struck; the real answer is that the strip buffer is the
+correct structure and the entry's premise — that it "conflicts with the pipeline
+source model" — is not a defect. Its stale "hidden from UI" status is also wrong
+(restored Phase 24, `index.html:548`). The `vasulka` entry commented out of
+`DEFAULT_FX_ORDER` (`Pipeline.js:35`) stays commented out — a separate, genuinely
+deprecated FX-chain pass, not the source.
+
+### 5d-bis. The bug found while reading it
+
+`Buf Size` did nothing useful below `1920 cols`, which is why the feature read as
+inscrutable. The strip target was allocated at **canvas width** while the write
+head wrapped at **bufSize**, and the output shader read the target's *full*
+width — so every column past `bufSize` was never written. The sweep ran from the
+left edge to column `bufSize` and restarted, black beyond. Only "1920 cols" on a
+1920-wide canvas happened to line up.
+
+Fixed by deleting the split: the tape is allocated at `bufSize`, the head wraps at
+`bufSize`, and the read resamples it across the frame — so `bufSize` means the
+time depth its label always claimed (`480 cols (8s)`). A short tape is now softer
+horizontally rather than partially black, which is the correct trade and has no
+prior behaviour worth preserving.
+
+Two adjacent defects fixed with it: `resize()` overwrote `_bufSize` with the
+canvas width, silently retuning the time depth on every resolution change; and
+the boot construction hardcoded 960, ignoring the saved `vwarp.bufsize`, so a
+project stored at 480 ran a 960-column tape until the param happened to change.
+The `[480, 960, 1920]` table now has one copy in `main.js` instead of two.
 
 ### 5e. The one behaviour change, stated up front
 **Taps share one ring, therefore one capture source and one buffer resolution.**
