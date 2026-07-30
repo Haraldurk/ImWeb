@@ -6758,9 +6758,14 @@ void main() {
     const _cSlit = ps.get("slitscan.active").value
       ? ps.get("slitscan.source").value
       : -1;
+    // vwarp.source likewise — only while the engine is running, since main.js
+    // gates its capture/render on vwarp.active.
+    const _cVwarp = ps.get("vwarp.active").value
+      ? ps.get("vwarp.source").value
+      : -1;
     const _direct = (i) =>
       _cFg === i || _cBg === i || _cDs === i || _cTd === i || _cTdMap === i ||
-      _cSlit === i;
+      _cSlit === i || _cVwarp === i;
 
     // Per-bus inputs. Which one can actually reach the bus output? MIXBUS
     // computes mix(a, modeResult, xfade): xfade=0 is pure srcA (srcB hidden),
@@ -7302,8 +7307,13 @@ void main() {
     if (ps.get("vwarp.active").value) {
       const speed = Math.round(ps.get("vwarp.speed").value) || 1;
       vasulkaWarp.applyParams(ps);
+      // vwarp.source (Phase 25) replaces a `camera3d.active ? camera : prev`
+      // heuristic that no parameter could reach — with a camera attached the tape
+      // could only ever record the camera. Resolved through the same
+      // _resolveLayerTex() the layers use. A source that is inactive resolves to
+      // null and capture() holds the tape rather than erasing it.
       vasulkaWarp.capture(
-        camera3d.active ? camera3d.currentTexture : pipeline.prev.texture,
+        _resolveLayerTex(ps.get("vwarp.source").value),
         speed,
       );
       vasulkaWarp.render(pipeline.prev.texture);

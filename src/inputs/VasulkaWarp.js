@@ -174,6 +174,13 @@ export class VasulkaWarp {
    * @param {number} speed — columns to advance per frame (default 1)
    */
   capture(srcTexture, speed = 1) {
+    // No source ⇒ do not advance the head. Without this the blit would run with
+    // a null sampler and write BLACK columns onto the tape, which is worse than
+    // holding: it actively erases history one column per frame. Reachable as soon
+    // as vwarp.source names something inactive (Camera with the camera off).
+    // Matches TimeDisplaceEngine.capture's guard.
+    if (!srcTexture) return;
+
     const renderer = this._renderer;
     const gl       = renderer.getContext();
 

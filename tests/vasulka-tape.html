@@ -87,7 +87,31 @@ log(kept ? '   PASS — width is time depth, only height follows the canvas'
          : '   FAIL — resize altered the tape length');
 vw.dispose();
 
-const all = results.every(Boolean) && kept;
+/**
+ * A null source must HOLD the tape, not erase it.
+ *
+ * Reachable as soon as vwarp.source names something inactive — Camera with the
+ * camera off is the default case. Without the guard the blit runs with a null
+ * sampler and writes BLACK columns, actively destroying history one column per
+ * frame, which would look like the effect "fading out" for no visible reason.
+ */
+log(`\n── null source holds the tape`);
+const vw2 = new VasulkaWarp(renderer, 256, 16, 64);
+const src2 = solid(220);
+for (let i = 0; i < 64; i++) vw2.capture(src2, 1);       // fill it
+const headBefore = vw2._writeIdx;
+for (let i = 0; i < 20; i++) vw2.capture(null, 1);       // the guarded path
+const nb = new Uint8Array(64 * 4);
+renderer.readRenderTargetPixels(vw2._stripRT, 0, 8, 64, 1, nb);
+let bright = 0;
+for (let x = 0; x < 64; x++) if (nb[x * 4] > 150) bright++;
+const held = bright === 64 && vw2._writeIdx === headBefore;
+log(`   head ${headBefore} → ${vw2._writeIdx}; bright columns ${bright}/64`);
+log(held ? '   PASS — tape intact, head did not advance'
+         : '   FAIL — null source wrote into the tape or moved the head');
+vw2.dispose();
+
+const all = results.every(Boolean) && kept && held;
 log(`\n=== RESULT: ${all ? 'ALL PASS' : 'FAILURE'} ===`);
-window.__vwResult = { coverage: results, resizeKeepsDepth: kept, all };
+window.__vwResult = { coverage: results, resizeKeepsDepth: kept, nullHolds: held, all };
 </script>
