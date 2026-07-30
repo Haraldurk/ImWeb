@@ -66,6 +66,50 @@ if (stray.length) {
 }
 
 /**
+ * THERE ARE TWO RESOLVERS, AND THIS FILE ONCE CHECKED ONLY ONE.
+ *
+ * Pipeline._resolveSource() is the PRIMARY one — it is what layer.fg/bg/ds and
+ * the mix buses go through. _resolveLayerTex() above is the secondary one, used
+ * by engine-internal selectors (sdf.texSrc, td.mapSource, rutt.source …).
+ *
+ * Rutt-Etra shipped wired into the secondary resolver only. This audit reported
+ * a clean 30/30 while routing it to the Foreground produced a flat RED FRAME,
+ * because _resolveSource's fall-through is `inputs.color` and the patch's Color
+ * generator happened to be red. A fall-through to a real, plausible picture is
+ * exactly the failure this file exists to prevent — so it now checks both.
+ */
+const pipe = readFileSync(resolve(root, 'src/core/Pipeline.js'), 'utf8');
+const rsStart = pipe.indexOf('_resolveSource(inputs, sourceIdx) {');
+const rsBody = pipe.slice(rsStart, pipe.indexOf('\n  }', rsStart));
+const pipeHandled = new Set([...rsBody.matchAll(/key === '(\w+)'/g)].map((m) => m[1]));
+
+// 'color' is the fall-through itself, so it is handled by definition.
+pipeHandled.add('color');
+const pipeMissing = defs.filter((d) => !pipeHandled.has(d.key));
+
+console.log(`handled by Pipeline._resolveSource: ${pipeHandled.size}`);
+
+if (pipeMissing.length) {
+  console.error(`\nFAIL — ${pipeMissing.length} source(s) fall through to the Color generator:`);
+  for (const m of pipeMissing) {
+    console.error(`  ${defs.indexOf(m).toString().padStart(2)} ${m.label}  (key "${m.key}")`);
+  }
+  console.error(
+    '\nAdd a branch in Pipeline._resolveSource() AND make sure the key is present\n' +
+    'in the inputs bag in main.js. Routing such a source to a layer shows the\n' +
+    'Color generator instead — a solid frame in whatever hue Color is set to,\n' +
+    'which reads as "the new source renders flat", not as "it never resolved".',
+  );
+  process.exit(1);
+}
+
+const pipeStray = [...pipeHandled].filter((k) => !defs.some((d) => d.key === k));
+if (pipeStray.length) {
+  console.error(`\nFAIL — _resolveSource names key(s) absent from SOURCE_DEFS: ${pipeStray.join(', ')}`);
+  process.exit(1);
+}
+
+/**
  * CAPTURE_SOURCES must be SOURCES plus the indirect entries, in that order.
  *
  * The indices are persisted in saved states, banks, .imweb files and MIDI
