@@ -43,7 +43,7 @@ const solid = (v) => {
 
 const pvals = {
   'vwarp.axis': 0, 'vwarp.flip': 0, 'vwarp.mix': 1,
-  'vwarp.pos': 0, 'vwarp.span': 1,
+  'vwarp.pos': 0, 'vwarp.span': 1, 'vwarp.anchor': 0,
 };
 const ps = { get: (id) => (id in pvals ? { value: pvals[id] } : undefined) };
 
@@ -116,45 +116,65 @@ log(held ? '   PASS — tape intact, head did not advance'
 vw2.dispose();
 
 /**
- * The read must be ANCHORED to the write head.
+ * uAnchor picks WHICH of two things stays still — and both are legitimate.
  *
- * The read used to be `readOffset = coord`, which never learned where the head
- * was — so the age of a given output column changed as the head moved, and the
- * jump between "one frame old" and "a whole tape old" travelled across the
- * picture. That was the sliding tear the owner reported.
+ * A tape column holds SOURCE column c captured when the head was at c, so the
+ * read chooses both which column you see and how old it is. You cannot fix both:
  *
- * Decisive assertion: fill the tape dark, write ONE bright column, and find where
- * it lands in the OUTPUT. Anchored, the newest column is always just inside the
- * trailing edge whatever the head position. Unanchored, it appears AT the head
- * and therefore moves — so this test distinguishes the two directly.
+ *   anchor 0 — output column x always shows source column x. Picture spatially
+ *              TRUE; the tear sweeps. Historical behaviour, and the default.
+ *   anchor 1 — age is a function of position alone. Temporal gradient stationary;
+ *              the PICTURE slides sideways with the head.
+ *
+ * Tested with a spatially structured source (a horizontal ramp), because a solid
+ * frame cannot tell the two apart — which is exactly how shipping anchor=1 by
+ * default slipped through in 3db09f2.
  */
-log(`\n── read is anchored to the write head`);
 const OW = 128, OB = 32;
-const positions = [];
-for (const k of [0, 5, 13, 27]) {
-  const v = new VasulkaWarp(renderer, OW, 8, OB);
-  const dark = solid(30), bright = solid(240);
-  for (let i = 0; i < k; i++) v.capture(dark, 1);        // move the head to k
-  for (let i = 0; i < OB; i++) v.capture(dark, 1);       // fill dark, head back to k
-  v.capture(bright, 1);                                  // newest column = k
-  v.render(dark);
 
+/** A source whose value ramps across x, so a horizontal shift is measurable. */
+function rampTex() {
+  const data = new Uint8Array(OB * 4);
+  for (let c = 0; c < OB; c++) {
+    const v = Math.round((c / (OB - 1)) * 255);
+    data[c * 4] = data[c * 4 + 1] = data[c * 4 + 2] = v; data[c * 4 + 3] = 255;
+  }
+  const t = new THREE.DataTexture(data, OB, 1, THREE.RGBAFormat, THREE.UnsignedByteType);
+  t.minFilter = t.magFilter = THREE.NearestFilter;
+  t.needsUpdate = true;
+  return t;
+}
+
+/** Output row after filling the tape from a ramp and advancing the head to k. */
+function rampRow(anchor, k) {
+  const v = new VasulkaWarp(renderer, OW, 8, OB);
+  const ramp = rampTex();
+  for (let i = 0; i < OB + k; i++) v.capture(ramp, 1);   // fill, head ends at k
+  pvals['vwarp.anchor'] = anchor;
+  v.applyParams(ps);
+  v.render(ramp);
   const row = new Uint8Array(OW * 4);
   renderer.readRenderTargetPixels(v.outputRT, 0, 4, OW, 1, row);
-  let argmax = 0, peak = -1;
-  for (let x = 0; x < OW; x++) if (row[x * 4] > peak) { peak = row[x * 4]; argmax = x; }
-  positions.push({ head: k, argmax, peak });
   v.dispose();
+  // Sample one value per tape column, at the column's centre.
+  const step = OW / OB;
+  return Array.from({ length: OB }, (_, c) => row[Math.floor((c + 0.5) * step) * 4]);
 }
-// Each tape column is OW/OB px wide; "trailing edge" = within the last two.
-const edge = OW - (OW / OB) * 2;
-const anchored = positions.every((p) => p.argmax >= edge && p.peak > 150);
-for (const p of positions) {
-  log(`   head ${String(p.head).padStart(2)} → brightest output column ${p.argmax} (peak ${p.peak})`);
-}
-log(`   expected ≥ ${edge} for every head position`);
-log(anchored ? '   PASS — newest column pinned to the trailing edge, head-independent'
-             : '   FAIL — newest column moves with the head (read not anchored)');
+
+log(`\n── uAnchor: picture-true (0) vs age-true (1)`);
+const drift = (a) => {
+  const at0 = rampRow(a, 0), at8 = rampRow(a, 8);
+  let maxDiff = 0;
+  for (let i = 0; i < at0.length; i++) maxDiff = Math.max(maxDiff, Math.abs(at0[i] - at8[i]));
+  return maxDiff;
+};
+const d0 = drift(0), d1 = drift(1);
+pvals['vwarp.anchor'] = 0;
+log(`   anchor 0 → picture change when the head moves 8 columns: ${d0}  (want ~0)`);
+log(`   anchor 1 → picture change when the head moves 8 columns: ${d1}  (want large)`);
+const anchored = d0 <= 8 && d1 > 40;
+log(anchored ? '   PASS — anchor 0 holds the picture still; anchor 1 slides it, as designed'
+             : '   FAIL — the two modes are not behaving as documented');
 
 /**
  * span magnifies, pos scrubs.
@@ -171,6 +191,7 @@ function brightRun(span, pos) {
   v.capture(bright, 1);
   pvals['vwarp.span'] = span;
   pvals['vwarp.pos'] = pos;
+  pvals['vwarp.anchor'] = 1;   // span/pos are measured against the stationary read
   v.applyParams(ps);
   v.render(dark);
   const row = new Uint8Array(OW * 4);
@@ -188,7 +209,7 @@ log(`\n── span magnifies the window, pos scrubs it`);
 const sFull = brightRun(1.0, 0);
 const sQtr  = brightRun(0.25, 0);
 const pHalf = brightRun(1.0, 0.5);
-pvals['vwarp.span'] = 1; pvals['vwarp.pos'] = 0;   // restore
+pvals['vwarp.span'] = 1; pvals['vwarp.pos'] = 0; pvals['vwarp.anchor'] = 0;  // restore
 log(`   span 1.00  → bright width ${sFull.count}px at x=${sFull.argmax}`);
 log(`   span 0.25  → bright width ${sQtr.count}px at x=${sQtr.argmax}   (expect ~4x wider)`);
 log(`   pos  0.50  → bright at x=${pHalf.argmax}   (expect ~half a frame from ${sFull.argmax})`);
@@ -203,6 +224,6 @@ const all = results.every(Boolean) && kept && held && anchored && magnifies && s
 log(`\n=== RESULT: ${all ? 'ALL PASS' : 'FAILURE'} ===`);
 window.__vwResult = {
   coverage: results, resizeKeepsDepth: kept, nullHolds: held,
-  anchored, headPositions: positions, magnifies, scrubs, all,
+  anchored, anchorDrift: { off: d0, on: d1 }, magnifies, scrubs, all,
 };
 </script>
