@@ -220,6 +220,56 @@ log(magnifies ? '   PASS — narrowing the span magnifies the slice'
 log(scrubs ? '   PASS — pos moves the window'
            : '   FAIL — pos had no effect');
 
+/**
+ * What does Axis actually redirect?
+ *
+ * capture() ALWAYS scissors columns, so time always runs along the tape's x.
+ * Axis only changes which output coordinate feeds readOffset and which tape axis
+ * it indexes. Two probes separate the effects: a source varying only in x, and
+ * one varying only in y. Whichever probe changes tells us which axis the read is
+ * actually moving.
+ */
+function probe(axis, span, vertical) {
+  const N = OB;
+  const data = new Uint8Array(N * N * 4);
+  for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+    const v = Math.round(((vertical ? y : x) / (N - 1)) * 255);
+    const i = (y * N + x) * 4;
+    data[i] = data[i + 1] = data[i + 2] = v; data[i + 3] = 255;
+  }
+  const t = new THREE.DataTexture(data, N, N, THREE.RGBAFormat, THREE.UnsignedByteType);
+  t.minFilter = t.magFilter = THREE.NearestFilter;
+  t.needsUpdate = true;
+
+  const v = new VasulkaWarp(renderer, OW, OW, OB);
+  for (let i = 0; i < OB; i++) v.capture(t, 1);
+  pvals['vwarp.axis'] = axis; pvals['vwarp.span'] = span;
+  pvals['vwarp.pos'] = 0; pvals['vwarp.anchor'] = 0;
+  v.applyParams(ps);
+  v.render(t);
+  const buf = new Uint8Array(OW * OW * 4);
+  renderer.readRenderTargetPixels(v.outputRT, 0, 0, OW, OW, buf);
+  v.dispose();
+  const mid = OW >> 1;
+  return {
+    acrossX: Array.from({ length: 8 }, (_, i) => buf[(mid * OW + i * 16) * 4]),
+    downY:   Array.from({ length: 8 }, (_, i) => buf[(i * 16 * OW + mid) * 4]),
+  };
+}
+
+log(`\n── what Axis redirects (capture always writes COLUMNS, so time runs along x)`);
+for (const axis of [0, 1]) {
+  const h = probe(axis, 0.25, false);   // source varies in x only
+  const vp = probe(axis, 0.25, true);   // source varies in y only
+  const hFlat = new Set(h.acrossX).size === 1;
+  const vFlat = new Set(vp.downY).size === 1;
+  log(`   axis ${axis}: x-probe across x = [${h.acrossX.join(',')}]`);
+  log(`             y-probe down  y = [${vp.downY.join(',')}]`);
+  log(`             span 0.25 compressed the ${axis === 0 ? 'X' : 'Y'} axis: ` +
+      `x-probe ${hFlat ? 'flat' : 'varying'}, y-probe ${vFlat ? 'flat' : 'varying'}`);
+}
+pvals['vwarp.axis'] = 0; pvals['vwarp.span'] = 1;
+
 const all = results.every(Boolean) && kept && held && anchored && magnifies && scrubs;
 log(`\n=== RESULT: ${all ? 'ALL PASS' : 'FAILURE'} ===`);
 window.__vwResult = {

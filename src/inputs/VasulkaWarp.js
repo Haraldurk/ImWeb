@@ -68,7 +68,20 @@ const OUT_FRAG = `
   uniform sampler2D tStrip;
   uniform sampler2D tLive;
   uniform float uMix;
-  uniform int   uAxis;        // 0=H (columns), 1=V (rows)
+  // Which axis the READ CONTROLS act on — not which axis time runs along.
+  // capture() always scissors columns, so time always runs along the tape's x and
+  // the temporal shear is always horizontal. uAxis only decides whether
+  // readOffset (anchor/pos/span/flip) indexes the tape's x or its y. The tape's y
+  // is plain frame-row space, so:
+  //   0  readOffset → tape x: the controls scrub TIME
+  //   1  readOffset → tape y: the controls warp the picture VERTICALLY, while the
+  //      horizontal temporal shear carries on underneath
+  // Verified numerically in tests/vasulka-tape.html: at span 0.25, axis 0
+  // compresses a horizontal probe and leaves a vertical one alone, axis 1 the
+  // exact reverse. Not a bug — a second, geometric axis of control that the H/V
+  // labelling undersells. A true VERTICAL TIME axis would need capture() to
+  // scissor rows into a fullW × bufSize tape, which is a capture-side change.
+  uniform int   uAxis;
   uniform float uFlip;        // 1.0 = reverse time direction
   uniform float uHeadNorm;    // write head as a fraction of the tape (0..1)
   uniform float uAnchor;      // 0 = picture fixed, tear sweeps; 1 = age fixed, picture slides

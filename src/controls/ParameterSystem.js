@@ -4056,11 +4056,18 @@ export function registerCoreParameters(ps) {
     value: 0,
   });
   ps.register({
+    // Which axis Anchor/Position/Span/Flip act on — NOT which axis time runs
+    // along. capture() always writes columns, so the temporal shear is always
+    // horizontal; "Vertical" redirects the read controls onto the tape's y, which
+    // is plain frame-row space, giving a vertical geometric warp over the
+    // horizontal shear. Both are useful; the old "Horizontal / Vertical" labels
+    // implied a rotatable time axis, which this is not.
+    // Options are labels only — the index is what persists.
     id: "vwarp.axis",
-    label: "Axis",
+    label: "Warp axis",
     group: "vwarp",
     type: PARAM_TYPE.SELECT,
-    options: ["Horizontal", "Vertical"],
+    options: ["Time (X)", "Picture (Y)"],
     value: 0,
   });
   ps.register({
