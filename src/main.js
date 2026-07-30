@@ -7364,8 +7364,14 @@ void main() {
       (inputs[_tdKey] ?? null);
     if (ps.get('td.enabled').value) tdEngine.capture(_tdSrc);
 
-    // Vasulka Warp — DEPRECATED: superseded by SequenceBuffer timewarp mode.
-    // Kept for backward compatibility. Do not remove until timewarp mode is stable.
+    // Warp Tape (source 22, formerly "Vasulka Warp"). NOT deprecated — this
+    // comment used to claim it was "superseded by SequenceBuffer timewarp mode,
+    // kept for backward compatibility", which was wrong twice over: the engine
+    // TimeDisplaceEngine's own header calls its successor is a different one
+    // again, and neither can replace it. It stores ONE COLUMN per time step
+    // (~1920 steps for 8.3 MB) where the ring stores a whole frame per step (120
+    // steps for ~147 MB), so for axis-aligned shear it is ~18x cheaper and
+    // sharper. Fast path, not legacy. See docs/ImWeb-Spacetime-Blueprint.md §5d.
     if (ps.get("vwarp.active").value) {
       const speed = Math.round(ps.get("vwarp.speed").value) || 1;
       vasulkaWarp.applyParams(ps);

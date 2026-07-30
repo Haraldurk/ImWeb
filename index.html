@@ -518,36 +518,52 @@ ImWeb</textarea
                     </div>
                     <div class="panel-group">
                         <div class="group-header">From the Signal</div>
-                    <div class="panel-section">
-                        <div class="section-header">Video Delay</div>
-                        <div id="delay-params"></div>
-                    </div>
+                        <!-- WARP — four engines, one idea (Phase 25, 2026-07-30).
+                             Named for Steina Vasulka's *Warp*, made with Image/ine:
+                             "an inversion of time into space, because the temporal
+                             course of the movements performed are presented
+                             spatially, so that we can say time is enveloped,
+                             immersed in space."
+
+                             The honorific sits on the FAMILY, not on one engine.
+                             It used to name the narrowest of them, which was doubly
+                             wrong: *Warp* used both time-warping AND slit-scan, so
+                             pinning it to a single implementation misdescribes the
+                             piece as well as the code.
+
+                             The four differ in what they store, which is what
+                             decides what each can express — see
+                             docs/ImWeb-Spacetime-Blueprint.md §5c/§5d:
+                               Time Displace  1 frame  per step, 120 steps — any
+                                              per-pixel delay map, any angle
+                               Tape           1 column per step, ~1920 steps —
+                                              axis-aligned shear only, ~18x cheaper
+                               Slit Scan      1 column per step, ~640 steps — a
+                                              DIFFERENT operation (space remap)
+                               Video Delay    whole frames, uniform age — the
+                                              degenerate case
+                             Container ids are unchanged, so buildMappingPanels()
+                             (UI.js) needs no edit: it is an id→params map with no
+                             labels and no ordering. -->
                         <div class="panel-section">
-                            <div class="section-header">Time FX</div>
+                            <div class="section-header">Warp</div>
                             <div class="panel-subsection">
                                 <div class="subsection-header">Time Displace</div>
                                 <div id="tdisp-params"></div>
                             </div>
                             <div class="panel-subsection">
+                                <div class="subsection-header">Tape</div>
+                                <div id="vwarp-params"></div>
+                            </div>
+                            <div class="panel-subsection">
                                 <div class="subsection-header">Slit Scan</div>
                                 <div id="slitscan-params"></div>
                             </div>
+                            <div class="panel-subsection">
+                                <div class="subsection-header">Video Delay</div>
+                                <div id="delay-params"></div>
+                            </div>
                         </div>
-                    <!-- VasulkaWarp — RESTORED 2026-07-27 (Phase 24 Step 4).
-                         Source 22 is routable and its render path in main.js is
-                         live, so under the Phase 24 rule "routable ⇒ visible UI
-                         footprint" it must have a panel; offering it in every
-                         source dropdown with no way to switch it on was the
-                         inconsistency this fixes.
-                         Still experimental and superseded in intent by
-                         SequenceBuffer timewarp mode — the vwarp.* render path
-                         is deprecated-but-load-bearing until that is stable.
-                         An older duplicate for the vasulka.* namespace was
-                         deleted in Phase 23; this vwarp.* one is the survivor. -->
-                    <div class="panel-section">
-                        <div class="section-header">Vasulka Warp</div>
-                        <div id="vwarp-params"></div>
-                    </div>
                     <div class="panel-section">
                         <div class="section-header">Frame Sequences</div>
                         <div id="seq-params"></div>

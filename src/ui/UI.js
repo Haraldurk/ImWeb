@@ -188,8 +188,9 @@ export function buildMappingPanels(ps, contextMenu) {
   });
 
   // ── Time Displace: per-mode Scan pos / Scan pos Y / Scan width visibility ──
-  // Slit X/Y (0,1) and Noise (6) use neither; Warp Line/Slit Sym/Radial (2-5)
+  // Shear X/Y (0,1) and Noise (6) use neither; Warp Line/Shear Sym/Radial (2-5)
   // use Scan pos + Scan width; Radial (5) alone also uses Scan pos Y.
+  // Keyed on mode INDEX, so the Slit→Shear relabel does not affect this.
   {
     const tdEl = document.getElementById('tdisp-params');
     const scanPosRow  = tdEl?.querySelector('[data-param-id="td.scanPosition"]');
