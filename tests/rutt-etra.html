@@ -51,7 +51,7 @@ const vals = {
   'rutt.thickness': 1.5, 'rutt.angle': 0, 'rutt.elev': 35, 'rutt.dist': 3.2,
   'rutt.decay': 0, 'rutt.bleed': 0,
   'rutt.hue': 0, 'rutt.sat': 0, 'rutt.colorAmt': 0,
-  'rutt.rise': 0, 'rutt.fall': 0, 'rutt.drawMode': 0,
+  'rutt.rise': 0, 'rutt.fall': 0, 'rutt.drawMode': 0, 'rutt.pointSize': 3,
 };
 const ps = { get: (id) => (id in vals ? { value: vals[id] } : undefined) };
 
@@ -343,22 +343,44 @@ const draw = (m, extra = {}) => {
 };
 const asLines = draw(0), asPoints = draw(1), asBoth = draw(2);
 check('points mode renders', asPoints.lit > 200, `lit=${asPoints.lit}`);
-check('points light fewer pixels than continuous lines', asPoints.lit < asLines.lit,
-  `lines=${asLines.lit} points=${asPoints.lit}`);
 check('both draws at least as much as either alone',
   asBoth.lit >= Math.max(asLines.lit, asPoints.lit) - 2,
   `lines=${asLines.lit} points=${asPoints.lit} both=${asBoth.lit}`);
 
-// Beam must size the DOTS too, not only the ribbon. gl_PointSize is capped at 1
-// on some drivers, which would leave the control dead in Points mode while it
-// still worked in Lines — a platform failure worth catching here rather than in
-// a performance.
-const dotThin = draw(1, { 'rutt.thickness': 1 });
-const dotFat  = draw(1, { 'rutt.thickness': 6 });
-check('beam sizes the dots (gl_PointSize is not capped at 1)',
+// Sparser than lines — but compared at MATCHED width, which is the only version
+// of this claim that means anything. Dot defaults to 3px against Beam's 1.5, so
+// comparing the two defaults says something about the defaults, not about the
+// primitives: a continuous ribbon covers more than a discrete dot lattice.
+const evenLines  = draw(0, { 'rutt.thickness': 3 });
+const evenPoints = draw(1, { 'rutt.pointSize': 3 });
+check('at matched width, points are sparser than continuous lines',
+  evenPoints.lit < evenLines.lit,
+  `lines@3px=${evenLines.lit} points@3px=${evenPoints.lit}`);
+
+// Dot sizes the points. gl_PointSize is capped at 1 on some drivers, which
+// would leave this control dead in Points mode while Beam still worked in Lines
+// — a platform failure worth catching here rather than in a performance.
+const dotThin = draw(1, { 'rutt.pointSize': 1 });
+const dotFat  = draw(1, { 'rutt.pointSize': 6 });
+check('dot size scales the points (gl_PointSize is not capped at 1)',
   dotFat.lit > dotThin.lit * 2,
   `1px=${dotThin.lit} 6px=${dotFat.lit} (${(dotFat.lit / dotThin.lit).toFixed(2)}x)`);
-Object.assign(vals, { 'rutt.drawMode': 0, 'rutt.lines': 60, 'rutt.thickness': 1.5 });
+
+// The two widths are INDEPENDENT, which is the whole reason Dot is its own
+// control: Both mode wants a thin ribbon under fat dots. Each must move only
+// its own primitive.
+const beamOnPoints = draw(1, { 'rutt.pointSize': 3, 'rutt.thickness': 8 });
+const beamOnPoints2 = draw(1, { 'rutt.pointSize': 3, 'rutt.thickness': 1 });
+check('beam does not affect points', beamOnPoints.lit === beamOnPoints2.lit,
+  `beam8=${beamOnPoints.lit} beam1=${beamOnPoints2.lit}`);
+
+const dotOnLines = draw(0, { 'rutt.thickness': 2, 'rutt.pointSize': 1 });
+const dotOnLines2 = draw(0, { 'rutt.thickness': 2, 'rutt.pointSize': 14 });
+check('dot size does not affect lines', dotOnLines.lit === dotOnLines2.lit,
+  `dot1=${dotOnLines.lit} dot14=${dotOnLines2.lit}`);
+
+Object.assign(vals, { 'rutt.drawMode': 0, 'rutt.lines': 60,
+                      'rutt.thickness': 1.5, 'rutt.pointSize': 3 });
 
 // ── 4. Camera orbit ──────────────────────────────────────────────────────────
 log('\ncamera');

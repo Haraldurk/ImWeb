@@ -57,6 +57,7 @@ uniform float uZGain;
 uniform float uZCurve;
 uniform float uZPivot;
 uniform float uThickness;
+uniform float uPointSize;
 uniform vec2  uResolution;
 attribute float aSide;
 varying float vLuma;
@@ -100,7 +101,10 @@ void main() {
   // geometry, so the ribbon term above contributes nothing there, and setting
   // gl_PointSize is simply ignored when the draw is triangles — which is what
   // lets one material serve both modes instead of two that must be kept in step.
-  gl_PointSize = uThickness;
+  //
+  // Its own uniform, NOT uThickness: in Both mode the useful setting is a thin
+  // ribbon under prominent dots, which a shared width cannot express.
+  gl_PointSize = uPointSize;
 }
 `;
 
@@ -244,6 +248,7 @@ export class RuttEtra {
         uZCurve:     { value: 1.0 },
         uZPivot:     { value: 0.0 },
         uThickness:  { value: 1.5 },
+        uPointSize:  { value: 3 },
         uTint:       { value: new THREE.Color(1, 1, 1) },
         uColorAmt:   { value: 0 },
         uResolution: { value: new THREE.Vector2(width, height) },
@@ -491,6 +496,7 @@ export class RuttEtra {
     u.uZCurve.value    = ps.get('rutt.zcurve').value;
     u.uZPivot.value    = ps.get('rutt.zpivot').value;
     u.uThickness.value = ps.get('rutt.thickness').value;
+    u.uPointSize.value = ps.get('rutt.pointSize').value;
 
     // Tint is a lerp from WHITE toward the pure hue, not an HSL colour: at
     // saturation 0 it must be exactly (1,1,1) so the default is the original
