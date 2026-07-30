@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<!-- VideoDelayLine: depth, buffer resolution, and the VRAM clamp.
+
+     Driven directly, no requestAnimationFrame — a backgrounded tab suspends rAF
+     (document.hidden ⇒ 0 fps) and would make this pass vacuously.
+
+     Run:  npx vite --port 5199
+           open http://localhost:5199/tests/delay-ring.html
+-->
+<meta charset="utf-8">
+<title>Video delay ring test</title>
+<body style="background:#111;color:#ddd;font:12px monospace;white-space:pre"></body>
+<script type="module">
+import * as THREE from 'three';
+import { VideoDelayLine } from '/src/inputs/VideoDelayLine.js';
+
+const out = [];
+const log = (s) => { out.push(s); document.body.textContent = out.join('\n'); };
+
+const renderer = new THREE.WebGLRenderer({ antialias: false });
+renderer.setSize(64, 64);
+
+/** A frame whose red channel encodes its own index, so age is checkable. */
+const frameTex = (k) => {
+  const t = new THREE.DataTexture(
+    new Uint8Array([k, 0, 0, 255]), 1, 1, THREE.RGBAFormat, THREE.UnsignedByteType);
+  t.needsUpdate = true;
+  return t;
+};
+
+const readOne = (tex) => {
+  // Render the texture into a 1x1 target to sample it.
+  const rt = new THREE.WebGLRenderTarget(1, 1, { depthBuffer: false });
+  const mat = new THREE.MeshBasicMaterial({ map: tex });
+  const sc = new THREE.Scene();
+  sc.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), mat));
+  const cam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+  renderer.setRenderTarget(rt);
+  renderer.render(sc, cam);
+  const buf = new Uint8Array(4);
+  renderer.readRenderTargetPixels(rt, 0, 0, 1, 1, buf);
+  renderer.setRenderTarget(null);
+  rt.dispose(); mat.dispose();
+  return buf[0];
+};
+
+// ── 1. getTexture(n) returns the frame captured n steps ago ─────────────────
+log(`── age arithmetic`);
+{
+  const d = new VideoDelayLine(renderer, 8, 8, 16);
+  for (let k = 1; k <= 40; k++) d.capture(frameTex(k));   // wraps twice
+  let ok = true;
+  const checks = [1, 2, 8, 15];
+  for (const n of checks) {
+    const got = readOne(d.getTexture(n));
+    const want = 40 - n + 1;   // n=1 is the most recent capture, which was 40
+    if (Math.abs(got - want) > 2) ok = false;
+    log(`   getTexture(${String(n).padStart(2)}) = ${got}  (want ${want})`);
+  }
+  log(ok ? '   PASS — age arithmetic holds across wraps'
+         : '   FAIL — wrong frame returned');
+  window.__ageOk = ok;
+  d.dispose();
+}
+
+// ── 2. Depth and resolution reallocate; resize does NOT ─────────────────────
+log(`\n── depth, buffer resolution, and display resize`);
+{
+  const d = new VideoDelayLine(renderer, 1920, 1080, 30);
+  const a = { f: d.maxFrames, w: d.width, h: d.height };
+  d.setFrames(120);                         // 949 MB at Native — will be clamped
+  const b = { f: d.maxFrames, w: d.width, h: d.height };
+  d.setBufferResolution(320, 240);          // now 120 fits; the request must return
+  const c = { f: d.maxFrames, w: d.width, h: d.height };
+  d.resize(800, 600);                       // display change — must be ignored
+  const e = { f: d.maxFrames, w: d.width, h: d.height };
+
+  log(`   start            ${a.f} frames @ ${a.w}x${a.h}`);
+  log(`   setFrames(120)   ${b.f} frames @ ${b.w}x${b.h}   (clamped — 120 needs 949 MB here)`);
+  log(`   setBufferRes     ${c.f} frames @ ${c.w}x${c.h}   (request restored: want 120)`);
+  log(`   resize(800,600)  ${e.f} frames @ ${e.w}x${e.h}   (must be unchanged)`);
+  // The order-independence claim: a depth the budget refused at one resolution
+  // must be granted once a lower resolution makes it fit.
+  const ok = b.f < 120 && c.f === 120 && c.w === 320 && c.h === 240 &&
+             e.w === 320 && e.h === 240 && e.f === 120;
+  log(ok ? '   PASS — depth survives a resolution change; display resize leaves the ring alone'
+         : '   FAIL — controls do not compose, or resize wiped the ring');
+  window.__lifecycleOk = ok;
+  d.dispose();
+}
+
+// ── 3. The VRAM clamp fires instead of allocating gigabytes ─────────────────
+log(`\n── VRAM budget`);
+{
+  const want = VideoDelayLine.vramMB(480, 1920, 1080);
+  const d = new VideoDelayLine(renderer, 1920, 1080, 30);
+  d.setFrames(480);                       // 3.8 GB if unclamped
+  const got = VideoDelayLine.vramMB(d.maxFrames, d.width, d.height);
+  log(`   asked for 480 frames @ 1920x1080 = ${want.toFixed(0)} MB`);
+  log(`   allocated ${d.maxFrames} frames = ${got.toFixed(0)} MB`);
+  const ok = d.maxFrames < 480 && got <= 800;
+  log(ok ? '   PASS — clamped to the budget rather than allocating it'
+         : '   FAIL — no clamp');
+  window.__clampOk = ok;
+  d.dispose();
+}
+
+const all = window.__ageOk && window.__lifecycleOk && window.__clampOk;
+log(`\n=== RESULT: ${all ? 'ALL PASS' : 'FAILURE'} ===`);
+window.__delayResult = { age: window.__ageOk, lifecycle: window.__lifecycleOk, clamp: window.__clampOk, all };
+</script>

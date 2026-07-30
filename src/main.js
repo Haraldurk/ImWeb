@@ -309,6 +309,20 @@ async function main() {
   const seq2 = new SequenceBuffer(renderer, W, H, 60, "seq2");
   const seq3 = new SequenceBuffer(renderer, W, H, 60, "seq3");
   const videoDelay = new VideoDelayLine(renderer, W, H, 30);
+  // Ring depth and working resolution, both reallocating (history is discarded
+  // either way, so they share VideoDelayLine._realloc). Resolution is the lever
+  // that makes a long echo affordable — 30 frames at Native costs 237 MB for
+  // half a second, while 240 frames at 640×480 is 4 seconds for about the same.
+  const DELAY_SIZES = [30, 60, 120, 240, 480];
+  const DELAY_RES = [null, [640, 480], [640, 360], [320, 240]]; // null = Native
+  const _delayRes = (v) => DELAY_RES[v] ?? null;
+  ps.get("delay.size").onChange((v) => {
+    videoDelay.setFrames(DELAY_SIZES[v] ?? 30);
+  });
+  ps.get("delay.bufferResolution").onChange((v) => {
+    const r = _delayRes(v);
+    videoDelay.setBufferResolution(r ? r[0] : W, r ? r[1] : H);
+  });
   // Time-Displace buffer resolution (decoupled from display). Index → [w,h];
   // null = Native (live display size). Mirrors RENDER_RESOLUTIONS.
   const TD_BUFFER_RES = [[320, 240], [640, 360], [640, 480], null];
@@ -6812,9 +6826,14 @@ void main() {
     const _cVwarp = ps.get("vwarp.active").value
       ? ps.get("vwarp.source").value
       : -1;
+    // delay.source has no on/off switch — the ring records every frame — so it is
+    // always a consumer. Gating it on "is Delay routed anywhere" would be wrong:
+    // the point of a delay is that the history is already there when you reach
+    // for it, which means the source has to keep being ticked meanwhile.
+    const _cDelay = ps.get("delay.source").value;
     const _direct = (i) =>
       _cFg === i || _cBg === i || _cDs === i || _cTd === i || _cTdMap === i ||
-      _cSlit === i || _cVwarp === i;
+      _cSlit === i || _cVwarp === i || _cDelay === i;
 
     // Per-bus inputs. Which one can actually reach the bus output? MIXBUS
     // computes mix(a, modeResult, xfade): xfade=0 is pure srcA (srcB hidden),
@@ -7347,7 +7366,12 @@ void main() {
     }
 
     // Capture output into video delay ring buffer
-    videoDelay.capture(pipeline.prev.texture);
+    // Video Delay records delay.source (Phase 25). "Output" — the default and the
+    // old hardwiring — is an echo of the whole composite, which is why it reads
+    // well as a BG under a live FG. Any other source records that source alone.
+    // capture() already guards a null texture, so an inactive source holds the
+    // ring rather than filling it with black.
+    videoDelay.capture(_resolveLayerTex(ps.get("delay.source").value));
 
     // Time-Displacement Engine — ring WRITE. captureSource indexes the
     // canonical SOURCE_KEYS list. Most sources resolve via `inputs` (already

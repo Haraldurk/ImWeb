@@ -3627,9 +3627,50 @@ export function registerCoreParameters(ps) {
     label: "DelayFrames",
     group: "delay",
     min: 1,
-    max: 30,
+    // Ceiling is the deepest ring delay.size can allocate. The ACHIEVABLE depth
+    // is lower whenever the ring is shorter or the VRAM budget clamped it, so
+    // getTexture() returns null past the real history and the compositor holds
+    // the last good frame. A fixed max here is fine because the param is a
+    // request, not a promise.
+    max: 480,
     value: 5,
     step: 1,
+  });
+  // What the delay records. Was hardwired to the composited output — a coherent
+  // default (an echo of everything, which is why it reads well as a BG under a
+  // live FG) but the only thing it could ever do. Resolved through the same
+  // _resolveLayerTex() the layers use; default 8 ("Output") is the old wiring.
+  ps.register({
+    id: "delay.source",
+    label: "Delay src",
+    group: "delay",
+    type: PARAM_TYPE.SELECT,
+    options: SOURCES,
+    value: 8,
+  });
+  // Ring depth. Seconds assume 60 fps.
+  ps.register({
+    id: "delay.size",
+    label: "Ring depth",
+    group: "delay",
+    type: PARAM_TYPE.SELECT,
+    select: true,
+    options: ["30 (0.5s)", "60 (1s)", "120 (2s)", "240 (4s)", "480 (8s)"],
+    value: 0,
+  });
+  // Working resolution, decoupled from the canvas — this is the lever that makes
+  // a long echo affordable. 30 frames at Native is 237 MB for half a second; the
+  // same VRAM buys 240 frames (4s) at 640x480, or 8s at 320x240 for less.
+  // The trade is real: the delay is composited at full canvas size, so a low
+  // buffer resolution is visibly softer. Default Native keeps today's picture.
+  ps.register({
+    id: "delay.bufferResolution",
+    label: "Buffer res",
+    group: "delay",
+    type: PARAM_TYPE.SELECT,
+    select: true,
+    options: ["Native", "640×480", "640×360", "320×240"],
+    value: 0,
   });
 
   // ── Particles ─────────────────────────────────────────────────────────────
