@@ -4774,6 +4774,19 @@ export function registerCoreParameters(ps) {
     value: 0,
     step: 0.01,
   });
+  // How far the phosphor spreads each frame as it fades. Does nothing at
+  // Persist 0 — there is no trail to diffuse — so it reads as a sub-control of
+  // Persist and sits directly beneath it.
+  ps.register({
+    id: "rutt.bleed",
+    label: "Spread",
+    group: "rutt",
+    min: 0,
+    max: 4,
+    value: 0,
+    step: 0.05,
+    unit: "px",
+  });
 
   return ps;
 }

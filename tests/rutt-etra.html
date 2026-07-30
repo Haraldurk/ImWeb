@@ -49,7 +49,7 @@ const vals = {
   'rutt.active': 1, 'rutt.source': 0, 'rutt.lines': 60, 'rutt.zgain': 0.8,
   'rutt.zcurve': 1, 'rutt.zpivot': 0,
   'rutt.thickness': 1.5, 'rutt.angle': 0, 'rutt.elev': 35, 'rutt.dist': 3.2,
-  'rutt.decay': 0,
+  'rutt.decay': 0, 'rutt.bleed': 0,
 };
 const ps = { get: (id) => (id in vals ? { value: vals[id] } : undefined) };
 
@@ -226,6 +226,47 @@ check('the trail fades rather than holding', trail2.mean < trail1.mean,
 check('front buffer alternates (ping-pong is real)',
   (() => { const a = re._cur; re.tick(ps, 0.016, black); return re._cur !== a; })());
 vals['rutt.decay'] = 0;
+
+// ── 5b. Spatial phosphor decay ───────────────────────────────────────────────
+log('\nphosphor spread');
+// One lit frame, then one dark frame, so what we measure is purely the decay
+// pass acting on the trail rather than a freshly drawn lattice.
+// At 8 lines, not 60: a full lattice already covers the frame, leaving spreading
+// nowhere to go — that version measured 12082 -> 12962, a 7% margin against a 5%
+// threshold, which is the beam-width saturation mistake again. Sparse lines make
+// the trail thin and the effect unmistakable.
+const fade = (bleed) => {
+  Object.assign(vals, { 'rutt.lines': 8, 'rutt.decay': 0.9, 'rutt.bleed': bleed });
+  reset();
+  vals['rutt.decay'] = 0.9;            // reset() zeroes decay; restore after
+  re.tick(ps, 0.016, bright);
+  re.tick(ps, 0.016, black);
+  return stats();
+};
+const sharp = fade(0), spread = fade(2.5);
+check('spread widens the trail', spread.lit > sharp.lit * 1.5,
+  `bleed0=${sharp.lit} bleed2.5=${spread.lit} (${(spread.lit / sharp.lit).toFixed(2)}x)`);
+
+// The pair that matters. Area up while mean does NOT rise means energy was
+// redistributed, not manufactured. A kernel with gain > 1 would compound with
+// the additive lattice draw every frame and run the buffer away to white, so
+// this is the assertion standing between Spread and a saturating feedback loop.
+check('spread redistributes energy rather than adding it',
+  spread.mean <= sharp.mean * 1.02,
+  `mean sharp=${sharp.mean.toFixed(2)} spread=${spread.mean.toFixed(2)}`);
+
+// Runaway check, run long: many frames at maximum spread and near-maximum
+// persistence must not drive the buffer to white.
+Object.assign(vals, { 'rutt.decay': 0.98, 'rutt.bleed': 4 });
+reset(); vals['rutt.decay'] = 0.98;
+for (let i = 0; i < 60; i++) re.tick(ps, 0.016, bright);
+const soak = stats();
+check('60 frames at max persist + max spread does not saturate to white',
+  soak.mean < 250, `mean=${soak.mean.toFixed(1)} max=${soak.max}`);
+
+check('bleed 0 leaves the trail identical to no spread at all',
+  (() => { const a = fade(0), b = fade(0); return a.lit === b.lit && a.mean === b.mean; })());
+Object.assign(vals, { 'rutt.lines': 60, 'rutt.decay': 0, 'rutt.bleed': 0 });
 
 // ── 6. Line count rebuild + gate ─────────────────────────────────────────────
 log('\nrebuild and gate');
