@@ -55,6 +55,18 @@ git tag and nothing else. Design doc: `docs/ImWeb-Spacetime-Blueprint.md` §6.*
   76.16). Both at 0 bypasses the history buffer entirely rather than passing
   through it at coefficient 1, so the default costs neither a pass nor any
   resampling softness.
+- **`rutt.shape`** — Plane · Sphere · Cylinder · Torus · Catenoid · Helicoid ·
+  Gyroid. The raster wraps onto a surface instead of only a plane, and
+  displacement runs along the surface NORMAL rather than +z. Every surface has a
+  natural family of curves at constant v — latitude rings, stacked rings, loops,
+  nested helices — so the SCAN survives the shape change, which is what keeps
+  this Rutt-Etra rather than the 3D Scene (which already displaces solids by a
+  texture). Plane is the identity case: its normal is (0,0,1), so it renders
+  bit-identically to before. Gyroid is honest about being the exception — a
+  triply periodic minimal surface has no closed-form parameterisation, so it is
+  solved as a height field by root-finding per grid point, giving one sheet
+  rather than the full labyrinth. Aspect stretch stays a plane affordance; it
+  would turn a sphere into an ellipsoid.
 - **`rutt.drawMode` / `rutt.pointSize`** — Lines · Points · Both, with its own
   Dot width. The same lattice drawn as a dot cloud, which scan processors of the
   period also did. Dot is separate from Beam rather than derived from it, because

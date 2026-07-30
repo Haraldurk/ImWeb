@@ -178,8 +178,8 @@ export function buildMappingPanels(ps, contextMenu) {
     // ids; the nesting lives entirely in index.html.
     // tests/audit-panel-coverage.mjs enforces that every rutt.* param is placed
     // in exactly one of these, since an unplaced one would vanish silently.
-    'rutt-scan-params':     pick('rutt', ['active', 'source', 'drawMode', 'lines',
-                                          'thickness', 'pointSize']),
+    'rutt-scan-params':     pick('rutt', ['active', 'source', 'shape', 'drawMode',
+                                          'lines', 'thickness', 'pointSize']),
     'rutt-depth-params':    pick('rutt', ['zgain', 'zcurve', 'zpivot', 'rise', 'fall']),
     'rutt-camera-params':   pick('rutt', ['angle', 'elev', 'dist',
                                           'moveX', 'moveY', 'moveZ']),
