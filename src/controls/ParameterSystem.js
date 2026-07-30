@@ -4009,6 +4009,22 @@ export function registerCoreParameters(ps) {
   });
 
   // ── Vasulka Warp (Temporal Slit-Scan) ────────────────────────────────────
+  // What gets written onto the tape. Replaces a hardcoded
+  // `camera3d.active ? camera : pipeline.prev` heuristic in main.js that no
+  // parameter could reach — so with a camera attached the engine could only ever
+  // warp the camera, whatever the performer intended.
+  // Default 0 (Camera) keeps what a camera-attached setup already sees, and
+  // matches the lineage: Steina performed to a camera. Unlike slitscan.source
+  // (which defaults to Output) there is no single index that reproduces the old
+  // heuristic, because the heuristic depended on runtime state.
+  ps.register({
+    id: "vwarp.source",
+    label: "Tape src",
+    group: "vwarp",
+    type: PARAM_TYPE.SELECT,
+    options: SOURCES,
+    value: 0,
+  });
   ps.register({
     id: "vwarp.active",
     label: "VWarp",
