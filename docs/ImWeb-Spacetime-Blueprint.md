@@ -437,6 +437,13 @@ stretched rather than letterboxed before the strip is cut. Acceptable for a
 strip-sampler, but it will look wrong to anyone slit-scanning a 4:3 source on a
 16:9 canvas.
 
+**Owner-confirmed working 2026-07-30**, in a visible window at 60 fps. This
+closes the verification debt `766afc3` declared: every automated in-app check of
+that commit ran in a backgrounded tab (`document.hidden`, measured 0 fps), so
+`slitScan.tick()` never executed and the absence of GL errors there was worth
+nothing. The direct-driven harness (`tests/slitscan-source.html`) covered the
+read/blit/orientation logic; the owner covered the runtime.
+
 ### 5d. `vwarp` (22) — the open question, closed
 `KNOWN-ISSUES.md` has carried "strip-buffer approach conflicts with the pipeline
 source model" since before v0.9, with "treat as a Sequence slot backed by
