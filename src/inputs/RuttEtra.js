@@ -133,6 +133,36 @@ void main() {
 }
 `;
 
+/**
+ * Fragment shader for the POINT draw. Identical colour handling to SCAN_FRAG,
+ * plus a spherical profile.
+ *
+ * It has to be a separate shader rather than a branch in the shared one:
+ * gl_PointCoord is only defined while rasterising points, and reading it during
+ * a triangle draw is undefined behaviour. Two materials over ONE shared uniforms
+ * object costs nothing and keeps that boundary honest.
+ *
+ * No discard, and no alpha test. THREE.AdditiveBlending is (SrcAlpha, One), so
+ * the contribution is rgb × a — scaling the colour by a profile that reaches 0
+ * at the rim removes the corners for free, and the hemisphere term is 0 outside
+ * the disc anyway because of the max().
+ */
+const SCAN_FRAG_POINT = `
+varying float vLuma;
+varying vec3  vColor;
+uniform vec3  uTint;
+uniform float uColorAmt;
+
+void main() {
+  vec2 d = gl_PointCoord - 0.5;
+  // Height of a unit hemisphere over the point sprite: 1 at the centre, 0 at
+  // the rim, and exactly 0 beyond it. Round AND shaded, from one expression.
+  float sphere = sqrt(max(0.0, 0.25 - dot(d, d))) * 2.0;
+  vec3 mono = uTint * vLuma;
+  gl_FragColor = vec4(mix(mono, vColor, uColorAmt) * sphere, 1.0);
+}
+`;
+
 const DECAY_VERT = `
 varying vec2 vUv;
 void main() { vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }
@@ -241,18 +271,24 @@ export class RuttEtra {
     this._rtB = new THREE.WebGLRenderTarget(width, height, opts);
     this._cur = this._rtA;
 
+    // ONE uniforms object, shared by reference between the two materials, so
+    // tick() writes it once and both draws see it. three assigns the object
+    // straight through — cloning is opt-in via UniformsUtils, which is exactly
+    // what we do not want here.
+    const shared = {
+      uSrc:        { value: new THREE.DataTexture(new Uint8Array([0, 0, 0, 255]), 1, 1) },
+      uZGain:      { value: 0.5 },
+      uZCurve:     { value: 1.0 },
+      uZPivot:     { value: 0.0 },
+      uThickness:  { value: 1.5 },
+      uPointSize:  { value: 3 },
+      uTint:       { value: new THREE.Color(1, 1, 1) },
+      uColorAmt:   { value: 0 },
+      uResolution: { value: new THREE.Vector2(width, height) },
+    };
+
     this._mat = new THREE.ShaderMaterial({
-      uniforms: {
-        uSrc:        { value: new THREE.DataTexture(new Uint8Array([0, 0, 0, 255]), 1, 1) },
-        uZGain:      { value: 0.5 },
-        uZCurve:     { value: 1.0 },
-        uZPivot:     { value: 0.0 },
-        uThickness:  { value: 1.5 },
-        uPointSize:  { value: 3 },
-        uTint:       { value: new THREE.Color(1, 1, 1) },
-        uColorAmt:   { value: 0 },
-        uResolution: { value: new THREE.Vector2(width, height) },
-      },
+      uniforms: shared,
       vertexShader:   SCAN_VERT,
       fragmentShader: SCAN_FRAG,
       blending:   THREE.AdditiveBlending,
@@ -265,6 +301,15 @@ export class RuttEtra {
       // ordering. Since rutt.angle defaults to 0, that reads as "the source is
       // broken" rather than "the winding is backwards". A beam has no facing.
       side: THREE.DoubleSide,
+    });
+
+    this._matPoints = new THREE.ShaderMaterial({
+      uniforms: shared,                 // same object, not a copy
+      vertexShader:   SCAN_VERT,
+      fragmentShader: SCAN_FRAG_POINT,
+      blending:   THREE.AdditiveBlending,
+      depthTest:  false,
+      depthWrite: false,
     });
 
     this._scene  = new THREE.Scene();
@@ -444,7 +489,7 @@ export class RuttEtra {
       this._rig.remove(this._points);
       this._points.geometry.dispose();
     }
-    this._points = new THREE.Points(pGeo, this._mat);
+    this._points = new THREE.Points(pGeo, this._matPoints);
     this._points.frustumCulled = false;
     this._rig.add(this._points);
   }
@@ -598,6 +643,7 @@ export class RuttEtra {
     this._slewMat.dispose();
     this._slewScene.children[0].geometry.dispose();
     this._mat.dispose();
+    this._matPoints.dispose();
     this._decayMat.dispose();
     this._decayScene.children[0].geometry.dispose();
     if (this._mesh) this._mesh.geometry.dispose();

@@ -382,6 +382,57 @@ const dotOnLines2 = draw(0, { 'rutt.thickness': 2, 'rutt.pointSize': 14 });
 check('dot size does not affect lines', dotOnLines.lit === dotOnLines2.lit,
   `dot1=${dotOnLines.lit} dot14=${dotOnLines2.lit}`);
 
+// Dots are ROUND, not square sprites. Measured on a dedicated wider instance:
+// colsFor() never drops below 32 columns, so at this harness's 192px the dots
+// sit 6px apart and a testable point size would overlap them into a sheet.
+{
+  const PW = 512, PH = 256;
+  const pr = new THREE.WebGLRenderer({ antialias: false });
+  pr.setSize(PW, PH);
+  const flat = (() => {                       // uniform mid-grey: every dot equal
+    const rt = new THREE.WebGLRenderTarget(PW, PH, {
+      minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter,
+      format: THREE.RGBAFormat, type: THREE.UnsignedByteType, depthBuffer: false });
+    const m = new THREE.ShaderMaterial({
+      vertexShader: `void main(){ gl_Position = vec4(position.xy, 0.0, 1.0); }`,
+      fragmentShader: `void main(){ gl_FragColor = vec4(vec3(0.9), 1.0); }` });
+    const s = new THREE.Scene(); s.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), m));
+    pr.setRenderTarget(rt); pr.render(s, new THREE.OrthographicCamera(-1,1,1,-1,0,1));
+    pr.setRenderTarget(null); return rt.texture;
+  })();
+
+  const pre = new RuttEtra(pr, PW, PH);
+  const pv = { ...vals, 'rutt.drawMode': 1, 'rutt.lines': 6, 'rutt.pointSize': 12,
+               'rutt.zgain': 0, 'rutt.elev': 0, 'rutt.angle': 0, 'rutt.dist': 3.2,
+               'rutt.decay': 0, 'rutt.bleed': 0, 'rutt.rise': 0, 'rutt.fall': 0,
+               'rutt.moveX': 0, 'rutt.moveY': 0, 'rutt.moveZ': 0,
+               'rutt.sat': 0, 'rutt.colorAmt': 0, 'rutt.zcurve': 1, 'rutt.zpivot': 0 };
+  pre.tick({ get: (id) => ({ value: pv[id] }) }, 0.016, flat);
+
+  const pbuf = new Uint8Array(PW * PH * 4);
+  pr.readRenderTargetPixels(pre._cur, 0, 0, PW, PH, pbuf);
+  let bi = 0, bv = -1;
+  for (let i = 0; i < pbuf.length; i += 4) if (pbuf[i] > bv) { bv = pbuf[i]; bi = i / 4; }
+  const cx0 = bi % PW, cy0 = (bi / PW) | 0;
+  const at = (dx, dy) => {
+    const x = cx0 + dx, y = cy0 + dy;
+    return (x < 0 || x >= PW || y < 0 || y >= PH) ? 0 : pbuf[(y * PW + x) * 4];
+  };
+
+  // Size 12 ⇒ radius 6. (5,0) is 5px out, inside the disc. (5,5) is 7.07px out
+  // — inside the SQUARE sprite, outside the circle. A square dot lights both.
+  check('dots are round: the sprite corner is empty, the axis at the same ring is not',
+    at(5, 5) === 0 && at(5, 0) > 0,
+    `centre=${bv} axis(5,0)=${at(5, 0)} corner(5,5)=${at(5, 5)}`);
+  // Spherical, not a flat disc: brightness falls from centre to rim.
+  check('dots are shaded — brightness falls off toward the rim',
+    at(0, 0) > at(4, 0) && at(4, 0) > 0,
+    `centre=${at(0, 0)} r4=${at(4, 0)}`);
+
+  pre.dispose();
+  pr.dispose();
+}
+
 Object.assign(vals, { 'rutt.drawMode': 0, 'rutt.lines': 60,
                       'rutt.thickness': 1.5, 'rutt.pointSize': 3 });
 
