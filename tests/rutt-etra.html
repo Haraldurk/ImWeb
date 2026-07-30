@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<!-- Phase 26 acceptance test — Rutt-Etra Scan Processor.
+
+     Drives RuttEtra.tick() DIRECTLY rather than through the app, so it does not
+     depend on requestAnimationFrame. That matters: a backgrounded tab suspends
+     rAF entirely (document.hidden => 0 fps), which is what invalidated the first
+     attempt to check this feature through the running app — and what invalidated
+     an earlier SlitScan commit before it (Blueprint 5c).
+
+     What is under test, in order of how badly it would hurt to get wrong:
+
+       1. BEAM WIDTH IS A LIVE CONTROL. THREE.LineBasicMaterial.linewidth is
+          capped at 1 by ANGLE and every major browser, so the obvious
+          implementation ships a knob that silently does nothing. The ribbon
+          expansion must make lit-pixel count rise with rutt.thickness.
+       2. DEFLECTION IS REAL. Z gain must change the picture, otherwise the
+          vertex-stage texture fetch is silently returning zero — the failure
+          mode that would leave a flat lattice looking like a plausible raster.
+       3. PERSISTENCE PING-PONGS. With the source gone black, decay 0 must go
+          dark and decay high must retain. This is what proves the two render
+          targets are actually swapping rather than one being read and written.
+       4. The gate short-circuits when inactive, and a line-count change
+          rebuilds without tearing.
+
+     Run:  npx vite --port 5199
+           open http://localhost:5199/tests/rutt-etra.html
+-->
+<meta charset="utf-8">
+<title>Rutt-Etra test</title>
+<body style="background:#111;color:#ddd;font:12px monospace;white-space:pre"></body>
+<script type="module">
+import * as THREE from 'three';
+import { RuttEtra } from '/src/inputs/RuttEtra.js';
+
+const out = [];
+const log = (s) => { out.push(s); document.body.textContent = out.join('\n'); };
+let fails = 0;
+const check = (label, cond, detail = '') => {
+  log(`${cond ? '  ok  ' : '  FAIL'} ${label}${detail ? `  — ${detail}` : ''}`);
+  if (!cond) fails++;
+};
+
+const W = 192, H = 128;
+const renderer = new THREE.WebGLRenderer({ antialias: false });
+renderer.setSize(W, H);
+
+// ── Parameter stub ───────────────────────────────────────────────────────────
+const vals = {
+  'rutt.active': 1, 'rutt.source': 0, 'rutt.lines': 60, 'rutt.zgain': 0.8,
+  'rutt.thickness': 1.5, 'rutt.angle': 0, 'rutt.elev': 35, 'rutt.dist': 3.2,
+  'rutt.decay': 0,
+};
+const ps = { get: (id) => (id in vals ? { value: vals[id] } : undefined) };
+
+/** A source render target: horizontal luminance ramp, dark left, bright right. */
+function rampRT(scale = 1) {
+  const rt = new THREE.WebGLRenderTarget(W, H, {
+    minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter,
+    format: THREE.RGBAFormat, type: THREE.UnsignedByteType, depthBuffer: false,
+  });
+  const mat = new THREE.ShaderMaterial({
+    uniforms: { uScale: { value: scale } },
+    vertexShader: `varying vec2 vUv;
+      void main() { vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }`,
+    fragmentShader: `varying vec2 vUv; uniform float uScale;
+      void main() { gl_FragColor = vec4(vec3(vUv.x * uScale), 1.0); }`,
+  });
+  const scene = new THREE.Scene();
+  scene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), mat));
+  renderer.setRenderTarget(rt);
+  renderer.render(scene, new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1));
+  renderer.setRenderTarget(null);
+  return rt;
+}
+
+// .texture, not the render target: tick() takes a Texture, because main.js
+// hands it the result of _resolveLayerTex(), which is already unwrapped.
+const bright = rampRT(1).texture;
+const black  = rampRT(0).texture;
+
+const re = new RuttEtra(renderer, W, H);
+const buf = new Uint8Array(W * H * 4);
+
+/** Read the CURRENT front buffer and summarise it. */
+function stats() {
+  renderer.readRenderTargetPixels(re._cur, 0, 0, W, H, buf);
+  let lit = 0, sum = 0, max = 0;
+  for (let i = 0; i < buf.length; i += 4) {
+    const v = buf[i];
+    sum += v;
+    if (v > 8) lit++;
+    if (v > max) max = v;
+  }
+  return { lit, mean: sum / (W * H), max };
+}
+
+/** Fresh ping-pong state, so one test cannot inherit another's phosphor. */
+function reset() {
+  vals['rutt.decay'] = 0;
+  re.tick(ps, 0.016, black);
+  re.tick(ps, 0.016, black);
+}
+
+// ── 1. It draws ──────────────────────────────────────────────────────────────
+log('\nrenders at all');
+reset();
+re.tick(ps, 0.016, bright);
+const base = stats();
+check('a bright source lights pixels', base.lit > 200, `lit=${base.lit} max=${base.max}`);
+check('a black source lights nothing', (reset(), stats()).lit === 0);
+
+// ── 2. Beam width is a live control, not `linewidth` ─────────────────────────
+log('\nbeam width (the knob most likely to be dead)');
+// Measured at a SPARSE line count on purpose. At 60 lines the lattice already
+// fills the frame, so widening the beam overlaps its neighbours and lit area
+// saturates (7964 -> 9244 across a 6x width change) — which would let a
+// dead-knob implementation slip through a loose threshold. At 8 lines the
+// beams are disjoint and the relationship is the real one: linear in width.
+const beam = (th) => {
+  vals['rutt.lines'] = 8; vals['rutt.thickness'] = th;
+  reset(); re.tick(ps, 0.016, bright); return stats().lit;
+};
+const b1 = beam(1), b2 = beam(2), b4 = beam(4);
+check('lit area is LINEAR in rutt.thickness (so it is not `linewidth`)',
+  Math.abs(b2 / b1 - 2) < 0.15 && Math.abs(b4 / b1 - 4) < 0.35,
+  `1px=${b1} 2px=${b2} (${(b2 / b1).toFixed(2)}x) 4px=${b4} (${(b4 / b1).toFixed(2)}x)`);
+vals['rutt.lines'] = 60; vals['rutt.thickness'] = 1.5;
+
+// ── 3. Deflection is real ────────────────────────────────────────────────────
+log('\ndeflection');
+reset(); vals['rutt.zgain'] = 0; re.tick(ps, 0.016, bright);
+const flat = stats();
+reset(); vals['rutt.zgain'] = 1.8; re.tick(ps, 0.016, bright);
+const deep = stats();
+check('z gain changes the picture', Math.abs(deep.lit - flat.lit) > 50,
+  `flat=${flat.lit} deep=${deep.lit}`);
+// A signed gain must not merely mirror the magnitude — it displaces the other
+// way, so under a tilted camera the projected extent genuinely differs.
+reset(); vals['rutt.zgain'] = -1.8; re.tick(ps, 0.016, bright);
+const inv = stats();
+check('negative z gain renders (relief inverts, still lit)', inv.lit > 200,
+  `lit=${inv.lit}`);
+vals['rutt.zgain'] = 0.8;
+
+// ── 4. Camera orbit ──────────────────────────────────────────────────────────
+log('\ncamera');
+reset(); vals['rutt.angle'] = 0;  re.tick(ps, 0.016, bright);
+const front = stats();
+reset(); vals['rutt.angle'] = 65; re.tick(ps, 0.016, bright);
+const orbit = stats();
+check('orbit changes the projection', Math.abs(orbit.lit - front.lit) > 50,
+  `0deg=${front.lit} 65deg=${orbit.lit}`);
+vals['rutt.angle'] = 0;
+
+// ── 5. Persistence ping-pongs ────────────────────────────────────────────────
+log('\nphosphor persistence');
+reset();
+vals['rutt.decay'] = 0;
+re.tick(ps, 0.016, bright);
+re.tick(ps, 0.016, black);          // signal gone
+check('decay 0 goes dark immediately', stats().lit === 0, `lit=${stats().lit}`);
+
+reset();
+vals['rutt.decay'] = 0.9;
+re.tick(ps, 0.016, bright);
+const litFrame = stats().lit;
+re.tick(ps, 0.016, black);
+const trail1 = stats();
+re.tick(ps, 0.016, black);
+const trail2 = stats();
+check('decay 0.9 retains a trail after the signal stops', trail1.lit > 100,
+  `lit=${litFrame} -> trail=${trail1.lit}`);
+check('the trail fades rather than holding', trail2.mean < trail1.mean,
+  `mean ${trail1.mean.toFixed(2)} -> ${trail2.mean.toFixed(2)}`);
+check('front buffer alternates (ping-pong is real)',
+  (() => { const a = re._cur; re.tick(ps, 0.016, black); return re._cur !== a; })());
+vals['rutt.decay'] = 0;
+
+// ── 6. Line count rebuild + gate ─────────────────────────────────────────────
+log('\nrebuild and gate');
+reset(); vals['rutt.lines'] = 16;  re.tick(ps, 0.016, bright);
+const few = stats(); const fewVerts = re._mesh.geometry.attributes.position.count;
+reset(); vals['rutt.lines'] = 200; re.tick(ps, 0.016, bright);
+const many = stats(); const manyVerts = re._mesh.geometry.attributes.position.count;
+check('geometry rebuilds on a line-count change', manyVerts > fewVerts,
+  `${fewVerts} -> ${manyVerts} verts`);
+check('more lines light more pixels', many.lit > few.lit, `${few.lit} -> ${many.lit}`);
+check('rebuild is skipped when the count is unchanged',
+  (() => { const g = re._mesh.geometry; re.tick(ps, 0.016, bright); return re._mesh.geometry === g; })());
+
+vals['rutt.lines'] = 60;
+reset();
+vals['rutt.active'] = 0;
+const beforeGate = re._cur;
+re.tick(ps, 0.016, bright);
+check('inactive tick draws nothing', re._cur === beforeGate && stats().lit === 0);
+check('active flag follows the param', re.active === false);
+vals['rutt.active'] = 1;
+
+log(fails ? `\n${fails} FAILURE(S)` : '\nAll Rutt-Etra checks passed.');
+document.title = fails ? `FAIL (${fails})` : 'PASS';
+
+// Exposed for interactive probing from the devtools console — bare module
+// specifiers ('three') do not resolve outside Vite's transform, so a debugging
+// session cannot re-import the engine by hand.
+Object.assign(window, { THREE, RuttEtra, renderer, re, ps, vals, stats, bright, black, reset });
+</script>

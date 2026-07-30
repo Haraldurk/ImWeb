@@ -87,6 +87,7 @@ import { SlitScanBuffer } from "./inputs/SlitScanBuffer.js";
 import { VasulkaWarp } from "./inputs/VasulkaWarp.js";
 import { ParticleEngine } from "./particles/ParticleEngine.js";
 import { SDFGenerator } from "./inputs/SDFGenerator.js";
+import { RuttEtra } from "./inputs/RuttEtra.js";
 import { AnalogTV } from "./inputs/AnalogTV.js";
 import { registerAnalogParams } from "./inputs/AnalogParams.js";
 import { BUILTIN_PRESETS, captureAnalogState, applyAnalogPreset } from "./inputs/AnalogPresets.js";
@@ -369,6 +370,7 @@ async function main() {
   );
   const particles = new ParticleEngine(renderer, ps);
   const sdfGen = new SDFGenerator(renderer, W, H);
+  const ruttEtra = new RuttEtra(renderer, W, H);
   const analogTV      = new AnalogTV(renderer);
   const teletextSource = new TeletextSource();
   teletextSource.setMovieInput(movieInput);
@@ -3772,6 +3774,7 @@ async function main() {
     if (key === "vwarp") return vasulkaWarp.outputRT.texture;
     if (key === "particles") return particles.texture;
     if (key === "sdf") return sdfGen.texture;
+    if (key === "rutt") return ruttEtra.texture;
     if (key === "seq1") return seq1.texture;
     if (key === "seq2") return seq2.texture;
     if (key === "seq3") return seq3.texture;
@@ -6390,6 +6393,7 @@ void main() {
     seq1.resize(rW, rH);
     seq2.resize(rW, rH);
     seq3.resize(rW, rH);
+    ruttEtra.resize(rW, rH);
   }
 
   ps.get("output.resolution").onChange((idx) => applyResolution(idx));
@@ -6857,9 +6861,14 @@ void main() {
     // the point of a delay is that the history is already there when you reach
     // for it, which means the source has to keep being ticked meanwhile.
     const _cDelay = _captureIdx(ps.get("delay.source").value);
+    // rutt.source, same shape as _cSlit/_cVwarp: a consumer only while the
+    // scan processor is running, since its tick() returns before reading.
+    const _cRutt = ps.get("rutt.active").value
+      ? _captureIdx(ps.get("rutt.source").value)
+      : -1;
     const _direct = (i) =>
       _cFg === i || _cBg === i || _cDs === i || _cTd === i || _cTdMap === i ||
-      _cSlit === i || _cVwarp === i || _cDelay === i;
+      _cSlit === i || _cVwarp === i || _cDelay === i || _cRutt === i;
 
     // Per-bus inputs. Which one can actually reach the bus output? MIXBUS
     // computes mix(a, modeResult, xfade): xfade=0 is pure srcA (srcB hidden),
@@ -7206,6 +7215,16 @@ void main() {
         _notSelf(_sdfRef, sdfGen.texture),
       );
 
+    // Rutt-Etra Scan Processor — on-demand rendering (source index 29)
+    const RUTT_IDX = 29;
+    if (_srcUsed(RUTT_IDX)) {
+      // Self-routing is legal here and worth keeping: the tap resolves to the
+      // FRONT buffer while tick() writes the back one, so scanning its own
+      // output is a frame-delayed feedback, not a GL read/write conflict. That
+      // is why this needs no _notSelf() guard the way the raymarcher does.
+      ruttEtra.tick(ps, dt, _resolveLayerTex(_captureIdx(ps.get("rutt.source").value)));
+    }
+
     // Analog TV — on-demand rendering (source index 23)
     const ANALOG_IDX = 23;
     const _analogUsed = _srcUsed(ANALOG_IDX);
@@ -7327,6 +7346,7 @@ void main() {
       vwarp: vasulkaWarp.outputRT.texture,
       particles: particles.texture,
       sdf: sdfGen.texture,
+      rutt: ruttEtra.texture,
       analog: analogTV.texture,
       tdisp: tdEngine.texture,
       seq1: seq1.texture,

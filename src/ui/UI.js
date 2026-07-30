@@ -159,6 +159,7 @@ export function buildMappingPanels(ps, contextMenu) {
     // particle-params rendered separately below (legacy + v2 split)
     // 'particle-params': ps.getGroup('particle'),
     'sdf-params':          ps.getGroup('sdf'),
+    'rutt-params':         ps.getGroup('rutt'),
     'delay-params':        ps.getGroup('delay'),
     'tdisp-params':        ps.getGroup('td'),
     // VasulkaWarp — hidden, experimental, architecture unresolved. See dev notes.
