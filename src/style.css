@@ -451,15 +451,28 @@ button {
 .subsection-header {
     font-family: var(--mono);
     font-size: 9px;
-    font-weight: 400;
-    letter-spacing: 0.08em;
-    color: var(--text-2);
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    color: var(--text-1, var(--text));
     text-transform: uppercase;
-    padding: 5px 8px 3px;
+    padding: 9px 8px 3px;
+    margin-top: 2px;
+    border-top: 1px solid var(--border);
     user-select: none;
-    /* opacity:0.75 removed — it fought the contrast fix above; the level-3
-       distinction comes from size, indent and the left rule, not from dimming */
+    /* Weight, tracking and a rule above — NOT size or colour alone. At 9px in
+       --text-2 these read as noise rather than structure: a four-way split of
+       the Rutt-Etra panel was reported as "the sections are not there" while
+       all four headings were on screen. The level-3 distinction still comes
+       from size, indent and the left rule, so this stays clearly subordinate
+       to a .section-header without being invisible. */
     /* not sticky, not clickable — a sub-section is never an accordion */
+}
+/* No rule above the first heading in a section — it would double the
+   .panel-section border immediately above it. */
+.panel-subsection:first-of-type > .subsection-header {
+    border-top: none;
+    margin-top: 0;
+    padding-top: 5px;
 }
 
 /* Contextual workspace tab slot — filled by the router in main.js. */
