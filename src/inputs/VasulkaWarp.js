@@ -70,6 +70,7 @@ const OUT_FRAG = `
   uniform float uMix;
   uniform int   uAxis;        // 0=H (columns), 1=V (rows)
   uniform float uFlip;        // 1.0 = reverse time direction
+  uniform float uHeadNorm;    // write head as a fraction of the tape (0..1)
 
   varying vec2 vUv;
 
@@ -77,7 +78,23 @@ const OUT_FRAG = `
     float coord = (uAxis == 0) ? vUv.x : vUv.y;
     if (uFlip > 0.5) coord = 1.0 - coord;
 
-    float readOffset = coord;
+    // ── Anchor the read to the write head ────────────────────────────────────
+    // NOTE: no backticks in this comment. It lives inside a JS template literal,
+    // so one would close the string and break the module at import time.
+    //
+    // The read used to be simply readOffset = coord: a fixed mapping that never
+    // learned where the head was. The age of a given output column therefore
+    // changed as the head moved, and the discontinuity between "one frame old"
+    // and "a whole tape old" TRAVELLED across the picture at the write speed.
+    // That was the sliding tear.
+    //
+    // Offsetting by the head makes age a function of position alone. Tape column
+    // c has age ((head - c - 1) mod B) + 1; sampling column (head + coord*B) mod B
+    // gives age = B*(1 - coord), which has no head term at all -- so the mapping
+    // is stationary while the tape keeps moving underneath it. Oldest at coord 0,
+    // newest approaching coord 1, and the single wrap sits exactly on the edge
+    // where it is invisible instead of in the middle of the frame.
+    float readOffset = fract(uHeadNorm + coord);
 
     vec2 stripUv = (uAxis == 0)
       ? vec2(readOffset, vUv.y)
@@ -154,6 +171,7 @@ export class VasulkaWarp {
         uMix:       { value: 1.0 },
         uAxis:      { value: 0 },
         uFlip:      { value: 0.0 },
+        uHeadNorm:  { value: 0.0 },
       },
       depthTest: false, depthWrite: false,
     });
@@ -212,6 +230,9 @@ export class VasulkaWarp {
     const u = this._outMat.uniforms;
     u.tStrip.value = this._stripRT.texture;
     u.tLive.value  = liveTex;
+    // Read AFTER capture() in main.js, so this is the post-write head — the
+    // newest column is head−1 and lands just inside the trailing edge.
+    u.uHeadNorm.value = this._writeIdx / this._bufSize;
 
     this._outScene.overrideMaterial = this._outMat;
     this._renderer.setRenderTarget(this.outputRT);

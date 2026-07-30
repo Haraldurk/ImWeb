@@ -111,7 +111,51 @@ log(held ? '   PASS — tape intact, head did not advance'
          : '   FAIL — null source wrote into the tape or moved the head');
 vw2.dispose();
 
-const all = results.every(Boolean) && kept && held;
+/**
+ * The read must be ANCHORED to the write head.
+ *
+ * The read used to be `readOffset = coord`, which never learned where the head
+ * was — so the age of a given output column changed as the head moved, and the
+ * jump between "one frame old" and "a whole tape old" travelled across the
+ * picture. That was the sliding tear the owner reported.
+ *
+ * Decisive assertion: fill the tape dark, write ONE bright column, and find where
+ * it lands in the OUTPUT. Anchored, the newest column is always just inside the
+ * trailing edge whatever the head position. Unanchored, it appears AT the head
+ * and therefore moves — so this test distinguishes the two directly.
+ */
+log(`\n── read is anchored to the write head`);
+const OW = 128, OB = 32;
+const positions = [];
+for (const k of [0, 5, 13, 27]) {
+  const v = new VasulkaWarp(renderer, OW, 8, OB);
+  const dark = solid(30), bright = solid(240);
+  for (let i = 0; i < k; i++) v.capture(dark, 1);        // move the head to k
+  for (let i = 0; i < OB; i++) v.capture(dark, 1);       // fill dark, head back to k
+  v.capture(bright, 1);                                  // newest column = k
+  v.render(dark);
+
+  const row = new Uint8Array(OW * 4);
+  renderer.readRenderTargetPixels(v.outputRT, 0, 4, OW, 1, row);
+  let argmax = 0, peak = -1;
+  for (let x = 0; x < OW; x++) if (row[x * 4] > peak) { peak = row[x * 4]; argmax = x; }
+  positions.push({ head: k, argmax, peak });
+  v.dispose();
+}
+// Each tape column is OW/OB px wide; "trailing edge" = within the last two.
+const edge = OW - (OW / OB) * 2;
+const anchored = positions.every((p) => p.argmax >= edge && p.peak > 150);
+for (const p of positions) {
+  log(`   head ${String(p.head).padStart(2)} → brightest output column ${p.argmax} (peak ${p.peak})`);
+}
+log(`   expected ≥ ${edge} for every head position`);
+log(anchored ? '   PASS — newest column pinned to the trailing edge, head-independent'
+             : '   FAIL — newest column moves with the head (read not anchored)');
+
+const all = results.every(Boolean) && kept && held && anchored;
 log(`\n=== RESULT: ${all ? 'ALL PASS' : 'FAILURE'} ===`);
-window.__vwResult = { coverage: results, resizeKeepsDepth: kept, nullHolds: held, all };
+window.__vwResult = {
+  coverage: results, resizeKeepsDepth: kept, nullHolds: held,
+  anchored, headPositions: positions, all,
+};
 </script>
