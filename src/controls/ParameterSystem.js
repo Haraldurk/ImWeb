@@ -4794,6 +4794,30 @@ export function registerCoreParameters(ps) {
     value: 3.2,
     step: 0.05,
   });
+  // Asymmetric temporal slew — jit.slide semantics, in SECONDS rather than
+  // frames so the feel survives a frame-rate change. Both 0 bypasses the history
+  // buffer entirely, which is why the default costs neither a pass nor the
+  // resampling softness that routing through it would add.
+  ps.register({
+    id: "rutt.rise",
+    label: "Rise",
+    group: "rutt",
+    min: 0,
+    max: 2,
+    value: 0,
+    step: 0.01,
+    unit: "s",
+  });
+  ps.register({
+    id: "rutt.fall",
+    label: "Fall",
+    group: "rutt",
+    min: 0,
+    max: 2,
+    value: 0,
+    step: 0.01,
+    unit: "s",
+  });
   // Capped below 1.0 on purpose: at exactly 1.0 the phosphor never fades and
   // the buffer saturates to white within seconds under an additive blend.
   ps.register({
