@@ -100,6 +100,18 @@ export function buildLayerButtons(ps, contextMenu) {
 // ── Populate mapping panels ───────────────────────────────────────────────────
 
 export function buildMappingPanels(ps, contextMenu) {
+  /**
+   * Named params in a stated order, for panels split out of one group.
+   *
+   * getGroup() returns registration order, which is the order the engine happens
+   * to declare things in — fine for a short panel, wrong once a group is sliced
+   * into sections that each want their own reading order. Listing the ids also
+   * makes a section a deliberate set: a newly registered param does NOT appear
+   * anywhere until it is placed, rather than silently landing in whichever
+   * section's filter it happens to match.
+   */
+  const pick = (prefix, keys) => keys.map(k => ps.get(`${prefix}.${k}`)).filter(Boolean);
+
   const sections = {
     // Camera device select lives with the mirror rows (Layers section);
     // its options are filled after device enumeration in main.js
@@ -159,7 +171,16 @@ export function buildMappingPanels(ps, contextMenu) {
     // particle-params rendered separately below (legacy + v2 split)
     // 'particle-params': ps.getGroup('particle'),
     'sdf-params':          ps.getGroup('sdf'),
-    'rutt-params':         ps.getGroup('rutt'),
+    // Rutt-Etra is one group across four sections — 19 rows is too long a single
+    // list to read. Follows the Analog panel's precedent; per the Phase 23
+    // design this needs no ordering or labelling code, only container ids.
+    // tests/audit-panel-coverage.mjs enforces that every rutt.* param is placed
+    // in exactly one of these, since an unplaced one would vanish silently.
+    'rutt-scan-params':     pick('rutt', ['active', 'source', 'drawMode', 'lines',
+                                          'thickness', 'pointSize']),
+    'rutt-depth-params':    pick('rutt', ['zgain', 'zcurve', 'zpivot', 'rise', 'fall']),
+    'rutt-camera-params':   pick('rutt', ['angle', 'elev', 'dist']),
+    'rutt-phosphor-params': pick('rutt', ['hue', 'sat', 'colorAmt', 'decay', 'bleed']),
     'delay-params':        ps.getGroup('delay'),
     'tdisp-params':        ps.getGroup('td'),
     // VasulkaWarp — hidden, experimental, architecture unresolved. See dev notes.
