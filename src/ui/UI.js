@@ -171,9 +171,11 @@ export function buildMappingPanels(ps, contextMenu) {
     // particle-params rendered separately below (legacy + v2 split)
     // 'particle-params': ps.getGroup('particle'),
     'sdf-params':          ps.getGroup('sdf'),
-    // Rutt-Etra is one group across four sections — 19 rows is too long a single
-    // list to read. Follows the Analog panel's precedent; per the Phase 23
-    // design this needs no ordering or labelling code, only container ids.
+    // Rutt-Etra is one group across four SUBsections of a single panel section
+    // (the Warp section's shape) — 19 rows is too long a single list to read,
+    // but it is one source and belongs behind one accordion entry. Per the
+    // Phase 23 design this needs no ordering or labelling code, only container
+    // ids; the nesting lives entirely in index.html.
     // tests/audit-panel-coverage.mjs enforces that every rutt.* param is placed
     // in exactly one of these, since an unplaced one would vanish silently.
     'rutt-scan-params':     pick('rutt', ['active', 'source', 'drawMode', 'lines',
