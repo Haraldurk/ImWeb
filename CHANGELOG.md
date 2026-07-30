@@ -60,8 +60,10 @@ git tag and nothing else. Design doc: `docs/ImWeb-Spacetime-Blueprint.md` §6.*
   period also did. Dot is separate from Beam rather than derived from it, because
   the useful setting in Both mode is a thin ribbon under prominent dots; it
   defaults larger (3px against 1.5) since a discrete dot lattice reads fainter
-  than a continuous line one at equal width. Both modes share one material and
-  one additive target, so Both is free.
+  than a continuous line one at equal width. Dots are round and spherically
+  shaded — bright at the centre, falling to nothing at the rim — via a separate
+  fragment shader, because `gl_PointCoord` is undefined during a triangle draw
+  and the ribbon shares the vertex stage. One additive target for both.
 
 ### Changed
 - **Every project, bank and Display State now records the capture-index base it
