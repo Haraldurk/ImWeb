@@ -60,13 +60,16 @@ uniform float uThickness;
 uniform vec2  uResolution;
 attribute float aSide;
 varying float vLuma;
+varying vec3  vColor;
 
 void main() {
   // The lattice is authored in [-1,1]; uv follows the same convention every
   // other pass in the instrument samples with, so a source that is upright in
   // the compositor is upright here.
   vec2 uv = position.xy * 0.5 + 0.5;
-  float luma = dot(texture2D(uSrc, uv).rgb, vec3(0.2126, 0.7152, 0.0722));
+  vec3 src = texture2D(uSrc, uv).rgb;
+  float luma = dot(src, vec3(0.2126, 0.7152, 0.0722));
+  vColor = src;
 
   // vLuma stays the RAW luminance: the beam is as bright as the signal that
   // deflected it, and shaping the depth must not also dim the picture. Curve
@@ -97,10 +100,26 @@ void main() {
 
 const SCAN_FRAG = `
 varying float vLuma;
+varying vec3  vColor;
+uniform vec3  uTint;
+uniform float uColorAmt;
+
 void main() {
-  // Monochrome: the beam is as bright as the signal that deflected it, so the
-  // lattice disappears into black where the source is black.
-  gl_FragColor = vec4(vec3(vLuma), 1.0);
+  // The beam is as bright as the signal that deflected it, so the lattice
+  // disappears into black where the source is black. What COLOUR it is runs
+  // between two ends:
+  //
+  //   uColorAmt 0 — a phosphor of one colour, brightness carrying the signal.
+  //                 uTint white (the default) is the original monochrome, exactly.
+  //   uColorAmt 1 — the source's own colour, carried through per vertex.
+  //
+  // Tinting happens HERE, per line, rather than after accumulation. Under the
+  // additive blend that means densely overlapped regions climb toward white
+  // instead of holding the hue — which is what an over-driven CRT does when the
+  // beam retraces the same phosphor, so it is the behaviour to want rather than
+  // one to correct. It also keeps this a single pass.
+  vec3 mono = uTint * vLuma;
+  gl_FragColor = vec4(mix(mono, vColor, uColorAmt), 1.0);
 }
 `;
 
@@ -167,6 +186,8 @@ export class RuttEtra {
         uZCurve:     { value: 1.0 },
         uZPivot:     { value: 0.0 },
         uThickness:  { value: 1.5 },
+        uTint:       { value: new THREE.Color(1, 1, 1) },
+        uColorAmt:   { value: 0 },
         uResolution: { value: new THREE.Vector2(width, height) },
       },
       vertexShader:   SCAN_VERT,
@@ -193,6 +214,7 @@ export class RuttEtra {
     this._aspect = width / height;
     this._lines  = 0;              // forces the first _rebuild()
     this._mesh   = null;
+    this._hueCol = new THREE.Color(); // scratch, so tick() allocates nothing
     this._rebuild(120);
 
     // Decay pass — its own tiny scene, drawn before the lattice each frame.
@@ -284,6 +306,20 @@ export class RuttEtra {
     u.uZCurve.value    = ps.get('rutt.zcurve').value;
     u.uZPivot.value    = ps.get('rutt.zpivot').value;
     u.uThickness.value = ps.get('rutt.thickness').value;
+
+    // Tint is a lerp from WHITE toward the pure hue, not an HSL colour: at
+    // saturation 0 it must be exactly (1,1,1) so the default is the original
+    // monochrome, and setHSL(h, 0, 0.5) would give mid grey instead. A
+    // consequence worth knowing: hue is inert while saturation is 0, which the
+    // harness asserts rather than leaving to be discovered.
+    u.uColorAmt.value = ps.get('rutt.colorAmt').value;
+    const sat = ps.get('rutt.sat').value;
+    this._hueCol.setHSL(ps.get('rutt.hue').value / 360, 1, 0.5);
+    u.uTint.value.setRGB(
+      1 + (this._hueCol.r - 1) * sat,
+      1 + (this._hueCol.g - 1) * sat,
+      1 + (this._hueCol.b - 1) * sat,
+    );
 
     const az   = ps.get('rutt.angle').value * (Math.PI / 180);
     const el   = ps.get('rutt.elev').value  * (Math.PI / 180);
