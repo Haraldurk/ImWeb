@@ -52,6 +52,7 @@ const vals = {
   'rutt.decay': 0, 'rutt.bleed': 0,
   'rutt.hue': 0, 'rutt.sat': 0, 'rutt.colorAmt': 0,
   'rutt.rise': 0, 'rutt.fall': 0, 'rutt.drawMode': 0, 'rutt.pointSize': 3,
+  'rutt.moveX': 0, 'rutt.moveY': 0, 'rutt.moveZ': 0,
 };
 const ps = { get: (id) => (id in vals ? { value: vals[id] } : undefined) };
 
@@ -109,7 +110,7 @@ const buf = new Uint8Array(W * H * 4);
 /** Read the CURRENT front buffer and summarise it. */
 function stats() {
   renderer.readRenderTargetPixels(re._cur, 0, 0, W, H, buf);
-  let lit = 0, sum = 0, max = 0, ySum = 0, minY = 1e9, maxY = -1e9;
+  let lit = 0, sum = 0, max = 0, ySum = 0, xSum = 0, minY = 1e9, maxY = -1e9;
   let sR = 0, sG = 0, sB = 0, sChroma = 0;
   for (let i = 0; i < buf.length; i += 4) {
     const v = buf[i], g = buf[i + 1], b = buf[i + 2];
@@ -121,8 +122,9 @@ function stats() {
     sChroma += Math.abs(v - g) + Math.abs(g - b) + Math.abs(v - b);
     if (v > max) max = v;
     if (v > 8) {
-      const y = Math.floor((i / 4) / W);
-      lit++; ySum += y;
+      const px = (i / 4) | 0;
+      const y = Math.floor(px / W);
+      lit++; ySum += y; xSum += px % W;
       if (y < minY) minY = y;
       if (y > maxY) maxY = y;
     }
@@ -133,7 +135,8 @@ function stats() {
   // sits catches what counting it cannot.
   const n = W * H;
   return { lit, mean: sum / n, max,
-           cy: lit ? ySum / lit : 0, spanY: lit ? maxY - minY : 0,
+           cy: lit ? ySum / lit : 0, cx: lit ? xSum / lit : 0,
+           spanY: lit ? maxY - minY : 0,
            r: sR / n, g: sG / n, b: sB / n, chroma: sChroma / n };
 }
 
@@ -391,6 +394,72 @@ const orbit = stats();
 check('orbit changes the projection', Math.abs(orbit.lit - front.lit) > 50,
   `0deg=${front.lit} 65deg=${orbit.lit}`);
 vals['rutt.angle'] = 0;
+
+// The Euler rig must reproduce the spherical positions the old lookAt code
+// wrote by hand — checked against the formula at a spread of angles rather than
+// trusting the algebra, INCLUDING the poles the old rig could not express.
+const D = Math.PI / 180;
+let rigErr = 0, worst = '';
+for (const [az, el] of [[0, 0], [0, 35], [65, 35], [180, -40], [270, 12],
+                        [0, 90], [0, -90], [45, 140], [300, -175]]) {
+  Object.assign(vals, { 'rutt.angle': az, 'rutt.elev': el, 'rutt.dist': 3.2 });
+  reset(); re.tick(ps, 0.016, bright);
+  const p = re._camera.position;
+  const want = [3.2 * Math.cos(el * D) * Math.sin(az * D),
+                3.2 * Math.sin(el * D),
+                3.2 * Math.cos(el * D) * Math.cos(az * D)];
+  const e = Math.max(Math.abs(p.x - want[0]), Math.abs(p.y - want[1]), Math.abs(p.z - want[2]));
+  if (e > rigErr) { rigErr = e; worst = `${az}/${el}`; }
+}
+check('camera position matches the spherical formula at every angle',
+  rigErr < 1e-5, `worst error ${rigErr.toExponential(1)} at az/el ${worst}`);
+
+// Past the pole the lattice must still render — this is the range that simply
+// did not exist while lookAt owned the orientation.
+Object.assign(vals, { 'rutt.angle': 0, 'rutt.elev': 90 });
+reset(); re.tick(ps, 0.016, bright);
+const atPole = stats();
+check('renders AT the pole (elev 90, where lookAt was undefined)',
+  atPole.lit > 0 && Number.isFinite(re._camera.position.y),
+  `lit=${atPole.lit} camY=${re._camera.position.y.toFixed(3)}`);
+
+Object.assign(vals, { 'rutt.angle': 0, 'rutt.elev': 140 });
+reset(); re.tick(ps, 0.016, bright);
+check('renders past the pole (elev 140)', stats().lit > 0);
+Object.assign(vals, { 'rutt.angle': 0, 'rutt.elev': 35, 'rutt.dist': 3.2 });
+
+// ── 4b. Move ─────────────────────────────────────────────────────────────────
+log('\nmove');
+const moved = (o) => { Object.assign(vals, { 'rutt.moveX': 0, 'rutt.moveY': 0,
+  'rutt.moveZ': 0, ...o }); reset(); re.tick(ps, 0.016, bright); return stats(); };
+const home = moved({});
+const mx = moved({ 'rutt.moveX': 0.7 });
+const my = moved({ 'rutt.moveY': 0.7 });
+const zNear = moved({ 'rutt.moveZ': 0.9 });
+const zFar  = moved({ 'rutt.moveZ': -0.9 });
+check('move x shifts the lattice horizontally', Math.abs(mx.cx - home.cx) > 5,
+  `cx ${home.cx.toFixed(1)} -> ${mx.cx.toFixed(1)}`);
+check('move y shifts it vertically', Math.abs(my.cy - home.cy) > 5,
+  `cy ${home.cy.toFixed(1)} -> ${my.cy.toFixed(1)}`);
+
+// A pan preserves apparent size; a DEPTH move does not. Asserted as monotonic
+// in z and in both directions, which is the signature a translation across the
+// view plane cannot fake.
+//
+// Not asserted on the centroid holding still, which was the first attempt and
+// failed on correct code: the lattice is not centred in frame, so scaling it
+// about the projection centre moves the centroid too. Nor on vertical extent —
+// a big z move pushes the picture far enough up the frame to clip, so the
+// bounding box shrinks in BOTH directions and hides the sign.
+check('move z is a depth move — apparent size is monotonic in z',
+  zNear.lit > home.lit && home.lit > zFar.lit,
+  `near=${zNear.lit} home=${home.lit} far=${zFar.lit}`);
+check('move x and y preserve apparent size (they pan, not dolly)',
+  Math.abs(mx.spanY - home.spanY) <= 3 && Math.abs(my.spanY - home.spanY) <= 3,
+  `spanY home=${home.spanY} x=${mx.spanY} y=${my.spanY}`);
+check('move defaults are a true identity', home.lit === front.lit,
+  `${home.lit} vs ${front.lit}`);
+moved({});
 
 // ── 5. Persistence ping-pongs ────────────────────────────────────────────────
 log('\nphosphor persistence');
