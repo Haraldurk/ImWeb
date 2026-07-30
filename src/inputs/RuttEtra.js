@@ -64,10 +64,10 @@ varying float vLuma;
 varying vec3  vColor;
 
 void main() {
-  // The lattice is authored in [-1,1]; uv follows the same convention every
-  // other pass in the instrument samples with, so a source that is upright in
-  // the compositor is upright here.
-  vec2 uv = position.xy * 0.5 + 0.5;
+  // uv and normal arrive as real attributes now that the lattice is not
+  // necessarily a plane — three's ShaderMaterial declares both for us. uv still
+  // follows the convention every other pass samples with, so a source upright
+  // in the compositor is upright here whatever surface it is wrapped on.
   vec3 src = texture2D(uSrc, uv).rgb;
   float luma = dot(src, vec3(0.2126, 0.7152, 0.0722));
   vColor = src;
@@ -90,8 +90,12 @@ void main() {
   // one-sided behaviour every existing patch was built on.
   float z = (shaped - uZPivot) * uZGain;
 
-  vec4 clip = projectionMatrix * modelViewMatrix
-            * vec4(position.x, position.y, z, 1.0);
+  // Displace along the SURFACE NORMAL. On the plane the normal is (0,0,1), so
+  // this is (x, y, 0) + (0,0,z) — bit-identical to the flat-only version it
+  // replaces, which is what keeps every pre-shape patch rendering unchanged.
+  vec3 p = position + normal * z;
+
+  vec4 clip = projectionMatrix * modelViewMatrix * vec4(p, 1.0);
 
   // Ribbon expansion in clip space — see note 1 in the header.
   clip.y += aSide * uThickness * clip.w / max(uResolution.y * 0.5, 1.0);
@@ -243,6 +247,127 @@ void main() {
 }
 `;
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Surfaces
+// ─────────────────────────────────────────────────────────────────────────────
+// Each writes a position and a unit normal for (u, v) ∈ [0,1]² into a scratch
+// object — no per-vertex allocation, at up to 245k vertices.
+//
+// v indexes the SCANLINE and u the sample along it, so every surface here must
+// have a natural family of curves at constant v: latitude rings on a sphere,
+// stacked rings on a cylinder, loops round a torus, nested helices on a
+// helicoid. That is the whole reason these are worth having and an imported
+// mesh is not — the scan structure is the instrument, not the shape.
+//
+// uv is (u, 1−v) throughout, matching the plane's original mapping, so a source
+// stays upright and the video wraps the same way on every surface.
+
+const TAU = Math.PI * 2;
+
+/**
+ * Gyroid: sin x cos y + sin y cos z + sin z cos x = 0.
+ *
+ * The odd one out — a triply periodic minimal surface with NO closed-form
+ * parameterisation, so there is no (u,v) grid to hang scanlines on. Solved here
+ * as a height field: march z at each grid point, take the first sign change and
+ * bisect. That yields ONE SHEET of the gyroid rather than the full labyrinth,
+ * which is the honest trade for keeping the scan structure — and it is the real
+ * surface, with the real saddles, not an approximation of one.
+ *
+ * The gradient is analytic, so normals cost nothing and are exact.
+ */
+const gyroidF = (x, y, z) =>
+  Math.sin(x) * Math.cos(y) + Math.sin(y) * Math.cos(z) + Math.sin(z) * Math.cos(x);
+
+function gyroidZ(x, y) {
+  const STEPS = 24, LO = -Math.PI, HI = Math.PI;
+  let z0 = LO, f0 = gyroidF(x, y, z0);
+  for (let i = 1; i <= STEPS; i++) {
+    const z1 = LO + ((HI - LO) * i) / STEPS;
+    const f1 = gyroidF(x, y, z1);
+    if ((f0 <= 0 && f1 >= 0) || (f0 >= 0 && f1 <= 0)) {
+      let a = z0, b = z1, fa = f0;
+      for (let k = 0; k < 18; k++) {          // bisect to well under a pixel
+        const m = (a + b) * 0.5, fm = gyroidF(x, y, m);
+        if ((fa <= 0 && fm >= 0) || (fa >= 0 && fm <= 0)) b = m;
+        else { a = m; fa = fm; }
+      }
+      return (a + b) * 0.5;
+    }
+    z0 = z1; f0 = f1;
+  }
+  return 0;                                    // no crossing on this ray
+}
+
+const SURFACES = [
+  // 0 — Plane. The original lattice, and the identity case: normal (0,0,1)
+  // makes `position + normal * z` exactly the old `(x, y, z)`.
+  (u, v, o) => {
+    o.px = 2 * u - 1; o.py = 1 - 2 * v; o.pz = 0;
+    o.nx = 0; o.ny = 0; o.nz = 1;
+  },
+  // 1 — Sphere. Scanlines are lines of latitude; on a unit sphere the outward
+  // normal is the position.
+  (u, v, o) => {
+    const th = v * Math.PI, ph = u * TAU;
+    const st = Math.sin(th);
+    o.px = st * Math.cos(ph); o.py = Math.cos(th); o.pz = st * Math.sin(ph);
+    o.nx = o.px; o.ny = o.py; o.nz = o.pz;
+  },
+  // 2 — Cylinder. Rings stacked up the axis; the normal is radial, so the caps
+  // are open by construction — which is right for a scan, not a solid.
+  (u, v, o) => {
+    const ph = u * TAU, c = Math.cos(ph), s = Math.sin(ph);
+    o.px = c; o.py = 1 - 2 * v; o.pz = s;
+    o.nx = c; o.ny = 0; o.nz = s;
+  },
+  // 3 — Torus. Each scanline is a full loop round the major circle, at a fixed
+  // angle round the tube.
+  (u, v, o) => {
+    const R = 0.72, r = 0.34;
+    const ph = u * TAU, th = v * TAU;
+    const ct = Math.cos(th), st = Math.sin(th);
+    const cp = Math.cos(ph), sp = Math.sin(ph);
+    o.px = (R + r * ct) * cp; o.py = r * st; o.pz = (R + r * ct) * sp;
+    o.nx = ct * cp; o.ny = st; o.nz = ct * sp;
+  },
+  // 4 — Catenoid. The minimal surface of revolution: r(t) = c·cosh(t/c), a
+  // waist that flares at both ends. Normal from the revolution's partials,
+  // which reduce to (cos φ, −r′, sin φ)/√(1+r′²) with r′ = sinh(t/c).
+  (u, v, o) => {
+    const c = 0.6, t = (v - 0.5) * 1.8;
+    const ph = u * TAU, cp = Math.cos(ph), sp = Math.sin(ph);
+    const r = c * Math.cosh(t / c), rp = Math.sinh(t / c);
+    const k = 1 / Math.sqrt(1 + rp * rp);
+    o.px = r * cp; o.py = t; o.pz = r * sp;
+    o.nx = cp * k; o.ny = -rp * k; o.nz = sp * k;
+  },
+  // 5 — Helicoid. Scanlines are NESTED HELICES — constant radius, sweeping
+  // round as they rise — rather than the straight rulings, which would read as
+  // a fan of spokes instead of a raster.
+  (u, v, o) => {
+    const turns = 1, b = 1 / Math.PI;
+    const s = u * TAU * turns, t = (v - 0.5) * 2;
+    const cs = Math.cos(s), ss = Math.sin(s);
+    o.px = t * cs; o.py = b * s - 1; o.pz = t * ss;
+    const nx = b * ss, ny = t, nz = -b * cs;
+    const k = 1 / Math.max(1e-6, Math.hypot(nx, ny, nz));
+    o.nx = nx * k; o.ny = ny * k; o.nz = nz * k;
+  },
+  // 6 — Gyroid, as a height field over the scan grid (see gyroidZ).
+  (u, v, o) => {
+    const x = (2 * u - 1) * Math.PI, y = (1 - 2 * v) * Math.PI;
+    const z = gyroidZ(x, y);
+    const IP = 1 / Math.PI;
+    o.px = x * IP; o.py = y * IP; o.pz = z * IP;
+    const gx = Math.cos(x) * Math.cos(y) - Math.sin(z) * Math.sin(x);
+    const gy = -Math.sin(x) * Math.sin(y) + Math.cos(y) * Math.cos(z);
+    const gz = -Math.sin(y) * Math.sin(z) + Math.cos(z) * Math.cos(x);
+    const k = 1 / Math.max(1e-6, Math.hypot(gx, gy, gz));
+    o.nx = gx * k; o.ny = gy * k; o.nz = gz * k;
+  },
+];
+
 /** Horizontal sample count for a given line count. */
 const colsFor = (lines) => Math.min(512, Math.max(32, Math.round(lines * 2)));
 
@@ -326,17 +451,19 @@ export class RuttEtra {
     this._rig = new THREE.Group();
     this._scene.add(this._rig);
 
-    // The lattice is authored square and scaled to the frame's aspect, so a
-    // 16:9 source is scanned at 16:9 instead of being squeezed into a square
-    // raster floating in a wide frame. uv comes from the UNSCALED attribute, so
-    // this changes the shape of the raster without reaching the sampling.
+    // The PLANE is authored square and scaled to the frame's aspect, so a 16:9
+    // source is scanned at 16:9 rather than squeezed into a square raster
+    // floating in a wide frame. The 3D surfaces are NOT stretched — an aspect
+    // scale would make a sphere an ellipsoid — so tick() applies it per shape.
+    // uv comes from the unscaled attribute either way.
     this._aspect = width / height;
-    this._rig.scale.x = this._aspect;
     this._lines  = 0;              // forces the first _rebuild()
+    this._shape  = -1;             // ditto
     this._mesh   = null;
     this._points = null;
     this._hueCol = new THREE.Color(); // scratch, so tick() allocates nothing
-    this._rebuild(120);
+    this._surf   = { px: 0, py: 0, pz: 0, nx: 0, ny: 0, nz: 1 };
+    this._rebuild(120, 0);
 
     // Decay pass — its own tiny scene, drawn before the lattice each frame.
     this._decayMat = new THREE.ShaderMaterial({
@@ -417,27 +544,36 @@ export class RuttEtra {
    * Rebuild the scanline lattice. Only on a line-count change — this allocates,
    * so calling it per frame would churn buffers for a knob that rarely moves.
    */
-  _rebuild(lines) {
-    if (lines === this._lines) return;
+  _rebuild(lines, shape) {
+    if (lines === this._lines && shape === this._shape) return;
     this._lines = lines;
+    this._shape = shape;
     const cols = colsFor(lines);
 
     const verts = lines * cols * 2;
+    const surf = SURFACES[shape] ?? SURFACES[0];
+    const o = this._surf;
+
     const pos   = new Float32Array(verts * 3);
+    const nrm   = new Float32Array(verts * 3);
+    const uvs   = new Float32Array(verts * 2);
     const side  = new Float32Array(verts);
     // Two triangles per span, per line.
     const idx   = new Uint32Array(lines * (cols - 1) * 6);
 
     let v = 0, t = 0;
     for (let li = 0; li < lines; li++) {
-      const y = lines === 1 ? 0 : 1 - (2 * li) / (lines - 1);
+      const vv = lines === 1 ? 0.5 : li / (lines - 1);
       for (let ci = 0; ci < cols; ci++) {
-        const x = -1 + (2 * ci) / (cols - 1);
+        const uu = ci / (cols - 1);
+        surf(uu, vv, o);
+        // The ±aSide pair shares one surface sample: same position, normal and
+        // uv, separated only in clip space by the ribbon expansion.
         for (const s of [-1, 1]) {
-          pos[v * 3]     = x;
-          pos[v * 3 + 1] = y;
-          pos[v * 3 + 2] = 0;   // replaced by the vertex shader
-          side[v]        = s;
+          pos[v * 3] = o.px; pos[v * 3 + 1] = o.py; pos[v * 3 + 2] = o.pz;
+          nrm[v * 3] = o.nx; nrm[v * 3 + 1] = o.ny; nrm[v * 3 + 2] = o.nz;
+          uvs[v * 2] = uu;   uvs[v * 2 + 1] = 1 - vv;
+          side[v]    = s;
           v++;
         }
       }
@@ -450,6 +586,8 @@ export class RuttEtra {
 
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    geo.setAttribute('normal',   new THREE.BufferAttribute(nrm, 3));
+    geo.setAttribute('uv',       new THREE.BufferAttribute(uvs, 2));
     geo.setAttribute('aSide',    new THREE.BufferAttribute(side, 1));
     geo.setIndex(new THREE.BufferAttribute(idx, 1));
     // The lattice is displaced in the vertex stage, so three cannot cull it from
@@ -469,19 +607,25 @@ export class RuttEtra {
     // Points mode does not draw every dot twice at the ±aSide offsets. aSide is
     // 0 throughout, which is what makes the shared material behave.
     const pPos  = new Float32Array(lines * cols * 3);
+    const pNrm  = new Float32Array(lines * cols * 3);
+    const pUv   = new Float32Array(lines * cols * 2);
     const pSide = new Float32Array(lines * cols);   // all zero
     let q = 0;
     for (let li = 0; li < lines; li++) {
-      const y = lines === 1 ? 0 : 1 - (2 * li) / (lines - 1);
+      const vv = lines === 1 ? 0.5 : li / (lines - 1);
       for (let ci = 0; ci < cols; ci++) {
-        pPos[q * 3]     = -1 + (2 * ci) / (cols - 1);
-        pPos[q * 3 + 1] = y;
-        pPos[q * 3 + 2] = 0;
+        const uu = ci / (cols - 1);
+        surf(uu, vv, o);
+        pPos[q * 3] = o.px; pPos[q * 3 + 1] = o.py; pPos[q * 3 + 2] = o.pz;
+        pNrm[q * 3] = o.nx; pNrm[q * 3 + 1] = o.ny; pNrm[q * 3 + 2] = o.nz;
+        pUv[q * 2]  = uu;   pUv[q * 2 + 1]  = 1 - vv;
         q++;
       }
     }
     const pGeo = new THREE.BufferGeometry();
     pGeo.setAttribute('position', new THREE.BufferAttribute(pPos, 3));
+    pGeo.setAttribute('normal',   new THREE.BufferAttribute(pNrm, 3));
+    pGeo.setAttribute('uv',       new THREE.BufferAttribute(pUv, 2));
     pGeo.setAttribute('aSide',    new THREE.BufferAttribute(pSide, 1));
     pGeo.boundingSphere = new THREE.Sphere(new THREE.Vector3(), 8);
 
@@ -503,7 +647,12 @@ export class RuttEtra {
     this.active = !!ps.get('rutt.active').value;
     if (!this.active) return;
 
-    this._rebuild(Math.max(2, Math.round(ps.get('rutt.lines').value)));
+    const shape = ps.get('rutt.shape').value | 0;
+    this._rebuild(Math.max(2, Math.round(ps.get('rutt.lines').value)), shape);
+
+    // Aspect stretch is a PLANE affordance — it makes a 16:9 source scan at
+    // 16:9. Applying it to a sphere would just make an ellipsoid.
+    this._rig.scale.x = shape === 0 ? this._aspect : 1;
 
     // 0 Lines · 1 Points · 2 Both. Both is free — the two draws share a
     // material and the same additive target.
@@ -629,8 +778,7 @@ export class RuttEtra {
     this._rtB.setSize(w, h);
     this._mat.uniforms.uResolution.value.set(w, h);
     this._decayMat.uniforms.uTexel.value.set(1 / w, 1 / h);
-    this._aspect = w / h;
-    this._rig.scale.x = this._aspect;
+    this._aspect = w / h;          // applied per shape in tick()
     this._camera.aspect = this._aspect;
     this._camera.updateProjectionMatrix();
   }

@@ -52,7 +52,7 @@ const vals = {
   'rutt.decay': 0, 'rutt.bleed': 0,
   'rutt.hue': 0, 'rutt.sat': 0, 'rutt.colorAmt': 0,
   'rutt.rise': 0, 'rutt.fall': 0, 'rutt.drawMode': 0, 'rutt.pointSize': 3,
-  'rutt.moveX': 0, 'rutt.moveY': 0, 'rutt.moveZ': 0,
+  'rutt.moveX': 0, 'rutt.moveY': 0, 'rutt.moveZ': 0, 'rutt.shape': 0,
 };
 const ps = { get: (id) => (id in vals ? { value: vals[id] } : undefined) };
 
@@ -435,6 +435,65 @@ check('dot size does not affect lines', dotOnLines.lit === dotOnLines2.lit,
 
 Object.assign(vals, { 'rutt.drawMode': 0, 'rutt.lines': 60,
                       'rutt.thickness': 1.5, 'rutt.pointSize': 3 });
+
+// ── 3f. Surfaces ─────────────────────────────────────────────────────────────
+log('\nsurfaces');
+const SHAPES = ['Plane', 'Sphere', 'Cylinder', 'Torus', 'Catenoid', 'Helicoid', 'Gyroid'];
+const shot3 = (i, o = {}) => {
+  Object.assign(vals, { 'rutt.shape': i, 'rutt.lines': 48, 'rutt.zgain': 0.7,
+                        'rutt.elev': 25, 'rutt.angle': 20, 'rutt.dist': 3.6, ...o });
+  reset(); re.tick(ps, 0.016, bright); return stats();
+};
+
+// Every surface must actually draw. A shape function with a sign error tends to
+// collapse the lattice to a point or push it out of frame, and both read as an
+// empty buffer.
+const drawn = SHAPES.map((n, i) => ({ n, s: shot3(i) }));
+check('every surface renders', drawn.every(d => d.s.lit > 300),
+  drawn.map(d => `${d.n}=${d.s.lit}`).join(' '));
+
+// And each must be DISTINCT — a shape that silently falls back to the plane
+// would still pass the check above.
+const sigs = drawn.map(d => `${d.s.lit}|${Math.round(d.s.cx)}|${Math.round(d.s.cy)}`);
+check('every surface is geometrically distinct', new Set(sigs).size === SHAPES.length,
+  `${new Set(sigs).size} distinct of ${SHAPES.length}`);
+
+// No NaN anywhere: a bad normalisation (the helicoid axis, the gyroid gradient)
+// produces NaN positions, which drop the primitive silently rather than erroring.
+check('no surface produces NaN geometry', drawn.every(d => Number.isFinite(d.s.mean)),
+  drawn.map(d => d.s.mean.toFixed(1)).join(' '));
+
+// THE identity: displacement moved from a hardcoded +z to `position + normal*z`.
+// On the plane the normal is (0,0,1), so the picture must be bit-identical to
+// what it was before surfaces existed.
+Object.assign(vals, { 'rutt.shape': 0, 'rutt.lines': 60, 'rutt.zgain': 0.8,
+                      'rutt.elev': 35, 'rutt.angle': 0, 'rutt.dist': 3.2 });
+reset(); re.tick(ps, 0.016, bright);
+const planeNow = stats();
+check('the plane is bit-identical to the flat-only version',
+  planeNow.lit === noSlew.lit && planeNow.mean === noSlew.mean,
+  `${planeNow.lit}/${planeNow.mean.toFixed(4)} vs ${noSlew.lit}/${noSlew.mean.toFixed(4)}`);
+
+// Closed surfaces must actually close — the seam column repeats u=0 at u=1, so
+// a gap there would show as a missing stripe. Compared against the same shape
+// at a different orbit: a seam gap would swing across the frame with the camera.
+const sphereA = shot3(1, { 'rutt.angle': 0 });
+const sphereB = shot3(1, { 'rutt.angle': 180 });
+check('the sphere closes (no seam gap swinging with the orbit)',
+  Math.abs(sphereA.lit - sphereB.lit) / sphereA.lit < 0.25,
+  `0deg=${sphereA.lit} 180deg=${sphereB.lit}`);
+
+// The gyroid is a HEIGHT FIELD solved per grid point, so it must vary in depth
+// across the surface — a failed root search would return z=0 everywhere and
+// give back a flat plane.
+const gy = shot3(6, { 'rutt.zgain': 0 });     // zgain 0 ⇒ pure surface, no video
+const pl = shot3(0, { 'rutt.zgain': 0 });
+check('the gyroid is a real surface, not a fallback plane',
+  Math.abs(gy.cy - pl.cy) > 2 || Math.abs(gy.lit - pl.lit) > 200,
+  `gyroid lit=${gy.lit} cy=${gy.cy.toFixed(1)} vs plane lit=${pl.lit} cy=${pl.cy.toFixed(1)}`);
+
+Object.assign(vals, { 'rutt.shape': 0, 'rutt.lines': 60, 'rutt.zgain': 0.8,
+                      'rutt.elev': 35, 'rutt.angle': 0, 'rutt.dist': 3.2 });
 
 // ── 4. Camera orbit ──────────────────────────────────────────────────────────
 log('\ncamera');

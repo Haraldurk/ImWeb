@@ -4681,6 +4681,22 @@ export function registerCoreParameters(ps) {
     options: CAPTURE_SOURCES,
     value: 0,
   }); // default: Camera
+  // The surface the raster is wrapped on. Every entry has a natural family of
+  // curves at constant v — latitude rings, stacked rings, loops, helices — so
+  // the SCAN survives the shape change. That is what keeps this Rutt-Etra
+  // rather than the 3D Scene, which already displaces solids by a texture.
+  //
+  // Gyroid is the exception and is honest about it: a triply periodic minimal
+  // surface has no closed-form parameterisation, so it is solved as a height
+  // field and gives ONE SHEET rather than the full labyrinth.
+  ps.register({
+    id: "rutt.shape",
+    label: "Shape",
+    group: "rutt",
+    type: PARAM_TYPE.SELECT,
+    options: ["Plane", "Sphere", "Cylinder", "Torus", "Catenoid", "Helicoid", "Gyroid"],
+    value: 0,
+  });
   ps.register({
     id: "rutt.lines",
     label: "Lines",
