@@ -37,6 +37,7 @@ import {
   setTableManager,
   SOURCE_KEYS,
   SOURCE_DISPLAY_ORDER,
+  CAPTURE_INDIRECT_BASE,
   MIXBUS_IDX,
 } from "./controls/ParameterSystem.js";
 
@@ -3797,6 +3798,31 @@ async function main() {
    */
   const _notSelf = (tex, own) => (tex && tex === own ? null : tex);
 
+  /**
+   * Collapse a CAPTURE_SOURCES index to a real SOURCE_DEFS index.
+   *
+   * Indices 0..28 are sources and pass through. 29/30/31 are the indirect
+   * entries "FG Src / BG Src / DS Src", which mean "whatever that layer is
+   * currently showing" — so they resolve through layer.fg/bg/ds at read time and
+   * follow your routing instead of pinning the engine to one source.
+   *
+   * Everything downstream then works in plain source indices, which is what keeps
+   * the consumption fixpoint honest: _direct() must gate on the source that will
+   * ACTUALLY be sampled, not on the number 29.
+   */
+  const _captureIdx = (v) => {
+    const i = v - CAPTURE_INDIRECT_BASE;
+    if (i < 0) return v;
+    return [
+      ps.get("layer.fg").value,
+      ps.get("layer.bg").value,
+      ps.get("layer.ds")?.value ?? 0,
+    ][i] ?? 0;
+  };
+
+  /** Texture for a CAPTURE_SOURCES index. */
+  const _resolveCaptureTex = (v) => _resolveLayerTex(_captureIdx(v));
+
   /** Resolve texture for source key. */
   function texForSource(src) {
     if (src === "screen") return pipeline.prev.texture;
@@ -6800,7 +6826,7 @@ void main() {
     const _cBg = ps.get("layer.bg").value;
     const _cDs = ps.get("layer.ds")?.value ?? 0;
     const _cTd = ps.get("td.enabled").value
-      ? ps.get("td.captureSource").value
+      ? _captureIdx(ps.get("td.captureSource").value)
       : -1;
     // td.mapSource drives the per-pixel delay map (Phase 25 step 4). It is a
     // real consumer, so it belongs in the fixpoint rather than in a bespoke
@@ -6814,23 +6840,23 @@ void main() {
       ps.get("td.enabled").value &&
       (ps.get("td.mode").value === TD_MODE_NOISE ||
         ps.get("td.mapAmount").value > 0);
-    const _cTdMap = _tdMapLive ? ps.get("td.mapSource").value : -1;
+    const _cTdMap = _tdMapLive ? _captureIdx(ps.get("td.mapSource").value) : -1;
     // slitscan.source is a consumer too (Phase 25 step 5) — the same reasoning
     // as _cTdMap. Only while the engine is running: switched off, its tick
     // returns before reading anything.
     const _cSlit = ps.get("slitscan.active").value
-      ? ps.get("slitscan.source").value
+      ? _captureIdx(ps.get("slitscan.source").value)
       : -1;
     // vwarp.source likewise — only while the engine is running, since main.js
     // gates its capture/render on vwarp.active.
     const _cVwarp = ps.get("vwarp.active").value
-      ? ps.get("vwarp.source").value
+      ? _captureIdx(ps.get("vwarp.source").value)
       : -1;
     // delay.source has no on/off switch — the ring records every frame — so it is
     // always a consumer. Gating it on "is Delay routed anywhere" would be wrong:
     // the point of a delay is that the history is already there when you reach
     // for it, which means the source has to keep being ticked meanwhile.
-    const _cDelay = ps.get("delay.source").value;
+    const _cDelay = _captureIdx(ps.get("delay.source").value);
     const _direct = (i) =>
       _cFg === i || _cBg === i || _cDs === i || _cTd === i || _cTdMap === i ||
       _cSlit === i || _cVwarp === i || _cDelay === i;
@@ -7103,7 +7129,10 @@ void main() {
     // the call in place keeps this change purely additive rather than reordering
     // the render loop. A source that has not been ticked yet resolves to null and
     // the buffer skips the tick, so the first frames are safe too.
-    const _slitSrcIdx = ps.get("slitscan.source").value;
+    // Collapse the indirect entries FIRST, then test for Output — otherwise
+    // "FG Src" with layer.fg = Output would miss the render-target fast path and
+    // take the blit instead, for no reason.
+    const _slitSrcIdx = _captureIdx(ps.get("slitscan.source").value);
     slitScan.tick(
       renderer,
       SOURCE_KEYS[_slitSrcIdx] === "output"
@@ -7246,7 +7275,7 @@ void main() {
     // noise generation so the default (Noise) samples THIS frame's output; the
     // _cTdMap term in _srcUsed() is what guarantees the chosen source has been
     // ticked, whatever it is.
-    tdEngine.tick(ps, dt, _resolveLayerTex(ps.get("td.mapSource").value));
+    tdEngine.tick(ps, dt, _resolveCaptureTex(ps.get("td.mapSource").value));
 
     // Render 3D scene if active OR used as a layer source
     const SCENE3D_IDX = 6; // index in SOURCES array
@@ -7371,7 +7400,7 @@ void main() {
     // well as a BG under a live FG. Any other source records that source alone.
     // capture() already guards a null texture, so an inactive source holds the
     // ring rather than filling it with black.
-    videoDelay.capture(_resolveLayerTex(ps.get("delay.source").value));
+    videoDelay.capture(_resolveCaptureTex(ps.get("delay.source").value));
 
     // Time-Displacement Engine — ring WRITE. captureSource indexes the
     // canonical SOURCE_KEYS list. Most sources resolve via `inputs` (already
@@ -7382,7 +7411,7 @@ void main() {
     // Output/inputs reflect this frame's composite.
     // Conditionally-ticked sources (3D Scene, 3D Depth, SDF, Analog) are null
     // unless a layer also uses them this frame — capture() no-ops on null.
-    const _tdKey = SOURCE_KEYS[ps.get("td.captureSource").value];
+    const _tdKey = SOURCE_KEYS[_captureIdx(ps.get("td.captureSource").value)];
     const _tdSrc =
       _tdKey === "output" ? pipeline.prev.texture :
       _tdKey === "mixbus" ? pipeline.mixTexture   :
@@ -7406,7 +7435,7 @@ void main() {
       // _resolveLayerTex() the layers use. A source that is inactive resolves to
       // null and capture() holds the tape rather than erasing it.
       vasulkaWarp.capture(
-        _resolveLayerTex(ps.get("vwarp.source").value),
+        _resolveCaptureTex(ps.get("vwarp.source").value),
         speed,
       );
       vasulkaWarp.render(pipeline.prev.texture);
