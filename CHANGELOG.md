@@ -55,6 +55,10 @@ git tag and nothing else. Design doc: `docs/ImWeb-Spacetime-Blueprint.md` §6.*
   76.16). Both at 0 bypasses the history buffer entirely rather than passing
   through it at coefficient 1, so the default costs neither a pass nor any
   resampling softness.
+- **`rutt.drawMode`** — Lines · Points · Both. The same lattice drawn as a dot
+  cloud, which scan processors of the period also did. Beam sizes the dots as
+  well as the ribbon — it is the same beam, so there is no second width control.
+  Both modes share one material and one additive target, so Both is free.
 
 ### Changed
 - **Every project, bank and Display State now records the capture-index base it
