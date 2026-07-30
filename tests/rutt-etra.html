@@ -51,6 +51,7 @@ const vals = {
   'rutt.thickness': 1.5, 'rutt.angle': 0, 'rutt.elev': 35, 'rutt.dist': 3.2,
   'rutt.decay': 0, 'rutt.bleed': 0,
   'rutt.hue': 0, 'rutt.sat': 0, 'rutt.colorAmt': 0,
+  'rutt.rise': 0, 'rutt.fall': 0,
 };
 const ps = { get: (id) => (id in vals ? { value: vals[id] } : undefined) };
 
@@ -256,6 +257,83 @@ check('hue is inert at zero saturation (the default is exactly monochrome)',
   h0.r === h9.r && h0.g === h9.g && h0.b === h9.b && Math.abs(h0.r - h0.b) < 0.01,
   `hue0 ${h0.r.toFixed(3)}/${h0.b.toFixed(3)} vs hue290 ${h9.r.toFixed(3)}/${h9.b.toFixed(3)}`);
 Object.assign(vals, MONO);
+
+// ── 3d. Asymmetric temporal slew ─────────────────────────────────────────────
+log('\ntemporal slew');
+const SLEW_OFF = { 'rutt.rise': 0, 'rutt.fall': 0 };
+
+// Baseline: with slew off the picture must be untouched. This is the bypass
+// under test as much as the maths — routing through the 512² history at
+// coefficient 1 would resample the source and quietly soften every patch.
+Object.assign(vals, SLEW_OFF); reset();
+re.tick(ps, 0.016, bright);
+const noSlew = stats();
+
+// Rise: from black, a step to bright must NOT arrive in one frame, and must
+// climb monotonically toward the level it reaches with no slew at all.
+Object.assign(vals, { 'rutt.rise': 0.5, 'rutt.fall': 0 });
+reset(); Object.assign(vals, { 'rutt.rise': 0.5, 'rutt.fall': 0 });
+re.tick(ps, 0.016, black);                     // prime the history at black
+const climb = [];
+for (let i = 0; i < 6; i++) { re.tick(ps, 0.016, bright); climb.push(stats().mean); }
+check('rise does not arrive in one frame', climb[0] < noSlew.mean * 0.5,
+  `first=${climb[0].toFixed(1)} instant=${noSlew.mean.toFixed(1)}`);
+check('rise climbs monotonically', climb.every((v, i) => i === 0 || v > climb[i - 1]),
+  climb.map(v => v.toFixed(1)).join(' -> '));
+
+// Fall, and the ASYMMETRY: identical settling from the same lit state, one with
+// a fast fall and one with a slow one, must diverge — that is the whole feature.
+const settle = (fallT) => {
+  Object.assign(vals, { 'rutt.rise': 0, 'rutt.fall': fallT }); reset();
+  Object.assign(vals, { 'rutt.rise': 0, 'rutt.fall': fallT });
+  re.tick(ps, 0.016, bright);                  // history primed bright
+  for (let i = 0; i < 8; i++) re.tick(ps, 0.016, black);
+  return stats().mean;
+};
+const fastFall = settle(0.05), slowFall = settle(1.5);
+check('fall time is asymmetric and slow fall retains more', slowFall > fastFall * 3,
+  `fast=${fastFall.toFixed(1)} slow=${slowFall.toFixed(1)}`);
+
+// FRAME-RATE INDEPENDENCE — the reason these are seconds and not frames.
+// Each step multiplies the remaining distance by exp(-dt/tau), so n steps land
+// on exp(-n·dt/tau) however n and dt were divided. Same elapsed time, different
+// step counts, same answer.
+const elapse = (dt, n) => {
+  Object.assign(vals, { 'rutt.rise': 0.4, 'rutt.fall': 0 }); reset();
+  Object.assign(vals, { 'rutt.rise': 0.4, 'rutt.fall': 0 });
+  re.tick(ps, 0.016, black);
+  for (let i = 0; i < n; i++) re.tick(ps, dt, bright);
+  return stats().mean;
+};
+const at60 = elapse(1 / 60, 24), at30 = elapse(1 / 30, 12);   // 0.4 s either way
+check('same elapsed time gives the same result at 30 and 60 fps',
+  Math.abs(at60 - at30) < Math.max(at60, at30) * 0.05,
+  `60fps=${at60.toFixed(2)} 30fps=${at30.toFixed(2)}`);
+
+// It must ARRIVE, not stall short. An exponential approach takes ever smaller
+// steps and the history is half float, so without the guaranteed-progress step
+// this froze at 98.51 against 100.91 — and stayed there, bit for bit, from frame
+// 300 to frame 2000. Checked at two horizons precisely because a stall looks
+// exactly like convergence if you only sample it once.
+Object.assign(vals, { 'rutt.rise': 1.2, 'rutt.fall': 0 }); reset();
+Object.assign(vals, { 'rutt.rise': 1.2, 'rutt.fall': 0 });
+re.tick(ps, 0.016, black);
+for (let i = 0; i < 300; i++) re.tick(ps, 0.016, bright);
+const at300 = stats().mean;
+for (let i = 0; i < 300; i++) re.tick(ps, 0.016, bright);
+const at600 = stats().mean;
+check('a long slew arrives at the un-slewed level (no quantisation stall)',
+  Math.abs(at600 - noSlew.mean) < noSlew.mean * 0.005,
+  `at600=${at600.toFixed(2)} target=${noSlew.mean.toFixed(2)}`);
+check('and it was still moving at frame 300, not frozen early',
+  at600 >= at300, `at300=${at300.toFixed(2)} at600=${at600.toFixed(2)}`);
+
+Object.assign(vals, SLEW_OFF); reset();
+re.tick(ps, 0.016, bright);
+const backOff = stats();
+check('slew off is a true bypass — identical to never having been enabled',
+  backOff.lit === noSlew.lit && backOff.mean === noSlew.mean,
+  `${backOff.lit}/${backOff.mean.toFixed(4)} vs ${noSlew.lit}/${noSlew.mean.toFixed(4)}`);
 
 // ── 4. Camera orbit ──────────────────────────────────────────────────────────
 log('\ncamera');

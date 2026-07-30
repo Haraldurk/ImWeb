@@ -159,8 +159,60 @@ void main() {
 }
 `;
 
+const SLEW_FRAG = `
+uniform sampler2D uSrc;
+uniform sampler2D tPrev;
+uniform float uCoefUp;
+uniform float uCoefDown;
+varying vec2 vUv;
+
+void main() {
+  // Asymmetric temporal slew — jit.slide semantics, with the coefficients
+  // derived from dt on the CPU so the times are in SECONDS and the feel does
+  // not change between 30 and 60 fps. The discrete step is exact about this:
+  // each frame multiplies the remaining distance by exp(-dt/tau), so n steps
+  // land on exp(-n·dt/tau) no matter how n and dt were divided up.
+  //
+  // mix(prev, src, k) rather than prev + (src-prev)*k: at k = 1 the former is
+  // exactly src, while the latter is only nearly so in floating point, and
+  // "nearly" would leave a permanent residue at the default.
+  //
+  // Per channel, so R, G and B glide independently — which is also what real
+  // phosphors do, their persistences differing by colour.
+  vec3 src = texture2D(uSrc, vUv).rgb;
+  vec3 prv = texture2D(tPrev, vUv).rgb;
+  vec3 rising = vec3(greaterThan(src, prv));
+  vec3 k = mix(vec3(uCoefDown), vec3(uCoefUp), rising);
+
+  // GUARANTEED PROGRESS. An exponential approach takes ever smaller steps, and
+  // the buffer is half float: near 1.0 one ulp is about 1e-3, so once the step
+  // falls below that it rounds to nothing and the glide FREEZES short of its
+  // target — measured stuck at 98.5 against 100.9, identical at frame 300 and
+  // frame 2000. Not a rounding curiosity: a slow slide that visibly never
+  // arrives. So any step smaller than an ulp is replaced by exactly one ulp in
+  // the right direction, then clamped so it cannot overshoot.
+  //
+  // The tail therefore approaches linearly over its last ~1e-3 rather than
+  // exponentially. Invisible, and it only engages where the exponential has
+  // already stopped moving. sign(0) is 0, so a converged pixel stays put.
+  vec3 d = src - prv;
+  vec3 stepv = d * k;
+  const float ULP = 0.001;
+  vec3 progressed = mix(stepv, sign(d) * ULP, vec3(lessThan(abs(stepv), vec3(ULP))));
+  gl_FragColor = vec4(prv + clamp(progressed, -abs(d), abs(d)), 1.0);
+}
+`;
+
 /** Horizontal sample count for a given line count. */
 const colsFor = (lines) => Math.min(512, Math.max(32, Math.round(lines * 2)));
+
+/**
+ * Resolution of the slew history. FIXED, and deliberately decoupled from both
+ * the canvas and the line count: sizing it to the lattice would mean every
+ * change of rutt.lines reallocated the buffer and wiped the momentum mid-glide.
+ * 512 is exactly the maximum horizontal sampling density colsFor() can ask for.
+ */
+const SLEW_RES = 512;
 
 export class RuttEtra {
   constructor(renderer, width, height) {
@@ -233,6 +285,63 @@ export class RuttEtra {
     this._decayScene = new THREE.Scene();
     this._decayCam   = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
     this._decayScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), this._decayMat));
+
+    // Slew history. HalfFloat, not UnsignedByte: at long time constants a single
+    // frame moves the value by a fraction of a 1/255 step, which would round to
+    // zero and stall the glide short of its target — a slow slide that visibly
+    // never arrives. Allocated lazily, so a patch that never asks for slew pays
+    // nothing for it.
+    this._slewMat = new THREE.ShaderMaterial({
+      uniforms: {
+        uSrc:      { value: null },
+        tPrev:     { value: null },
+        uCoefUp:   { value: 1 },
+        uCoefDown: { value: 1 },
+      },
+      vertexShader:   DECAY_VERT,
+      fragmentShader: SLEW_FRAG,
+      depthTest:  false,
+      depthWrite: false,
+    });
+    this._slewScene = new THREE.Scene();
+    this._slewScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), this._slewMat));
+    this._slewA = null;
+    this._slewB = null;
+    this._slewCur  = null;
+    this._slewWarm = false;
+  }
+
+  /** Allocate the slew pair on first use. */
+  _ensureSlew() {
+    if (this._slewA) return;
+    const o = {
+      minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter,
+      format: THREE.RGBAFormat, type: THREE.HalfFloatType, depthBuffer: false,
+    };
+    this._slewA = new THREE.WebGLRenderTarget(SLEW_RES, SLEW_RES, o);
+    this._slewB = new THREE.WebGLRenderTarget(SLEW_RES, SLEW_RES, o);
+    this._slewCur = this._slewA;
+  }
+
+  /**
+   * Seed both buffers with the current source, so enabling slew glides from what
+   * is on screen now rather than from whatever frame was left in the history the
+   * last time it was switched off.
+   */
+  _primeSlew(srcTex) {
+    const r = this.renderer;
+    const u = this._slewMat.uniforms;
+    u.uSrc.value = srcTex;
+    u.tPrev.value = srcTex;
+    u.uCoefUp.value = 1;
+    u.uCoefDown.value = 1;
+    for (const rt of [this._slewA, this._slewB]) {
+      r.setRenderTarget(rt);
+      r.render(this._slewScene, this._decayCam);
+    }
+    r.setRenderTarget(null);
+    this._slewCur = this._slewA;
+    this._slewWarm = true;
   }
 
   /**
@@ -291,7 +400,7 @@ export class RuttEtra {
 
   /**
    * @param {object} ps      ParameterSystem
-   * @param {number} dt      unused; kept on the signature every source tick uses
+   * @param {number} dt      seconds since the last tick; drives the slew coefficients
    * @param {THREE.Texture} srcTex  resolved by _resolveLayerTex() in main.js
    */
   tick(ps, dt, srcTex) {
@@ -301,7 +410,41 @@ export class RuttEtra {
     this._rebuild(Math.max(2, Math.round(ps.get('rutt.lines').value)));
 
     const u = this._mat.uniforms;
-    if (srcTex) u.uSrc.value = srcTex;
+
+    // ── Temporal slew ────────────────────────────────────────────────────────
+    // Off is a BYPASS, not a pass-through at coefficient 1: routing the source
+    // through a fixed 512² history would resample it and soften the picture even
+    // while the effect did nothing. At rise = fall = 0 the vertex shader reads
+    // the source exactly as it did before this existed.
+    const rise = ps.get('rutt.rise').value;
+    const fall = ps.get('rutt.fall').value;
+    let scanTex = srcTex;
+
+    if (srcTex && (rise > 0 || fall > 0)) {
+      this._ensureSlew();
+      if (!this._slewWarm) this._primeSlew(srcTex);
+
+      // Clamp dt: a backgrounded tab resumes with a huge one, and a snap is the
+      // right answer there — but the clamp keeps exp() out of denormal territory
+      // rather than leaving it to chance.
+      const d = Math.min(Math.max(dt, 0), 0.25);
+      const su = this._slewMat.uniforms;
+      su.uCoefUp.value   = rise > 0 ? 1 - Math.exp(-d / rise) : 1;
+      su.uCoefDown.value = fall > 0 ? 1 - Math.exp(-d / fall) : 1;
+      su.uSrc.value  = srcTex;
+      su.tPrev.value = this._slewCur.texture;
+
+      const next = this._slewCur === this._slewA ? this._slewB : this._slewA;
+      this.renderer.setRenderTarget(next);
+      this.renderer.render(this._slewScene, this._decayCam);
+      this.renderer.setRenderTarget(null);
+      this._slewCur = next;
+      scanTex = next.texture;
+    } else {
+      this._slewWarm = false;
+    }
+
+    if (scanTex) u.uSrc.value = scanTex;
     u.uZGain.value     = ps.get('rutt.zgain').value;
     u.uZCurve.value    = ps.get('rutt.zcurve').value;
     u.uZPivot.value    = ps.get('rutt.zpivot').value;
@@ -370,6 +513,10 @@ export class RuttEtra {
   dispose() {
     this._rtA.dispose();
     this._rtB.dispose();
+    this._slewA?.dispose();
+    this._slewB?.dispose();
+    this._slewMat.dispose();
+    this._slewScene.children[0].geometry.dispose();
     this._mat.dispose();
     this._decayMat.dispose();
     this._decayScene.children[0].geometry.dispose();

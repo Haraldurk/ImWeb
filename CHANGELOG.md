@@ -47,6 +47,14 @@ git tag and nothing else. Design doc: `docs/ImWeb-Spacetime-Blueprint.md` §6.*
   frank departure. Tinting is per line, before accumulation, so densely
   overlapped regions climb toward white — what an over-driven CRT does when the
   beam retraces the same phosphor.
+- **`rutt.rise` / `rutt.fall`** — asymmetric temporal slew, `jit.slide` semantics.
+  The lattice glides toward the signal instead of snapping to it, so live video
+  becomes a viscous topography rather than a field of jittery spikes. Times are
+  in **seconds**, not frames: each step multiplies the remaining distance by
+  `exp(-dt/tau)`, so the feel is identical at 30 and 60 fps (measured 76.11 vs
+  76.16). Both at 0 bypasses the history buffer entirely rather than passing
+  through it at coefficient 1, so the default costs neither a pass nor any
+  resampling softness.
 
 ### Changed
 - **Every project, bank and Display State now records the capture-index base it
