@@ -3018,6 +3018,35 @@ export function registerCoreParameters(ps) {
     unit: "°",
   });
   ps.register({
+    // How far the aura reaches, in world units of closest approach. The aura
+    // used to be derived from step count, which correlates with proximity only
+    // loosely — it also rose with distance travelled and field complexity, and
+    // a ray grazing the silhouette through empty space takes big strides and
+    // scores LOW. That is why it read as a dull wash no amount of Glow fixed.
+    id: "sdf.glowSize",
+    label: "Glow Size",
+    group: "sdf",
+    min: 0.02,
+    max: 2.0,
+    value: 0.4,
+    step: 0.01,
+    unit: "u",
+  });
+  ps.register({
+    // Fresnel used to add flat white, which is why "glass" read as a glowing
+    // rim rather than a reflective one — a rim that is the same colour all the
+    // way round carries no information about the surroundings, and that
+    // information is what reflection IS. The reflected direction is now looked
+    // up in the Refract Src texture as a spherical surround. 0 = the old white.
+    id: "sdf.envAmt",
+    label: "Env Mirror",
+    group: "sdf",
+    min: 0,
+    max: 1.0,
+    value: 1.0,
+    step: 0.01,
+  });
+  ps.register({
     // Was a hardcoded light direction of normalize(vec3(1.0, 1.5, 2.0)).
     // Azimuth 27° / elevation 34° is that same unit vector, so the defaults
     // leave every existing render unchanged.
