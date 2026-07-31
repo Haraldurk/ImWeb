@@ -169,30 +169,44 @@ float sdCone(vec3 p, float r, float h) {
 // scaled down by a conservative factor. That factor is why uShapeStep exists:
 // the march also has to take smaller steps for these, or it tunnels through.
 
-// Gyroid — a triply-periodic minimal surface. Pairs naturally with Tile.
+// Gyroid — a triply-periodic minimal surface, INTERSECTED WITH A BALL.
+// Unbounded it is space-filling, so it ignored Size, Separation and Count and
+// simply flooded the frame: the periodic field has no size of its own to scale.
+// Clipping it to the family envelope makes it a ball of gyroid, which is one
+// shape among the others rather than a background. Raise the frequency to keep
+// visible structure inside a ball that small.
 float sdGyroid(vec3 p, float thickness) {
-  vec3 s = sin(p * 3.0), c = cos(p * 3.0);
-  float g = dot(s, c.yzx);            // sin x·cos y + sin y·cos z + sin z·cos x
-  return (abs(g) - thickness) * 0.18; // 0.18 tames the gradient of the 3x scaling
+  float k = 8.0;                       // cells per world unit
+  vec3 s = sin(p * k), c = cos(p * k);
+  float g = dot(s, c.yzx);             // sin x·cos y + sin y·cos z + sin z·cos x
+  float shell = (abs(g) - thickness) / (k * 1.5);  // divisor tames |∇g| at this k
+  return max(shell, length(p) - 0.62);
 }
 
 // Helicoid — a ruled minimal surface; the sheet a spiral staircase sweeps.
+// Clipped in BOTH r and y: the sheet is infinite along the axis it winds around,
+// so a disc clip alone still left it running off the top and bottom of frame.
 float sdHelicoid(vec3 p, float thickness) {
   float a = atan(p.z, p.x);
   float r = length(p.xz);
   // Wrap the angular error into the nearest turn so the sheet is single-valued.
-  float h = p.y * 3.0 - a;
+  float h = p.y * 6.0 - a;
   h = mod(h + 3.14159265, 6.28318531) - 3.14159265;
-  float d = abs(h) * min(r, 1.0) / 3.0 - thickness;
-  return max(d, r - 0.75) * 0.5;      // clipped to a disc so it is not infinite
+  float d = abs(h) * min(r, 1.0) / 6.0 - thickness;
+  return max(max(d, r - 0.6), abs(p.y) - 0.6) * 0.5;
 }
 
 // Catenoid — the minimal surface of revolution, r = c·cosh(y/c).
+// The flare is exponential, so the y clamp IS the size control: at c = 0.25,
+// y = ±0.38 gives a mouth radius of 0.25·cosh(1.52) = 0.60. The previous ±0.7
+// flared to 2.06 — three and a half times the rest of the family.
 float sdCatenoid(vec3 p, float thickness) {
-  float y = clamp(p.y, -0.7, 0.7);    // cosh explodes; clamping keeps it finite
-  float c = 0.25;
-  float d = abs(length(p.xz) - c * (exp(y / c) + exp(-y / c)) * 0.5) - thickness;
-  return max(d, abs(p.y) - 0.7) * 0.35;
+  float c    = 0.25;
+  float yLim = 0.38;
+  float y    = clamp(p.y, -yLim, yLim);
+  float rr   = c * (exp(y / c) + exp(-y / c)) * 0.5;
+  float d    = abs(length(p.xz) - rr) - thickness;
+  return max(d, abs(p.y) - yLim) * 0.35;
 }
 
 // Selected by an argument, not by reading uShape, so two instances can use two
@@ -209,11 +223,14 @@ float sdShapeSel(vec3 p, float sh) {
   else if (sh < 7.5) return sdMandelbulb(p * 1.2) * 0.8;
   // 8+ appended — SELECT values persist as indices, so this list only grows
   // at the end. Inserting anywhere above would re-point every saved sdf.shape.
-  else if (sh < 8.5)  return sdCylinder(p, 0.4, 0.5);
-  else if (sh < 9.5)  return sdCone(p, 0.5, 0.5);
-  else if (sh < 10.5) return sdGyroid(p, 0.55);
-  else if (sh < 11.5) return sdHelicoid(p, 0.06);
-  else                return sdCatenoid(p, 0.05);
+  // Sized to the same envelope as the eight above, which sit between 0.50 and
+  // 0.73 bounding radius. Shipped at 0.64–2.06 and unbounded, so the new shapes
+  // read as a different scale of object rather than alternatives to the old.
+  else if (sh < 8.5)  return sdCylinder(p, 0.40, 0.45);   // bounding 0.60
+  else if (sh < 9.5)  return sdCone(p, 0.45, 0.45);       // bounding 0.64
+  else if (sh < 10.5) return sdGyroid(p, 0.55);           // clipped to 0.62
+  else if (sh < 11.5) return sdHelicoid(p, 0.06);         // clipped to 0.60
+  else                return sdCatenoid(p, 0.05);         // flares to 0.60
 }
 
 float sdShape(vec3 p) { return sdShapeSel(p, uShape); }
