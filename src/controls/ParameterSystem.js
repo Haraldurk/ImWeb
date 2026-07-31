@@ -514,6 +514,9 @@ export const SOURCE_DEFS = [
   // indirect capture entries that used to sit at 29 moved with it, kept in
   // register by the base stamp in migrateCaptureBase().
   { key: "rutt",      label: "Rutt-Etra" }, // 29
+  // 30 — the raymarcher's depth, packed into its colour target's alpha and
+  // expanded by a blit. Not a second raymarch: WebGL 1 has no MRT here.
+  { key: "sdfdepth",  label: "SDF Depth" }, // 30
 ];
 
 /** Source indices of the three mix buses, in evaluation order (1 → 2 → 3). */
@@ -535,7 +538,8 @@ export const SOURCE_DISPLAY_ORDER = [
   { header: "Media" },          1 /* Movie A */, 25 /* Movie B */, 2 /* Buffer */,
                                 9 /* BG1 */, 10 /* BG2 */,
   { header: "Generators" },     3 /* Color */, 4 /* Color2 */, 5 /* Noise */,
-                                16 /* Particles */, 21 /* SDF */, 11 /* Text */,
+                                16 /* Particles */, 21 /* SDF */, 30 /* SDF Depth */,
+                                11 /* Text */,
                                 7 /* Draw */, 6 /* 3D Scene */, 20 /* 3D Depth */,
                                 23 /* Analog */, 29 /* Rutt-Etra */,
   { header: "From the Signal" }, 8 /* Output */, 13 /* Delay */, 24 /* TimeDisp */,
@@ -2684,7 +2688,45 @@ export function registerCoreParameters(ps) {
       "Octahedron",
       "Link",
       "Mandelbulb",
+      // 8+ borrowed from Rutt-Etra's parametric surface list. APPEND ONLY:
+      // a SELECT persists as an integer index, so inserting above would
+      // re-point every saved sdf.shape. Gyroid/Helicoid/Catenoid are implicit
+      // shells rather than exact distance fields — the shader marches them
+      // more slowly to compensate.
+      "Cylinder",
+      "Cone",
+      "Gyroid",
+      "Helicoid",
+      "Catenoid",
     ],
+  });
+  ps.register({
+    // Option 0 is "Same as A", which is the default, so a project that never
+    // touches this looks exactly as it did. The shader takes < 0 as the
+    // sentinel, so tick() passes value - 1.
+    id: "sdf.shapeB",
+    label: "Shape B",
+    group: "sdf",
+    type: PARAM_TYPE.SELECT,
+    value: 0,
+    select: true,
+    options: [
+      "Same as A",
+      "Sphere", "Box", "Torus", "Capsule", "Hexagonal Prism", "Octahedron",
+      "Link", "Mandelbulb", "Cylinder", "Cone", "Gyroid", "Helicoid", "Catenoid",
+    ],
+  });
+  ps.register({
+    // Instances on the orbit. 2 was hardcoded; it stays the default, though the
+    // generalised placement moves the second instance's wobble phase slightly
+    // (the old counter-shape was not a rotation of the first).
+    id: "sdf.count",
+    label: "Count",
+    group: "sdf",
+    min: 1,
+    max: 8,
+    value: 2,
+    step: 1,
   });
   ps.register({
     // Uniform scale on every primitive. Each shape's radius used to be a
@@ -2821,6 +2863,34 @@ export function registerCoreParameters(ps) {
     step: 0.5,
     unit: "°",
   });
+  // ── Quality ───────────────────────────────────────────────────────────────
+  // Both were pinned. NOTE, measured: the raymarcher is ~0.3ms of an 18.8ms
+  // frame in a default project, so these buy SHARPNESS, not frame rate — the
+  // time is going elsewhere in the pipeline.
+  ps.register({
+    // Internal render scale. 0.5 is what it was fixed at; the target is
+    // reallocated when this changes.
+    id: "sdf.rscale",
+    label: "Detail",
+    group: "sdf",
+    min: 0.25,
+    max: 1.0,
+    value: 0.5,
+    step: 0.05,
+    unit: "x",
+  });
+  ps.register({
+    // March iteration budget. Raise it when Warp is high: Warp shrinks every
+    // step, so a fixed budget reaches proportionally less far and distant
+    // geometry silently disappears. The shader's compile-time ceiling is 256.
+    id: "sdf.steps",
+    label: "Steps",
+    group: "sdf",
+    min: 32,
+    max: 256,
+    value: 96,
+    step: 1,
+  });
   ps.register({
     id: "sdf.kifsIter",
     label: "Folds",
@@ -2838,6 +2908,27 @@ export function registerCoreParameters(ps) {
     value: 0,
     step: 0.5,
     unit: "°",
+  });
+  ps.register({
+    // The fold was `abs(kp) - vec3(1.0)` with both numbers hardcoded, which is
+    // one fractal rather than a family. Scale 1 / Offset 1 is that expression
+    // exactly, so the default is unchanged.
+    id: "sdf.kifsScale",
+    label: "Fold Scale",
+    group: "sdf",
+    min: 0.5,
+    max: 2.0,
+    value: 1.0,
+    step: 0.01,
+  });
+  ps.register({
+    id: "sdf.kifsOffset",
+    label: "Fold Offset",
+    group: "sdf",
+    min: 0,
+    max: 2.0,
+    value: 1.0,
+    step: 0.01,
   });
   ps.register({
     id: "sdf.lumaWarp",

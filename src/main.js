@@ -3788,6 +3788,10 @@ async function main() {
     if (key === "particles") return particles.texture;
     if (key === "sdf") return sdfGen.texture;
     if (key === "rutt") return ruttEtra.texture;
+    // Null until renderDepth() has run — the fixpoint below only schedules
+    // that pass when this source is actually consumed, so the first frame of
+    // a fresh route falls through to Output rather than binding nothing.
+    if (key === "sdfdepth") return sdfGen.depthTexture ?? pipeline.prev.texture;
     if (key === "seq1") return seq1.texture;
     if (key === "seq2") return seq2.texture;
     if (key === "seq3") return seq3.texture;
@@ -7238,7 +7242,13 @@ void main() {
           ? _resolveLayerTex(_sdfSrcToLayerIdx[_sdfRefIdx])
           : null;
     const SDF_IDX = 21;
-    const _sdfUsed = _srcUsed(SDF_IDX);
+    const SDFDEPTH_IDX = 30;
+    // Depth is a blit over the raymarcher's own target, so routing SDF Depth
+    // alone still has to run the march. Ticking on either keeps "the depth tap
+    // works even when the colour is not on screen" true, which is the whole
+    // point of a depth source — it is normally driving Displace, not the view.
+    const _sdfDepthUsed = _srcUsed(SDFDEPTH_IDX);
+    const _sdfUsed = _srcUsed(SDF_IDX) || _sdfDepthUsed;
     // Never feed the raymarcher its own output — reachable as soon as
     // _resolveLayerTex resolves "SDF" properly: sdf.texSrc = "FG Src" with
     // layer.fg = SDF. Before that it landed on the Output fall-through and was
@@ -7249,6 +7259,8 @@ void main() {
         _notSelf(_sdfTex, sdfGen.texture),
         _notSelf(_sdfRef, sdfGen.texture),
       );
+    // After the march, so the alpha it reads is this frame's.
+    if (_sdfDepthUsed) sdfGen.renderDepth();
 
     // Rutt-Etra Scan Processor — on-demand rendering (source index 29)
     const RUTT_IDX = 29;
@@ -7382,6 +7394,7 @@ void main() {
       particles: particles.texture,
       sdf: sdfGen.texture,
       rutt: ruttEtra.texture,
+      sdfdepth: sdfGen.depthTexture,
       analog: analogTV.texture,
       tdisp: tdEngine.texture,
       seq1: seq1.texture,
