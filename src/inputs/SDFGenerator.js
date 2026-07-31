@@ -225,12 +225,23 @@ float scene(vec3 p) {
 
   // Video luma displacement: project world-space XY onto [0,1] UVs, sample the
   // foreground texture, compute Rec.709 luminance, displace outward.
-  // clamp keeps UVs in-bounds; at uLumaWarp=0 this term is zero — no cost.
-  vec2 lumaUv  = clamp(p.xy * 0.5 + 0.5, 0.0, 1.0);
-  vec3 lumaRgb = texture2D(uFgTex, lumaUv).rgb;
-  float luma   = dot(lumaRgb, vec3(0.2126, 0.7152, 0.0722));
-  luma = smoothstep(uLumaThresh, 1.0, luma);
-  float lumaDsp = luma * uLumaWarp;
+  //
+  // The branch is the point. scene() runs up to 96 times per ray in the march,
+  // plus 6 for the normal and 5 for AO — so an UNCONDITIONAL texture2D here was
+  // ~107 dependent samples per pixel, paid on every frame by every project,
+  // whether or not Luma Warp was above zero (and it defaults to zero). The old
+  // comment claimed "at uLumaWarp=0 this term is zero — no cost", which was
+  // true of the arithmetic and false of the fetch that fed it.
+  //
+  // uLumaWarp is a uniform, so this is uniform control flow: every fragment
+  // takes the same path and the implicit-LOD rule for texture2D is satisfied.
+  float lumaDsp = 0.0;
+  if (uLumaWarp > 0.0) {
+    vec2 lumaUv  = clamp(p.xy * 0.5 + 0.5, 0.0, 1.0);
+    vec3 lumaRgb = texture2D(uFgTex, lumaUv).rgb;
+    float luma   = dot(lumaRgb, vec3(0.2126, 0.7152, 0.0722));
+    lumaDsp = smoothstep(uLumaThresh, 1.0, luma) * uLumaWarp;
+  }
 
   return d1 + displacement + lumaDsp;
 }
@@ -348,7 +359,9 @@ void main() {
     // Modulate tex sample by lighting so shading is preserved at uTexBlend=1
     vec3  litTex   = texColor * (0.15 + diff * 0.85);
     vec3  finalCol = mix(col, litTex, uTexBlend);
-    finalCol *= mix(1.0, calcAO(p, n), uAO);
+    // Branch, not mix(): mix() evaluates both arguments, so calcAO — five more
+    // scene() evaluations — ran in full even at Occlusion 0.
+    if (uAO > 0.0) finalCol *= mix(1.0, calcAO(p, n), uAO);
     // Glass body: at uRefract=1 the object transmits the background instead of
     // showing its own diffuse. AO is applied BEFORE this, so cavity darkening
     // fades out with the diffuse it belongs to rather than dirtying clear glass.
