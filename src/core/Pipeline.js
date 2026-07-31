@@ -955,6 +955,7 @@ export class Pipeline {
     if (key === 'analog'    && inputs.analog)    return inputs.analog;
     if (key === 'tdisp'     && inputs.tdisp)     return inputs.tdisp;
     if (key === 'rutt'      && inputs.rutt)      return inputs.rutt;
+    if (key === 'sdfdepth'  && inputs.sdfdepth)  return inputs.sdfdepth;
     return inputs.color ?? this._getFallbackTexture();
   }
 

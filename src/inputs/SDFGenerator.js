@@ -1,16 +1,26 @@
 /**
- * ImWeb SDF Generator — Phase 2
- * Raymarches two orbiting SDF metaballs into a WebGLRenderTarget.
- * Exposes .texture for use as a pipeline source (Foreground / Background / Displacement).
+ * ImWeb SDF Generator
  *
- * Parameters:
- *   sdf.active   — toggle rendering
- *   sdf.opMode   — 0=Union, 1=Smooth Union, 2=Subtraction, 3=Intersection
- *   sdf.opAmount — smooth blend radius 0–1
- *   sdf.distance — orbit radius (world units, or cell fraction when repeat > 0)
- *   sdf.shape    — 0=Sphere,1=Box,2=Torus,3=Capsule,4=HexPrism,5=Octahedron,6=Link,7=Mandelbulb
- *   sdf.repeat   — domain repetition cell spacing; 0 = off
- *   sdf.warp     — surface displacement amplitude
+ * Raymarches up to eight orbiting signed-distance shapes into a
+ * WebGLRenderTarget. `.texture` is source 21 ("SDF"); `.depthTexture` is source
+ * 30 ("SDF Depth"), the marched distance packed into the colour target's alpha
+ * and expanded by a blit — WebGL 1 has no MRT here, and marching twice to get a
+ * depth buffer would double the cost of the most expensive source in the app.
+ *
+ * NOT "Metaballs": a metaball is a blobby sum-of-falloff surface, which is one
+ * of thirteen shapes under one of four combine modes. That name also belongs to
+ * the 3D Scene tab's own, unrelated system.
+ *
+ * Every parameter lives in ParameterSystem under the `sdf.` namespace and is
+ * documented there. The shader-side invariants worth knowing before editing:
+ *
+ *  - The shape list is APPEND-ONLY. sdf.shape persists as an integer index.
+ *  - Orientation comes from Euler angles, never lookAt — lookAt has a pole.
+ *  - Animation is driven by an integrated PHASE, not by time x speed, so that
+ *    Speed 0 freezes in place instead of snapping to the pose at angle 0.
+ *  - Anything that inflates the Lipschitz constant (Warp, Luma Warp, the
+ *    implicit shell shapes, KIFS scaling) must shrink the step or the sphere
+ *    trace tunnels through the surface. They are combined in one place.
  */
 
 import * as THREE from 'three';
@@ -22,11 +32,21 @@ void main() { vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }
 
 const FRAG = `
 precision highp float;
-uniform float uTime;
+// Animation PHASE, integrated on the CPU as ∫speed·dt — not a clock times a
+// speed. With time*speed the clock ran on regardless, so Speed 0 did not
+// hold the shapes where they were: it snapped them to the pose at angle 0, and
+// nudging Speed off zero teleported to wherever the free-running clock had got
+// to. Neither freezing nor ramping was possible, which for a live instrument
+// is the whole point of the control. Integrating also stops the value growing
+// without bound, which costs float precision over a long set.
+uniform float uPhase;
+uniform float uSteps;       // raymarch iteration budget
 uniform float uSdfOpMode;   // 0=Union, 1=Smooth Union, 2=Subtraction, 3=Intersection
 uniform float uSdfOpAmount; // blend / smooth radius 0–1
 uniform float uDistance; // separation between the two orbiting shapes
 uniform float uShape;    // 0=Sphere,1=Box,2=Torus,3=Capsule,4=HexPrism,5=Octahedron,6=Link,7=Mandelbulb
+uniform float uShapeB;   // second primitive; < 0 means "same as A"
+uniform float uCount;    // number of orbiting instances, 1–8
 uniform float uSize;     // uniform scale on every primitive
 uniform float uTile;     // domain repetition on/off
 uniform float uRepeat;   // domain repetition cell spacing
@@ -40,8 +60,9 @@ uniform float uGlowHue;   // step-count aura hue, 0–1
 uniform vec3  uLightDir;  // unit light direction, built from az/el on the CPU
 uniform float uKifsIter;    // KIFS fold iterations 0–5 (float for WebGL compat)
 uniform float uKifsAngle;   // KIFS rotation angle (radians)
+uniform float uKifsScale;   // KIFS per-iteration scale (1 = the legacy fold)
+uniform float uKifsOffset;  // KIFS per-iteration offset (1 = the legacy fold)
 uniform float uLumaWarp;    // video luma displacement amplitude
-uniform float uSdfSpeed;    // animation time scale (0 = freeze)
 uniform float uLumaThresh;  // smoothstep low edge — cuts noise below this luma
 uniform float uTexBlend;    // 0=base material, 1=triplanar video texture
 uniform float uAO;          // ambient occlusion strength (0=off, 1=full)
@@ -124,15 +145,93 @@ float sdMandelbulb(vec3 pos) {
   return 0.5 * log(r) * r / dr;
 }
 
-float sdShape(vec3 p) {
-  if      (uShape < 0.5) return sdSphere(p, 0.6);
-  else if (uShape < 1.5) return sdBox(p, vec3(0.42));
-  else if (uShape < 2.5) return sdTorus(p, vec2(0.45, 0.18));
-  else if (uShape < 3.5) return sdCapsule(p, vec3(0.0, -0.3, 0.0), vec3(0.0, 0.3, 0.0), 0.25);
-  else if (uShape < 4.5) return sdHexPrism(p, vec2(0.4, 0.2));
-  else if (uShape < 5.5) return sdOctahedron(p, 0.7);
-  else if (uShape < 6.5) return sdLink(p, 0.3, 0.3, 0.12);
-  else                   return sdMandelbulb(p * 1.2) * 0.8;
+// Capped cylinder (IQ exact) — Rutt-Etra's parametric list has one.
+float sdCylinder(vec3 p, float r, float h) {
+  vec2 d = abs(vec2(length(p.xz), p.y)) - vec2(r, h);
+  return min(max(d.x, d.y), 0.0) + length(max(d, 0.0));
+}
+
+// Capped cone (IQ exact)
+float sdCone(vec3 p, float r, float h) {
+  vec2 q = vec2(length(p.xz), p.y);
+  vec2 k1 = vec2(0.0, h);
+  vec2 k2 = vec2(-r, 2.0 * h);
+  vec2 ca = vec2(q.x - min(q.x, (q.y < 0.0) ? r : 0.0), abs(q.y) - h);
+  vec2 cb = q - k1 + k2 * clamp(dot(k1 - q, k2) / dot(k2, k2), 0.0, 1.0);
+  float s = (cb.x < 0.0 && ca.y < 0.0) ? -1.0 : 1.0;
+  return s * sqrt(min(dot(ca, ca), dot(cb, cb)));
+}
+
+// ── Implicit surfaces (Rutt-Etra's parametric family) ────────────────────────
+// Gyroid, Helicoid and Catenoid have no exact distance function — these are
+// implicit fields turned into thin shells by abs(f) - thickness. The result is
+// a BOUND, not a distance, and it over-reports near the surface, so each is
+// scaled down by a conservative factor. That factor is why uShapeStep exists:
+// the march also has to take smaller steps for these, or it tunnels through.
+
+// Gyroid — a triply-periodic minimal surface. Pairs naturally with Tile.
+float sdGyroid(vec3 p, float thickness) {
+  vec3 s = sin(p * 3.0), c = cos(p * 3.0);
+  float g = dot(s, c.yzx);            // sin x·cos y + sin y·cos z + sin z·cos x
+  return (abs(g) - thickness) * 0.18; // 0.18 tames the gradient of the 3x scaling
+}
+
+// Helicoid — a ruled minimal surface; the sheet a spiral staircase sweeps.
+float sdHelicoid(vec3 p, float thickness) {
+  float a = atan(p.z, p.x);
+  float r = length(p.xz);
+  // Wrap the angular error into the nearest turn so the sheet is single-valued.
+  float h = p.y * 3.0 - a;
+  h = mod(h + 3.14159265, 6.28318531) - 3.14159265;
+  float d = abs(h) * min(r, 1.0) / 3.0 - thickness;
+  return max(d, r - 0.75) * 0.5;      // clipped to a disc so it is not infinite
+}
+
+// Catenoid — the minimal surface of revolution, r = c·cosh(y/c).
+float sdCatenoid(vec3 p, float thickness) {
+  float y = clamp(p.y, -0.7, 0.7);    // cosh explodes; clamping keeps it finite
+  float c = 0.25;
+  float d = abs(length(p.xz) - c * (exp(y / c) + exp(-y / c)) * 0.5) - thickness;
+  return max(d, abs(p.y) - 0.7) * 0.35;
+}
+
+// Selected by an argument, not by reading uShape, so two instances can use two
+// different primitives. sdShape(p) keeps the old one-argument form for the
+// callers that only ever want the A shape.
+float sdShapeSel(vec3 p, float sh) {
+  if      (sh < 0.5) return sdSphere(p, 0.6);
+  else if (sh < 1.5) return sdBox(p, vec3(0.42));
+  else if (sh < 2.5) return sdTorus(p, vec2(0.45, 0.18));
+  else if (sh < 3.5) return sdCapsule(p, vec3(0.0, -0.3, 0.0), vec3(0.0, 0.3, 0.0), 0.25);
+  else if (sh < 4.5) return sdHexPrism(p, vec2(0.4, 0.2));
+  else if (sh < 5.5) return sdOctahedron(p, 0.7);
+  else if (sh < 6.5) return sdLink(p, 0.3, 0.3, 0.12);
+  else if (sh < 7.5) return sdMandelbulb(p * 1.2) * 0.8;
+  // 8+ appended — SELECT values persist as indices, so this list only grows
+  // at the end. Inserting anywhere above would re-point every saved sdf.shape.
+  else if (sh < 8.5)  return sdCylinder(p, 0.4, 0.5);
+  else if (sh < 9.5)  return sdCone(p, 0.5, 0.5);
+  else if (sh < 10.5) return sdGyroid(p, 0.55);
+  else if (sh < 11.5) return sdHelicoid(p, 0.06);
+  else                return sdCatenoid(p, 0.05);
+}
+
+float sdShape(vec3 p) { return sdShapeSel(p, uShape); }
+
+/**
+ * Per-shape step multiplier. The implicit shells return a bound rather than a
+ * distance, so the sphere trace must creep where it would otherwise stride.
+ * Folded into stepScale next to the Warp and Luma terms — one place where every
+ * Lipschitz correction is combined, rather than a special case at the call site.
+ *
+ * Takes the MINIMUM over both slots: one implicit shape in the scene is enough
+ * to require the slower march, and gating on the A shape alone would tunnel
+ * through a gyroid sitting in slot B.
+ */
+float shapeStepScale() {
+  float a = (uShape  > 9.5) ? 0.4 : 1.0;
+  float b = (uShapeB > 9.5) ? 0.4 : 1.0;
+  return min(a, b);
 }
 
 // ── Smooth-min (Inigo Quilez polynomial) ────────────────────────────────────
@@ -175,49 +274,73 @@ float scene(vec3 p) {
   // misalign successive folds and generate fractal complexity.
   // Uses a fixed loop bound (5) with a float break for WebGL 1 compatibility.
   // At uKifsIter == 0 the loop body never runs — zero behaviour change.
-  vec3 kp = q;
+  //
+  // Scale and Offset were literals (abs(kp) - vec3(1.0)); at Scale 1 / Offset 1
+  // this is that expression exactly, so the default fractal is unchanged.
+  // A scaling fold shrinks the distance metric by uKifsScale each iteration, so
+  // kifsScl accumulates it and the result is divided back out below — without
+  // that the estimate over-reports and the march tunnels straight through the
+  // fractal. At Scale 1 the accumulator stays 1 and the division is a no-op.
+  vec3  kp      = q;
+  float kifsScl = 1.0;
   for (int ki = 0; ki < 5; ki++) {
     if (float(ki) >= uKifsIter) break;
-    kp = abs(kp) - vec3(1.0);
+    kp = abs(kp) * uKifsScale - vec3(uKifsOffset);
     kp.xy = rot2D(uKifsAngle) * kp.xy;
     kp.xz = rot2D(uKifsAngle) * kp.xz;
+    kifsScl *= uKifsScale;
   }
 
   // Separation always comes from uDistance. It used to be overridden by the
   // cell spacing whenever repetition was on, which meant the Separation slider
   // silently did nothing in tile mode — a dead control with no indication.
   float rad = uDistance * 0.35;
-  float ang = uTime * 0.8 * uSdfSpeed;
-  vec3 cA   = vec3( cos(ang) * rad,  sin(ang * 0.7) * 0.3,  sin(ang * 0.4) * 0.2);
-  vec3 cB   = vec3(-cos(ang) * rad, -sin(ang * 0.7) * 0.3,  cos(ang * 0.4) * 0.2);
+  float ang = uPhase * 0.8;
 
   // Uniform scale on a distance field is d(p) = s * shape(p / s); dividing the
   // point without re-multiplying the result would break the Lipschitz bound
   // and make the raymarch overshoot through thin geometry.
-  float s  = max(uSize, 0.001);
-  float dA = sdShape((kp - cA) / s) * s;
-  float dB = sdShape((kp - cB) / s) * s;
+  float s = max(uSize, 0.001);
   // k scales opAmount from [0,1] into a useful blend radius.
   // For Soft Cut, uSdfOpAmount=0 means no cut; =1 means deep bite.
-  float k  = max(uSdfOpAmount, 0.001);
-  float d1;
-  if (uSdfOpMode < 0.5) {
-    // Union: hard min, no blending
-    d1 = min(dA, dB);
-  } else if (uSdfOpMode < 1.5) {
-    // Smooth Union: polynomial smooth-min blend
-    d1 = smin(dA, dB, k);
-  } else if (uSdfOpMode < 2.5) {
-    // Subtraction: dB carves into dA
-    d1 = opSmoothSub(dA, dB, k);
-  } else {
-    // Intersection: smooth intersection (negate both, smin, negate result)
-    d1 = -smin(-dA, -dB, k);
+  float k = max(uSdfOpAmount, 0.001);
+
+  // Instances are placed on one orbit, evenly spaced in phase. This replaced a
+  // hand-written cA/cB pair; instance 0 is byte-identical to the old cA, and
+  // at Count 2 instance 1 lands close to the old cB but not exactly on it —
+  // the old counter-shape was not a rotation of the first, so a generalised
+  // orbit cannot reproduce its wobble. The x axis (the large motion) matches;
+  // the two small wobble axes differ by a phase offset.
+  float cnt = max(uCount, 1.0);
+  float d1  = 1e9;
+  for (int i = 0; i < 8; i++) {
+    if (float(i) >= cnt) break;
+    float ph = ang + float(i) * 6.28318531 / cnt;
+    vec3  ci = vec3(cos(ph) * rad, sin(ph * 0.7) * 0.3, sin(ph * 0.4) * 0.2);
+    // Alternate primitives so Shape B reads as "the other one" at Count 2 and
+    // as an alternating pattern above it. uShapeB < 0 means "same as A".
+    float useB = (uShapeB >= 0.0 && mod(float(i), 2.0) > 0.5) ? 1.0 : 0.0;
+    float di = sdShapeSel((kp - ci) / s, mix(uShape, uShapeB, useB)) * s;
+
+    // The first instance seeds d1; combining it with the 1e9 sentinel would
+    // let smin/opSmoothSub blend against a number that is not a surface.
+    if (i == 0) { d1 = di; }
+    else if (uSdfOpMode < 0.5)      d1 = min(d1, di);
+    else if (uSdfOpMode < 1.5)      d1 = smin(d1, di, k);
+    else if (uSdfOpMode < 2.5)      d1 = opSmoothSub(d1, di, k);
+    else                            d1 = -smin(-d1, -di, k);
   }
+
+  // Undo the KIFS scaling so the estimate is in original-space units.
+  // max(.., 1.0) rather than the accumulator itself: dividing by a number below
+  // 1 would INFLATE the estimate, and an over-reported distance is the one
+  // error a sphere trace cannot survive — it steps straight through the
+  // surface. Only ever shrinking is conservative in both directions.
+  d1 /= max(kifsScl, 1.0);
 
   // Surface displacement: sin-product warp on the distance field.
   // Uses q (cell-local) so displacement tiles cleanly with repetition.
-  float sdfT = uTime * uSdfSpeed;
+  float sdfT = uPhase;
   float displacement = sin(sdfT + q.x * 5.0)
                      * sin(sdfT + q.y * 5.0)
                      * sin(sdfT + q.z * 5.0)
@@ -313,7 +436,8 @@ void main() {
   // constant. Combine both factors multiplicatively so neither overshoots.
   // At uWarp=0 and uLumaWarp=0 both divisors collapse to 1 — zero cost.
   float stepScale = (1.0 / (1.0 + uWarp * 2.5))
-                  * (1.0 / (1.0 + uLumaWarp * 2.0));
+                  * (1.0 / (1.0 + uLumaWarp * 2.0))
+                  * shapeStepScale();
 
   // tMax: march at least to the field's centre + generous margin so far
   // cameras still hit. Measured to uMove, not to the origin — Move relocates
@@ -322,13 +446,23 @@ void main() {
   float t = 0.0;
   float d = 0.0;
   int stepCount = 0; // declared outside loop — GLSL ES loop vars are loop-scoped
-  for (int i = 0; i < 96; i++) {
+  // The bound must be a compile-time constant in GLSL ES 1.00, so the budget is
+  // a uniform break instead — the same shape as the KIFS loop. 256 is the
+  // ceiling the Steps control can ask for, not what it costs by default.
+  //
+  // Steps exists because stepScale shrinks every step as Warp rises (at Warp 2
+  // it is a sixth), while a fixed budget then reached only a sixth as far and
+  // distant geometry silently vanished. Raising Steps is the lever for that.
+  for (int i = 0; i < 256; i++) {
+    if (float(i) >= uSteps) break;
     stepCount = i;
     d = scene(ro + rd * t);
     if (d < 0.001 || t > tMax) break;
     t += max(d, 0.001) * stepScale;
   }
-  float glowFactor = float(stepCount) / 96.0;
+  // Normalised by the budget, so changing Steps re-times the glow ramp rather
+  // than dimming it — the aura means "this ray struggled", not "96 steps".
+  float glowFactor = float(stepCount) / max(uSteps, 1.0);
   // Sat 0.875 / val 0.8 are the fixed vec3(0.5, 0.1, 0.8) this replaced,
   // decomposed — at the default hue of 274° the colour is unchanged.
   vec3  glowCol    = glowFactor * hsv2rgb(vec3(uGlowHue, 0.875, 0.8)) * uGlow;
@@ -365,8 +499,15 @@ void main() {
     // Glass body: at uRefract=1 the object transmits the background instead of
     // showing its own diffuse. AO is applied BEFORE this, so cavity darkening
     // fades out with the diffuse it belongs to rather than dirtying clear glass.
+    // VIEW-space normal, not world. The lookup is in screen space, so a
+    // world-space normal pinned the refraction smear to world axes: orbit the
+    // camera and the distortion kept pointing the same way while the picture
+    // turned under it. n*cam is transpose(cam)*n, and cam is orthonormal
+    // so its transpose is its inverse. Invisible before there was an orbit
+    // control; obvious the moment there was one.
+    vec3  nv          = n * cam;
     vec2  screenUV    = gl_FragCoord.xy / uResolution;
-    vec2  refractUV   = clamp(screenUV + n.xy * uRefract * 0.5, 0.0, 1.0);
+    vec2  refractUV   = clamp(screenUV + nv.xy * uRefract * 0.5, 0.0, 1.0);
     vec3  glassColor  = texture2D(uBgTex, refractUV).rgb;
     finalCol = mix(finalCol, glassColor, uRefract);
     // Surface layer, on top of body and glass alike — this is the part that
@@ -374,11 +515,17 @@ void main() {
     float fresnelTerm = pow(1.0 - max(dot(n, -rd), 0.0), 3.0) * uFresnel;
     finalCol += vec3(spec * 0.5) + vec3(fresnelTerm);
     finalCol += glowCol;
-    gl_FragColor = vec4(finalCol, 1.0);
+    // ALPHA CARRIES DEPTH, not opacity. Layer compositing in Pipeline.js goes
+    // through explicit blend modes and the keyer and never reads source alpha,
+    // so this channel was writing a constant 1.0 into every frame for nothing.
+    // Near = 1, far = 0, normalised over the marched range, which matches the
+    // convention Displace expects (brighter = closer). "SDF Depth" reads it.
+    gl_FragColor = vec4(finalCol, 1.0 - clamp(t / max(tMax, 0.001), 0.0, 1.0));
   } else {
     // Background glow: rays that almost hit complex geometry take many steps —
     // adding glowCol here produces the neon aura at SDF edges.
-    gl_FragColor = vec4(glowCol, 1.0);
+    // Depth 0: a miss is infinitely far away.
+    gl_FragColor = vec4(glowCol, 0.0);
   }
 }
 `;
@@ -386,13 +533,17 @@ void main() {
 export class SDFGenerator {
   constructor(renderer, width, height) {
     this.renderer = renderer;
-    this._time    = 0;
+    this._phase   = 0;   // ∫ speed·dt — see uPhase in the shader
     this.active   = false;
 
     // Raymarch at reduced internal resolution and let the bilinear-filtered
-    // render target upscale on composite — the 96-step raymarch + 6-sample
-    // normals + AO is too expensive per-pixel at full canvas resolution.
+    // render target upscale on composite — the march + 6-sample normals + AO
+    // is expensive per-pixel at full canvas resolution. Exposed as Detail
+    // (sdf.rscale); 0.5 is what it was pinned at. Canvas size is cached so a
+    // Detail change can re-derive the target without waiting for a resize.
     this._scale = 0.5;
+    this._w = width;
+    this._h = height;
     const rtW = Math.max(1, Math.round(width  * this._scale));
     const rtH = Math.max(1, Math.round(height * this._scale));
 
@@ -413,11 +564,14 @@ export class SDFGenerator {
 
     this._mat = new THREE.ShaderMaterial({
       uniforms: {
-        uTime:       { value: 0 },
+        uPhase:      { value: 0 },
+        uSteps:      { value: 96 },
         uSdfOpMode:   { value: 0 },
         uSdfOpAmount: { value: 0.5 },
         uDistance:   { value: 1.5 },
         uShape:      { value: 0 },
+        uShapeB:     { value: -1 },
+        uCount:      { value: 2 },
         uSize:       { value: 1 },
         uTile:       { value: 0 },
         uRepeat:     { value: 3 },
@@ -431,8 +585,9 @@ export class SDFGenerator {
         uLightDir:   { value: new THREE.Vector3(1, 1.5, 2).normalize() },
         uKifsIter:   { value: 0 },
         uKifsAngle:  { value: 0 },
+        uKifsScale:  { value: 1 },
+        uKifsOffset: { value: 1 },
         uLumaWarp:    { value: 0 },
-        uSdfSpeed:    { value: 0.2 },
         uLumaThresh:  { value: 0.2 },
         uTexBlend:    { value: 0.8 },
         uAO:          { value: 0.5 },
@@ -459,13 +614,22 @@ export class SDFGenerator {
     this.active = !!ps.get('sdf.active').value;
     if (!this.active) return;
 
-    this._time += dt;
+    // Detail is read before anything else writes uniforms — setScale() resizes
+    // the target and rewrites uResolution, which the ray setup depends on.
+    this.setScale(ps.get('sdf.rscale').value);
+
+    this._phase += dt * ps.get('sdf.speed').value;
     const u       = this._mat.uniforms;
-    u.uTime.value     = this._time;
+    u.uPhase.value    = this._phase;
+    u.uSteps.value    = ps.get('sdf.steps').value;
     u.uSdfOpMode.value   = ps.get('sdf.opMode').value;
     u.uSdfOpAmount.value = ps.get('sdf.opAmount').value;
     u.uDistance.value = ps.get('sdf.distance').value;
     u.uShape.value    = ps.get('sdf.shape').value;
+    // Shape B option 0 is "Same as A"; the shader takes < 0 to mean that, so
+    // the index shifts down by one and 0 becomes the sentinel.
+    u.uShapeB.value   = ps.get('sdf.shapeB').value - 1;
+    u.uCount.value    = ps.get('sdf.count').value;
     u.uSize.value     = ps.get('sdf.size').value;
     u.uTile.value     = ps.get('sdf.tile').value ? 1 : 0;
     u.uRepeat.value   = ps.get('sdf.repeat').value;
@@ -492,8 +656,9 @@ export class SDFGenerator {
     );
     u.uKifsIter.value  = ps.get('sdf.kifsIter').value;
     u.uKifsAngle.value = ps.get('sdf.kifsAngle').value * (Math.PI / 180);
+    u.uKifsScale.value  = ps.get('sdf.kifsScale').value;
+    u.uKifsOffset.value = ps.get('sdf.kifsOffset').value;
     u.uLumaWarp.value   = ps.get('sdf.lumaWarp').value;
-    u.uSdfSpeed.value   = ps.get('sdf.speed').value;
     u.uLumaThresh.value = ps.get('sdf.lumaThresh').value;
     u.uTexBlend.value   = ps.get('sdf.texBlend').value;
     u.uAO.value         = ps.get('sdf.ao').value;
@@ -515,11 +680,69 @@ export class SDFGenerator {
 
   get texture() { return this._rt.texture; }
 
+  /**
+   * Expand the depth packed into the colour target's alpha into a greyscale
+   * texture, for the "SDF Depth" source.
+   *
+   * A separate pass rather than a second render target written by the
+   * raymarcher: WebGL 1 has no MRT without EXT_draw_buffers, so the alternative
+   * was marching the whole field twice. This is one full-screen blit over a
+   * texture that already exists.
+   *
+   * Allocated lazily and rendered only when main.js says the source is used, so
+   * a project that never routes SDF Depth pays neither the VRAM nor the pass.
+   */
+  renderDepth() {
+    if (!this._depthRt) {
+      const w = this._rt.width, h = this._rt.height;
+      this._depthRt = new THREE.WebGLRenderTarget(w, h, {
+        minFilter: THREE.LinearFilter,
+        magFilter: THREE.LinearFilter,
+        format:    THREE.RGBAFormat,
+      });
+      this._depthMat = new THREE.ShaderMaterial({
+        uniforms: { tDepth: { value: this._rt.texture } },
+        vertexShader: VERT,
+        fragmentShader: [
+          'precision highp float;',
+          'uniform sampler2D tDepth;',
+          'varying vec2 vUv;',
+          'void main() {',
+          '  float d = texture2D(tDepth, vUv).a;',
+          '  gl_FragColor = vec4(vec3(d), 1.0);',
+          '}',
+        ].join('\n'),
+        depthTest: false,
+        depthWrite: false,
+      });
+      this._depthScene = new THREE.Scene();
+      this._depthScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), this._depthMat));
+    }
+    if (this._depthRt.width !== this._rt.width || this._depthRt.height !== this._rt.height) {
+      this._depthRt.setSize(this._rt.width, this._rt.height);
+    }
+    this.renderer.setRenderTarget(this._depthRt);
+    this.renderer.render(this._depthScene, this._camera);
+    this.renderer.setRenderTarget(null);
+  }
+
+  /** Null until renderDepth() has run at least once — callers fall back. */
+  get depthTexture() { return this._depthRt ? this._depthRt.texture : null; }
+
   resize(w, h) {
+    this._w = w;
+    this._h = h;
     const rtW = Math.max(1, Math.round(w * this._scale));
     const rtH = Math.max(1, Math.round(h * this._scale));
     this._rt.setSize(rtW, rtH);
     this._mat.uniforms.uResolution.value.set(rtW, rtH);
+  }
+
+  /** Detail (sdf.rscale) changed — re-derive the target from the cached size. */
+  setScale(s) {
+    if (s === this._scale) return;
+    this._scale = s;
+    this.resize(this._w, this._h);
   }
 
   dispose() {
@@ -527,5 +750,10 @@ export class SDFGenerator {
     this._black.dispose();
     this._mat.dispose();
     this._scene.children[0].geometry.dispose();
+    if (this._depthRt) {
+      this._depthRt.dispose();
+      this._depthMat.dispose();
+      this._depthScene.children[0].geometry.dispose();
+    }
   }
 }

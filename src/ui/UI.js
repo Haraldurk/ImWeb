@@ -176,17 +176,22 @@ export function buildMappingPanels(ps, contextMenu) {
     // accordion entry. tests/audit-panel-coverage.mjs picks these up
     // automatically (it scans for pick() calls) and fails if a sdf.* param ends
     // up in no section, in two, or under a name that no longer exists.
-    'sdf-shape-params':    pick('sdf', ['active', 'shape', 'size', 'opMode',
-                                        'opAmount', 'distance', 'speed']),
+    'sdf-shape-params':    pick('sdf', ['active', 'shape', 'shapeB', 'count', 'size',
+                                        'opMode', 'opAmount', 'distance', 'speed']),
     // "Space", not "Fold": the section holds domain repetition and surface
     // warp as well as the kaleidoscopic fold, and Fold named only one of three.
-    'sdf-space-params':    pick('sdf', ['tile', 'repeat', 'kifsIter', 'kifsAngle', 'warp']),
+    'sdf-space-params':    pick('sdf', ['tile', 'repeat', 'kifsIter', 'kifsAngle',
+                                        'kifsScale', 'kifsOffset', 'warp']),
     'sdf-camera-params':   pick('sdf', ['orbitX', 'orbitY', 'camDist',
                                         'moveX', 'moveY', 'moveZ', 'fov']),
     'sdf-material-params': pick('sdf', ['hue', 'sat', 'val', 'ao']),
     'sdf-light-params':    pick('sdf', ['lightAz', 'lightEl', 'glow', 'glowHue']),
     'sdf-glass-params':    pick('sdf', ['refract', 'fresnel', 'refractSrc']),
     'sdf-video-params':    pick('sdf', ['texSrc', 'texBlend', 'lumaWarp', 'lumaThresh']),
+    // Detail and Steps buy sharpness and reach, NOT frame rate — measured, the
+    // raymarcher is ~0.3ms of an 18.8ms frame. Kept in their own subsection so
+    // they are not mistaken for a look control.
+    'sdf-quality-params':  pick('sdf', ['rscale', 'steps']),
     // Rutt-Etra is one group across four SUBsections of a single panel section
     // (the Warp section's shape) — 19 rows is too long a single list to read,
     // but it is one source and belongs behind one accordion entry. Per the
