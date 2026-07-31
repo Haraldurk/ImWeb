@@ -56,7 +56,9 @@ uniform float uOrbitX;    // camera azimuth, radians
 uniform float uOrbitY;    // camera elevation, radians
 uniform float uCamDist;   // camera distance from origin
 uniform float uFov;       // vertical field of view, radians
-uniform float uGlowHue;   // step-count aura hue, 0–1
+uniform float uGlowHue;   // aura hue, 0–1
+uniform float uGlowSize;  // aura reach in world units (closest-approach falloff)
+uniform float uEnvAmt;    // 0 = flat white rim, 1 = reflected environment
 uniform float uDepthRange;  // world depth that fills the SDF Depth channel
 uniform vec3  uLightDir;  // unit light direction, built from az/el on the CPU
 uniform float uKifsIter;    // KIFS fold iterations 0–5 (float for WebGL compat)
@@ -401,6 +403,18 @@ vec3 calcNormal(vec3 p) {
   ));
 }
 
+// ── Equirectangular lookup for the environment tap ───────────────────────────
+// Treats the Refract Src texture as a spherical surround and maps a direction
+// into it. This is what makes the reflection behave like a reflection: it is a
+// function of the DIRECTION the surface looks in, so it slides across curvature
+// and stays put in the world as the camera orbits, instead of being painted on.
+// v is flipped because three's textures are flipY by default, so up (+y) has to
+// land at the top of the image.
+vec2 equirectUv(vec3 d) {
+  return vec2(atan(d.z, d.x) * 0.15915494 + 0.5,           // 1 / 2π
+              1.0 - acos(clamp(d.y, -1.0, 1.0)) * 0.31830989); // 1 / π
+}
+
 // ── HSV → RGB (compact IQ version) ──────────────────────────────────────────
 vec3 hsv2rgb(vec3 c) {
   vec4 K = vec4(1.0, 2.0 / 3.0, 1.0 / 3.0, 3.0);
@@ -478,19 +492,31 @@ void main() {
   // Steps exists because stepScale shrinks every step as Warp rises (at Warp 2
   // it is a sixth), while a fixed budget then reached only a sixth as far and
   // distant geometry silently vanished. Raising Steps is the lever for that.
+  float minD = 1e9;   // closest the ray ever came to the surface
   for (int i = 0; i < 256; i++) {
     if (float(i) >= uSteps) break;
     stepCount = i;
     d = scene(ro + rd * t);
+    minD = min(minD, d);
     if (d < 0.001 || t > tMax) break;
     t += max(d, 0.001) * stepScale;
   }
-  // Normalised by the budget, so changing Steps re-times the glow ramp rather
-  // than dimming it — the aura means "this ray struggled", not "96 steps".
-  float glowFactor = float(stepCount) / max(uSteps, 1.0);
-  // Sat 0.875 / val 0.8 are the fixed vec3(0.5, 0.1, 0.8) this replaced,
-  // decomposed — at the default hue of 274° the colour is unchanged.
-  vec3  glowCol    = glowFactor * hsv2rgb(vec3(uGlowHue, 0.875, 0.8)) * uGlow;
+
+  // AURA from CLOSEST APPROACH, not from step count.
+  //
+  // Step count was a proxy for proximity and a poor one: it also rises with the
+  // total distance travelled and with how tangled the field is, and in mostly
+  // empty space a missing ray takes big strides and exits after a handful of
+  // iterations. So the very rays that should glow brightest — the ones grazing
+  // the silhouette — scored low, and the whole effect read as a dull wash that
+  // no amount of Glow could sharpen. It also drifted whenever Steps changed.
+  //
+  // Distance to the surface is the thing actually wanted, and the sphere trace
+  // has already computed it at every step. Squared for a tighter falloff.
+  // Sat 0.875 / val 0.8 decompose the old fixed vec3(0.5, 0.1, 0.8), so the
+  // default hue of 274° is the colour this always had.
+  float halo = 1.0 - clamp(minD / max(uGlowSize, 0.001), 0.0, 1.0);
+  vec3  glowCol = halo * halo * hsv2rgb(vec3(uGlowHue, 0.875, 0.8)) * uGlow;
 
   if (d < 0.001) {
     vec3  p     = ro + rd * t;
@@ -537,9 +563,24 @@ void main() {
     finalCol = mix(finalCol, glassColor, uRefract);
     // Surface layer, on top of body and glass alike — this is the part that
     // reads as "wet"/"glazed" rather than "painted".
+    //
+    // ENVIRONMENT TAP. The Fresnel term used to add flat white, which is why a
+    // glass setting read as a glowing rim rather than a reflective one: a rim
+    // that is the same colour everywhere carries no information about what is
+    // around the object, and reflection is entirely information about what is
+    // around the object. Now the reflected direction is looked up in the same
+    // texture the refraction transmits (Refract Src — one surround feeding both
+    // transmission and reflection, which is what a surround IS).
+    //
+    // Env Mirror 0 restores the flat white rim exactly.
+    vec3  refl        = reflect(rd, n);
+    vec3  envCol      = texture2D(uBgTex, equirectUv(refl)).rgb;
     float fresnelTerm = pow(1.0 - max(dot(n, -rd), 0.0), 3.0) * uFresnel;
-    finalCol += vec3(spec * 0.5) + vec3(fresnelTerm);
-    finalCol += glowCol;
+    finalCol += vec3(spec * 0.5) + mix(vec3(1.0), envCol, uEnvAmt) * fresnelTerm;
+    // No aura on a HIT. minD is ~0 on every hit, so the closest-approach form
+    // would paint the full halo colour across the whole lit surface and wash it
+    // out — the step-count form only got away with it because it was weak. The
+    // aura is a thing that happens BESIDE the object, not on it.
     // ALPHA CARRIES DEPTH, not opacity. Layer compositing in Pipeline.js goes
     // through explicit blend modes and the keyer and never reads source alpha,
     // so this channel was writing a constant 1.0 into every frame for nothing.
@@ -616,6 +657,8 @@ export class SDFGenerator {
         uCamDist:    { value: 5 },
         uFov:        { value: THREE.MathUtils.degToRad(74) },
         uGlowHue:    { value: 274 / 360 },
+        uGlowSize:   { value: 0.4 },
+        uEnvAmt:     { value: 1 },
         uDepthRange: { value: 1.0 },
         uLightDir:   { value: new THREE.Vector3(1, 1.5, 2).normalize() },
         uKifsIter:   { value: 0 },
@@ -689,7 +732,9 @@ export class SDFGenerator {
     u.uOrbitY.value  = ps.get('sdf.orbitY').value * DEG;
     u.uCamDist.value = ps.get('sdf.camDist').value;
     u.uFov.value     = ps.get('sdf.fov').value * DEG;
-    u.uGlowHue.value = ps.get('sdf.glowHue').value / 360;
+    u.uGlowHue.value  = ps.get('sdf.glowHue').value / 360;
+    u.uGlowSize.value = ps.get('sdf.glowSize').value;
+    u.uEnvAmt.value   = ps.get('sdf.envAmt').value;
     u.uDepthRange.value = ps.get('sdf.depthRange').value;
     // Same spherical convention as the camera, so azimuth 0 puts the light
     // behind the viewer at elevation 0 and the two controls read alike.
