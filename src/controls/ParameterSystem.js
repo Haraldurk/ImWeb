@@ -940,6 +940,19 @@ export function registerCoreParameters(ps) {
     value: 0,
   });
   ps.register({
+    // Alpha mode composites as bg*(1-a) + fg instead of mix(bg, fg, a).
+    // The difference only shows at PARTIAL coverage, where the matte form lets
+    // the background through — correct for a cutout, backwards for anything
+    // emissive, because a glow adds light rather than occluding. Without this
+    // the SDF's aura carries the background's dark areas as shadows in it.
+    // Identical at alpha 1, so an opaque subject is unaffected either way.
+    id: "keyer.alpha_emissive",
+    label: "Alpha Emissive",
+    group: "keyer",
+    type: PARAM_TYPE.TOGGLE,
+    value: 0,
+  });
+  ps.register({
     id: "keyer.rawkey",
     label: "KeyRawFG",
     group: "keyer",
@@ -3111,6 +3124,23 @@ export function registerCoreParameters(ps) {
     min: 0,
     max: 1.0,
     value: 1.0,
+    step: 0.01,
+  });
+  ps.register({
+    // One traced bounce, so the shapes can see each other. The equirectangular
+    // Env Mirror tap is a SURROUND — it can only ever show what is outside the
+    // field, which is why the shapes were invisible in each other's reflections
+    // no matter how high Env Mirror went. There is no shortcut for this: the
+    // reflected ray has to be marched against the same scene.
+    //
+    // 0 by default because it is a second march plus a 6-sample normal on every
+    // surface pixel. The branch is on a uniform, so at 0 it costs nothing.
+    id: "sdf.selfReflect",
+    label: "Self Reflect",
+    group: "sdf",
+    min: 0,
+    max: 1.0,
+    value: 0,
     step: 0.01,
   });
   ps.register({

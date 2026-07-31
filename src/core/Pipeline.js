@@ -466,6 +466,7 @@ export class Pipeline {
         uAlpha:       p.get('keyer.alpha').value,
         uAlphaInvert: p.get('keyer.alpha_inv').value,
         uExtKey:      p.get('keyer.extkey').value,
+        uAlphaEmissive: p.get('keyer.alpha_emissive')?.value ?? 0,
         uRawKey:      p.get('keyer.rawkey')?.value ?? 0,
       });
     } else {
@@ -1001,6 +1002,7 @@ export class Pipeline {
         uAlphaInvert: { value: 0 },
         uEK:          { value: null },
         uExtKey:      { value: 0 },
+        uAlphaEmissive: { value: 0 },
         uFGRaw:       { value: null },
         uRawKey:      { value: 0 },
       }),

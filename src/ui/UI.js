@@ -189,7 +189,8 @@ export function buildMappingPanels(ps, contextMenu) {
     'sdf-glow-params':     pick('sdf', ['glow', 'glowHue', 'glowSat', 'glowVal',
                                         'glowHue2', 'glowSat2', 'glowVal2',
                                         'glowSize', 'glowEnv']),
-    'sdf-glass-params':    pick('sdf', ['refract', 'fresnel', 'envAmt', 'refractSrc']),
+    'sdf-glass-params':    pick('sdf', ['refract', 'fresnel', 'envAmt', 'selfReflect',
+                                        'refractSrc']),
     'sdf-video-params':    pick('sdf', ['texSrc', 'texBlend', 'lumaWarp', 'lumaThresh']),
     // Detail and Steps buy sharpness and reach, NOT frame rate — measured, the
     // raymarcher is ~0.3ms of an 18.8ms frame. Kept in their own subsection so
