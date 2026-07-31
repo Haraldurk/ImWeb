@@ -534,14 +534,31 @@ void main() {
   vec3 auraTint = mix(hsv2rgb(vec3(uGlowHue2, uGlowSat2, uGlowVal2)),
                       hsv2rgb(vec3(uGlowHue,  uGlowSat,  uGlowVal )), halo);
 
-  // REFLECTIVE AURA: tint by the surround along the ray's own direction, which
-  // is the direction that patch of empty space is "looking" in. Same
-  // equirectangular surround the Fresnel reflection uses. x2 compensates for
-  // the darkening a multiply causes. 0 by default — pure gradient.
-  vec3 auraEnv = texture2D(uBgTex, equirectUv(rd)).rgb;
-  auraTint = mix(auraTint, auraTint * auraEnv * 2.0, uGlowEnv);
+  // REFLECTIVE AURA: take the surround's COLOUR along the ray's own direction,
+  // but not its brightness.
+  //
+  // This was a straight multiply by 2x the sampled texel, and a multiply can
+  // reach zero: against a dark patch of surround the whole aura went out.
+  // Measured against a real setting — Glow Env 1.0 over a dark region of the
+  // Noise layer — the aura fell to luma 0.004, which is black. An emissive
+  // glow does not reflect anyway; it emits, and what the surround can
+  // reasonably do is tint it. Normalising by the brightest channel takes the
+  // hue and leaves the level alone, and a surround that is essentially black
+  // falls back to no tint at all rather than to darkness.
+  vec3  auraEnv = texture2D(uBgTex, equirectUv(rd)).rgb;
+  float envMax  = max(auraEnv.r, max(auraEnv.g, auraEnv.b));
+  vec3  envTint = envMax > 0.01 ? auraEnv / envMax : vec3(1.0);
+  auraTint = mix(auraTint, auraTint * envTint, uGlowEnv);
 
-  vec3 glowCol = halo * halo * auraTint * uGlow;
+  // Brightness falls off LINEARLY, not squared.
+  //
+  // Squared, the falloff extinguished the aura exactly where the gradient's
+  // outer colour lives: at the point the mix is 76% Hue 2, halo^2 is 0.059 and
+  // the result is luma 0.010 — invisible. Colour position and brightness are
+  // the same variable here, so a curve steep enough to look "tight" also makes
+  // the second colour of a two-colour gradient unreachable. Which it was: the
+  // outer stop could be set to anything and never showed.
+  vec3 glowCol = halo * auraTint * uGlow;
 
   if (d < 0.001) {
     vec3  p     = ro + rd * t;
