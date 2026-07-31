@@ -2863,6 +2863,21 @@ export function registerCoreParameters(ps) {
     step: 0.5,
     unit: "°",
   });
+  ps.register({
+    // How much world depth fills the "SDF Depth" source (index 30), centred on
+    // the field. Normalising over the whole marched distance instead gave the
+    // object 6–12% of the 0–1 range — as few as 15 of 255 levels — and made the
+    // value drift with camera distance, so a depth map driving Displace changed
+    // meaning whenever you dollied. Smaller = more contrast, narrower slice.
+    id: "sdf.depthRange",
+    label: "Depth Range",
+    group: "sdf",
+    min: 0.25,
+    max: 8.0,
+    value: 1.0,
+    step: 0.05,
+    unit: "u",
+  });
   // ── Quality ───────────────────────────────────────────────────────────────
   // Both were pinned. NOTE, measured: the raymarcher is ~0.3ms of an 18.8ms
   // frame in a default project, so these buy SHARPNESS, not frame rate — the

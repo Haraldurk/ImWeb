@@ -57,6 +57,7 @@ uniform float uOrbitY;    // camera elevation, radians
 uniform float uCamDist;   // camera distance from origin
 uniform float uFov;       // vertical field of view, radians
 uniform float uGlowHue;   // step-count aura hue, 0–1
+uniform float uDepthRange;  // world depth that fills the SDF Depth channel
 uniform vec3  uLightDir;  // unit light direction, built from az/el on the CPU
 uniform float uKifsIter;    // KIFS fold iterations 0–5 (float for WebGL compat)
 uniform float uKifsAngle;   // KIFS rotation angle (radians)
@@ -328,7 +329,10 @@ float scene(vec3 p) {
   // the old counter-shape was not a rotation of the first, so a generalised
   // orbit cannot reproduce its wobble. The x axis (the large motion) matches;
   // the two small wobble axes differ by a phase offset.
-  float cnt = max(uCount, 1.0);
+  // Rounded: a controller or LFO driving Count lands on fractional values, and
+  // a fraction both spaced the instances unevenly (the gap back to instance 0
+  // is the remainder) and popped one in and out at the threshold.
+  float cnt = max(floor(uCount + 0.5), 1.0);
   float d1  = 1e9;
   for (int i = 0; i < 8; i++) {
     if (float(i) >= cnt) break;
@@ -411,7 +415,11 @@ float calcAO(vec3 p, vec3 n) {
   float occ = 0.0;
   float sca = 1.0;
   for (int i = 0; i < 5; i++) {
-    float h = 0.01 + 0.15 * float(i) / 4.0;
+    // Probe distance tracks Size. Fixed, it reached 0.16 world units: at
+    // Size 0.1 that is far outside a 0.06-radius shape so AO vanished, and at
+    // Size 3 it is 9% of the radius so crevice shading collapsed to a contact
+    // line. At Size 1 this is the value it always had.
+    float h = (0.01 + 0.15 * float(i) / 4.0) * max(uSize, 0.05);
     float d = scene(p + h * n);
     occ += (h - d) * sca;
     sca *= 0.85;
@@ -535,13 +543,22 @@ void main() {
     // ALPHA CARRIES DEPTH, not opacity. Layer compositing in Pipeline.js goes
     // through explicit blend modes and the keyer and never reads source alpha,
     // so this channel was writing a constant 1.0 into every frame for nothing.
-    // Near = 1, far = 0, normalised over the marched range, which matches the
-    // convention Displace expects (brighter = closer). "SDF Depth" reads it.
-    gl_FragColor = vec4(finalCol, 1.0 - clamp(t / max(tMax, 0.001), 0.0, 1.0));
+    // The material is NoBlending precisely so this can be data.
+    //
+    // Centred on the field and scaled by uDepthRange, NOT normalised over the
+    // whole marched distance. Over the full range the object occupied 6–12% of
+    // 0–1 — as little as 15 of 255 levels — because most of the march is empty
+    // space, and worse, the value drifted with camera distance, so a depth map
+    // driving Displace changed meaning every time you dollied. Measuring from
+    // the field centre makes 0.5 the centre at any distance, and Depth Range
+    // sets how much world depth fills the channel. Nearer = brighter.
+    float dc = length(ro - uMove);
+    gl_FragColor = vec4(finalCol,
+      clamp(0.5 + (dc - t) / (2.0 * max(uDepthRange, 0.001)), 0.0, 1.0));
   } else {
     // Background glow: rays that almost hit complex geometry take many steps —
     // adding glowCol here produces the neon aura at SDF edges.
-    // Depth 0: a miss is infinitely far away.
+    // Depth 0: a miss is as far away as the channel can express.
     gl_FragColor = vec4(glowCol, 0.0);
   }
 }
@@ -599,6 +616,7 @@ export class SDFGenerator {
         uCamDist:    { value: 5 },
         uFov:        { value: THREE.MathUtils.degToRad(74) },
         uGlowHue:    { value: 274 / 360 },
+        uDepthRange: { value: 1.0 },
         uLightDir:   { value: new THREE.Vector3(1, 1.5, 2).normalize() },
         uKifsIter:   { value: 0 },
         uKifsAngle:  { value: 0 },
@@ -620,6 +638,16 @@ export class SDFGenerator {
       fragmentShader: FRAG,
       depthTest:  false,
       depthWrite: false,
+      // MUST be NoBlending, now that alpha carries depth rather than opacity.
+      // ShaderMaterial defaults to NormalBlending, which computes
+      //   RGBout = src.rgb * src.a + dst.rgb * (1 - src.a)
+      // and the target clears to (0,0,0,0) — so the moment alpha stopped being
+      // a constant 1.0, every hit was silently multiplied by its own depth
+      // (~0.62 at the default camera) and every MISS was multiplied by zero,
+      // which killed the background glow aura outright. Nothing here is being
+      // composited: this is a full-screen write into a source target and it
+      // wants the shader's RGBA verbatim.
+      blending: THREE.NoBlending,
     });
 
     this._scene  = new THREE.Scene();
@@ -662,6 +690,7 @@ export class SDFGenerator {
     u.uCamDist.value = ps.get('sdf.camDist').value;
     u.uFov.value     = ps.get('sdf.fov').value * DEG;
     u.uGlowHue.value = ps.get('sdf.glowHue').value / 360;
+    u.uDepthRange.value = ps.get('sdf.depthRange').value;
     // Same spherical convention as the camera, so azimuth 0 puts the light
     // behind the viewer at elevation 0 and the two controls read alike.
     const laz = ps.get('sdf.lightAz').value * DEG;

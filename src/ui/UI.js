@@ -191,7 +191,7 @@ export function buildMappingPanels(ps, contextMenu) {
     // Detail and Steps buy sharpness and reach, NOT frame rate — measured, the
     // raymarcher is ~0.3ms of an 18.8ms frame. Kept in their own subsection so
     // they are not mistaken for a look control.
-    'sdf-quality-params':  pick('sdf', ['rscale', 'steps']),
+    'sdf-quality-params':  pick('sdf', ['rscale', 'steps', 'depthRange']),
     // Rutt-Etra is one group across four SUBsections of a single panel section
     // (the Warp section's shape) — 19 rows is too long a single list to read,
     // but it is one source and belongs behind one accordion entry. Per the
