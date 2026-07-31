@@ -39,6 +39,7 @@ export const KEYER = /* glsl */ `
   uniform int   uAlpha;
   uniform int   uAlphaInvert;
   uniform int   uExtKey;       // 1 = key on uEK luminance instead of uFG
+  uniform int   uAlphaEmissive; // 1 = bg*(1-a) + fg, for glows and other emitters
   uniform int   uRawKey;       // 1 = key on uFGRaw (pre-color-correction) luma
 
   varying vec2 vUv;
@@ -72,7 +73,20 @@ export const KEYER = /* glsl */ `
       alpha = lo * hi;
     }
 
-    gl_FragColor = mix(bg, fg, alpha);
+    // EMISSIVE compositing, for sources whose partial coverage means "light
+    // added here", not "this much of the pixel is me".
+    //
+    // mix(bg, fg, alpha) is correct for a matte: at half coverage you get half
+    // the background, so whatever is behind shows THROUGH. For a glow that is
+    // backwards — a glow does not occlude, it adds — and the background's dark
+    // areas show through the aura and read as shadows in it.
+    //
+    // bg*(1-a) + fg attenuates the background by coverage and then adds the
+    // source on top, so a bright aura over a dark patch stays bright. At a=1
+    // the two forms are identical, so an opaque object is unaffected either way.
+    gl_FragColor = uAlphaEmissive == 1
+      ? vec4(bg.rgb * (1.0 - alpha) + fg.rgb, fg.a)
+      : mix(bg, fg, alpha);
   }
 `;
 

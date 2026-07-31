@@ -68,6 +68,7 @@ uniform float uGlowSat2;  // aura saturation at the outer stop
 uniform float uGlowVal2;  // aura value at the outer stop
 uniform float uGlowEnv;   // 0 = flat gradient, 1 = aura tinted by the surround
 uniform float uEnvAmt;    // 0 = flat white rim, 1 = reflected environment
+uniform float uSelfReflect; // 0 = surround only, 1 = shapes reflect each other
 uniform float uDepthRange;  // world depth that fills the SDF Depth channel
 uniform float uDepthPass;   // 1 = render depth instead of colour (SDF Depth)
 uniform vec3  uLightDir;  // unit light direction, built from az/el on the CPU
@@ -622,6 +623,43 @@ void main() {
     // Env Mirror 0 restores the flat white rim exactly.
     vec3  refl        = reflect(rd, n);
     vec3  envCol      = texture2D(uBgTex, equirectUv(refl)).rgb;
+
+    // SELF-REFLECTION: one bounce, marched.
+    //
+    // The equirectangular tap can only ever show what is OUTSIDE the field —
+    // it is a surround, so the shapes are invisible to each other in it. To
+    // see one shape in another there is no shortcut: the reflected ray has to
+    // be traced against the same scene. One bounce is enough for the thing
+    // that reads as inter-reflection (two shapes facing each other); a second
+    // would need recursion, which GLSL does not have.
+    //
+    // Gated on a uniform, so at Self Reflect 0 the branch is uniform across
+    // every fragment and costs nothing. When on it is a second march plus a
+    // 6-sample normal, which is why its budget is half the primary one — a
+    // reflection carries far less detail than the surface carrying it.
+    if (uSelfReflect > 0.0) {
+      vec3  rro = p + n * 0.02;   // lift off the surface or the march re-hits it
+      float rt  = 0.0;
+      float rdd = 0.0;
+      float rHit = 0.0;
+      for (int i = 0; i < 128; i++) {
+        if (float(i) >= uSteps * 0.5) break;
+        rdd = scene(rro + refl * rt);
+        if (rdd < 0.002) { rHit = 1.0; break; }
+        if (rt > 6.0) break;
+        rt += max(rdd, 0.002) * stepScale;
+      }
+      if (rHit > 0.5) {
+        vec3  rp    = rro + refl * rt;
+        vec3  rn    = calcNormal(rp);
+        float rdiff = clamp(dot(rn, uLightDir), 0.0, 1.0);
+        // Cheap re-shade rather than the full material: no recursion available,
+        // and a reflection at this size cannot carry the difference anyway.
+        vec3  rcol  = hsv2rgb(uBaseHSV) * (0.2 + rdiff * 0.8);
+        envCol = mix(envCol, rcol, uSelfReflect);
+      }
+    }
+
     float fresnelTerm = pow(1.0 - max(dot(n, -rd), 0.0), 3.0) * uFresnel;
     finalCol += vec3(spec * 0.5) + mix(vec3(1.0), envCol, uEnvAmt) * fresnelTerm;
     // AURA ON THE OBJECT, weighted by the rim rather than applied flat.
@@ -738,6 +776,7 @@ export class SDFGenerator {
         uGlowVal2:   { value: 0.8 },
         uGlowEnv:    { value: 0 },
         uEnvAmt:     { value: 1 },
+        uSelfReflect:{ value: 0 },
         uDepthRange: { value: 1.0 },
         uDepthPass:  { value: 0 },
         uLightDir:   { value: new THREE.Vector3(1, 1.5, 2).normalize() },
@@ -821,6 +860,7 @@ export class SDFGenerator {
     u.uGlowVal2.value = ps.get('sdf.glowVal2').value;
     u.uGlowEnv.value  = ps.get('sdf.glowEnv').value;
     u.uEnvAmt.value   = ps.get('sdf.envAmt').value;
+    u.uSelfReflect.value = ps.get('sdf.selfReflect').value;
     u.uDepthRange.value = ps.get('sdf.depthRange').value;
     // Same spherical convention as the camera, so azimuth 0 puts the light
     // behind the viewer at elevation 0 and the two controls read alike.
