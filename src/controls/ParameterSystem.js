@@ -2504,14 +2504,14 @@ export function registerCoreParameters(ps) {
   // ── SDF Generator ────────────────────────────────────────────────────────
   ps.register({
     id: "sdf.active",
-    label: "SDFActive",
+    label: "Metaballs",
     group: "sdf",
     type: PARAM_TYPE.TOGGLE,
     value: 0,
   });
   ps.register({
     id: "sdf.opMode",
-    label: "SDFOpMode",
+    label: "Combine",
     group: "sdf",
     type: PARAM_TYPE.SELECT,
     value: 0,
@@ -2520,7 +2520,7 @@ export function registerCoreParameters(ps) {
   });
   ps.register({
     id: "sdf.opAmount",
-    label: "SDFOpAmt",
+    label: "Blend",
     group: "sdf",
     min: 0,
     max: 1.0,
@@ -2529,7 +2529,7 @@ export function registerCoreParameters(ps) {
   });
   ps.register({
     id: "sdf.distance",
-    label: "SDFDist",
+    label: "Orbit",
     group: "sdf",
     min: 0,
     max: 5.0,
@@ -2539,7 +2539,7 @@ export function registerCoreParameters(ps) {
   });
   ps.register({
     id: "sdf.shape",
-    label: "SDFShape",
+    label: "Shape",
     group: "sdf",
     type: PARAM_TYPE.SELECT,
     value: 0,
@@ -2557,7 +2557,7 @@ export function registerCoreParameters(ps) {
   });
   ps.register({
     id: "sdf.repeat",
-    label: "SDFRepeat",
+    label: "Repeat",
     group: "sdf",
     min: 0,
     max: 10.0,
@@ -2567,7 +2567,7 @@ export function registerCoreParameters(ps) {
   });
   ps.register({
     id: "sdf.warp",
-    label: "SDFWarp",
+    label: "Warp",
     group: "sdf",
     min: 0,
     max: 2.0,
@@ -2576,7 +2576,7 @@ export function registerCoreParameters(ps) {
   });
   ps.register({
     id: "sdf.camX",
-    label: "SDFCamX",
+    label: "Cam X",
     group: "sdf",
     min: -10,
     max: 10,
@@ -2585,7 +2585,7 @@ export function registerCoreParameters(ps) {
   });
   ps.register({
     id: "sdf.camY",
-    label: "SDFCamY",
+    label: "Cam Y",
     group: "sdf",
     min: -10,
     max: 10,
@@ -2594,7 +2594,7 @@ export function registerCoreParameters(ps) {
   });
   ps.register({
     id: "sdf.camZ",
-    label: "SDFCamZ",
+    label: "Cam Z",
     group: "sdf",
     min: -20,
     max: 20,
@@ -2603,7 +2603,7 @@ export function registerCoreParameters(ps) {
   });
   ps.register({
     id: "sdf.kifsIter",
-    label: "KIFSIter",
+    label: "Folds",
     group: "sdf",
     type: PARAM_TYPE.SELECT,
     value: 0,
@@ -2611,7 +2611,7 @@ export function registerCoreParameters(ps) {
   });
   ps.register({
     id: "sdf.kifsAngle",
-    label: "KIFSAngle",
+    label: "Fold Angle",
     group: "sdf",
     min: 0,
     max: 360,
@@ -2621,7 +2621,7 @@ export function registerCoreParameters(ps) {
   });
   ps.register({
     id: "sdf.lumaWarp",
-    label: "LumaWarp",
+    label: "Luma Warp",
     group: "sdf",
     min: 0,
     max: 2.0,
@@ -2630,7 +2630,7 @@ export function registerCoreParameters(ps) {
   });
   ps.register({
     id: "sdf.speed",
-    label: "SDFSpeed",
+    label: "Speed",
     group: "sdf",
     min: 0,
     max: 5.0,
@@ -2639,7 +2639,7 @@ export function registerCoreParameters(ps) {
   });
   ps.register({
     id: "sdf.lumaThresh",
-    label: "LumaThresh",
+    label: "Luma Thresh",
     group: "sdf",
     min: 0,
     max: 1.0,
@@ -2648,7 +2648,7 @@ export function registerCoreParameters(ps) {
   });
   ps.register({
     id: "sdf.texBlend",
-    label: "TexBlend",
+    label: "Tex Blend",
     group: "sdf",
     min: 0,
     max: 1.0,
@@ -2657,7 +2657,7 @@ export function registerCoreParameters(ps) {
   });
   ps.register({
     id: "sdf.ao",
-    label: "SDFAO",
+    label: "Occlusion",
     group: "sdf",
     min: 0,
     max: 1.0,
@@ -2666,7 +2666,7 @@ export function registerCoreParameters(ps) {
   });
   ps.register({
     id: "sdf.glow",
-    label: "SDFGlow",
+    label: "Glow",
     group: "sdf",
     min: 0,
     max: 1.0,
@@ -2675,7 +2675,7 @@ export function registerCoreParameters(ps) {
   });
   ps.register({
     id: "sdf.hue",
-    label: "SDFHue",
+    label: "Hue",
     group: "sdf",
     min: 0,
     max: 360,
@@ -2685,7 +2685,7 @@ export function registerCoreParameters(ps) {
   });
   ps.register({
     id: "sdf.sat",
-    label: "SDFSat",
+    label: "Sat",
     group: "sdf",
     min: 0,
     max: 1.0,
@@ -2694,7 +2694,7 @@ export function registerCoreParameters(ps) {
   });
   ps.register({
     id: "sdf.val",
-    label: "SDFVal",
+    label: "Val",
     group: "sdf",
     min: 0,
     max: 1.0,
@@ -2721,7 +2721,7 @@ export function registerCoreParameters(ps) {
   });
   ps.register({
     id: "sdf.texSrc",
-    label: "TexSrc",
+    label: "Source",
     group: "sdf",
     type: PARAM_TYPE.SELECT,
     value: 0,
@@ -2739,7 +2739,7 @@ export function registerCoreParameters(ps) {
   });
   ps.register({
     id: "sdf.refractSrc",
-    label: "RefractSrc",
+    label: "Refract Src",
     group: "sdf",
     type: PARAM_TYPE.SELECT,
     value: 0,

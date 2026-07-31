@@ -3815,6 +3815,27 @@ async function main() {
   const _notSelf = (tex, own) => (tex && tex === own ? null : tex);
 
   /**
+   * sdf.texSrc / sdf.refractSrc option index → SOURCE_DEFS index.
+   *
+   * Both params carry their own short 9-entry option list (a deliberate small
+   * menu, not the full source dropdown), so the two lists have to be kept in
+   * register by hand somewhere. Doing it by KEY rather than by number is what
+   * makes it safe: the bare-number literal this replaced was copied from an
+   * older SOURCE_DEFS ordering and had drifted three ways —
+   *   "Draw"  fetched 3D Scene, "3D" fetched Noise, and
+   *   "Noise" fetched Color2 — a solid cyan fill (hue 50, sat 80, val 60),
+   * which is where the blue cast on a glass/water-styled metaball came from.
+   * Exactly the hand-copied-source-list failure CLAUDE.md warns about; keys
+   * cannot rotate under an append the way indices can.
+   *
+   * Index 0 means "follow layer.fg / layer.bg" and index 8 means None; both are
+   * null here and handled by the call site.
+   */
+  const _sdfSrcToLayerIdx = [
+    null, "camera", "movie", "draw", "noise", "color", "buffer", "scene3d", null,
+  ].map((k) => (k == null ? null : SOURCE_KEYS.indexOf(k)));
+
+  /**
    * Collapse a CAPTURE_SOURCES index to a real SOURCE_DEFS index.
    *
    * Indices 0..28 are sources and pass through. 29/30/31 are the indirect
@@ -6403,6 +6424,12 @@ void main() {
     slitScan.resize(rW, rH);
     vasulkaWarp.resize(rW, rH);
     particles.resize(rW, rH);
+    // The raymarcher was the one engine missing here. Its render target kept
+    // the startup size, so changing output resolution left the metaballs at the
+    // wrong aspect AND left uResolution stale — and uResolution is what turns
+    // gl_FragCoord into the screen UV the refraction/glass lookup samples, so
+    // the glass sample drifted off-register from the background it refracts.
+    sdfGen.resize(rW, rH);
     seq1.resize(rW, rH);
     seq2.resize(rW, rH);
     seq3.resize(rW, rH);
@@ -7196,11 +7223,6 @@ void main() {
         _notSelf(_pmSrcMap[ps.get("particle.masksrc").value] ?? null, particles.texture),
       );
     }
-    // SDF dedicated texture source routing (decouples from layer.fg / layer.bg).
-    // SELECT index 0 = follow the pipeline FG/BG layer (default, preserves old behaviour).
-    // Indices 1–7 map to _resolveLayerTex's internal keys: Camera=0,Movie=1,Buffer=2,Color=3,Noise=4,3D=5,Draw=6
-    // Index 8 = None → null (no texture update this frame).
-    const _sdfSrcToLayerIdx = [null, 0, 1, 6, 4, 3, 2, 5, null];
     const _sdfTexIdx = ps.get("sdf.texSrc").value;
     const _sdfRefIdx = ps.get("sdf.refractSrc").value;
     const _sdfTex =
