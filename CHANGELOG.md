@@ -109,6 +109,61 @@ git tag and nothing else. Design doc: `docs/ImWeb-Spacetime-Blueprint.md` §6.*
   wraps, and against a fixed height a wrapped group silently painted over the
   rows beneath it.
 
+### SDF (formerly "Metaballs")
+
+*Renamed. A metaball is specifically a blobby sum-of-falloff surface — one of
+eight shapes, under one of four combine modes. The name also collided with the
+3D Scene tab's own, different metaball system, while the source dropdown and
+the whole `sdf.*` namespace already said SDF.*
+
+#### Fixed
+- **Source routing had drifted three ways.** `_sdfSrcToLayerIdx` mapped the
+  Texture/Refract source menus onto `SOURCE_DEFS` by bare number, against an
+  ordering that has since changed: "Draw" fetched 3D Scene, "3D" fetched Noise,
+  and **"Noise" fetched Color2** — a solid cyan, which is where the blue cast on
+  a glass-styled SDF came from. Now mapped by key, so an append cannot rotate it.
+- **A sphere rendered as a wide ellipse.** The ray setup had no aspect
+  correction; `uv` spanned [-1,1] on both axes whatever the target's shape.
+  `sdf.fov` is now the vertical field of view and `uv.x` is scaled by aspect.
+- **Looking straight up or down returned a black frame.** The camera basis came
+  from `lookAt` with a fixed world up, so at ±90° elevation `cross(f, up)` was
+  the zero vector and `normalize()` gave NaN. Replaced with the Euler
+  construction RuttEtra.js already uses for exactly this reason.
+- **Refraction flattened the object.** Specular was baked into the albedo, so
+  the glass mix lerped it away and "clear glass" lost every highlight. Diffuse
+  and video now form the body the background replaces; specular and Fresnel are
+  added on top of it.
+- `sdfGen.resize()` was missing from `applyResolution()` — the only engine
+  absent — so changing output resolution left the render target at its startup
+  size and `uResolution` stale, which is what the screen-space refraction lookup
+  is built from.
+- Texture source "None" froze the last texture instead of clearing it. Both
+  slots now fall back to a shared 1×1 black texture (with `needsUpdate` set —
+  the originals were created at version 0 and never uploaded at all).
+
+#### Added
+- **Size** — uniform scale on every primitive. The radii were literals in the
+  shader, so there was previously no way to change how big the shapes are.
+- **Orbit X / Orbit Y / Distance + Move X/Y/Z**, the Rutt-Etra camera grammar.
+  Move translates the field rather than the camera, which is what makes Tile
+  usable: an infinite lattice you cannot travel through is wallpaper.
+- **FOV**, **Glow Hue**, **Light Az / Light El** — all previously hardcoded.
+  Defaults reproduce the old constants exactly (74°, hue 274°, az 27° / el 34°).
+
+#### Changed
+- **Repeat is now Tile + Tile Size.** One number used to be both spacing and
+  on/off, gated at `> 0.1`: the bottom of the slider was dead, the range just
+  above it was solid mush (cells narrower than a shape), and turning it on
+  silently overrode Separation, which then did nothing with no indication.
+- Glow defaults to 0. Panel is seven subsections — Shape · Space · Camera ·
+  Material · Light · Glass · Video.
+- `sdf.camX/camY/camZ` are retired. Saved projects, banks, states and the live
+  overlay are migrated on load by an exact Cartesian→spherical conversion, so
+  the eye lands on the identical point; verified against all 45 camera maps in
+  MasterProject.imweb at zero error. Recall bounds on the retired params are
+  reset rather than carried — a box in world units is not a box in
+  azimuth/elevation/distance. `tests/audit-sdf-migration.mjs` guards it.
+
 ---
 
 ## [0.14.0] — 2026-07-29 — The Movie Library

@@ -176,11 +176,15 @@ export function buildMappingPanels(ps, contextMenu) {
     // accordion entry. tests/audit-panel-coverage.mjs picks these up
     // automatically (it scans for pick() calls) and fails if a sdf.* param ends
     // up in no section, in two, or under a name that no longer exists.
-    'sdf-shape-params':    pick('sdf', ['active', 'shape', 'opMode', 'opAmount',
-                                        'distance', 'speed']),
-    'sdf-fold-params':     pick('sdf', ['repeat', 'kifsIter', 'kifsAngle', 'warp']),
-    'sdf-camera-params':   pick('sdf', ['camX', 'camY', 'camZ']),
-    'sdf-material-params': pick('sdf', ['hue', 'sat', 'val', 'ao', 'glow']),
+    'sdf-shape-params':    pick('sdf', ['active', 'shape', 'size', 'opMode',
+                                        'opAmount', 'distance', 'speed']),
+    // "Space", not "Fold": the section holds domain repetition and surface
+    // warp as well as the kaleidoscopic fold, and Fold named only one of three.
+    'sdf-space-params':    pick('sdf', ['tile', 'repeat', 'kifsIter', 'kifsAngle', 'warp']),
+    'sdf-camera-params':   pick('sdf', ['orbitX', 'orbitY', 'camDist',
+                                        'moveX', 'moveY', 'moveZ', 'fov']),
+    'sdf-material-params': pick('sdf', ['hue', 'sat', 'val', 'ao']),
+    'sdf-light-params':    pick('sdf', ['lightAz', 'lightEl', 'glow', 'glowHue']),
     'sdf-glass-params':    pick('sdf', ['refract', 'fresnel', 'refractSrc']),
     'sdf-video-params':    pick('sdf', ['texSrc', 'texBlend', 'lumaWarp', 'lumaThresh']),
     // Rutt-Etra is one group across four SUBsections of a single panel section
