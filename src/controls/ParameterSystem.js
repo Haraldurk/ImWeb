@@ -650,6 +650,134 @@ export function migrateStatesCaptureBase(states, savedBase) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// SDF v2 migration — Cartesian camera → orbit, and Repeat → Tile + Tile Size
+//
+// NO VERSION STAMP, deliberately. The capture-base migration needs one because
+// it shifts numbers in place and cannot tell a shifted value from an unshifted
+// one. This migration RENAMES keys and deletes the originals, so "has it run?"
+// is answerable from the data itself: if sdf.camX is gone there is nothing to
+// do. That makes it idempotent by construction and safe on a file written by
+// any version, including one that has already been through it.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Old defaults, used when a file carries only some of the three axes. */
+const SDF_CAM_LEGACY = { 'sdf.camX': 0, 'sdf.camY': 0, 'sdf.camZ': 5 };
+
+/** camX/camY/camZ → orbitX/orbitY/camDist, and the new params' own ranges. */
+const SDF_CAM_RENAME = { 'sdf.camX': 'sdf.orbitX', 'sdf.camY': 'sdf.orbitY', 'sdf.camZ': 'sdf.camDist' };
+const SDF_CAM_RANGE  = {
+  'sdf.orbitX':  { min: 0,   max: 360 },
+  'sdf.orbitY':  { min: -180, max: 180 },
+  'sdf.camDist': { min: 0.5, max: 20 },
+};
+
+/**
+ * Cartesian eye position → the spherical triple the shader now takes.
+ *
+ * Exact inverse of the shader's own placement
+ * (d·cos(el)·sin(az), d·sin(el), d·cos(el)·cos(az)), so a migrated project
+ * puts the camera on the identical point and the frame does not move.
+ * Negative camZ is handled by atan2 — it simply comes out as azimuth 180°.
+ */
+export function sdfCartesianToOrbit(x, y, z) {
+  const d = Math.hypot(x, y, z);
+  // Degenerate: the eye is at the origin. The old shader nudged z by an epsilon
+  // here; the orbit form has no such singularity, so just sit at the near clip.
+  if (d < 1e-6) return { orbitX: 0, orbitY: 0, camDist: SDF_CAM_RANGE['sdf.camDist'].min };
+  let az = Math.atan2(x, z) * 180 / Math.PI;
+  if (az < 0) az += 360;
+  const el = Math.asin(Math.max(-1, Math.min(1, y / d))) * 180 / Math.PI;
+  // Clamp is the one lossy step: an eye closer than 0.5 was inside the shapes.
+  return { orbitX: az, orbitY: el, camDist: Math.max(SDF_CAM_RANGE['sdf.camDist'].min, d) };
+}
+
+/** Read the legacy eye out of a values map or a controller-record bag. */
+function _sdfLegacyEye(values, recs) {
+  const read = (id) => {
+    if (values && id in values) return +values[id] || 0;
+    if (recs && recs[id] && typeof recs[id].value === 'number') return recs[id].value;
+    return SDF_CAM_LEGACY[id];
+  };
+  const present = (id) => (values && id in values) || (recs && !!recs[id]);
+  if (!['sdf.camX', 'sdf.camY', 'sdf.camZ'].some(present)) return null;
+  return { x: read('sdf.camX'), y: read('sdf.camY'), z: read('sdf.camZ') };
+}
+
+/** Rewrite a plain id → value map in place. */
+export function migrateSdfCamera(values, recs, eye = _sdfLegacyEye(values, recs)) {
+  if (!eye) return values;
+  const o = sdfCartesianToOrbit(eye.x, eye.y, eye.z);
+  if (values) {
+    // Never clobber a value already expressed in the new form.
+    if (!('sdf.orbitX'  in values)) values['sdf.orbitX']  = o.orbitX;
+    if (!('sdf.orbitY'  in values)) values['sdf.orbitY']  = o.orbitY;
+    if (!('sdf.camDist' in values)) values['sdf.camDist'] = o.camDist;
+    delete values['sdf.camX']; delete values['sdf.camY']; delete values['sdf.camZ'];
+  }
+  return values;
+}
+
+/**
+ * Rewrite a controller-record bag in place.
+ *
+ * Carries the settings that still mean the same thing on the new axis — table,
+ * invert, cycle, slew, the live controller, feedback placement — and RESETS
+ * ctrlMin/ctrlMax to the new param's full range. Recall bounds cannot be
+ * converted: they are a box in world units, and a box in XYZ is not a box in
+ * azimuth/elevation/distance. Carrying the numbers across would silently give
+ * a ±1.4 sweep on a parameter that now runs to 360.
+ */
+export function migrateSdfCameraRecords(recs, values, eye = _sdfLegacyEye(values, recs)) {
+  if (!recs || !eye) return recs;
+  const o = sdfCartesianToOrbit(eye.x, eye.y, eye.z);
+  for (const [oldId, newId] of Object.entries(SDF_CAM_RENAME)) {
+    const rec = recs[oldId];
+    delete recs[oldId];
+    if (!rec || recs[newId]) continue;
+    const range = SDF_CAM_RANGE[newId];
+    // 'sdf.orbitX'.slice(4) === 'orbitX' — the key sdfCartesianToOrbit returns.
+    recs[newId] = { ...rec, id: newId, value: o[newId.slice(4)],
+                    ctrlMin: range.min, ctrlMax: range.max };
+  }
+  return recs;
+}
+
+/**
+ * sdf.repeat used to be spacing AND on/off in one number, with the shader
+ * gating on `> 0.1`. Anything at or below that threshold was off, so it maps
+ * to Tile off; anything above was on, and is floored at the new minimum
+ * because a cell narrower than a shape was solid mush rather than a lattice.
+ */
+export function migrateSdfTile(values) {
+  if (!values || 'sdf.tile' in values || !('sdf.repeat' in values)) return values;
+  const r = +values['sdf.repeat'] || 0;
+  const on = r > 0.1;
+  values['sdf.tile']   = on ? 1 : 0;
+  values['sdf.repeat'] = on ? Math.max(1.2, r) : 3.0;
+  return values;
+}
+
+/** Every SDF v2 migration, for one values map and its optional record bag. */
+export function migrateSdfParams(values, recs) {
+  // Read the legacy eye ONCE, before either call starts deleting the keys it
+  // was read from — otherwise the second call sees a half-migrated bag and the
+  // result depends on the order of the two lines.
+  const eye = _sdfLegacyEye(values, recs);
+  migrateSdfCamera(values, recs, eye);
+  migrateSdfCameraRecords(recs, values, eye);
+  migrateSdfTile(values);
+  return values;
+}
+
+/** migrateSdfParams over a Display State array. Mutates and returns `states`. */
+export function migrateStatesSdfParams(states) {
+  if (Array.isArray(states)) {
+    for (const s of states) if (s) migrateSdfParams(s.values, s.controllers);
+  }
+  return states;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // registerCoreParameters  — defines all Phase 1 parameters
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -2504,7 +2632,7 @@ export function registerCoreParameters(ps) {
   // ── SDF Generator ────────────────────────────────────────────────────────
   ps.register({
     id: "sdf.active",
-    label: "Metaballs",
+    label: "SDF",
     group: "sdf",
     type: PARAM_TYPE.TOGGLE,
     value: 0,
@@ -2528,8 +2656,11 @@ export function registerCoreParameters(ps) {
     step: 0.01,
   });
   ps.register({
+    // How far apart the two shapes orbit. Labelled "Separation", not
+    // "Distance" — the camera has a Distance now and two params called the
+    // same thing in one panel is how a performer reaches for the wrong knob.
     id: "sdf.distance",
-    label: "Orbit",
+    label: "Separation",
     group: "sdf",
     min: 0,
     max: 5.0,
@@ -2556,12 +2687,40 @@ export function registerCoreParameters(ps) {
     ],
   });
   ps.register({
-    id: "sdf.repeat",
-    label: "Repeat",
+    // Uniform scale on every primitive. Each shape's radius used to be a
+    // literal in the shader (sphere 0.6, box 0.42, torus 0.45/0.18 ...), so
+    // there was no way to change how big the blobs are at all — only how far
+    // apart they orbited. 1.0 reproduces the old hardcoded sizes exactly.
+    id: "sdf.size",
+    label: "Size",
     group: "sdf",
-    min: 0,
-    max: 10.0,
+    min: 0.1,
+    max: 3.0,
+    value: 1.0,
+    step: 0.01,
+    unit: "x",
+  });
+  ps.register({
+    // Domain repetition is now gated by a toggle instead of by "is the spacing
+    // above 0.1", which made the bottom of the slider a dead zone AND put the
+    // usable range above a mush zone where cells were smaller than the shapes.
+    id: "sdf.tile",
+    label: "Tile",
+    group: "sdf",
+    type: PARAM_TYPE.TOGGLE,
     value: 0,
+  });
+  ps.register({
+    // Pure cell spacing now — no longer doubles as the on/off switch. The
+    // floor is 1.2 because a cell smaller than that is narrower than a
+    // default-size shape, so every cell merges into a solid block; that was
+    // the whole bottom of the old 0–10 range.
+    id: "sdf.repeat",
+    label: "Tile Size",
+    group: "sdf",
+    min: 1.2,
+    max: 10.0,
+    value: 3.0,
     step: 0.05,
     unit: "u",
   });
@@ -2574,32 +2733,93 @@ export function registerCoreParameters(ps) {
     value: 0,
     step: 0.01,
   });
+  // ── Camera ────────────────────────────────────────────────────────────────
+  // Same grammar as Rutt-Etra: azimuth / elevation / distance to orbit, plus a
+  // Move that pushes the OBJECT through the scene. This replaced a raw
+  // Cartesian eye position (sdf.camX/camY/camZ) for two reasons. Ergonomics:
+  // orbiting a Cartesian eye means moving two sliders in a coordinated
+  // sine/cosine relationship, which is not a performable gesture. Correctness:
+  // the old shader built its basis with lookAt() and a fixed world up, which
+  // degenerates at the poles — looking straight down the Y axis made
+  // cross(forward, up) the zero vector and normalize() returned NaN, i.e. a
+  // black frame. RuttEtra.js:719 documents abandoning lookAt for exactly this.
+  //
+  // Saved projects are migrated by migrateSdfCamera() below, which is an exact
+  // conversion: the eye lands on the same point, so the image does not move.
   ps.register({
-    id: "sdf.camX",
-    label: "Cam X",
+    id: "sdf.orbitX",
+    label: "Orbit X",
     group: "sdf",
-    min: -10,
-    max: 10,
+    min: 0,
+    max: 360,
     value: 0,
-    step: 0.05,
+    step: 0.5,
+    unit: "°",
   });
   ps.register({
-    id: "sdf.camY",
-    label: "Cam Y",
+    id: "sdf.orbitY",
+    label: "Orbit Y",
     group: "sdf",
-    min: -10,
-    max: 10,
+    min: -180,
+    max: 180,
     value: 0,
-    step: 0.05,
+    step: 0.5,
+    unit: "°",
   });
   ps.register({
-    id: "sdf.camZ",
-    label: "Cam Z",
+    // Named camDist, not dist: sdf.distance already exists and means the
+    // separation between the two shapes.
+    id: "sdf.camDist",
+    label: "Distance",
     group: "sdf",
-    min: -20,
+    min: 0.5,
     max: 20,
     value: 5,
     step: 0.05,
+  });
+  ps.register({
+    // Move translates the FIELD, not the camera, so it swings with the orbit
+    // instead of fighting it — Rutt-Etra's rig.position, same reasoning. This
+    // is also what finally makes Tile usable: an infinite lattice you cannot
+    // travel through is just a wallpaper you look at from outside.
+    id: "sdf.moveX",
+    label: "Move X",
+    group: "sdf",
+    min: -5,
+    max: 5,
+    value: 0,
+    step: 0.01,
+  });
+  ps.register({
+    id: "sdf.moveY",
+    label: "Move Y",
+    group: "sdf",
+    min: -5,
+    max: 5,
+    value: 0,
+    step: 0.01,
+  });
+  ps.register({
+    id: "sdf.moveZ",
+    label: "Move Z",
+    group: "sdf",
+    min: -5,
+    max: 5,
+    value: 0,
+    step: 0.01,
+  });
+  ps.register({
+    // Was a hardcoded uv*0.75 in the shader. 74° reproduces that to within
+    // 0.3° (the old scaling is an effective focal length of 1.333, which is
+    // 2·atan(1/1.333) = 73.74°).
+    id: "sdf.fov",
+    label: "FOV",
+    group: "sdf",
+    min: 20,
+    max: 120,
+    value: 74,
+    step: 0.5,
+    unit: "°",
   });
   ps.register({
     id: "sdf.kifsIter",
@@ -2675,6 +2895,44 @@ export function registerCoreParameters(ps) {
     // asked for — including fighting any attempt at clear glass.
     value: 0,
     step: 0.01,
+  });
+  ps.register({
+    // The glow used to be a hardcoded vec3(0.5, 0.1, 0.8). 274° is that exact
+    // violet in HSV, so the default is the old colour to the pixel; the shader
+    // holds sat and val at the same 0.875 / 0.8 it implied. A hue PARAM rather
+    // than a colour picker, so it is MIDI-mappable and captured by Display
+    // States like every other sdf.* control.
+    id: "sdf.glowHue",
+    label: "Glow Hue",
+    group: "sdf",
+    min: 0,
+    max: 360,
+    value: 274,
+    step: 1,
+    unit: "°",
+  });
+  ps.register({
+    // Was a hardcoded light direction of normalize(vec3(1.0, 1.5, 2.0)).
+    // Azimuth 27° / elevation 34° is that same unit vector, so the defaults
+    // leave every existing render unchanged.
+    id: "sdf.lightAz",
+    label: "Light Az",
+    group: "sdf",
+    min: 0,
+    max: 360,
+    value: 27,
+    step: 1,
+    unit: "°",
+  });
+  ps.register({
+    id: "sdf.lightEl",
+    label: "Light El",
+    group: "sdf",
+    min: -90,
+    max: 90,
+    value: 34,
+    step: 1,
+    unit: "°",
   });
   ps.register({
     id: "sdf.hue",

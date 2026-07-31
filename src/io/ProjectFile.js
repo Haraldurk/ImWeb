@@ -18,7 +18,7 @@
  *   - 3D imported models
  */
 
-import { CAPTURE_INDIRECT_BASE, migrateCaptureBase } from '../controls/ParameterSystem.js';
+import { CAPTURE_INDIRECT_BASE, migrateCaptureBase, migrateSdfParams } from '../controls/ParameterSystem.js';
 
 const FORMAT_VERSION = 3;
 
@@ -212,6 +212,7 @@ export class ProjectFile {
     // Restore live params (overlay on top of preset)
     if (data.params) {
       migrateCaptureBase(data.params, data._sourceCount);
+      migrateSdfParams(data.params);
       this.ps.restoreState(data.params);
     }
 

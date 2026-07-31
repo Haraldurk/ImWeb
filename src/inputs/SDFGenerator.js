@@ -25,11 +25,19 @@ precision highp float;
 uniform float uTime;
 uniform float uSdfOpMode;   // 0=Union, 1=Smooth Union, 2=Subtraction, 3=Intersection
 uniform float uSdfOpAmount; // blend / smooth radius 0–1
-uniform float uDistance;
+uniform float uDistance; // separation between the two orbiting shapes
 uniform float uShape;    // 0=Sphere,1=Box,2=Torus,3=Capsule,4=HexPrism,5=Octahedron,6=Link,7=Mandelbulb
-uniform float uRepeat;   // domain repetition spacing; 0 = off
+uniform float uSize;     // uniform scale on every primitive
+uniform float uTile;     // domain repetition on/off
+uniform float uRepeat;   // domain repetition cell spacing
 uniform float uWarp;      // surface displacement amplitude
-uniform vec3  uSDFCamPos; // camera position; always looks at origin
+uniform vec3  uMove;      // translates the FIELD (Rutt-Etra's rig.position)
+uniform float uOrbitX;    // camera azimuth, radians
+uniform float uOrbitY;    // camera elevation, radians
+uniform float uCamDist;   // camera distance from origin
+uniform float uFov;       // vertical field of view, radians
+uniform float uGlowHue;   // step-count aura hue, 0–1
+uniform vec3  uLightDir;  // unit light direction, built from az/el on the CPU
 uniform float uKifsIter;    // KIFS fold iterations 0–5 (float for WebGL compat)
 uniform float uKifsAngle;   // KIFS rotation angle (radians)
 uniform float uLumaWarp;    // video luma displacement amplitude
@@ -147,9 +155,18 @@ mat2 rot2D(float a) {
 
 // ── Scene SDF ────────────────────────────────────────────────────────────────
 float scene(vec3 p) {
+  // Move translates the FIELD rather than the camera, so it swings with the
+  // orbit instead of fighting it — and, with Tile on, it is what lets you
+  // travel through an infinite lattice instead of watching it from outside.
+  // Applied here so calcNormal and calcAO inherit it for free.
+  p -= uMove;
+
   // Domain repetition: fold space into repeating cells.
-  // Guard uRepeat > 0.1 to avoid mod(p, 0) undefined behaviour.
-  vec3 q = (uRepeat > 0.1)
+  // Gated by uTile, not by "is the spacing big enough". The old form
+  // (uRepeat > 0.1) made the bottom of the spacing slider a dead zone and put
+  // the on/off switch inside the value, so Tile could not be toggled without
+  // also losing the spacing you had dialled in.
+  vec3 q = (uTile > 0.5)
     ? mod(p + 0.5 * uRepeat, uRepeat) - 0.5 * uRepeat
     : p;
 
@@ -166,14 +183,20 @@ float scene(vec3 p) {
     kp.xz = rot2D(uKifsAngle) * kp.xz;
   }
 
-  // Orbit radius — when repeating, derive from cell spacing so shapes stay in-cell.
-  float rad = (uRepeat > 0.1) ? uRepeat * 0.3 : uDistance * 0.35;
+  // Separation always comes from uDistance. It used to be overridden by the
+  // cell spacing whenever repetition was on, which meant the Separation slider
+  // silently did nothing in tile mode — a dead control with no indication.
+  float rad = uDistance * 0.35;
   float ang = uTime * 0.8 * uSdfSpeed;
   vec3 cA   = vec3( cos(ang) * rad,  sin(ang * 0.7) * 0.3,  sin(ang * 0.4) * 0.2);
   vec3 cB   = vec3(-cos(ang) * rad, -sin(ang * 0.7) * 0.3,  cos(ang * 0.4) * 0.2);
 
-  float dA = sdShape(kp - cA);
-  float dB = sdShape(kp - cB);
+  // Uniform scale on a distance field is d(p) = s * shape(p / s); dividing the
+  // point without re-multiplying the result would break the Lipschitz bound
+  // and make the raymarch overshoot through thin geometry.
+  float s  = max(uSize, 0.001);
+  float dA = sdShape((kp - cA) / s) * s;
+  float dB = sdShape((kp - cB) / s) * s;
   // k scales opAmount from [0,1] into a useful blend radius.
   // For Soft Cut, uSdfOpAmount=0 means no cut; =1 means deep bite.
   float k  = max(uSdfOpAmount, 0.001);
@@ -245,26 +268,35 @@ float calcAO(vec3 p, vec3 n) {
   return clamp(1.0 - 2.5 * occ, 0.0, 1.0);
 }
 
-// ── LookAt camera ────────────────────────────────────────────────────────────
-// Builds a 3×3 rotation matrix so the camera at 'eye' points at 'target'.
-// rd = mat * normalize(vec3(uv, -focalLength))
-mat3 lookAt(vec3 eye, vec3 target, vec3 up) {
-  vec3 f = normalize(target - eye);
-  vec3 r = normalize(cross(f, up));
-  vec3 u = cross(r, f);
-  return mat3(r, u, -f);
-}
+// ── Orbit camera ─────────────────────────────────────────────────────────────
+// Orientation from Euler angles, NOT lookAt — the same choice RuttEtra.js:719
+// documents, for the same reason. lookAt needs an up vector, and at ±90°
+// elevation the forward axis becomes parallel to it: cross(f, up) is the zero
+// vector, normalize() returns NaN, and the frame goes black. Rotating a camera
+// that starts at the origin and then backing it off along its own +Z has no
+// such pole. Column-major: mat3(col0, col1, col2).
+mat3 rotX(float a) { float s = sin(a), c = cos(a);
+  return mat3(1.0, 0.0, 0.0,  0.0, c, -s,  0.0, s, c); }
+mat3 rotY(float a) { float s = sin(a), c = cos(a);
+  return mat3(c, 0.0, -s,  0.0, 1.0, 0.0,  s, 0.0, c); }
 
 void main() {
   vec2 uv = vUv * 2.0 - 1.0;
+  // Aspect correction. Without it a Sphere renders as a wide ellipse on any
+  // non-square target, because uv spans [-1,1] on both axes regardless of the
+  // render target's shape. uFov is therefore the VERTICAL field of view.
+  uv.x *= uResolution.x / max(uResolution.y, 1.0);
 
-  // Guard: if the camera sits exactly on the origin the lookAt up-vector
-  // degenerates when eye==target. Nudge Z by a tiny epsilon to stay safe.
-  vec3 ro  = uSDFCamPos;
-  if (length(ro) < 0.001) ro = vec3(0.0, 0.0, 0.001);
+  // YXZ, so Orbit Y reads as elevation applied before Orbit X's azimuth.
+  // camRot * (0,0,d) = (d·cos(el)·sin(az), d·sin(el), d·cos(el)·cos(az)) —
+  // the exact placement migrateSdfCamera() inverts, so a migrated project's
+  // eye lands on the identical point.
+  mat3 cam = rotY(uOrbitX) * rotX(uOrbitY);
+  vec3 ro  = cam * vec3(0.0, 0.0, uCamDist);
 
-  mat3 cam = lookAt(ro, vec3(0.0), vec3(0.0, 1.0, 0.0));
-  vec3 rd  = cam * normalize(vec3(uv * 0.75, -1.0)); // ~75° FOV (focal = 1/tan(37.5°) ≈ 1.33, uv scaled 0.75)
+  // Focal length from vertical FOV. tan is guarded away from the 180° pole.
+  float focal = 1.0 / max(tan(uFov * 0.5), 0.001);
+  vec3  rd    = cam * normalize(vec3(uv, -focal));
 
   // Conservative step scaling: each displacement term inflates the Lipschitz
   // constant. Combine both factors multiplicatively so neither overshoots.
@@ -272,8 +304,10 @@ void main() {
   float stepScale = (1.0 / (1.0 + uWarp * 2.5))
                   * (1.0 / (1.0 + uLumaWarp * 2.0));
 
-  // tMax: march at least to origin + generous margin so far cameras still hit.
-  float tMax = length(ro) + 8.0;
+  // tMax: march at least to the field's centre + generous margin so far
+  // cameras still hit. Measured to uMove, not to the origin — Move relocates
+  // the field, so marching only as far as the origin would clip it away.
+  float tMax = length(ro - uMove) + 8.0;
   float t = 0.0;
   float d = 0.0;
   int stepCount = 0; // declared outside loop — GLSL ES loop vars are loop-scoped
@@ -284,12 +318,14 @@ void main() {
     t += max(d, 0.001) * stepScale;
   }
   float glowFactor = float(stepCount) / 96.0;
-  vec3  glowCol    = glowFactor * vec3(0.5, 0.1, 0.8) * uGlow;
+  // Sat 0.875 / val 0.8 are the fixed vec3(0.5, 0.1, 0.8) this replaced,
+  // decomposed — at the default hue of 274° the colour is unchanged.
+  vec3  glowCol    = glowFactor * hsv2rgb(vec3(uGlowHue, 0.875, 0.8)) * uGlow;
 
   if (d < 0.001) {
     vec3  p     = ro + rd * t;
     vec3  n     = calcNormal(p);
-    vec3  light = normalize(vec3(1.0, 1.5, 2.0));
+    vec3  light = uLightDir;
     float diff  = clamp(dot(n, light), 0.0, 1.0);
     float spec  = pow(clamp(dot(reflect(-light, n), -rd), 0.0, 1.0), 32.0);
     vec3  baseColor = hsv2rgb(uBaseHSV);
@@ -369,9 +405,17 @@ export class SDFGenerator {
         uSdfOpAmount: { value: 0.5 },
         uDistance:   { value: 1.5 },
         uShape:      { value: 0 },
-        uRepeat:     { value: 0 },
+        uSize:       { value: 1 },
+        uTile:       { value: 0 },
+        uRepeat:     { value: 3 },
         uWarp:       { value: 0 },
-        uSDFCamPos:  { value: new THREE.Vector3(0, 0, 5) },
+        uMove:       { value: new THREE.Vector3(0, 0, 0) },
+        uOrbitX:     { value: 0 },
+        uOrbitY:     { value: 0 },
+        uCamDist:    { value: 5 },
+        uFov:        { value: THREE.MathUtils.degToRad(74) },
+        uGlowHue:    { value: 274 / 360 },
+        uLightDir:   { value: new THREE.Vector3(1, 1.5, 2).normalize() },
         uKifsIter:   { value: 0 },
         uKifsAngle:  { value: 0 },
         uLumaWarp:    { value: 0 },
@@ -409,12 +453,29 @@ export class SDFGenerator {
     u.uSdfOpAmount.value = ps.get('sdf.opAmount').value;
     u.uDistance.value = ps.get('sdf.distance').value;
     u.uShape.value    = ps.get('sdf.shape').value;
+    u.uSize.value     = ps.get('sdf.size').value;
+    u.uTile.value     = ps.get('sdf.tile').value ? 1 : 0;
     u.uRepeat.value   = ps.get('sdf.repeat').value;
     u.uWarp.value     = ps.get('sdf.warp').value;
-    u.uSDFCamPos.value.set(
-      ps.get('sdf.camX').value,
-      ps.get('sdf.camY').value,
-      ps.get('sdf.camZ').value,
+    u.uMove.value.set(
+      ps.get('sdf.moveX').value,
+      ps.get('sdf.moveY').value,
+      ps.get('sdf.moveZ').value,
+    );
+    const DEG = Math.PI / 180;
+    u.uOrbitX.value  = ps.get('sdf.orbitX').value * DEG;
+    u.uOrbitY.value  = ps.get('sdf.orbitY').value * DEG;
+    u.uCamDist.value = ps.get('sdf.camDist').value;
+    u.uFov.value     = ps.get('sdf.fov').value * DEG;
+    u.uGlowHue.value = ps.get('sdf.glowHue').value / 360;
+    // Same spherical convention as the camera, so azimuth 0 puts the light
+    // behind the viewer at elevation 0 and the two controls read alike.
+    const laz = ps.get('sdf.lightAz').value * DEG;
+    const lel = ps.get('sdf.lightEl').value * DEG;
+    u.uLightDir.value.set(
+      Math.cos(lel) * Math.sin(laz),
+      Math.sin(lel),
+      Math.cos(lel) * Math.cos(laz),
     );
     u.uKifsIter.value  = ps.get('sdf.kifsIter').value;
     u.uKifsAngle.value = ps.get('sdf.kifsAngle').value * (Math.PI / 180);

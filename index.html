@@ -447,23 +447,30 @@
                         </div>
                         <div id="particle-params"></div>
                     </div>
-                    <!-- Metaballs (SDF raymarcher) — same shape as Rutt-Etra
-                         below: ONE source, so one accordion entry, with the
-                         groupings as level-3 subsections rather than siblings
-                         of Noise and Particles. 25 rows is well past what reads
-                         as a single list. Order follows the signal: what the
-                         field IS, how space is folded, where it is seen from,
-                         then the three things that colour it. Per style.css,
-                         level 3 must not use .section-header. -->
+                    <!-- SDF — same shape as Rutt-Etra below: ONE source, so one
+                         accordion entry, with the groupings as level-3
+                         subsections rather than siblings of Noise and
+                         Particles. 34 rows is well past what reads as a single
+                         list. Order follows the signal: what the field IS, what
+                         space it lives in, where it is seen from, then the four
+                         things that colour it. Per style.css, level 3 must not
+                         use .section-header.
+
+                         Named SDF, not Metaballs. A metaball is specifically a
+                         blobby sum-of-falloff surface — one of eight shapes,
+                         under one of four combine modes. It is also the name
+                         the 3D Scene tab uses for its own, different metaball
+                         system, and the name this source already carries in
+                         every source dropdown and in the sdf.* namespace. -->
                     <div class="panel-section">
-                        <div class="section-header">Metaballs</div>
+                        <div class="section-header">SDF</div>
                         <div class="panel-subsection">
                             <div class="subsection-header">Shape</div>
                             <div id="sdf-shape-params"></div>
                         </div>
                         <div class="panel-subsection">
-                            <div class="subsection-header">Fold</div>
-                            <div id="sdf-fold-params"></div>
+                            <div class="subsection-header">Space</div>
+                            <div id="sdf-space-params"></div>
                         </div>
                         <div class="panel-subsection">
                             <div class="subsection-header">Camera</div>
@@ -472,6 +479,10 @@
                         <div class="panel-subsection">
                             <div class="subsection-header">Material</div>
                             <div id="sdf-material-params"></div>
+                        </div>
+                        <div class="panel-subsection">
+                            <div class="subsection-header">Light</div>
+                            <div id="sdf-light-params"></div>
                         </div>
                         <div class="panel-subsection">
                             <div class="subsection-header">Glass</div>

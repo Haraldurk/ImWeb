@@ -9,6 +9,8 @@ import {
   CAPTURE_INDIRECT_BASE,
   migrateCaptureBase,
   migrateStatesCaptureBase,
+  migrateSdfParams,
+  migrateStatesSdfParams,
 } from '../controls/ParameterSystem.js';
 
 export const MAX_STATES = 32;
@@ -140,7 +142,8 @@ export class Preset {
   static importBank(data, targetIndex) {
     const p = new Preset(targetIndex);
     p.name        = data.name   || `Bank ${targetIndex + 1}`;
-    p.states      = migrateStatesCaptureBase(data.states || [], data.sourceCount);
+    p.states      = migrateStatesSdfParams(
+                      migrateStatesCaptureBase(data.states || [], data.sourceCount));
     p.activeState = data.activeState ?? 0;
     return p;
   }
@@ -154,6 +157,9 @@ export class Preset {
     const p = new Preset(data.index);
     Object.assign(p, data);
     migrateStatesCaptureBase(p.states, data.sourceCount);
+    migrateStatesSdfParams(p.states);
+    // The bank's own controller bag, separate from any state's.
+    migrateSdfParams(null, p.controllers);
     return p;
   }
 
@@ -475,6 +481,7 @@ export class PresetManager extends EventTarget {
 
   importState(data, targetSlot = null) {
     migrateCaptureBase(data.values, data.sourceCount);
+    migrateSdfParams(data.values, data.controllers);
     if ('output.transfer' in data.values) {
       data.values['feedback.mode'] = data.values['output.transfer'];
       delete data.values['output.transfer'];
