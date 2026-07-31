@@ -3033,6 +3033,29 @@ export function registerCoreParameters(ps) {
     unit: "u",
   });
   ps.register({
+    // Sat and Val were frozen at 0.875 / 0.8 — the decomposition of the one
+    // hardcoded violet the aura used to be. Frozen, the aura could only ever be
+    // a fully saturated hue at one brightness: no pastels, no near-white core,
+    // no dim outer stop. Kept as HSV rather than RGB so Hue stays a single
+    // sweepable control; the colour picker beside it is a view onto the three.
+    id: "sdf.glowSat",
+    label: "Glow Sat",
+    group: "sdf",
+    min: 0,
+    max: 1.0,
+    value: 0.875,
+    step: 0.01,
+  });
+  ps.register({
+    id: "sdf.glowVal",
+    label: "Glow Val",
+    group: "sdf",
+    min: 0,
+    max: 1.0,
+    value: 0.8,
+    step: 0.01,
+  });
+  ps.register({
     // Outer stop of the aura gradient; sdf.glowHue is the stop AT the object.
     // Defaults to the same hue, so leaving it alone gives the single-colour
     // aura and the gradient only exists once it is asked for.
@@ -3044,6 +3067,24 @@ export function registerCoreParameters(ps) {
     value: 274,
     step: 1,
     unit: "°",
+  });
+  ps.register({
+    id: "sdf.glowSat2",
+    label: "Glow Sat 2",
+    group: "sdf",
+    min: 0,
+    max: 1.0,
+    value: 0.875,
+    step: 0.01,
+  });
+  ps.register({
+    id: "sdf.glowVal2",
+    label: "Glow Val 2",
+    group: "sdf",
+    min: 0,
+    max: 1.0,
+    value: 0.8,
+    step: 0.01,
   });
   ps.register({
     // Tints the aura by the Refract Src surround along the ray's own direction.

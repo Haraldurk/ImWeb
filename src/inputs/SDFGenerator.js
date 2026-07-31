@@ -58,7 +58,11 @@ uniform float uCamDist;   // camera distance from origin
 uniform float uFov;       // vertical field of view, radians
 uniform float uGlowHue;   // aura hue, 0–1
 uniform float uGlowSize;  // aura reach in world units (closest-approach falloff)
+uniform float uGlowSat;   // aura saturation at the inner stop
+uniform float uGlowVal;   // aura value at the inner stop
 uniform float uGlowHue2;  // aura hue at the OUTER edge of the falloff
+uniform float uGlowSat2;  // aura saturation at the outer stop
+uniform float uGlowVal2;  // aura value at the outer stop
 uniform float uGlowEnv;   // 0 = flat gradient, 1 = aura tinted by the surround
 uniform float uEnvAmt;    // 0 = flat white rim, 1 = reflected environment
 uniform float uDepthRange;  // world depth that fills the SDF Depth channel
@@ -523,8 +527,12 @@ void main() {
   // (halo = 1) and Glow Hue 2 the colour at the outer edge (halo = 0). Both
   // default to the same hue, so a project that never touches Hue 2 sees the
   // single-colour aura it had.
-  vec3 auraTint = mix(hsv2rgb(vec3(uGlowHue2, 0.875, 0.8)),
-                      hsv2rgb(vec3(uGlowHue,  0.875, 0.8)), halo);
+  // Saturation and value are per-stop uniforms, not the fixed 0.875 / 0.8 they
+  // were. Those two numbers were the decomposition of one hardcoded violet, and
+  // freezing them meant the aura could only ever be a fully saturated hue at one
+  // brightness — no pastels, no near-white core, no dim outer falloff.
+  vec3 auraTint = mix(hsv2rgb(vec3(uGlowHue2, uGlowSat2, uGlowVal2)),
+                      hsv2rgb(vec3(uGlowHue,  uGlowSat,  uGlowVal )), halo);
 
   // REFLECTIVE AURA: tint by the surround along the ray's own direction, which
   // is the direction that patch of empty space is "looking" in. Same
@@ -687,7 +695,11 @@ export class SDFGenerator {
         uFov:        { value: THREE.MathUtils.degToRad(74) },
         uGlowHue:    { value: 274 / 360 },
         uGlowSize:   { value: 0.4 },
+        uGlowSat:    { value: 0.875 },
+        uGlowVal:    { value: 0.8 },
         uGlowHue2:   { value: 274 / 360 },
+        uGlowSat2:   { value: 0.875 },
+        uGlowVal2:   { value: 0.8 },
         uGlowEnv:    { value: 0 },
         uEnvAmt:     { value: 1 },
         uDepthRange: { value: 1.0 },
@@ -765,7 +777,11 @@ export class SDFGenerator {
     u.uFov.value     = ps.get('sdf.fov').value * DEG;
     u.uGlowHue.value  = ps.get('sdf.glowHue').value / 360;
     u.uGlowSize.value = ps.get('sdf.glowSize').value;
+    u.uGlowSat.value  = ps.get('sdf.glowSat').value;
+    u.uGlowVal.value  = ps.get('sdf.glowVal').value;
     u.uGlowHue2.value = ps.get('sdf.glowHue2').value / 360;
+    u.uGlowSat2.value = ps.get('sdf.glowSat2').value;
+    u.uGlowVal2.value = ps.get('sdf.glowVal2').value;
     u.uGlowEnv.value  = ps.get('sdf.glowEnv').value;
     u.uEnvAmt.value   = ps.get('sdf.envAmt').value;
     u.uDepthRange.value = ps.get('sdf.depthRange').value;

@@ -6324,6 +6324,57 @@ void main() {
     ps.get(bId)?.onChange(sync);
   }
 
+  /**
+   * Colour picker over an HSV parameter triple.
+   *
+   * _wireColorPicker above stores r/g/b, which is right where the shader wants
+   * a colour. The aura wants HUE to stay a single control — a hue sweep is one
+   * of the moves this instrument is for, and it is not expressible as one
+   * fader over three RGB params. So the params stay HSV and the picker is a
+   * VIEW onto them: it writes all three on input and re-reads all three on
+   * change, which is what makes it follow a state recall or a MIDI-driven hue.
+   */
+  const _rgbToHsv = (r, g, b) => {
+    const mx = Math.max(r, g, b), mn = Math.min(r, g, b), d = mx - mn;
+    let h = 0;
+    if (d > 1e-6) {
+      if      (mx === r) h = ((g - b) / d + (g < b ? 6 : 0)) / 6;
+      else if (mx === g) h = ((b - r) / d + 2) / 6;
+      else               h = ((r - g) / d + 4) / 6;
+    }
+    return [h, mx > 1e-6 ? d / mx : 0, mx];
+  };
+  const _hsvToRgb = (h, s, v) => {
+    const f = (n) => {
+      const k = (n + h * 6) % 6;
+      return v - v * s * Math.max(0, Math.min(k, 4 - k, 1));
+    };
+    return [f(5), f(3), f(1)];
+  };
+
+  function _wireHsvPicker(pickerId, hId, sId, vId) {
+    const el = document.getElementById(pickerId);
+    if (!el) return;
+    el.addEventListener('input', (e) => {
+      const c = _hexToVec3(e.target.value);
+      const [h, s, v] = _rgbToHsv(c.x, c.y, c.z);
+      ps.set(hId, h * 360); ps.set(sId, s); ps.set(vId, v);
+    });
+    const sync = () => {
+      const [r, g, b] = _hsvToRgb((ps.get(hId)?.value ?? 0) / 360,
+                                   ps.get(sId)?.value ?? 0,
+                                   ps.get(vId)?.value ?? 0);
+      el.value = _vec3ToHex(r, g, b);
+    };
+    ps.get(hId)?.onChange(sync);
+    ps.get(sId)?.onChange(sync);
+    ps.get(vId)?.onChange(sync);
+    sync();
+  }
+
+  _wireHsvPicker('sdf-glow1-picker', 'sdf.glowHue',  'sdf.glowSat',  'sdf.glowVal');
+  _wireHsvPicker('sdf-glow2-picker', 'sdf.glowHue2', 'sdf.glowSat2', 'sdf.glowVal2');
+
   _wireColorPicker('noise-color1-picker',
     'noise.col1.r','noise.col1.g','noise.col1.b',
     (r,g,b) => { _noiseColor1.set(r,g,b); });
