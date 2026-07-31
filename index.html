@@ -484,6 +484,50 @@
                             <div class="subsection-header">Light</div>
                             <div id="sdf-light-params"></div>
                         </div>
+                        <!-- Glow is its own subsection, not part of Light: the
+                             aura is nine controls and shares nothing with the
+                             two light-direction rows but the word. Pickers use
+                             the same markup as Noise / Particles above; they
+                             are VIEWS onto the hue/sat/val params, which stay
+                             canonical so states and MIDI still work. -->
+                        <div class="panel-subsection">
+                            <div class="subsection-header">Glow</div>
+                            <div style="display: flex; gap: 8px; padding: 4px 10px">
+                                <label
+                                    style="
+                                        font-size: 11px;
+                                        color: var(--text-2);
+                                        display: flex;
+                                        align-items: center;
+                                        gap: 4px;
+                                    "
+                                >
+                                    At object
+                                    <input
+                                        type="color"
+                                        id="sdf-glow1-picker"
+                                        title="Aura colour at the object"
+                                    />
+                                </label>
+                                <label
+                                    style="
+                                        font-size: 11px;
+                                        color: var(--text-2);
+                                        display: flex;
+                                        align-items: center;
+                                        gap: 4px;
+                                    "
+                                >
+                                    Outer
+                                    <input
+                                        type="color"
+                                        id="sdf-glow2-picker"
+                                        title="Aura colour at the outer edge of the falloff"
+                                    />
+                                </label>
+                            </div>
+                            <div id="sdf-glow-params"></div>
+                        </div>
                         <div class="panel-subsection">
                             <div class="subsection-header">Glass</div>
                             <div id="sdf-glass-params"></div>
