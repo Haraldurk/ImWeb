@@ -3,9 +3,12 @@
  *
  * Raymarches up to eight orbiting signed-distance shapes into a
  * WebGLRenderTarget. `.texture` is source 21 ("SDF"); `.depthTexture` is source
- * 30 ("SDF Depth"), the marched distance packed into the colour target's alpha
- * and expanded by a blit — WebGL 1 has no MRT here, and marching twice to get a
- * depth buffer would double the cost of the most expensive source in the app.
+ * 30 ("SDF Depth"), rendered by a SECOND march of the same material with
+ * uDepthPass set — WebGL 1 has no MRT here, so the alternative was packing
+ * depth into alpha, and alpha is worth more as COVERAGE: it is how the
+ * compositor knows where this source actually is, which is what keeps a glow
+ * from reading as black. main.js only runs the depth pass when that source is
+ * really consumed, so a project that never routes it never marches twice.
  *
  * NOT "Metaballs": a metaball is a blobby sum-of-falloff surface, which is one
  * of thirteen shapes under one of four combine modes. That name also belongs to
@@ -66,6 +69,7 @@ uniform float uGlowVal2;  // aura value at the outer stop
 uniform float uGlowEnv;   // 0 = flat gradient, 1 = aura tinted by the surround
 uniform float uEnvAmt;    // 0 = flat white rim, 1 = reflected environment
 uniform float uDepthRange;  // world depth that fills the SDF Depth channel
+uniform float uDepthPass;   // 1 = render depth instead of colour (SDF Depth)
 uniform vec3  uLightDir;  // unit light direction, built from az/el on the CPU
 uniform float uKifsIter;    // KIFS fold iterations 0–5 (float for WebGL compat)
 uniform float uKifsAngle;   // KIFS rotation angle (radians)
@@ -560,6 +564,7 @@ void main() {
   // outer stop could be set to anything and never showed.
   vec3 glowCol = halo * auraTint * uGlow;
 
+  float depthVal = 0.0;   // filled on a hit; a miss stays at 0 = maximally far
   if (d < 0.001) {
     vec3  p     = ro + rd * t;
     vec3  n     = calcNormal(p);
@@ -648,14 +653,28 @@ void main() {
     // the field centre makes 0.5 the centre at any distance, and Depth Range
     // sets how much world depth fills the channel. Nearer = brighter.
     float dc = length(ro - uMove);
-    gl_FragColor = vec4(finalCol,
-      clamp(0.5 + (dc - t) / (2.0 * max(uDepthRange, 0.001)), 0.0, 1.0));
+    depthVal = clamp(0.5 + (dc - t) / (2.0 * max(uDepthRange, 0.001)), 0.0, 1.0);
+    // ALPHA IS COVERAGE. The object is opaque.
+    gl_FragColor = vec4(finalCol, 1.0);
   } else {
-    // Background glow: rays that almost hit complex geometry take many steps —
-    // adding glowCol here produces the neon aura at SDF edges.
-    // Depth 0: a miss is as far away as the channel can express.
-    gl_FragColor = vec4(glowCol, 0.0);
+    // Background glow: rays that pass close to the surface carry the aura.
+    //
+    // Coverage here is the aura's own strength, which is what stops a glow from
+    // ever reading as BLACK: composited through the keyer's Alpha mode, a weak
+    // glow is mostly background rather than mostly dark pixel. Under Copy it
+    // was the SDF's black that replaced the background, and no amount of
+    // keying or glow tuning could fix that — the layer was simply opaque
+    // everywhere. Depth 0: a miss is as far away as the channel can express.
+    gl_FragColor = vec4(glowCol, clamp(halo * uGlow, 0.0, 1.0));
   }
+
+  // Depth is a SECOND pass over the same march rather than a channel of the
+  // first. It used to ride in alpha, which cost nothing but took the one
+  // channel the compositor needs to know where this source actually IS.
+  // Coverage is worth more there than depth, so depth pays for itself instead:
+  // main.js only runs this pass when the SDF Depth source is really consumed,
+  // so a project that never routes it never marches twice.
+  if (uDepthPass > 0.5) gl_FragColor = vec4(vec3(depthVal), 1.0);
 }
 `;
 
@@ -720,6 +739,7 @@ export class SDFGenerator {
         uGlowEnv:    { value: 0 },
         uEnvAmt:     { value: 1 },
         uDepthRange: { value: 1.0 },
+        uDepthPass:  { value: 0 },
         uLightDir:   { value: new THREE.Vector3(1, 1.5, 2).normalize() },
         uKifsIter:   { value: 0 },
         uKifsAngle:  { value: 0 },
@@ -851,36 +871,28 @@ export class SDFGenerator {
    */
   renderDepth() {
     if (!this._depthRt) {
-      const w = this._rt.width, h = this._rt.height;
-      this._depthRt = new THREE.WebGLRenderTarget(w, h, {
+      this._depthRt = new THREE.WebGLRenderTarget(this._rt.width, this._rt.height, {
         minFilter: THREE.LinearFilter,
         magFilter: THREE.LinearFilter,
         format:    THREE.RGBAFormat,
       });
-      this._depthMat = new THREE.ShaderMaterial({
-        uniforms: { tDepth: { value: this._rt.texture } },
-        vertexShader: VERT,
-        fragmentShader: [
-          'precision highp float;',
-          'uniform sampler2D tDepth;',
-          'varying vec2 vUv;',
-          'void main() {',
-          '  float d = texture2D(tDepth, vUv).a;',
-          '  gl_FragColor = vec4(vec3(d), 1.0);',
-          '}',
-        ].join('\n'),
-        depthTest: false,
-        depthWrite: false,
-      });
-      this._depthScene = new THREE.Scene();
-      this._depthScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), this._depthMat));
     }
     if (this._depthRt.width !== this._rt.width || this._depthRt.height !== this._rt.height) {
       this._depthRt.setSize(this._rt.width, this._rt.height);
     }
+    // A SECOND MARCH, not a blit over the colour target's alpha. Alpha now
+    // carries coverage, which the compositor needs to know where this source
+    // is; depth had been squatting there for free and is worth less than that.
+    //
+    // The same material and the same uniforms — only uDepthPass differs — so
+    // the two passes cannot drift apart the way a duplicated shader would.
+    // Restored immediately after, because tick() sets every other uniform but
+    // would not know to clear this one.
+    this._mat.uniforms.uDepthPass.value = 1;
     this.renderer.setRenderTarget(this._depthRt);
-    this.renderer.render(this._depthScene, this._camera);
+    this.renderer.render(this._scene, this._camera);
     this.renderer.setRenderTarget(null);
+    this._mat.uniforms.uDepthPass.value = 0;
   }
 
   /** Null until renderDepth() has run at least once — callers fall back. */
@@ -907,10 +919,6 @@ export class SDFGenerator {
     this._black.dispose();
     this._mat.dispose();
     this._scene.children[0].geometry.dispose();
-    if (this._depthRt) {
-      this._depthRt.dispose();
-      this._depthMat.dispose();
-      this._depthScene.children[0].geometry.dispose();
-    }
+    if (this._depthRt) this._depthRt.dispose();
   }
 }
