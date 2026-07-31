@@ -58,6 +58,8 @@ uniform float uCamDist;   // camera distance from origin
 uniform float uFov;       // vertical field of view, radians
 uniform float uGlowHue;   // aura hue, 0–1
 uniform float uGlowSize;  // aura reach in world units (closest-approach falloff)
+uniform float uGlowHue2;  // aura hue at the OUTER edge of the falloff
+uniform float uGlowEnv;   // 0 = flat gradient, 1 = aura tinted by the surround
 uniform float uEnvAmt;    // 0 = flat white rim, 1 = reflected environment
 uniform float uDepthRange;  // world depth that fills the SDF Depth channel
 uniform vec3  uLightDir;  // unit light direction, built from az/el on the CPU
@@ -516,7 +518,22 @@ void main() {
   // Sat 0.875 / val 0.8 decompose the old fixed vec3(0.5, 0.1, 0.8), so the
   // default hue of 274° is the colour this always had.
   float halo = 1.0 - clamp(minD / max(uGlowSize, 0.001), 0.0, 1.0);
-  vec3  glowCol = halo * halo * hsv2rgb(vec3(uGlowHue, 0.875, 0.8)) * uGlow;
+
+  // TWO-STOP GRADIENT across the falloff: Glow Hue is the colour AT the object
+  // (halo = 1) and Glow Hue 2 the colour at the outer edge (halo = 0). Both
+  // default to the same hue, so a project that never touches Hue 2 sees the
+  // single-colour aura it had.
+  vec3 auraTint = mix(hsv2rgb(vec3(uGlowHue2, 0.875, 0.8)),
+                      hsv2rgb(vec3(uGlowHue,  0.875, 0.8)), halo);
+
+  // REFLECTIVE AURA: tint by the surround along the ray's own direction, which
+  // is the direction that patch of empty space is "looking" in. Same
+  // equirectangular surround the Fresnel reflection uses. x2 compensates for
+  // the darkening a multiply causes. 0 by default — pure gradient.
+  vec3 auraEnv = texture2D(uBgTex, equirectUv(rd)).rgb;
+  auraTint = mix(auraTint, auraTint * auraEnv * 2.0, uGlowEnv);
+
+  vec3 glowCol = halo * halo * auraTint * uGlow;
 
   if (d < 0.001) {
     vec3  p     = ro + rd * t;
@@ -577,10 +594,22 @@ void main() {
     vec3  envCol      = texture2D(uBgTex, equirectUv(refl)).rgb;
     float fresnelTerm = pow(1.0 - max(dot(n, -rd), 0.0), 3.0) * uFresnel;
     finalCol += vec3(spec * 0.5) + mix(vec3(1.0), envCol, uEnvAmt) * fresnelTerm;
-    // No aura on a HIT. minD is ~0 on every hit, so the closest-approach form
-    // would paint the full halo colour across the whole lit surface and wash it
-    // out — the step-count form only got away with it because it was weak. The
-    // aura is a thing that happens BESIDE the object, not on it.
+    // AURA ON THE OBJECT, weighted by the rim rather than applied flat.
+    //
+    // Dropping it from hits entirely (previous commit) left a dark band at the
+    // silhouette: the object's own unlit edge, with the bright halo starting
+    // immediately outside it — read as "a black halo closest to the object".
+    // Applying it flat is the other failure, and why it was dropped: minD is ~0
+    // on every hit, so the full halo colour would wash across the whole surface.
+    //
+    // The rim term is the answer to both. It peaks exactly at the silhouette,
+    // where the outer halo also peaks, so the two meet with no seam, and falls
+    // to nothing facing the camera, so the lit surface stays readable. auraTint
+    // is evaluated at halo = 1 here, which is the gradient's inner stop — the
+    // colour continues across the boundary as well as the brightness.
+    float rimGlow = pow(1.0 - max(dot(n, -rd), 0.0), 2.0);
+    finalCol += auraTint * uGlow * rimGlow;
+
     // ALPHA CARRIES DEPTH, not opacity. Layer compositing in Pipeline.js goes
     // through explicit blend modes and the keyer and never reads source alpha,
     // so this channel was writing a constant 1.0 into every frame for nothing.
@@ -658,6 +687,8 @@ export class SDFGenerator {
         uFov:        { value: THREE.MathUtils.degToRad(74) },
         uGlowHue:    { value: 274 / 360 },
         uGlowSize:   { value: 0.4 },
+        uGlowHue2:   { value: 274 / 360 },
+        uGlowEnv:    { value: 0 },
         uEnvAmt:     { value: 1 },
         uDepthRange: { value: 1.0 },
         uLightDir:   { value: new THREE.Vector3(1, 1.5, 2).normalize() },
@@ -734,6 +765,8 @@ export class SDFGenerator {
     u.uFov.value     = ps.get('sdf.fov').value * DEG;
     u.uGlowHue.value  = ps.get('sdf.glowHue').value / 360;
     u.uGlowSize.value = ps.get('sdf.glowSize').value;
+    u.uGlowHue2.value = ps.get('sdf.glowHue2').value / 360;
+    u.uGlowEnv.value  = ps.get('sdf.glowEnv').value;
     u.uEnvAmt.value   = ps.get('sdf.envAmt').value;
     u.uDepthRange.value = ps.get('sdf.depthRange').value;
     // Same spherical convention as the camera, so azimuth 0 puts the light
