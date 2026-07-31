@@ -2670,7 +2670,10 @@ export function registerCoreParameters(ps) {
     group: "sdf",
     min: 0,
     max: 1.0,
-    value: 0.2,
+    // Off by default. The step-count aura is a strong stylistic statement in a
+    // fixed violet, and at 0.2 it tinted every render whether or not it was
+    // asked for — including fighting any attempt at clear glass.
+    value: 0,
     step: 0.01,
   });
   ps.register({

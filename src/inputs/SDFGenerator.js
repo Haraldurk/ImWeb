@@ -293,7 +293,13 @@ void main() {
     float diff  = clamp(dot(n, light), 0.0, 1.0);
     float spec  = pow(clamp(dot(reflect(-light, n), -rd), 0.0, 1.0), 32.0);
     vec3  baseColor = hsv2rgb(uBaseHSV);
-    vec3  col       = baseColor * (0.2 + diff * 0.8) + vec3(spec * 0.5);
+    // BODY terms only — no specular. Specular is a reflection off the surface,
+    // not part of what the surface transmits, so it is added once at the very
+    // end instead of being baked into the albedo. That is what lets Refract
+    // reach 1.0 without flattening the object: previously the glass mix
+    // lerped the WHOLE shaded colour toward the background, so a clear-glass
+    // setting threw away every highlight and the ball read as a flat hole.
+    vec3  col       = baseColor * (0.2 + diff * 0.8);
     // Triplanar video projection: sample uFgTex from each world-space axis,
     // weighted by abs(normal) so the dominant face contributes most.
     vec3  triW     = abs(n);
@@ -304,14 +310,20 @@ void main() {
     vec3  tpZ      = texture2D(uFgTex, p.xy * tsc).rgb;
     vec3  texColor = tpX * triW.x + tpY * triW.y + tpZ * triW.z;
     // Modulate tex sample by lighting so shading is preserved at uTexBlend=1
-    vec3  litTex   = texColor * (0.15 + diff * 0.85 + spec * 0.3);
+    vec3  litTex   = texColor * (0.15 + diff * 0.85);
     vec3  finalCol = mix(col, litTex, uTexBlend);
     finalCol *= mix(1.0, calcAO(p, n), uAO);
+    // Glass body: at uRefract=1 the object transmits the background instead of
+    // showing its own diffuse. AO is applied BEFORE this, so cavity darkening
+    // fades out with the diffuse it belongs to rather than dirtying clear glass.
     vec2  screenUV    = gl_FragCoord.xy / uResolution;
     vec2  refractUV   = clamp(screenUV + n.xy * uRefract * 0.5, 0.0, 1.0);
     vec3  glassColor  = texture2D(uBgTex, refractUV).rgb;
+    finalCol = mix(finalCol, glassColor, uRefract);
+    // Surface layer, on top of body and glass alike — this is the part that
+    // reads as "wet"/"glazed" rather than "painted".
     float fresnelTerm = pow(1.0 - max(dot(n, -rd), 0.0), 3.0) * uFresnel;
-    finalCol = mix(finalCol, glassColor, uRefract) + vec3(fresnelTerm);
+    finalCol += vec3(spec * 0.5) + vec3(fresnelTerm);
     finalCol += glowCol;
     gl_FragColor = vec4(finalCol, 1.0);
   } else {
