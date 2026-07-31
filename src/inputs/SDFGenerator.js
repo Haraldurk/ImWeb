@@ -341,6 +341,15 @@ export class SDFGenerator {
       format:    THREE.RGBAFormat,
     });
 
+    // One shared 1×1 opaque-black texture for both slots. `needsUpdate` matters:
+    // a DataTexture is created at version 0, so without it three never uploads
+    // and the sampler binds null. It is also what "None" (and a self-reference
+    // rejected by _notSelf) resolves to — before this, a null texture simply
+    // left the previous frame's texture bound, so choosing None froze the last
+    // source in place instead of clearing it.
+    this._black = new THREE.DataTexture(new Uint8Array([0, 0, 0, 255]), 1, 1);
+    this._black.needsUpdate = true;
+
     this._mat = new THREE.ShaderMaterial({
       uniforms: {
         uTime:       { value: 0 },
@@ -363,8 +372,8 @@ export class SDFGenerator {
         uRefract:     { value: 0 },
         uFresnel:     { value: 0.5 },
         uResolution:  { value: new THREE.Vector2(rtW, rtH) },
-        uFgTex:       { value: new THREE.DataTexture(new Uint8Array([0,0,0,255]), 1, 1) },
-        uBgTex:       { value: new THREE.DataTexture(new Uint8Array([0,0,0,255]), 1, 1) },
+        uFgTex:       { value: this._black },
+        uBgTex:       { value: this._black },
       },
       vertexShader:   VERT,
       fragmentShader: FRAG,
@@ -410,8 +419,8 @@ export class SDFGenerator {
     );
     u.uRefract.value    = ps.get('sdf.refract').value;
     u.uFresnel.value    = ps.get('sdf.fresnel').value;
-    if (fgTex) u.uFgTex.value = fgTex;
-    if (bgTex) u.uBgTex.value = bgTex;
+    u.uFgTex.value = fgTex || this._black;
+    u.uBgTex.value = bgTex || this._black;
 
     this.renderer.setRenderTarget(this._rt);
     this.renderer.render(this._scene, this._camera);
@@ -429,6 +438,7 @@ export class SDFGenerator {
 
   dispose() {
     this._rt.dispose();
+    this._black.dispose();
     this._mat.dispose();
     this._scene.children[0].geometry.dispose();
   }

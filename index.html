@@ -447,9 +447,40 @@
                         </div>
                         <div id="particle-params"></div>
                     </div>
+                    <!-- Metaballs (SDF raymarcher) — same shape as Rutt-Etra
+                         below: ONE source, so one accordion entry, with the
+                         groupings as level-3 subsections rather than siblings
+                         of Noise and Particles. 25 rows is well past what reads
+                         as a single list. Order follows the signal: what the
+                         field IS, how space is folded, where it is seen from,
+                         then the three things that colour it. Per style.css,
+                         level 3 must not use .section-header. -->
                     <div class="panel-section">
                         <div class="section-header">Metaballs</div>
-                        <div id="sdf-params"></div>
+                        <div class="panel-subsection">
+                            <div class="subsection-header">Shape</div>
+                            <div id="sdf-shape-params"></div>
+                        </div>
+                        <div class="panel-subsection">
+                            <div class="subsection-header">Fold</div>
+                            <div id="sdf-fold-params"></div>
+                        </div>
+                        <div class="panel-subsection">
+                            <div class="subsection-header">Camera</div>
+                            <div id="sdf-camera-params"></div>
+                        </div>
+                        <div class="panel-subsection">
+                            <div class="subsection-header">Material</div>
+                            <div id="sdf-material-params"></div>
+                        </div>
+                        <div class="panel-subsection">
+                            <div class="subsection-header">Glass</div>
+                            <div id="sdf-glass-params"></div>
+                        </div>
+                        <div class="panel-subsection">
+                            <div class="subsection-header">Video</div>
+                            <div id="sdf-video-params"></div>
+                        </div>
                     </div>
                     <!-- One level-2 section, four level-3 subsections — the Warp
                          section's shape. Rutt-Etra is ONE source, so it gets one

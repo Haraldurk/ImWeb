@@ -170,7 +170,19 @@ export function buildMappingPanels(ps, contextMenu) {
       p.id !== 'glsl.preset' && p.id !== 'displace.warpSlot'),
     // particle-params rendered separately below (legacy + v2 split)
     // 'particle-params': ps.getGroup('particle'),
-    'sdf-params':          ps.getGroup('sdf'),
+    // Metaballs — one group across six SUBsections of a single panel section,
+    // the same treatment Rutt-Etra gets below and for the same reason: 25 rows
+    // is unreadable as one list, but it is one source and belongs behind one
+    // accordion entry. tests/audit-panel-coverage.mjs picks these up
+    // automatically (it scans for pick() calls) and fails if a sdf.* param ends
+    // up in no section, in two, or under a name that no longer exists.
+    'sdf-shape-params':    pick('sdf', ['active', 'shape', 'opMode', 'opAmount',
+                                        'distance', 'speed']),
+    'sdf-fold-params':     pick('sdf', ['repeat', 'kifsIter', 'kifsAngle', 'warp']),
+    'sdf-camera-params':   pick('sdf', ['camX', 'camY', 'camZ']),
+    'sdf-material-params': pick('sdf', ['hue', 'sat', 'val', 'ao', 'glow']),
+    'sdf-glass-params':    pick('sdf', ['refract', 'fresnel', 'refractSrc']),
+    'sdf-video-params':    pick('sdf', ['texSrc', 'texBlend', 'lumaWarp', 'lumaThresh']),
     // Rutt-Etra is one group across four SUBsections of a single panel section
     // (the Warp section's shape) — 19 rows is too long a single list to read,
     // but it is one source and belongs behind one accordion entry. Per the
