@@ -3033,6 +3033,32 @@ export function registerCoreParameters(ps) {
     unit: "u",
   });
   ps.register({
+    // Outer stop of the aura gradient; sdf.glowHue is the stop AT the object.
+    // Defaults to the same hue, so leaving it alone gives the single-colour
+    // aura and the gradient only exists once it is asked for.
+    id: "sdf.glowHue2",
+    label: "Glow Hue 2",
+    group: "sdf",
+    min: 0,
+    max: 360,
+    value: 274,
+    step: 1,
+    unit: "°",
+  });
+  ps.register({
+    // Tints the aura by the Refract Src surround along the ray's own direction.
+    // 0 by default: a multiply against a dark or unrouted surround would put
+    // the aura out, and an effect that vanishes when a control is at its
+    // default is indistinguishable from a broken one.
+    id: "sdf.glowEnv",
+    label: "Glow Env",
+    group: "sdf",
+    min: 0,
+    max: 1.0,
+    value: 0,
+    step: 0.01,
+  });
+  ps.register({
     // Fresnel used to add flat white, which is why "glass" read as a glowing
     // rim rather than a reflective one — a rim that is the same colour all the
     // way round carries no information about the surroundings, and that

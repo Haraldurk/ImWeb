@@ -185,7 +185,8 @@ export function buildMappingPanels(ps, contextMenu) {
     'sdf-camera-params':   pick('sdf', ['orbitX', 'orbitY', 'camDist',
                                         'moveX', 'moveY', 'moveZ', 'fov']),
     'sdf-material-params': pick('sdf', ['hue', 'sat', 'val', 'ao']),
-    'sdf-light-params':    pick('sdf', ['lightAz', 'lightEl', 'glow', 'glowHue', 'glowSize']),
+    'sdf-light-params':    pick('sdf', ['lightAz', 'lightEl', 'glow', 'glowHue',
+                                        'glowHue2', 'glowSize', 'glowEnv']),
     'sdf-glass-params':    pick('sdf', ['refract', 'fresnel', 'envAmt', 'refractSrc']),
     'sdf-video-params':    pick('sdf', ['texSrc', 'texBlend', 'lumaWarp', 'lumaThresh']),
     // Detail and Steps buy sharpness and reach, NOT frame rate — measured, the
