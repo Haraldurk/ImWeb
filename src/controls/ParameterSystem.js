@@ -3162,6 +3162,37 @@ export function registerCoreParameters(ps) {
     step: 0.01,
   });
   ps.register({
+    // How far the reflected ray travels before giving up. Was a hardcoded
+    // rt > 6.0, which is the whole reason Self Reflect could look dead on a
+    // wide layout: two shapes further apart than 6 world units never see each
+    // other no matter how high Self Reflect goes, and nothing says so. Default
+    // 6.0 reproduces the constant exactly.
+    id: "sdf.reflectRange",
+    label: "Reflect Range",
+    group: "sdf",
+    min: 1.0,
+    max: 20.0,
+    value: 6.0,
+    step: 0.1,
+  });
+  ps.register({
+    // Reflection step budget as a fraction of Steps — was a hardcoded
+    // uSteps * 0.5. Buys reach and cleanliness through thin or distant
+    // geometry, at a second march per surface pixel.
+    //
+    // CEILING: the reflection loop is unrolled to 128, which is 0.5 x the max
+    // Steps of 256, so above Steps 128 this knob saturates before 1.0. Real,
+    // and left in rather than papered over — the alternative is 128 more
+    // inlined scene() calls and the shader compile hitch that comes with them.
+    id: "sdf.reflectDetail",
+    label: "Reflect Detail",
+    group: "sdf",
+    min: 0.1,
+    max: 1.0,
+    value: 0.5,
+    step: 0.01,
+  });
+  ps.register({
     // Was a hardcoded light direction of normalize(vec3(1.0, 1.5, 2.0)).
     // Azimuth 27° / elevation 34° is that same unit vector, so the defaults
     // leave every existing render unchanged.

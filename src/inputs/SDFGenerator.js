@@ -70,6 +70,8 @@ uniform float uGlowEnv;   // 0 = flat gradient, 1 = aura tinted by the surround
 uniform float uEnvAmt;    // 0 = flat white rim, 1 = reflected environment
 uniform float uSelfReflect; // 0 = surround only, 1 = shapes reflect each other
 uniform float uReflectAmt;  // how much self-reflection bypasses the Fresnel rim
+uniform float uReflectRange;  // how far the reflected ray marches before giving up
+uniform float uReflectDetail; // reflection step budget, as a fraction of Steps
 uniform float uDepthRange;  // world depth that fills the SDF Depth channel
 uniform float uDepthPass;   // 1 = render depth instead of colour (SDF Depth)
 uniform vec3  uLightDir;  // unit light direction, built from az/el on the CPU
@@ -647,8 +649,10 @@ void main() {
     //
     // Gated on a uniform, so at Self Reflect 0 the branch is uniform across
     // every fragment and costs nothing. When on it is a second march plus a
-    // 6-sample normal, which is why its budget is half the primary one — a
-    // reflection carries far less detail than the surface carrying it.
+    // 6-sample normal, which is why its budget defaults to half the primary one
+    // — a reflection carries far less detail than the surface carrying it.
+    // Reach and budget are now Reflect Range / Reflect Detail; the defaults
+    // reproduce the constants they replaced (6.0 and uSteps * 0.5) exactly.
     // Held outside the branch so the DIRECT term below can read it: routing the
     // reflection only into envCol made it visible solely through fresnelTerm,
     // which is pow(grazing, 3.0) — 0.019 at 45° incidence. A whole second march
@@ -660,11 +664,18 @@ void main() {
       float rt  = 0.0;
       float rdd = 0.0;
       float rHit = 0.0;
+      // Budget CLAMPED to the unroll below. The 128 is paired with the old
+      // hardcoded uSteps * 0.5 at max Steps 256, so above Steps 128 the Detail
+      // knob saturates. That is a real ceiling, stated rather than hidden —
+      // raising the unroll to match the primary march's 256 would inline 128
+      // more scene() evaluations and pay for it in shader compile time on every
+      // preset change, for reach a reflection cannot resolve anyway.
+      float rBudget = min(uSteps * uReflectDetail, 128.0);
       for (int i = 0; i < 128; i++) {
-        if (float(i) >= uSteps * 0.5) break;
+        if (float(i) >= rBudget) break;
         rdd = scene(rro + refl * rt);
         if (rdd < 0.002) { rHit = 1.0; break; }
-        if (rt > 6.0) break;
+        if (rt > uReflectRange) break;
         rt += max(rdd, 0.002) * stepScale;
       }
       if (rHit > 0.5) {
@@ -819,6 +830,8 @@ export class SDFGenerator {
         uEnvAmt:     { value: 1 },
         uSelfReflect:{ value: 0 },
         uReflectAmt: { value: 0.5 },
+        uReflectRange:  { value: 6.0 },
+        uReflectDetail: { value: 0.5 },
         uDepthRange: { value: 1.0 },
         uDepthPass:  { value: 0 },
         uLightDir:   { value: new THREE.Vector3(1, 1.5, 2).normalize() },
@@ -903,7 +916,9 @@ export class SDFGenerator {
     u.uGlowEnv.value  = ps.get('sdf.glowEnv').value;
     u.uEnvAmt.value   = ps.get('sdf.envAmt').value;
     u.uSelfReflect.value = ps.get('sdf.selfReflect').value;
-    u.uReflectAmt.value  = ps.get('sdf.reflectAmt').value;
+    u.uReflectAmt.value    = ps.get('sdf.reflectAmt').value;
+    u.uReflectRange.value  = ps.get('sdf.reflectRange').value;
+    u.uReflectDetail.value = ps.get('sdf.reflectDetail').value;
     u.uDepthRange.value = ps.get('sdf.depthRange').value;
     // Same spherical convention as the camera, so azimuth 0 puts the light
     // behind the viewer at elevation 0 and the two controls read alike.
