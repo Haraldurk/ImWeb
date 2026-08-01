@@ -148,7 +148,7 @@ cross-file architecture work where the planner needs the whole-repo view.
 | **DeepSeek v4-Pro**   | Ghostty ⌘4 | Shader math, GLSL logic, algorithmic deep-dives                                  | Never edits. Consult for hard shader/math problems; route output through Claude Chat |
 | **Browser (you)**     | —          | Visual confirmation after every patch                                            | Only tool that can verify WebGL / Metal rendering                                    |
 
-Use **Kimi K2.6** when investigation spans many files or requires reading
+Use **Kimi K3** when investigation spans many files or requires reading
 main.js in full (~6400 lines) — its 262K context handles the whole file in
 one pass. Use **Claude Code** for recon when it's about to edit in the same
 session — it must see the exact current state itself. Never feed Kimi
@@ -236,7 +236,7 @@ CLAUDE.md), fix, `/codex:review`, verify.
 Orchestrated shape (when the bug spans many modules):
 ```
 Claude Code: fails or regresses
-  → Kimi K2.6: trace execution, find root cause across files
+  → Kimi K3: trace execution, find root cause across files
   → Claude Chat: re-plan the fix with full context
   → Claude Code: execute fix + /codex:review
 ```
@@ -246,7 +246,7 @@ wrong. Never stack a new patch on a broken fix (Invariant 4).
 
 ---
 
-## Codex Review (`/codex:review`, GPT-5.5)
+## Codex Review (`/codex:review`, GPT-5.6)
 
 Cross-model review — a different model family catches a different class of
 bugs than the one that wrote the code. It is a cheap extra filter, **not

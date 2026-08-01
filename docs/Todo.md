@@ -1,5 +1,5 @@
 **Chromium bug:** https://issues.chromium.org/issues/513611558 (filed 2026-05-16)
-**Status:** Active — Chromium team investigating. hopefully fixed in Cromes next version
+**Status:** Active — Chromium team investigating. hopefully fixed in Cromes next version. It is fixed.
 
 **Defer to next Claude Code session:**
 
