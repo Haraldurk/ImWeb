@@ -164,6 +164,93 @@ the whole `sdf.*` namespace already said SDF.*
   reset rather than carried — a box in world units is not a box in
   azimuth/elevation/distance. `tests/audit-sdf-migration.mjs` guards it.
 
+#### Shapes
+- **Five appended from Rutt-Etra's parametric list** — Cylinder, Cone, Gyroid,
+  Helicoid, Catenoid, bringing sdf.shape to 13. Append-only: a SELECT persists
+  as an integer index. The last three are implicit *shells* rather than exact
+  distance fields, so they return a bound and the march slows for them, taking
+  the minimum across both shape slots so one in Shape B cannot tunnel.
+- All five are sized to the family envelope (bounding radius 0.60–0.64, against
+  the original eight's 0.50–0.73). They shipped at 0.64/0.71/0.75/**2.06** and
+  **unbounded**, and two were wrong in kind rather than degree: a gyroid is
+  triply-periodic and has no size of its own, so it ignored Size, Separation and
+  Count and read as a background; a catenoid's flare is exponential, so its y
+  clamp *is* its size control.
+- **Shape B** and **Count** (1–8). Count rounds — a controller landing on a
+  fraction spaced the instances unevenly and popped one in and out.
+
+#### Glass and light
+- **Env Mirror** — the Fresnel rim looked up in Refract Src as an
+  equirectangular surround. It used to add flat white, which is why glass read
+  as *glowing* rather than *reflective*: a rim that is one colour all the way
+  round carries no information about the surroundings, and that information is
+  what a reflection is. 0 restores the white rim.
+- **Self Reflect** — one traced bounce, so the shapes appear in each other. The
+  surround tap cannot do this at any setting: by construction it only shows what
+  is *outside* the field. 0 by default; it is a second march plus a 6-sample
+  normal per surface pixel, on a uniform branch so 0 costs nothing.
+- **Aura from closest approach**, not step count. Step count also rises with
+  distance travelled and field complexity, and a ray grazing the silhouette
+  through empty space takes big strides and scores *low* — so the rays that
+  should have glowed brightest scored lowest, and it drifted whenever Steps
+  changed. **Glow Size** sets the reach in world units.
+- **Glow Hue 2 / Sat / Val per stop**, with two colour pickers. Sat and Val were
+  frozen at the decomposition of one hardcoded violet, so the aura could only be
+  a fully saturated hue at one brightness. Params stay HSV — a hue sweep is not
+  expressible as one fader over three RGB params — and the pickers are views
+  onto them, so a state recall or MIDI-driven hue keeps them in sync.
+- **Glow Env** tints the aura by the surround. Normalised by the brightest
+  channel, so it takes hue and leaves level alone; as a raw multiply it took the
+  aura to luma 0.004 over dark regions.
+
+#### Quality
+- **Detail** (internal render scale, was pinned at 0.5) and **Steps** (march
+  budget, was 96, ceiling 256). Raise Steps when Warp is high: Warp shrinks
+  every step, so a fixed budget reaches proportionally less far and distant
+  geometry silently disappears. Measured, these buy sharpness and reach, **not**
+  frame rate — the raymarcher is ~0.3 ms of an 18.8 ms frame.
+- **Depth Range** for the SDF Depth source, centred on the field. Normalised
+  over the whole marched distance the object occupied 6–12% of 0–1 — as few as
+  15 of 255 levels — and drifted with camera distance, so a depth map driving
+  Displace changed meaning whenever you dollied.
+
+#### Compositing
+- **Alpha carries coverage**, and `.depthTexture` is a second march of the same
+  material with `uDepthPass` set. Depth rode in alpha for one commit, which cost
+  nothing but spent the one channel a compositor needs to know where the source
+  *is*. With coverage, the keyer's existing **Alpha** mode composites the SDF
+  properly: the object opaque, the aura soft-edged, empty space transparent.
+- **Keyer ▸ Alpha Emissive** — composites `bg*(1-a) + fg` instead of
+  `mix(bg, fg, a)`. The matte form is correct for a cutout and backwards for a
+  glow, which adds light rather than occluding, so the background's dark areas
+  showed *through* the aura as shadows in it. Identical at alpha 1, so an opaque
+  subject is unaffected; defaults off.
+- `blending: THREE.NoBlending` on the raymarch material. `ShaderMaterial`
+  defaults to `NormalBlending` and the target clears to `(0,0,0,0)`, so once
+  alpha stopped being a constant 1.0 every hit was multiplied by its own depth
+  and every miss by zero — which killed the background aura outright.
+- The aura's brightness falls off **linearly**. Squared, it extinguished the
+  glow exactly where the gradient's outer colour lives (at 76% of the way to
+  Hue 2, luma 0.010), so the second colour of a two-colour gradient was
+  unreachable by construction.
+- The aura is applied to hits too, weighted by a rim term. Dropped entirely it
+  left the object's own unlit edge exposed with the halo starting outside it;
+  applied flat it washed across the whole surface, since `minD` is ~0 on a hit.
+
+#### Also fixed
+- `sdf.speed` is a real freeze. It was `time * speed` over a clock that never
+  stopped, so 0 snapped to the pose at angle 0 rather than holding, and nudging
+  it off zero teleported. Now an integrated phase.
+- Refraction uses the **view-space** normal. A world-space normal in a
+  screen-space lookup pinned the smear to world axes while the picture turned
+  under it — invisible until there was an orbit control.
+- The AO probe scales with Size. Fixed at 0.16 world units it sat outside a
+  Size 0.1 shape entirely, and was 9% of the radius at Size 3.
+- The luma-warp texture fetch and `calcAO` are skipped when their amounts are 0.
+  `scene()` runs up to 96 times per ray, so an unconditional fetch was ~107
+  dependent samples per pixel; `mix()` evaluates both arguments, so AO ran in
+  full at Occlusion 0.
+
 ---
 
 ## [0.14.0] — 2026-07-29 — The Movie Library
