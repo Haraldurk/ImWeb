@@ -3837,6 +3837,12 @@ async function main() {
    */
   const _sdfSrcToLayerIdx = [
     null, "camera", "movie", "draw", "noise", "color", "buffer", "scene3d", null,
+    // Appended after "None" (index 8) rather than around it: SELECT values
+    // persist as integers, so inserting would re-route every saved state.
+    // Safe to add only because _direct() now counts these two selectors —
+    // before that, picking Movie B or a mix bus would have resolved to a
+    // texture nothing had scheduled and rendered black or stale.
+    "output", "bg1", "bg2", "movieB", "mixbus", "mixbus2", "mixbus3",
   ].map((k) => (k == null ? null : SOURCE_KEYS.indexOf(k)));
 
   /**
