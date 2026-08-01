@@ -6961,9 +6961,32 @@ void main() {
     const _cRutt = ps.get("rutt.active").value
       ? _captureIdx(ps.get("rutt.source").value)
       : -1;
+    // sdf.texSrc / sdf.refractSrc are consumers too, and were the one selector
+    // family missing from the fixpoint. They carry their own short 9-entry menu
+    // rather than the full source dropdown, which is exactly why they were easy
+    // to miss — but that menu resolves into SOURCE_DEFS through
+    // _sdfSrcToLayerIdx like every other selector, so it belongs HERE and not in
+    // a bespoke gate beside it. (_gLegacyReaders below keeps Movie A uploading
+    // for SDF, which covered one source out of the nine and hid the hole.)
+    //
+    // Left out, MasterProject showed the failure: sdf.texSrc = sdf.refractSrc =
+    // Noise with TimeDisplace off and Noise routed nowhere else, so _noiseUsed
+    // was false, generateNoise() never ran, and the object was textured and
+    // refracted through a target nobody was updating.
+    //
+    // Gated on sdf.active, same shape as _cSlit/_cVwarp: switched off, nothing
+    // samples either texture. Slightly conservative — sdf.active with SDF routed
+    // nowhere keeps its source alive for a frame that never marches — but the
+    // honest alternative is circular, since _sdfUsed is built from _srcUsed.
+    // Menu index 0 ("FG/BG Layer") and 8 ("None") map to null and are already
+    // covered by _cFg/_cBg.
+    const _sdfOn   = ps.get("sdf.active").value;
+    const _cSdfTex = _sdfOn ? (_sdfSrcToLayerIdx[ps.get("sdf.texSrc").value] ?? -1) : -1;
+    const _cSdfRef = _sdfOn ? (_sdfSrcToLayerIdx[ps.get("sdf.refractSrc").value] ?? -1) : -1;
     const _direct = (i) =>
       _cFg === i || _cBg === i || _cDs === i || _cTd === i || _cTdMap === i ||
-      _cSlit === i || _cVwarp === i || _cDelay === i || _cRutt === i;
+      _cSlit === i || _cVwarp === i || _cDelay === i || _cRutt === i ||
+      _cSdfTex === i || _cSdfRef === i;
 
     // Per-bus inputs. Which one can actually reach the bus output? MIXBUS
     // computes mix(a, modeResult, xfade): xfade=0 is pure srcA (srcB hidden),
