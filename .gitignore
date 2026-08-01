@@ -142,8 +142,15 @@ vite.config.ts.timestamp-*
 
 # AI / Editor specific
 .aider*
-.claude/
 .gemini/
+
+# .claude: share the project knowledge, keep the machine-local bits out.
+# settings.local.json holds absolute /Users paths and a per-machine permission
+# allowlist; *-disabled/ is parked marketplace content. This repo is public.
+.claude/*
+!.claude/hooks/
+!.claude/skills/
+!.claude/agents/
 
 # Backups
 index_v4_working_do_not_touch.html
