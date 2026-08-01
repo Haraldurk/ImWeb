@@ -69,6 +69,7 @@ uniform float uGlowVal2;  // aura value at the outer stop
 uniform float uGlowEnv;   // 0 = flat gradient, 1 = aura tinted by the surround
 uniform float uEnvAmt;    // 0 = flat white rim, 1 = reflected environment
 uniform float uSelfReflect; // 0 = surround only, 1 = shapes reflect each other
+uniform float uReflectAmt;  // how much self-reflection bypasses the Fresnel rim
 uniform float uDepthRange;  // world depth that fills the SDF Depth channel
 uniform float uDepthPass;   // 1 = render depth instead of colour (SDF Depth)
 uniform vec3  uLightDir;  // unit light direction, built from az/el on the CPU
@@ -589,8 +590,19 @@ void main() {
     vec3  tpY      = texture2D(uFgTex, p.xz * tsc).rgb;
     vec3  tpZ      = texture2D(uFgTex, p.xy * tsc).rgb;
     vec3  texColor = tpX * triW.x + tpY * triW.y + tpZ * triW.z;
-    // Modulate tex sample by lighting so shading is preserved at uTexBlend=1
-    vec3  litTex   = texColor * (0.15 + diff * 0.85);
+    // Modulate tex sample by lighting so shading is preserved at uTexBlend=1.
+    //
+    // HUE/SAT/VAL TINT THE TEXTURE TOO, not just the base material. The mix()
+    // below multiplies the base-material term by ZERO at Texture Blend 1.0 —
+    // and 1.0 (or 0.93) is where the instrument is actually played — so Hue
+    // was mathematically unreachable at the only settings anyone uses. Folding
+    // baseColor in here keeps the control live at any blend.
+    //
+    // Identity at the parameter defaults, so no existing render moves: uBaseHSV
+    // defaults to (h, 0, 1), and hsv2rgb of ANY hue at sat 0 / val 1 is exactly
+    // white, so the multiply is by vec3(1.0). A project that never touched
+    // Sat/Val is bit-identical; one that did now sees those controls work.
+    vec3  litTex   = texColor * baseColor * (0.15 + diff * 0.85);
     vec3  finalCol = mix(col, litTex, uTexBlend);
     // Branch, not mix(): mix() evaluates both arguments, so calcAO — five more
     // scene() evaluations — ran in full even at Occlusion 0.
@@ -637,6 +649,12 @@ void main() {
     // every fragment and costs nothing. When on it is a second march plus a
     // 6-sample normal, which is why its budget is half the primary one — a
     // reflection carries far less detail than the surface carrying it.
+    // Held outside the branch so the DIRECT term below can read it: routing the
+    // reflection only into envCol made it visible solely through fresnelTerm,
+    // which is pow(grazing, 3.0) — 0.019 at 45° incidence. A whole second march
+    // was being spent on a few pixels of silhouette. See uReflectAmt.
+    vec3  selfCol = vec3(0.0);
+    float selfHit = 0.0;
     if (uSelfReflect > 0.0) {
       vec3  rro = p + n * 0.02;   // lift off the surface or the march re-hits it
       float rt  = 0.0;
@@ -653,15 +671,38 @@ void main() {
         vec3  rp    = rro + refl * rt;
         vec3  rn    = calcNormal(rp);
         float rdiff = clamp(dot(rn, uLightDir), 0.0, 1.0);
-        // Cheap re-shade rather than the full material: no recursion available,
-        // and a reflection at this size cannot carry the difference anyway.
-        vec3  rcol  = hsv2rgb(uBaseHSV) * (0.2 + rdiff * 0.8);
-        envCol = mix(envCol, rcol, uSelfReflect);
+        // SHADE THE REFLECTED HIT THE SAME WAY THE SURFACE IS SHADED. It used
+        // to be base material only — hsv2rgb(uBaseHSV) * diffuse — while the
+        // objects themselves are 93–100% video texture. So even a perfect
+        // second march painted a flat blob in a colour that appears NOWHERE on
+        // screen, and could not read as "that shape reflected in this one",
+        // because it did not look like that shape. Same triplanar tap, same
+        // tsc, same uTexBlend, so the reflection is made of the same material
+        // as the thing it reflects.
+        vec3  rtriW = abs(rn);
+        rtriW = rtriW / (rtriW.x + rtriW.y + rtriW.z);
+        vec3  rtex  = texture2D(uFgTex, rp.yz * tsc).rgb * rtriW.x
+                    + texture2D(uFgTex, rp.xz * tsc).rgb * rtriW.y
+                    + texture2D(uFgTex, rp.xy * tsc).rgb * rtriW.z;
+        vec3  rcol  = mix(baseColor * (0.2 + rdiff * 0.8),
+                          rtex * baseColor * (0.15 + rdiff * 0.85),
+                          uTexBlend);
+        envCol  = mix(envCol, rcol, uSelfReflect);
+        selfCol = rcol;
+        selfHit = 1.0;
       }
     }
 
     float fresnelTerm = pow(1.0 - max(dot(n, -rd), 0.0), 3.0) * uFresnel;
     finalCol += vec3(spec * 0.5) + mix(vec3(1.0), envCol, uEnvAmt) * fresnelTerm;
+    // DIRECT self-reflection, NOT gated by Fresnel. The envCol path above is
+    // the physical one and stays, but it exits through pow(grazing, 3.0), so
+    // it can only ever tint a thin silhouette rim. This adds the reflected
+    // colour across the whole surface, scaled by Self Reflect × Reflect Amt.
+    // Multiplying by uSelfReflect means a project that never enabled the
+    // feature is unchanged no matter what Reflect Amt defaults to — which is
+    // what lets Reflect Amt default to something audible instead of to 0.
+    finalCol += selfCol * selfHit * uSelfReflect * uReflectAmt;
     // AURA ON THE OBJECT, weighted by the rim rather than applied flat.
     //
     // Dropping it from hits entirely (previous commit) left a dark band at the
@@ -777,6 +818,7 @@ export class SDFGenerator {
         uGlowEnv:    { value: 0 },
         uEnvAmt:     { value: 1 },
         uSelfReflect:{ value: 0 },
+        uReflectAmt: { value: 0.5 },
         uDepthRange: { value: 1.0 },
         uDepthPass:  { value: 0 },
         uLightDir:   { value: new THREE.Vector3(1, 1.5, 2).normalize() },
@@ -861,6 +903,7 @@ export class SDFGenerator {
     u.uGlowEnv.value  = ps.get('sdf.glowEnv').value;
     u.uEnvAmt.value   = ps.get('sdf.envAmt').value;
     u.uSelfReflect.value = ps.get('sdf.selfReflect').value;
+    u.uReflectAmt.value  = ps.get('sdf.reflectAmt').value;
     u.uDepthRange.value = ps.get('sdf.depthRange').value;
     // Same spherical convention as the camera, so azimuth 0 puts the light
     // behind the viewer at elevation 0 and the two controls read alike.
