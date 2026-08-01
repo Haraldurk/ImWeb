@@ -3262,6 +3262,14 @@ export function registerCoreParameters(ps) {
     step: 0.01,
   });
   ps.register({
+    // APPEND-ONLY, and kept in lockstep with sdf.refractSrc below and with
+    // _sdfSrcToLayerIdx in main.js — one map serves both menus, so the two
+    // option arrays must stay the same length and order after entry 0.
+    //
+    // "None" sits at index 8 and stays there: a SELECT persists an integer, so
+    // moving it to the end of the menu would silently re-route every saved
+    // state, bank and .imweb that stores 9..15. A slightly odd reading order is
+    // the cheaper price.
     id: "sdf.texSrc",
     label: "Source",
     group: "sdf",
@@ -3270,16 +3278,31 @@ export function registerCoreParameters(ps) {
     options: [
       "FG Layer",
       "Camera",
-      "Movie",
+      "Movie A",
       "Draw",
       "Noise",
       "Color",
       "Buffer",
       "3D",
       "None",
+      "Output",
+      "BG1",
+      "BG2",
+      "Movie B",
+      "Mix 1",
+      "Mix 2",
+      "Mix 3",
     ],
   });
   ps.register({
+    // Same list as sdf.texSrc apart from entry 0, and the same append-only
+    // rule. This one is sampled through equirectUv() as a lat-long surround,
+    // which is why BG1/BG2 earn their place: an environment map is meant to be
+    // a still panorama, and until now those were only reachable by routing them
+    // through the BG layer. "Output" is the honest version of "reflect itself"
+    // — the SDF writes its own target, so sampling last frame's composite is a
+    // real feedback loop rather than a read-during-write. An explicit "SDF"
+    // entry would just be black: _notSelf drops it by identity.
     id: "sdf.refractSrc",
     label: "Refract Src",
     group: "sdf",
@@ -3288,13 +3311,20 @@ export function registerCoreParameters(ps) {
     options: [
       "BG Layer",
       "Camera",
-      "Movie",
+      "Movie A",
       "Draw",
       "Noise",
       "Color",
       "Buffer",
       "3D",
       "None",
+      "Output",
+      "BG1",
+      "BG2",
+      "Movie B",
+      "Mix 1",
+      "Mix 2",
+      "Mix 3",
     ],
   });
 
