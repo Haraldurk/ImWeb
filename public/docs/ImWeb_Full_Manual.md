@@ -543,6 +543,227 @@ Self-contained 720x480 analog signal simulator.
 
 ---
 
+### 4.14 SDF (Signed Distance Field Raymarcher)
+
+A raymarched 3D field rendered as a source. Shapes are described mathematically
+rather than as meshes, so they combine, repeat and deform continuously.
+
+**Geometry**
+
+| Parameter | Range | Description |
+|-----------|-------|-------------|
+| `sdf.active` | TOGGLE | Enable |
+| `sdf.shape` | SELECT (13) | Primary shape — Sphere, Box, Torus, Capsule, Hexagonal Prism, Octahedron, Link, Mandelbulb, … |
+| `sdf.shapeB` | SELECT (14) | Second shape; "Same as A" mirrors the primary |
+| `sdf.opMode` | SELECT | Union / Smooth Union / Subtraction / Intersection |
+| `sdf.opAmount` | 0–1 | Blend radius for Smooth Union |
+| `sdf.count` | 1–8 | Number of instances |
+| `sdf.distance` | 0–5 | Separation between instances |
+| `sdf.size` | 0.1–3 | Shape scale |
+| `sdf.tile` | TOGGLE | Infinite domain repetition on/off |
+| `sdf.repeat` | 1.2–10 | Tile spacing (only meaningful when Tile is on) |
+| `sdf.warp` | 0–2 | Domain warp amount |
+| `sdf.lumaWarp` | 0–2 | Warp driven by source luminance |
+| `sdf.speed` | 0–5 | Animation rate |
+
+> **Shape sizing note.** Most shapes sit at a bounding radius between 0.50 and
+> 0.73, so they respond comparably to Size, Separation and Count. Two do not:
+> **Gyroid** is triply-periodic and has no size of its own — it ignores those
+> three controls and reads as a background field rather than an object.
+> **Catenoid** flares exponentially, so its y clamp *is* its size control.
+
+**Camera**
+
+| Parameter | Range | Description |
+|-----------|-------|-------------|
+| `sdf.orbitX` | 0–360° | Orbit azimuth |
+| `sdf.orbitY` | -180–180° | Orbit elevation |
+| `sdf.camDist` | 0.5–20 | Camera distance from origin |
+| `sdf.moveX` / `moveY` / `moveZ` | -5–5 | Translate the field |
+| `sdf.fov` | 20–120° | Vertical field of view (default 74° reproduces the original fixed framing) |
+| `sdf.depthRange` | 0.25–8 | Depth normalisation range for the SDF Depth output |
+
+> Replaces the older Cartesian `sdf.camX/camY/camZ` eye. Projects saved before
+> the change are migrated on load.
+
+**Fractal folds (KIFS)**
+
+| Parameter | Range | Description |
+|-----------|-------|-------------|
+| `sdf.kifsIter` | SELECT 0–5 | Fold iterations; 0 disables |
+| `sdf.kifsAngle` | 0–360° | Fold rotation |
+| `sdf.kifsScale` | 0.5–2 | Per-iteration scale |
+| `sdf.kifsOffset` | 0–2 | Per-iteration offset |
+
+**Surface & texture**
+
+| Parameter | Range | Description |
+|-----------|-------|-------------|
+| `sdf.texSrc` | SELECT (16) | Texture source; "FG Layer" follows the foreground |
+| `sdf.texBlend` | 0–1 | Texture vs. shaded surface mix |
+| `sdf.refractSrc` | SELECT (16) | Refraction source; "BG Layer" follows the background |
+| `sdf.refract` | 0–1 | Refraction amount |
+| `sdf.fresnel` | 0–1 | Edge-facing reflectivity |
+| `sdf.hue` / `sat` / `val` | 0–360° / 0–1 / 0–1 | Surface colour |
+| `sdf.lumaThresh` | 0–1 | Luminance threshold for source-driven effects |
+| `sdf.ao` | 0–1 | Ambient occlusion strength |
+
+> **Hue, Sat and Val tint the shaded surface, not the texture.** At the default
+> `texBlend` of 0.8 the texture dominates and the tint is nearly invisible —
+> lower Tex Blend to see them.
+
+**Glow & reflection**
+
+| Parameter | Range | Description |
+|-----------|-------|-------------|
+| `sdf.glow` | 0–1 | Aura strength |
+| `sdf.glowSize` | 0.02–2 | Aura falloff distance |
+| `sdf.glowHue` / `glowSat` / `glowVal` | 0–360° / 0–1 / 0–1 | Aura colour stop 1 |
+| `sdf.glowHue2` / `glowSat2` / `glowVal2` | 0–360° / 0–1 / 0–1 | Aura colour stop 2 |
+| `sdf.glowEnv` | 0–1 | Modulate the aura by the surrounding image |
+| `sdf.envAmt` | 0–1 | Environment mirror amount |
+| `sdf.selfReflect` | 0–1 | Second-bounce self-reflection |
+| `sdf.reflectAmt` | 0–1 | Reflection strength |
+| `sdf.reflectRange` | 1–20 | Reflection march distance |
+| `sdf.reflectDetail` | 0.1–1 | Reflection step resolution |
+
+**Lighting & quality**
+
+| Parameter | Range | Description |
+|-----------|-------|-------------|
+| `sdf.lightAz` | 0–360° | Key light azimuth |
+| `sdf.lightEl` | -90–90° | Key light elevation |
+| `sdf.rscale` | 0.25–1 | Render scale — the main performance control |
+| `sdf.steps` | 32–256 | Raymarch step budget |
+
+---
+
+### 4.15 Rutt-Etra Scan Processor
+
+A modern reading of the Rutt/Etra scan processor: each scanline of the source is
+displaced in Z by its brightness and drawn as a beam in 3D.
+
+| Parameter | Range | Description |
+|-----------|-------|-------------|
+| `rutt.active` | TOGGLE | Enable |
+| `rutt.source` | SELECT | Input source |
+| `rutt.shape` | SELECT | Plane / Sphere / Cylinder / Torus / Catenoid / Helicoid / Gyroid |
+| `rutt.lines` | 16–480 | Scanline count |
+| `rutt.zgain` | -2–2 | Brightness → Z displacement; negative inverts |
+| `rutt.zcurve` | 0.1–4 | Gamma on the displacement response |
+| `rutt.zpivot` | 0–1 | Brightness value that maps to zero displacement |
+| `rutt.drawMode` | SELECT | Lines / Points / Both |
+| `rutt.thickness` | 0.5–8 | Beam width |
+| `rutt.pointSize` | 0.5–16 | Dot size in Points mode |
+| `rutt.hue` | 0–360° | Tint hue |
+| `rutt.sat` | 0–1 | Tint amount |
+| `rutt.colorAmt` | 0–1 | How much source colour survives the tint |
+| `rutt.angle` | 0–360° | Orbit azimuth |
+| `rutt.elev` | -180–180° | Orbit elevation |
+| `rutt.moveX` / `moveY` / `moveZ` | -2–2 | Translate the lattice |
+| `rutt.dist` | 1–10 | Camera distance |
+| `rutt.rise` | 0–2 | Attack time of the per-line follower |
+| `rutt.fall` | 0–2 | Release time of the per-line follower |
+| `rutt.decay` | 0–0.98 | Frame persistence |
+| `rutt.bleed` | 0–4 | Horizontal spread between neighbouring lines |
+
+> Beam width saturates at high line counts — at 120 lines the lattice already
+> fills the frame, so Beam reads as a small change. Its effect is close to
+> linear around 8–16 lines.
+
+---
+
+### 4.16 Warp Tape
+
+A rolling buffer that records the source over time and lets you scrub or smear
+across the recorded axis — a tape head over a time-image.
+
+| Parameter | Range | Description |
+|-----------|-------|-------------|
+| `vwarp.active` | TOGGLE | Enable |
+| `vwarp.source` | SELECT | Input source |
+| `vwarp.axis` | SELECT | Time (X) / Picture (Y) |
+| `vwarp.flip` | TOGGLE | Reverse the read direction |
+| `vwarp.mix` | 0–1 | Dry/wet against the source |
+| `vwarp.bufsize` | SELECT | 480 cols (8 s) / 960 cols (16 s) / 1920 cols (32 s) |
+| `vwarp.speed` | 1–8 | Write rate |
+| `vwarp.anchor` | 0–1 | Fixed point of the read window |
+| `vwarp.pos` | 0–1 | Read position along the tape |
+| `vwarp.span` | 0.01–1 | Width of the read window |
+| `vwarp.clear` | TRIGGER | Zero the tape |
+
+---
+
+### 4.17 Time Displace
+
+Listed in source menus as **TimeDisp**. Displaces each pixel *in time* rather than in space: a map image selects how far
+back into a captured frame buffer each pixel reads.
+
+| Parameter | Range | Description |
+|-----------|-------|-------------|
+| `td.enabled` | TOGGLE | Enable |
+| `td.captureSource` | SELECT | Source recorded into the delay buffer |
+| `td.mode` | SELECT | Shear X / Shear Y / Warp Line / Shear X Sym / Shear Y Sym / Radial / Noise |
+| `td.bufferResolution` | SELECT | 320×240 / 640×360 / 640×480 / Native |
+| `td.upscaleFilter` | SELECT | Nearest / Linear |
+| `td.maxDelay` | 1–119 | Deepest reachable frame |
+| `td.delayCurve` | 0.1–4 | Gamma mapping map value → delay |
+| `td.direction` | SELECT | Forward / Backward |
+| `td.scanPosition` | 0–1 | Scan line position (X) |
+| `td.scanPosY` | 0–1 | Scan line position (Y) |
+| `td.scanWidth` | 0–1 | Scan band width |
+| `td.invertMap` | TOGGLE | Invert the delay map |
+| `td.angle` | 0–360° | Scan angle |
+| `td.mapSource` | SELECT | Image used as the delay map |
+| `td.mapAmount` | 0–1 | Map influence |
+
+> Buffer resolution is the dominant memory cost here — Native holds 120 full-size
+> frames. Drop to 640×360 first if you are tight on VRAM.
+
+---
+
+### 4.18 Mix Buses (×3)
+
+Three independent mixers, available as sources **Mix 1**, **Mix 2** and **Mix 3**.
+Each takes two freely chosen sources and combines them. A bus is a real node in
+the graph, not a deck crossfader — either input can be any source, including
+another bus.
+
+Bus 1 uses the bare `mix.` prefix; buses 2 and 3 use `mix2.` and `mix3.` with
+identical controls.
+
+| Parameter | Range | Description |
+|-----------|-------|-------------|
+| `mix.srcA` | SELECT | First input — any source |
+| `mix.srcB` | SELECT | Second input — any source |
+| `mix.mode` | SELECT | Crossfade / Add / Multiply / Luma Mask / Displace |
+| `mix.xfade` | 0–1 | A↔B blend position |
+| `mix.dispAmt` | 0–1 | Displacement strength in Displace mode |
+| `mix.maskLo` | 0–1 | Luma Mask lower threshold |
+| `mix.maskHi` | 0–1 | Luma Mask upper threshold |
+
+**Ordering.** Each bus is double-buffered, which gives one consistent rule: a
+later bus reading an earlier one sees **this** frame; an earlier bus reading a
+later one — or a bus reading itself — sees **last** frame. Self-routing is
+therefore legal and produces a one-frame feedback loop rather than an error.
+
+Buses allocate their render targets lazily, so a project that routes no bus
+costs no VRAM.
+
+---
+
+### 4.19 Depth Companions
+
+Two sources expose depth rather than colour, for routing into displacement,
+keying or the mix buses:
+
+| Source | Description |
+|--------|-------------|
+| **3D Depth** | Depth buffer of the 3D Scene |
+| **SDF Depth** | Depth of the SDF field, normalised by `sdf.depthRange` |
+
+---
+
 ## 5. Signal Path & Effects
 
 ### 5.1 Signal Path Order
@@ -627,8 +848,9 @@ Warp the image using the DS layer as an offset map.
 | `displace.angle` | 0–360° | Direction of displacement vector |
 | `displace.offset` | 0–100% | Global offset (all pixels shifted) |
 | `displace.rotateg` | TOGGLE | Map grayscale value → angle |
-| `displace.warp` | SELECT | Warp map slot (0=none, 1–9=procedural/custom) |
-| `displace.warpamt` | 0–100% | Warp map strength |
+| `displace.warp` | SELECT | Warp mode — off / H-Wave / V-Wave / Radial / Spiral / Shear / Pinch / Turb / Rings / Custom |
+| `displace.warpamt` | 0–200% | Warp map strength |
+| `displace.warpFade` | 0–1 | Fade the warp field towards flat |
 
 ---
 
@@ -651,6 +873,35 @@ An interactive 128×128 displacement texture editor. Access via the Mapping tab 
 **Save/Load:** Stored to browser localStorage. Slot 9 in the warp selector (Custom) outputs the editor's active texture.
 
 Control point dots are colour-coded by displacement magnitude: displaced points glow cyan-to-warm; undisplaced points are dim.
+
+#### Warp drawing
+
+The warp field can be drawn directly, on three surfaces that share one brush:
+the mini editor, dragging on the main canvas, and the `warpDrawX`/`warpDrawY`
+parameters under controller automation.
+
+| Parameter | Range | Description |
+|-----------|-------|-------------|
+| `displace.warpDrawRadius` | 2–50 | Brush radius, shared by all three surfaces |
+| `displace.warpDrawAmt` | 0–200% | Brush strength, shared by all three surfaces |
+| `displace.warpDrawX` | 0–100% | Brush X position — drive from a controller to draw automatically |
+| `displace.warpDrawY` | 0–100% | Brush Y position |
+| `displace.warpDrawFixed` | TOGGLE | Lock the stroke direction instead of following movement |
+| `displace.warpDrawAngle` | 0–360° | Direction used when Fixed Dir is on |
+| `displace.warpSlot` | SELECT (17) | Custom map slot, — plus 1–16 |
+| `displace.warpSlotFade` | 0–10 | Seconds for a drawn slot to decay back to flat; 0 holds indefinitely |
+| `displace.warpPreset` | SELECT | — / H-Wave / V-Wave / Radial / Pinch / Spiral / Shear / Random / Reset |
+
+Radius and Strength are single shared parameters — the editor's sliders are
+views onto them, so changing radius in the mini editor also changes the brush on
+the main canvas.
+
+> **Slot vs. Preset in saved states.** `warpPreset` **is** captured by Display
+> States: the eight shapes live in code, so an index means the same thing on any
+> machine. `warpSlot` is **not** captured — slot *contents* live in per-origin
+> browser storage, so a saved index would recall a different map on another
+> machine, or even on another port. Save a drawn map you want to keep as part of
+> the project rather than relying on the slot number.
 
 ---
 
