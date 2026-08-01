@@ -151,6 +151,7 @@ vite.config.ts.timestamp-*
 !.claude/hooks/
 !.claude/skills/
 !.claude/agents/
+!.claude/settings.json
 
 # Backups
 index_v4_working_do_not_touch.html
