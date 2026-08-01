@@ -3144,6 +3144,24 @@ export function registerCoreParameters(ps) {
     step: 0.01,
   });
   ps.register({
+    // How much of the self-reflection reaches the image DIRECTLY, instead of
+    // only through the Fresnel rim. Self Reflect alone fed envCol, whose only
+    // exit is pow(grazing, 3.0) * Fresnel — 0.019 at 45° incidence — so the
+    // second march paid for a few pixels of silhouette and read as a dead knob.
+    //
+    // 0.5 rather than 0: the term is multiplied by Self Reflect, which defaults
+    // to 0, so nothing changes for a project that never enabled the feature —
+    // which means this can default to a setting that is actually visible for
+    // one that did, instead of to a second zero the owner has to discover.
+    id: "sdf.reflectAmt",
+    label: "Reflect Amt",
+    group: "sdf",
+    min: 0,
+    max: 1.0,
+    value: 0.5,
+    step: 0.01,
+  });
+  ps.register({
     // Was a hardcoded light direction of normalize(vec3(1.0, 1.5, 2.0)).
     // Azimuth 27° / elevation 34° is that same unit vector, so the defaults
     // leave every existing render unchanged.
