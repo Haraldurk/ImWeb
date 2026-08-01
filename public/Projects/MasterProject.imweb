@@ -2,17 +2,18 @@
   "_type": "imweb-project",
   "_version": 3,
   "_name": "MasterProject",
-  "_date": "2026-07-29T17:29:52.534Z",
+  "_date": "2026-08-01T16:11:46.746Z",
+  "_sourceCount": 31,
   "activePreset": 0,
   "params": {
-    "layer.fg": 21,
-    "layer.bg": 26,
+    "layer.fg": 24,
+    "layer.bg": 5,
     "layer.ds": 0,
     "layer.fg.blend": 0,
     "layer.bg.blend": 0,
     "layer.fg.blendAmount": 1,
     "layer.bg.blendAmount": 1,
-    "keyer.active": 1,
+    "keyer.active": 0,
     "keyer.white": 80,
     "keyer.black": 10,
     "keyer.softness": 20.16009521484375,
@@ -20,6 +21,7 @@
     "keyer.and_displace": 0,
     "keyer.alpha": 0,
     "keyer.alpha_inv": 0,
+    "keyer.alpha_emissive": 0,
     "keyer.rawkey": 0,
     "keyer.chroma": 0,
     "keyer.chromahue": 120,
@@ -70,28 +72,28 @@
     "noise.type": 6,
     "noise.family": 1,
     "noise.color": 2,
-    "noise.scale": 9.9,
+    "noise.scale": 3,
     "noise.octaves": 4,
-    "noise.lacunarity": 1.4000000000000001,
+    "noise.lacunarity": 2.2,
     "noise.gain": 0.5,
     "noise.swirl": 0,
     "noise.ridge": 0,
-    "noise.speed": 0.6000000000000001,
+    "noise.speed": 0.1,
     "noise.offsetX": 0,
     "noise.offsetY": 0,
-    "noise.contrast": 1.1500000000000001,
-    "noise.sharpen": 100,
+    "noise.contrast": 3.8000000000000003,
+    "noise.sharpen": 83.08392333984375,
     "noise.invert": 0,
     "noise.seed": 0,
     "noise.period.x": 8,
     "noise.period.y": 8,
     "noise.alpha": 0,
-    "noise.col1.r": 0,
-    "noise.col1.g": 0,
-    "noise.col1.b": 0,
-    "noise.col2.r": 0.749,
-    "noise.col2.g": 0.976,
-    "noise.col2.b": 0.745,
+    "noise.col1.r": 1,
+    "noise.col1.g": 1,
+    "noise.col1.b": 1,
+    "noise.col2.r": 0,
+    "noise.col2.g": 0,
+    "noise.col2.b": 0,
     "particle.col1.r": 0.10200000000000001,
     "particle.col1.g": 0.2,
     "particle.col1.b": 0.8,
@@ -124,7 +126,7 @@
     "buffer.cap_video": 0,
     "buffer.cap_movie": 0,
     "buffer.capture": 0,
-    "movie.active": 1,
+    "movie.active": 0,
     "movie.speed": 1,
     "movie.pos": 0,
     "movie.start": 0,
@@ -133,7 +135,7 @@
     "movie.mute": 1,
     "movie.bpmsync": 0,
     "movie.bpmbeats": 2,
-    "movieB.active": 1,
+    "movieB.active": 0,
     "movieB.speed": 1,
     "movieB.pos": 0,
     "movieB.start": 0,
@@ -143,10 +145,10 @@
     "movieB.bpmsync": 0,
     "movieB.bpmbeats": 2,
     "movie.mirror": 0,
-    "mix.srcA": 5,
-    "mix.srcB": 1,
-    "mix.xfade": 1,
-    "mix.mode": 3,
+    "mix.srcA": 1,
+    "mix.srcB": 25,
+    "mix.xfade": 0,
+    "mix.mode": 0,
     "mix.dispAmt": 0.1,
     "mix.maskLo": 0.25,
     "mix.maskHi": 0.75,
@@ -241,29 +243,57 @@
     "scene3d.blob.amount": 0,
     "scene3d.blob.scale": 1,
     "scene3d.blob.speed": 1,
-    "sdf.active": 1,
-    "sdf.opMode": 1,
-    "sdf.opAmount": 0.31,
-    "sdf.distance": 1.9500000000000002,
+    "sdf.active": 0,
+    "sdf.opMode": 0,
+    "sdf.opAmount": 0.5,
+    "sdf.distance": 1.5,
     "sdf.shape": 0,
-    "sdf.repeat": 0,
-    "sdf.warp": 0.13,
-    "sdf.camX": 0,
-    "sdf.camY": 1.85,
-    "sdf.camZ": 2,
+    "sdf.shapeB": 2,
+    "sdf.count": 2,
+    "sdf.size": 1,
+    "sdf.tile": 0,
+    "sdf.repeat": 3,
+    "sdf.warp": 0,
+    "sdf.orbitX": 0,
+    "sdf.orbitY": 0,
+    "sdf.camDist": 5,
+    "sdf.moveX": 0.1,
+    "sdf.moveY": 0,
+    "sdf.moveZ": 0.1,
+    "sdf.fov": 36,
+    "sdf.depthRange": 1,
+    "sdf.rscale": 0.5,
+    "sdf.steps": 96,
     "sdf.kifsIter": 0,
     "sdf.kifsAngle": 0,
+    "sdf.kifsScale": 1,
+    "sdf.kifsOffset": 1,
     "sdf.lumaWarp": 0,
-    "sdf.speed": 0.11,
+    "sdf.speed": 0.2,
     "sdf.lumaThresh": 0.2,
-    "sdf.texBlend": 1,
+    "sdf.texBlend": 0.8,
     "sdf.ao": 0.5,
-    "sdf.glow": 0,
+    "sdf.glow": 0.2,
+    "sdf.glowHue": 290,
+    "sdf.glowSize": 0.4,
+    "sdf.glowSat": 0.88,
+    "sdf.glowVal": 0.8,
+    "sdf.glowHue2": 274,
+    "sdf.glowSat2": 0.88,
+    "sdf.glowVal2": 0.8,
+    "sdf.glowEnv": 0,
+    "sdf.envAmt": 1,
+    "sdf.selfReflect": 0.99,
+    "sdf.reflectAmt": 1,
+    "sdf.reflectRange": 11.5,
+    "sdf.reflectDetail": 0.61,
+    "sdf.lightAz": 192,
+    "sdf.lightEl": 12,
     "sdf.hue": 0,
     "sdf.sat": 0,
-    "sdf.val": 0.8200000000000001,
-    "sdf.refract": 0.67,
-    "sdf.fresnel": 0.49,
+    "sdf.val": 1,
+    "sdf.refract": 0,
+    "sdf.fresnel": 0.5,
     "sdf.texSrc": 0,
     "sdf.refractSrc": 0,
     "draw.pensize": 0,
@@ -372,6 +402,9 @@
     "effect.psortdir": 0,
     "effect.psortmode": 0,
     "delay.frames": 5,
+    "delay.source": 8,
+    "delay.size": 0,
+    "delay.bufferResolution": 0,
     "particle.count": 4,
     "particle.spread": 90,
     "particle.size": 1,
@@ -388,13 +421,14 @@
     "vasulka.freq2": 7,
     "vasulka.amp2": 0,
     "vasulka.color": 0,
+    "slitscan.source": 8,
     "slitscan.active": 0,
     "slitscan.pos": 50,
     "slitscan.speed": 15,
     "slitscan.axis": 0,
     "slitscan.width": 2,
     "slitscan.clear": 0,
-    "td.enabled": 0,
+    "td.enabled": 1,
     "td.captureSource": 0,
     "td.mode": 4,
     "td.bufferResolution": 3,
@@ -406,19 +440,27 @@
     "td.scanPosY": 0.5,
     "td.scanWidth": 0,
     "td.invertMap": 0,
+    "td.angle": 0,
+    "td.mapSource": 5,
+    "td.mapAmount": 0,
+    "vwarp.source": 0,
     "vwarp.active": 0,
     "vwarp.axis": 0,
     "vwarp.flip": 0,
     "vwarp.mix": 1,
     "vwarp.bufsize": 1,
     "vwarp.speed": 1,
+    "vwarp.anchor": 0,
+    "vwarp.pos": 0,
+    "vwarp.span": 1,
+    "vwarp.clear": 0,
     "seq1.active": 0,
     "seq1.source": 0,
     "seq1.speed": 100,
-    "seq1.size": 55,
+    "seq1.size": 60,
     "seq2.active": 0,
     "seq2.source": 0,
-    "seq2.speed": 136,
+    "seq2.speed": 100,
     "seq2.size": 60,
     "seq3.active": 0,
     "seq3.source": 0,
@@ -445,16 +487,16 @@
     "seq3.tw.mix": 100,
     "seq3.tw.offset": 0,
     "seq3.tw.warp": 0,
-    "vectorscope.mode": 10,
-    "vectorscope.gain": 200,
-    "vectorscope.decay": 99,
-    "vectorscope.linewidth": 15,
-    "vectorscope.glow": 0,
-    "vectorscope.color": 6,
-    "glsl.param1": 0.4,
+    "vectorscope.mode": 0,
+    "vectorscope.gain": 100,
+    "vectorscope.decay": 60,
+    "vectorscope.linewidth": 1.5,
+    "vectorscope.glow": 8,
+    "vectorscope.color": 0,
+    "glsl.param1": 0.5,
     "glsl.param2": 0.5,
-    "glsl.param3": 0,
-    "glsl.param4": 0.79,
+    "glsl.param3": 0.5,
+    "glsl.param4": 0.5,
     "glsl.target": 0,
     "projmap.active": 0,
     "projmap.tl_x": 0,
@@ -465,6 +507,29 @@
     "projmap.br_y": 1,
     "projmap.bl_x": 0,
     "projmap.bl_y": 1,
+    "rutt.active": 0,
+    "rutt.source": 0,
+    "rutt.shape": 0,
+    "rutt.lines": 120,
+    "rutt.zgain": 0.5,
+    "rutt.zcurve": 1,
+    "rutt.zpivot": 0,
+    "rutt.drawMode": 0,
+    "rutt.thickness": 1.5,
+    "rutt.pointSize": 3,
+    "rutt.hue": 0,
+    "rutt.sat": 0,
+    "rutt.colorAmt": 0,
+    "rutt.angle": 0,
+    "rutt.elev": 35,
+    "rutt.moveX": 0,
+    "rutt.moveY": 0,
+    "rutt.moveZ": 0,
+    "rutt.dist": 3.2,
+    "rutt.rise": 0,
+    "rutt.fall": 0,
+    "rutt.decay": 0,
+    "rutt.bleed": 0,
     "analog.sourceType": 0,
     "analog.crop43": 1,
     "analog.brightness": 0,
@@ -670,13 +735,19 @@
             "y": 60
           }
         },
-        "sdf.camX": {
-          "id": "sdf.camX",
-          "value": 0,
-          "controller": null,
+        "sdf.orbitX": {
+          "id": "sdf.orbitX",
+          "value": 90.5,
+          "controller": {
+            "type": "lfo-sawtooth",
+            "hz": 0.02,
+            "phase": 0,
+            "width": 0.5,
+            "beatSync": false
+          },
           "table": null,
-          "ctrlMin": -1.1458435058593746,
-          "ctrlMax": 1.0825195312499991,
+          "ctrlMin": 0,
+          "ctrlMax": 360,
           "invert": false,
           "cycle": false,
           "slew": 0,
@@ -686,16 +757,88 @@
             "y": 60
           }
         },
-        "sdf.camY": {
-          "id": "sdf.camY",
-          "value": 1.85,
-          "controller": null,
+        "sdf.orbitY": {
+          "id": "sdf.orbitY",
+          "value": -18,
+          "controller": {
+            "type": "lfo-sawtooth",
+            "hz": 0.01,
+            "phase": 0,
+            "width": 0.5,
+            "beatSync": false
+          },
           "table": "Smooooth",
-          "ctrlMin": -1.3972259521484371,
-          "ctrlMax": 1.6362182617187493,
+          "ctrlMin": -180,
+          "ctrlMax": 180,
           "invert": false,
           "cycle": false,
           "slew": 0,
+          "feedbackVisible": false,
+          "feedbackPos": {
+            "x": 20,
+            "y": 60
+          }
+        },
+        "sdf.kifsAngle": {
+          "id": "sdf.kifsAngle",
+          "value": 263,
+          "controller": {
+            "type": "lfo-sawtooth",
+            "hz": 0.02,
+            "phase": 0,
+            "width": 0.5,
+            "beatSync": false
+          },
+          "table": null,
+          "ctrlMin": null,
+          "ctrlMax": null,
+          "invert": false,
+          "cycle": false,
+          "slew": 0,
+          "feedbackVisible": false,
+          "feedbackPos": {
+            "x": 20,
+            "y": 60
+          }
+        },
+        "sdf.lightAz": {
+          "id": "sdf.lightAz",
+          "value": 132.1176512672743,
+          "controller": {
+            "type": "lfo-sh",
+            "hz": 0.5,
+            "phase": 0,
+            "width": 0.5,
+            "beatSync": false
+          },
+          "table": null,
+          "ctrlMin": null,
+          "ctrlMax": null,
+          "invert": false,
+          "cycle": false,
+          "slew": 0.7247210693359375,
+          "feedbackVisible": false,
+          "feedbackPos": {
+            "x": 20,
+            "y": 60
+          }
+        },
+        "sdf.lightEl": {
+          "id": "sdf.lightEl",
+          "value": 60.61112534927541,
+          "controller": {
+            "type": "lfo-sh",
+            "hz": 0.5,
+            "phase": 0,
+            "width": 0.5,
+            "beatSync": false
+          },
+          "table": null,
+          "ctrlMin": null,
+          "ctrlMax": null,
+          "invert": false,
+          "cycle": false,
+          "slew": 0.5643377685546875,
           "feedbackVisible": false,
           "feedbackPos": {
             "x": 20,
@@ -712,22 +855,6 @@
           "invert": false,
           "cycle": false,
           "slew": 0.345252685546875,
-          "feedbackVisible": false,
-          "feedbackPos": {
-            "x": 20,
-            "y": 60
-          }
-        },
-        "glsl.param2": {
-          "id": "glsl.param2",
-          "value": 0.5496549204067367,
-          "controller": null,
-          "table": "S-curve",
-          "ctrlMin": null,
-          "ctrlMax": null,
-          "invert": false,
-          "cycle": false,
-          "slew": 2.1701702880859375,
           "feedbackVisible": false,
           "feedbackPos": {
             "x": 20,
@@ -952,11 +1079,8 @@
             "sdf.opAmount": 0.5,
             "sdf.distance": 1.5,
             "sdf.shape": 0,
-            "sdf.repeat": 0,
+            "sdf.repeat": 3,
             "sdf.warp": 0,
-            "sdf.camX": 0,
-            "sdf.camY": 0,
-            "sdf.camZ": 5,
             "sdf.kifsIter": 0,
             "sdf.kifsAngle": 0,
             "sdf.lumaWarp": 0,
@@ -1284,7 +1408,11 @@
             "particle.ng3.radius": 0.1,
             "particle.respawn": 0,
             "particle.freeze": 0,
-            "particle.clearPins": 0
+            "particle.clearPins": 0,
+            "sdf.orbitX": 0,
+            "sdf.orbitY": 0,
+            "sdf.camDist": 5,
+            "sdf.tile": 0
           },
           "fxOrder": [
             "pixelate",
@@ -1520,11 +1648,8 @@
             "sdf.opAmount": 0.5,
             "sdf.distance": 1.5,
             "sdf.shape": 0,
-            "sdf.repeat": 0,
+            "sdf.repeat": 3,
             "sdf.warp": 0,
-            "sdf.camX": 0,
-            "sdf.camY": 0,
-            "sdf.camZ": 5,
             "sdf.kifsIter": 0,
             "sdf.kifsAngle": 0,
             "sdf.lumaWarp": 0,
@@ -1852,7 +1977,11 @@
             "particle.ng3.radius": 0.1,
             "particle.respawn": 0,
             "particle.freeze": 0,
-            "particle.clearPins": 0
+            "particle.clearPins": 0,
+            "sdf.orbitX": 0,
+            "sdf.orbitY": 0,
+            "sdf.camDist": 5,
+            "sdf.tile": 0
           },
           "fxOrder": [
             "pixelate",
@@ -2088,11 +2217,8 @@
             "sdf.opAmount": 0.31,
             "sdf.distance": 2.5500000000000003,
             "sdf.shape": 0,
-            "sdf.repeat": 0,
+            "sdf.repeat": 3,
             "sdf.warp": 0.03,
-            "sdf.camX": 0.1,
-            "sdf.camY": 1.6500000000000001,
-            "sdf.camZ": 2,
             "sdf.kifsIter": 0,
             "sdf.kifsAngle": 0,
             "sdf.lumaWarp": 0,
@@ -2420,7 +2546,11 @@
             "particle.ng3.radius": 0.1,
             "particle.respawn": 0,
             "particle.freeze": 0,
-            "particle.clearPins": 0
+            "particle.clearPins": 0,
+            "sdf.orbitX": 2.8624052261117474,
+            "sdf.orbitY": 39.48752199741672,
+            "sdf.camDist": 2.5947061490658245,
+            "sdf.tile": 0
           },
           "fxOrder": [
             "pixelate",
@@ -2439,13 +2569,13 @@
             "grain"
           ],
           "controllers": {
-            "sdf.camX": {
-              "id": "sdf.camX",
-              "value": 0.1,
+            "sdf.orbitX": {
+              "id": "sdf.orbitX",
+              "value": 2.8624052261117474,
               "controller": null,
               "table": null,
-              "ctrlMin": -1.1458435058593746,
-              "ctrlMax": 1.0825195312499991,
+              "ctrlMin": 0,
+              "ctrlMax": 360,
               "invert": false,
               "cycle": false,
               "slew": 0,
@@ -2455,13 +2585,13 @@
                 "y": 60
               }
             },
-            "sdf.camY": {
-              "id": "sdf.camY",
-              "value": 1.6500000000000001,
+            "sdf.orbitY": {
+              "id": "sdf.orbitY",
+              "value": 39.48752199741672,
               "controller": null,
               "table": "Smooooth",
-              "ctrlMin": -1.3972259521484371,
-              "ctrlMax": 1.6362182617187493,
+              "ctrlMin": -180,
+              "ctrlMax": 180,
               "invert": false,
               "cycle": false,
               "slew": 0,
@@ -2689,11 +2819,8 @@
             "sdf.opAmount": 0.31,
             "sdf.distance": 1.5,
             "sdf.shape": 0,
-            "sdf.repeat": 0,
+            "sdf.repeat": 3,
             "sdf.warp": 0.09,
-            "sdf.camX": 0,
-            "sdf.camY": 0,
-            "sdf.camZ": 2,
             "sdf.kifsIter": 0,
             "sdf.kifsAngle": 0,
             "sdf.lumaWarp": 0,
@@ -3021,7 +3148,11 @@
             "particle.ng3.radius": 0.1,
             "particle.respawn": 0,
             "particle.freeze": 0,
-            "particle.clearPins": 0
+            "particle.clearPins": 0,
+            "sdf.orbitX": 0,
+            "sdf.orbitY": 0,
+            "sdf.camDist": 2,
+            "sdf.tile": 0
           },
           "fxOrder": [
             "pixelate",
@@ -3040,13 +3171,13 @@
             "grain"
           ],
           "controllers": {
-            "sdf.camX": {
-              "id": "sdf.camX",
+            "sdf.orbitX": {
+              "id": "sdf.orbitX",
               "value": 0,
               "controller": null,
               "table": null,
-              "ctrlMin": -1.1458435058593746,
-              "ctrlMax": 1.0825195312499991,
+              "ctrlMin": 0,
+              "ctrlMax": 360,
               "invert": false,
               "cycle": false,
               "slew": 0,
@@ -3056,13 +3187,13 @@
                 "y": 60
               }
             },
-            "sdf.camY": {
-              "id": "sdf.camY",
+            "sdf.orbitY": {
+              "id": "sdf.orbitY",
               "value": 0,
               "controller": null,
               "table": "Smooooth",
-              "ctrlMin": -1.3972259521484371,
-              "ctrlMax": 1.6362182617187493,
+              "ctrlMin": -180,
+              "ctrlMax": 180,
               "invert": false,
               "cycle": false,
               "slew": 0,
@@ -3290,11 +3421,8 @@
             "sdf.opAmount": 0.31,
             "sdf.distance": 1.5,
             "sdf.shape": 0,
-            "sdf.repeat": 0,
+            "sdf.repeat": 3,
             "sdf.warp": 0.09,
-            "sdf.camX": 0,
-            "sdf.camY": 0,
-            "sdf.camZ": 2,
             "sdf.kifsIter": 0,
             "sdf.kifsAngle": 0,
             "sdf.lumaWarp": 0,
@@ -3622,7 +3750,11 @@
             "particle.ng3.radius": 0.1,
             "particle.respawn": 0,
             "particle.freeze": 0,
-            "particle.clearPins": 0
+            "particle.clearPins": 0,
+            "sdf.orbitX": 0,
+            "sdf.orbitY": 0,
+            "sdf.camDist": 2,
+            "sdf.tile": 0
           },
           "fxOrder": [
             "pixelate",
@@ -3641,13 +3773,13 @@
             "grain"
           ],
           "controllers": {
-            "sdf.camX": {
-              "id": "sdf.camX",
+            "sdf.orbitX": {
+              "id": "sdf.orbitX",
               "value": 0,
               "controller": null,
               "table": null,
-              "ctrlMin": -1.1458435058593746,
-              "ctrlMax": 1.0825195312499991,
+              "ctrlMin": 0,
+              "ctrlMax": 360,
               "invert": false,
               "cycle": false,
               "slew": 0,
@@ -3657,13 +3789,13 @@
                 "y": 60
               }
             },
-            "sdf.camY": {
-              "id": "sdf.camY",
+            "sdf.orbitY": {
+              "id": "sdf.orbitY",
               "value": 0,
               "controller": null,
               "table": "Smooooth",
-              "ctrlMin": -1.3972259521484371,
-              "ctrlMax": 1.6362182617187493,
+              "ctrlMin": -180,
+              "ctrlMax": 180,
               "invert": false,
               "cycle": false,
               "slew": 0,
@@ -3891,11 +4023,8 @@
             "sdf.opAmount": 0.31,
             "sdf.distance": 1.5,
             "sdf.shape": 0,
-            "sdf.repeat": 0,
+            "sdf.repeat": 3,
             "sdf.warp": 0.09,
-            "sdf.camX": 0,
-            "sdf.camY": 0,
-            "sdf.camZ": 2,
             "sdf.kifsIter": 0,
             "sdf.kifsAngle": 0,
             "sdf.lumaWarp": 0,
@@ -4223,7 +4352,11 @@
             "particle.ng3.radius": 0.1,
             "particle.respawn": 0,
             "particle.freeze": 0,
-            "particle.clearPins": 0
+            "particle.clearPins": 0,
+            "sdf.orbitX": 0,
+            "sdf.orbitY": 0,
+            "sdf.camDist": 2,
+            "sdf.tile": 0
           },
           "fxOrder": [
             "pixelate",
@@ -4242,13 +4375,13 @@
             "grain"
           ],
           "controllers": {
-            "sdf.camX": {
-              "id": "sdf.camX",
+            "sdf.orbitX": {
+              "id": "sdf.orbitX",
               "value": 0,
               "controller": null,
               "table": null,
-              "ctrlMin": -1.1458435058593746,
-              "ctrlMax": 1.0825195312499991,
+              "ctrlMin": 0,
+              "ctrlMax": 360,
               "invert": false,
               "cycle": false,
               "slew": 0,
@@ -4258,13 +4391,13 @@
                 "y": 60
               }
             },
-            "sdf.camY": {
-              "id": "sdf.camY",
+            "sdf.orbitY": {
+              "id": "sdf.orbitY",
               "value": 0,
               "controller": null,
               "table": "Smooooth",
-              "ctrlMin": -1.3972259521484371,
-              "ctrlMax": 1.6362182617187493,
+              "ctrlMin": -180,
+              "ctrlMax": 180,
               "invert": false,
               "cycle": false,
               "slew": 0,
@@ -4510,11 +4643,8 @@
             "sdf.opAmount": 0.5,
             "sdf.distance": 1.5,
             "sdf.shape": 0,
-            "sdf.repeat": 0,
+            "sdf.repeat": 3,
             "sdf.warp": 0,
-            "sdf.camX": 0,
-            "sdf.camY": 0,
-            "sdf.camZ": 5,
             "sdf.kifsIter": 0,
             "sdf.kifsAngle": 0,
             "sdf.lumaWarp": 0,
@@ -4842,7 +4972,11 @@
             "particle.ng3.radius": 0.1,
             "particle.respawn": 0,
             "particle.freeze": 0,
-            "particle.clearPins": 0
+            "particle.clearPins": 0,
+            "sdf.orbitX": 0,
+            "sdf.orbitY": 0,
+            "sdf.camDist": 5,
+            "sdf.tile": 0
           },
           "fxOrder": [
             "pixelate",
@@ -4925,38 +5059,6 @@
                 "y": 60
               }
             },
-            "sdf.camX": {
-              "id": "sdf.camX",
-              "value": 0,
-              "controller": null,
-              "table": null,
-              "ctrlMin": -1.1458435058593746,
-              "ctrlMax": 1.0825195312499991,
-              "invert": false,
-              "cycle": false,
-              "slew": 0,
-              "feedbackVisible": false,
-              "feedbackPos": {
-                "x": 20,
-                "y": 60
-              }
-            },
-            "sdf.camY": {
-              "id": "sdf.camY",
-              "value": 0,
-              "controller": null,
-              "table": "Smooooth",
-              "ctrlMin": -1.3972259521484371,
-              "ctrlMax": 1.6362182617187493,
-              "invert": false,
-              "cycle": false,
-              "slew": 0,
-              "feedbackVisible": false,
-              "feedbackPos": {
-                "x": 20,
-                "y": 60
-              }
-            },
             "particle.emity": {
               "id": "particle.emity",
               "value": 50,
@@ -4983,6 +5085,38 @@
               "invert": false,
               "cycle": false,
               "slew": 0.9497882080078125,
+              "feedbackVisible": false,
+              "feedbackPos": {
+                "x": 20,
+                "y": 60
+              }
+            },
+            "sdf.orbitX": {
+              "id": "sdf.orbitX",
+              "value": 0,
+              "controller": null,
+              "table": null,
+              "ctrlMin": 0,
+              "ctrlMax": 360,
+              "invert": false,
+              "cycle": false,
+              "slew": 0,
+              "feedbackVisible": false,
+              "feedbackPos": {
+                "x": 20,
+                "y": 60
+              }
+            },
+            "sdf.orbitY": {
+              "id": "sdf.orbitY",
+              "value": 0,
+              "controller": null,
+              "table": "Smooooth",
+              "ctrlMin": -180,
+              "ctrlMax": 180,
+              "invert": false,
+              "cycle": false,
+              "slew": 0,
               "feedbackVisible": false,
               "feedbackPos": {
                 "x": 20,
@@ -5278,11 +5412,8 @@
             "sdf.opAmount": 0.5,
             "sdf.distance": 1.5,
             "sdf.shape": 0,
-            "sdf.repeat": 0,
+            "sdf.repeat": 3,
             "sdf.warp": 0,
-            "sdf.camX": 0,
-            "sdf.camY": 0,
-            "sdf.camZ": 5,
             "sdf.kifsIter": 0,
             "sdf.kifsAngle": 0,
             "sdf.lumaWarp": 0,
@@ -5610,7 +5741,11 @@
             "particle.ng3.radius": 0.1,
             "particle.respawn": 0,
             "particle.freeze": 0,
-            "particle.clearPins": 0
+            "particle.clearPins": 0,
+            "sdf.orbitX": 0,
+            "sdf.orbitY": 0,
+            "sdf.camDist": 5,
+            "sdf.tile": 0
           },
           "fxOrder": [
             "pixelate",
@@ -5629,13 +5764,13 @@
             "grain"
           ],
           "controllers": {
-            "sdf.camX": {
-              "id": "sdf.camX",
+            "sdf.orbitX": {
+              "id": "sdf.orbitX",
               "value": 0,
               "controller": null,
               "table": null,
-              "ctrlMin": -1.1458435058593746,
-              "ctrlMax": 1.0825195312499991,
+              "ctrlMin": 0,
+              "ctrlMax": 360,
               "invert": false,
               "cycle": false,
               "slew": 0,
@@ -5645,13 +5780,13 @@
                 "y": 60
               }
             },
-            "sdf.camY": {
-              "id": "sdf.camY",
+            "sdf.orbitY": {
+              "id": "sdf.orbitY",
               "value": 0,
               "controller": null,
               "table": "Smooooth",
-              "ctrlMin": -1.3972259521484371,
-              "ctrlMax": 1.6362182617187493,
+              "ctrlMin": -180,
+              "ctrlMax": 180,
               "invert": false,
               "cycle": false,
               "slew": 0,
@@ -5879,11 +6014,8 @@
             "sdf.opAmount": 0.5,
             "sdf.distance": 1.5,
             "sdf.shape": 0,
-            "sdf.repeat": 0,
+            "sdf.repeat": 3,
             "sdf.warp": 0,
-            "sdf.camX": 0,
-            "sdf.camY": 0,
-            "sdf.camZ": 5,
             "sdf.kifsIter": 0,
             "sdf.kifsAngle": 0,
             "sdf.lumaWarp": 0,
@@ -6211,7 +6343,11 @@
             "particle.ng3.radius": 0.1,
             "particle.respawn": 0,
             "particle.freeze": 0,
-            "particle.clearPins": 0
+            "particle.clearPins": 0,
+            "sdf.orbitX": 0,
+            "sdf.orbitY": 0,
+            "sdf.camDist": 5,
+            "sdf.tile": 0
           },
           "fxOrder": [
             "pixelate",
@@ -6230,13 +6366,13 @@
             "grain"
           ],
           "controllers": {
-            "sdf.camX": {
-              "id": "sdf.camX",
+            "sdf.orbitX": {
+              "id": "sdf.orbitX",
               "value": 0,
               "controller": null,
               "table": null,
-              "ctrlMin": -1.1458435058593746,
-              "ctrlMax": 1.0825195312499991,
+              "ctrlMin": 0,
+              "ctrlMax": 360,
               "invert": false,
               "cycle": false,
               "slew": 0,
@@ -6246,13 +6382,13 @@
                 "y": 60
               }
             },
-            "sdf.camY": {
-              "id": "sdf.camY",
+            "sdf.orbitY": {
+              "id": "sdf.orbitY",
               "value": 0,
               "controller": null,
               "table": "Smooooth",
-              "ctrlMin": -1.3972259521484371,
-              "ctrlMax": 1.6362182617187493,
+              "ctrlMin": -180,
+              "ctrlMax": 180,
               "invert": false,
               "cycle": false,
               "slew": 0,
@@ -6480,11 +6616,8 @@
             "sdf.opAmount": 0.5,
             "sdf.distance": 1.5,
             "sdf.shape": 0,
-            "sdf.repeat": 0,
+            "sdf.repeat": 3,
             "sdf.warp": 0,
-            "sdf.camX": 0,
-            "sdf.camY": 0,
-            "sdf.camZ": 5,
             "sdf.kifsIter": 0,
             "sdf.kifsAngle": 0,
             "sdf.lumaWarp": 0,
@@ -6812,7 +6945,11 @@
             "particle.ng3.radius": 0.1,
             "particle.respawn": 0,
             "particle.freeze": 0,
-            "particle.clearPins": 0
+            "particle.clearPins": 0,
+            "sdf.orbitX": 0,
+            "sdf.orbitY": 0,
+            "sdf.camDist": 5,
+            "sdf.tile": 0
           },
           "fxOrder": [
             "pixelate",
@@ -6831,38 +6968,6 @@
             "grain"
           ],
           "controllers": {
-            "sdf.camX": {
-              "id": "sdf.camX",
-              "value": 0,
-              "controller": null,
-              "table": null,
-              "ctrlMin": -1.1458435058593746,
-              "ctrlMax": 1.0825195312499991,
-              "invert": false,
-              "cycle": false,
-              "slew": 0,
-              "feedbackVisible": false,
-              "feedbackPos": {
-                "x": 20,
-                "y": 60
-              }
-            },
-            "sdf.camY": {
-              "id": "sdf.camY",
-              "value": 0,
-              "controller": null,
-              "table": "Smooooth",
-              "ctrlMin": -1.3972259521484371,
-              "ctrlMax": 1.6362182617187493,
-              "invert": false,
-              "cycle": false,
-              "slew": 0,
-              "feedbackVisible": false,
-              "feedbackPos": {
-                "x": 20,
-                "y": 60
-              }
-            },
             "particle.ng1.x": {
               "id": "particle.ng1.x",
               "value": 24.22420692236823,
@@ -6929,6 +7034,38 @@
               "invert": false,
               "cycle": false,
               "slew": 0.9497882080078125,
+              "feedbackVisible": false,
+              "feedbackPos": {
+                "x": 20,
+                "y": 60
+              }
+            },
+            "sdf.orbitX": {
+              "id": "sdf.orbitX",
+              "value": 0,
+              "controller": null,
+              "table": null,
+              "ctrlMin": 0,
+              "ctrlMax": 360,
+              "invert": false,
+              "cycle": false,
+              "slew": 0,
+              "feedbackVisible": false,
+              "feedbackPos": {
+                "x": 20,
+                "y": 60
+              }
+            },
+            "sdf.orbitY": {
+              "id": "sdf.orbitY",
+              "value": 0,
+              "controller": null,
+              "table": "Smooooth",
+              "ctrlMin": -180,
+              "ctrlMax": 180,
+              "invert": false,
+              "cycle": false,
+              "slew": 0,
               "feedbackVisible": false,
               "feedbackPos": {
                 "x": 20,
@@ -7224,11 +7361,8 @@
             "sdf.opAmount": 0.5,
             "sdf.distance": 1.5,
             "sdf.shape": 0,
-            "sdf.repeat": 0,
+            "sdf.repeat": 3,
             "sdf.warp": 0,
-            "sdf.camX": 0,
-            "sdf.camY": 0,
-            "sdf.camZ": 5,
             "sdf.kifsIter": 0,
             "sdf.kifsAngle": 0,
             "sdf.lumaWarp": 0,
@@ -7556,7 +7690,11 @@
             "particle.ng3.radius": 0.1,
             "particle.respawn": 0,
             "particle.freeze": 0,
-            "particle.clearPins": 0
+            "particle.clearPins": 0,
+            "sdf.orbitX": 0,
+            "sdf.orbitY": 0,
+            "sdf.camDist": 5,
+            "sdf.tile": 0
           },
           "fxOrder": [
             "pixelate",
@@ -7575,38 +7713,6 @@
             "grain"
           ],
           "controllers": {
-            "sdf.camX": {
-              "id": "sdf.camX",
-              "value": 0,
-              "controller": null,
-              "table": null,
-              "ctrlMin": -1.1458435058593746,
-              "ctrlMax": 1.0825195312499991,
-              "invert": false,
-              "cycle": false,
-              "slew": 0,
-              "feedbackVisible": false,
-              "feedbackPos": {
-                "x": 20,
-                "y": 60
-              }
-            },
-            "sdf.camY": {
-              "id": "sdf.camY",
-              "value": 0,
-              "controller": null,
-              "table": "Smooooth",
-              "ctrlMin": -1.3972259521484371,
-              "ctrlMax": 1.6362182617187493,
-              "invert": false,
-              "cycle": false,
-              "slew": 0,
-              "feedbackVisible": false,
-              "feedbackPos": {
-                "x": 20,
-                "y": 60
-              }
-            },
             "particle.ng1.radius": {
               "id": "particle.ng1.radius",
               "value": 0.1258385693758462,
@@ -7617,6 +7723,38 @@
               "invert": false,
               "cycle": false,
               "slew": 0.9497882080078125,
+              "feedbackVisible": false,
+              "feedbackPos": {
+                "x": 20,
+                "y": 60
+              }
+            },
+            "sdf.orbitX": {
+              "id": "sdf.orbitX",
+              "value": 0,
+              "controller": null,
+              "table": null,
+              "ctrlMin": 0,
+              "ctrlMax": 360,
+              "invert": false,
+              "cycle": false,
+              "slew": 0,
+              "feedbackVisible": false,
+              "feedbackPos": {
+                "x": 20,
+                "y": 60
+              }
+            },
+            "sdf.orbitY": {
+              "id": "sdf.orbitY",
+              "value": 0,
+              "controller": null,
+              "table": "Smooooth",
+              "ctrlMin": -180,
+              "ctrlMax": 180,
+              "invert": false,
+              "cycle": false,
+              "slew": 0,
               "feedbackVisible": false,
               "feedbackPos": {
                 "x": 20,
@@ -7912,11 +8050,8 @@
             "sdf.opAmount": 0.5,
             "sdf.distance": 1.5,
             "sdf.shape": 0,
-            "sdf.repeat": 0,
+            "sdf.repeat": 3,
             "sdf.warp": 0,
-            "sdf.camX": 0,
-            "sdf.camY": 0,
-            "sdf.camZ": 5,
             "sdf.kifsIter": 0,
             "sdf.kifsAngle": 0,
             "sdf.lumaWarp": 0,
@@ -8244,7 +8379,11 @@
             "particle.ng3.radius": 0.1,
             "particle.respawn": 0,
             "particle.freeze": 0,
-            "particle.clearPins": 0
+            "particle.clearPins": 0,
+            "sdf.orbitX": 0,
+            "sdf.orbitY": 0,
+            "sdf.camDist": 5,
+            "sdf.tile": 0
           },
           "fxOrder": [
             "pixelate",
@@ -8263,38 +8402,6 @@
             "grain"
           ],
           "controllers": {
-            "sdf.camX": {
-              "id": "sdf.camX",
-              "value": 0,
-              "controller": null,
-              "table": null,
-              "ctrlMin": -1.1458435058593746,
-              "ctrlMax": 1.0825195312499991,
-              "invert": false,
-              "cycle": false,
-              "slew": 0,
-              "feedbackVisible": false,
-              "feedbackPos": {
-                "x": 20,
-                "y": 60
-              }
-            },
-            "sdf.camY": {
-              "id": "sdf.camY",
-              "value": 0,
-              "controller": null,
-              "table": "Smooooth",
-              "ctrlMin": -1.3972259521484371,
-              "ctrlMax": 1.6362182617187493,
-              "invert": false,
-              "cycle": false,
-              "slew": 0,
-              "feedbackVisible": false,
-              "feedbackPos": {
-                "x": 20,
-                "y": 60
-              }
-            },
             "particle.ng1.radius": {
               "id": "particle.ng1.radius",
               "value": 0.12583856937584614,
@@ -8305,6 +8412,38 @@
               "invert": false,
               "cycle": false,
               "slew": 0.9497882080078125,
+              "feedbackVisible": false,
+              "feedbackPos": {
+                "x": 20,
+                "y": 60
+              }
+            },
+            "sdf.orbitX": {
+              "id": "sdf.orbitX",
+              "value": 0,
+              "controller": null,
+              "table": null,
+              "ctrlMin": 0,
+              "ctrlMax": 360,
+              "invert": false,
+              "cycle": false,
+              "slew": 0,
+              "feedbackVisible": false,
+              "feedbackPos": {
+                "x": 20,
+                "y": 60
+              }
+            },
+            "sdf.orbitY": {
+              "id": "sdf.orbitY",
+              "value": 0,
+              "controller": null,
+              "table": "Smooooth",
+              "ctrlMin": -180,
+              "ctrlMax": 180,
+              "invert": false,
+              "cycle": false,
+              "slew": 0,
               "feedbackVisible": false,
               "feedbackPos": {
                 "x": 20,
@@ -8600,11 +8739,8 @@
             "sdf.opAmount": 0.5,
             "sdf.distance": 1.5,
             "sdf.shape": 0,
-            "sdf.repeat": 0,
+            "sdf.repeat": 3,
             "sdf.warp": 0,
-            "sdf.camX": 0,
-            "sdf.camY": 0,
-            "sdf.camZ": 5,
             "sdf.kifsIter": 0,
             "sdf.kifsAngle": 0,
             "sdf.lumaWarp": 0,
@@ -8932,7 +9068,11 @@
             "particle.ng3.radius": 0.1,
             "particle.respawn": 0,
             "particle.freeze": 0,
-            "particle.clearPins": 0
+            "particle.clearPins": 0,
+            "sdf.orbitX": 0,
+            "sdf.orbitY": 0,
+            "sdf.camDist": 5,
+            "sdf.tile": 0
           },
           "fxOrder": [
             "pixelate",
@@ -8995,38 +9135,6 @@
                 "y": 60
               }
             },
-            "sdf.camX": {
-              "id": "sdf.camX",
-              "value": 0,
-              "controller": null,
-              "table": null,
-              "ctrlMin": -1.1458435058593746,
-              "ctrlMax": 1.0825195312499991,
-              "invert": false,
-              "cycle": false,
-              "slew": 0,
-              "feedbackVisible": false,
-              "feedbackPos": {
-                "x": 20,
-                "y": 60
-              }
-            },
-            "sdf.camY": {
-              "id": "sdf.camY",
-              "value": 0,
-              "controller": null,
-              "table": "Smooooth",
-              "ctrlMin": -1.3972259521484371,
-              "ctrlMax": 1.6362182617187493,
-              "invert": false,
-              "cycle": false,
-              "slew": 0,
-              "feedbackVisible": false,
-              "feedbackPos": {
-                "x": 20,
-                "y": 60
-              }
-            },
             "particle.ng1.radius": {
               "id": "particle.ng1.radius",
               "value": 0.12583856937584592,
@@ -9037,6 +9145,38 @@
               "invert": false,
               "cycle": false,
               "slew": 0.9497882080078125,
+              "feedbackVisible": false,
+              "feedbackPos": {
+                "x": 20,
+                "y": 60
+              }
+            },
+            "sdf.orbitX": {
+              "id": "sdf.orbitX",
+              "value": 0,
+              "controller": null,
+              "table": null,
+              "ctrlMin": 0,
+              "ctrlMax": 360,
+              "invert": false,
+              "cycle": false,
+              "slew": 0,
+              "feedbackVisible": false,
+              "feedbackPos": {
+                "x": 20,
+                "y": 60
+              }
+            },
+            "sdf.orbitY": {
+              "id": "sdf.orbitY",
+              "value": 0,
+              "controller": null,
+              "table": "Smooooth",
+              "ctrlMin": -180,
+              "ctrlMax": 180,
+              "invert": false,
+              "cycle": false,
+              "slew": 0,
               "feedbackVisible": false,
               "feedbackPos": {
                 "x": 20,
@@ -9332,11 +9472,8 @@
             "sdf.opAmount": 0.5,
             "sdf.distance": 1.5,
             "sdf.shape": 0,
-            "sdf.repeat": 0,
+            "sdf.repeat": 3,
             "sdf.warp": 0,
-            "sdf.camX": 0,
-            "sdf.camY": 0,
-            "sdf.camZ": 5,
             "sdf.kifsIter": 0,
             "sdf.kifsAngle": 0,
             "sdf.lumaWarp": 0,
@@ -9664,7 +9801,11 @@
             "particle.ng3.radius": 0.1,
             "particle.respawn": 0,
             "particle.freeze": 0,
-            "particle.clearPins": 0
+            "particle.clearPins": 0,
+            "sdf.orbitX": 0,
+            "sdf.orbitY": 0,
+            "sdf.camDist": 5,
+            "sdf.tile": 0
           },
           "fxOrder": [
             "pixelate",
@@ -9683,38 +9824,6 @@
             "grain"
           ],
           "controllers": {
-            "sdf.camX": {
-              "id": "sdf.camX",
-              "value": 0,
-              "controller": null,
-              "table": null,
-              "ctrlMin": -1.1458435058593746,
-              "ctrlMax": 1.0825195312499991,
-              "invert": false,
-              "cycle": false,
-              "slew": 0,
-              "feedbackVisible": false,
-              "feedbackPos": {
-                "x": 20,
-                "y": 60
-              }
-            },
-            "sdf.camY": {
-              "id": "sdf.camY",
-              "value": 0,
-              "controller": null,
-              "table": "Smooooth",
-              "ctrlMin": -1.3972259521484371,
-              "ctrlMax": 1.6362182617187493,
-              "invert": false,
-              "cycle": false,
-              "slew": 0,
-              "feedbackVisible": false,
-              "feedbackPos": {
-                "x": 20,
-                "y": 60
-              }
-            },
             "particle.ng1.radius": {
               "id": "particle.ng1.radius",
               "value": 0.1,
@@ -9725,6 +9834,38 @@
               "invert": false,
               "cycle": false,
               "slew": 0.9497882080078125,
+              "feedbackVisible": false,
+              "feedbackPos": {
+                "x": 20,
+                "y": 60
+              }
+            },
+            "sdf.orbitX": {
+              "id": "sdf.orbitX",
+              "value": 0,
+              "controller": null,
+              "table": null,
+              "ctrlMin": 0,
+              "ctrlMax": 360,
+              "invert": false,
+              "cycle": false,
+              "slew": 0,
+              "feedbackVisible": false,
+              "feedbackPos": {
+                "x": 20,
+                "y": 60
+              }
+            },
+            "sdf.orbitY": {
+              "id": "sdf.orbitY",
+              "value": 0,
+              "controller": null,
+              "table": "Smooooth",
+              "ctrlMin": -180,
+              "ctrlMax": 180,
+              "invert": false,
+              "cycle": false,
+              "slew": 0,
               "feedbackVisible": false,
               "feedbackPos": {
                 "x": 20,
@@ -10020,11 +10161,8 @@
             "sdf.opAmount": 0.5,
             "sdf.distance": 1.5,
             "sdf.shape": 0,
-            "sdf.repeat": 0,
+            "sdf.repeat": 3,
             "sdf.warp": 0,
-            "sdf.camX": 0,
-            "sdf.camY": 0,
-            "sdf.camZ": 5,
             "sdf.kifsIter": 0,
             "sdf.kifsAngle": 0,
             "sdf.lumaWarp": 0,
@@ -10352,7 +10490,11 @@
             "particle.ng3.radius": 0.038608110860799905,
             "particle.respawn": 0,
             "particle.freeze": 0,
-            "particle.clearPins": 0
+            "particle.clearPins": 0,
+            "sdf.orbitX": 0,
+            "sdf.orbitY": 0,
+            "sdf.camDist": 5,
+            "sdf.tile": 0
           },
           "fxOrder": [
             "pixelate",
@@ -10479,38 +10621,6 @@
                 "y": 60
               }
             },
-            "sdf.camX": {
-              "id": "sdf.camX",
-              "value": 0,
-              "controller": null,
-              "table": null,
-              "ctrlMin": -1.1458435058593746,
-              "ctrlMax": 1.0825195312499991,
-              "invert": false,
-              "cycle": false,
-              "slew": 0,
-              "feedbackVisible": false,
-              "feedbackPos": {
-                "x": 20,
-                "y": 60
-              }
-            },
-            "sdf.camY": {
-              "id": "sdf.camY",
-              "value": 0,
-              "controller": null,
-              "table": "Smooooth",
-              "ctrlMin": -1.3972259521484371,
-              "ctrlMax": 1.6362182617187493,
-              "invert": false,
-              "cycle": false,
-              "slew": 0,
-              "feedbackVisible": false,
-              "feedbackPos": {
-                "x": 20,
-                "y": 60
-              }
-            },
             "particle.emity": {
               "id": "particle.emity",
               "value": 98.1933746425914,
@@ -10603,6 +10713,38 @@
               "invert": false,
               "cycle": false,
               "slew": 0.03,
+              "feedbackVisible": false,
+              "feedbackPos": {
+                "x": 20,
+                "y": 60
+              }
+            },
+            "sdf.orbitX": {
+              "id": "sdf.orbitX",
+              "value": 0,
+              "controller": null,
+              "table": null,
+              "ctrlMin": 0,
+              "ctrlMax": 360,
+              "invert": false,
+              "cycle": false,
+              "slew": 0,
+              "feedbackVisible": false,
+              "feedbackPos": {
+                "x": 20,
+                "y": 60
+              }
+            },
+            "sdf.orbitY": {
+              "id": "sdf.orbitY",
+              "value": 0,
+              "controller": null,
+              "table": "Smooooth",
+              "ctrlMin": -180,
+              "ctrlMax": 180,
+              "invert": false,
+              "cycle": false,
+              "slew": 0,
               "feedbackVisible": false,
               "feedbackPos": {
                 "x": 20,
@@ -10827,11 +10969,8 @@
             "sdf.opAmount": 0.5,
             "sdf.distance": 1.5,
             "sdf.shape": 0,
-            "sdf.repeat": 0,
+            "sdf.repeat": 3,
             "sdf.warp": 0,
-            "sdf.camX": 0,
-            "sdf.camY": 0,
-            "sdf.camZ": 5,
             "sdf.kifsIter": 0,
             "sdf.kifsAngle": 0,
             "sdf.lumaWarp": 0,
@@ -11159,7 +11298,11 @@
             "particle.ng3.radius": 0.06802270813531328,
             "particle.respawn": 0,
             "particle.freeze": 0,
-            "particle.clearPins": 0
+            "particle.clearPins": 0,
+            "sdf.orbitX": 0,
+            "sdf.orbitY": 0,
+            "sdf.camDist": 5,
+            "sdf.tile": 0
           },
           "fxOrder": [
             "pixelate",
@@ -11306,38 +11449,6 @@
                 "y": 60
               }
             },
-            "sdf.camX": {
-              "id": "sdf.camX",
-              "value": 0,
-              "controller": null,
-              "table": null,
-              "ctrlMin": -1.1458435058593746,
-              "ctrlMax": 1.0825195312499991,
-              "invert": false,
-              "cycle": false,
-              "slew": 0,
-              "feedbackVisible": false,
-              "feedbackPos": {
-                "x": 20,
-                "y": 60
-              }
-            },
-            "sdf.camY": {
-              "id": "sdf.camY",
-              "value": 0,
-              "controller": null,
-              "table": "Smooooth",
-              "ctrlMin": -1.3972259521484371,
-              "ctrlMax": 1.6362182617187493,
-              "invert": false,
-              "cycle": false,
-              "slew": 0,
-              "feedbackVisible": false,
-              "feedbackPos": {
-                "x": 20,
-                "y": 60
-              }
-            },
             "particle.emity": {
               "id": "particle.emity",
               "value": 98.1933746425914,
@@ -11435,6 +11546,38 @@
                 "x": 20,
                 "y": 60
               }
+            },
+            "sdf.orbitX": {
+              "id": "sdf.orbitX",
+              "value": 0,
+              "controller": null,
+              "table": null,
+              "ctrlMin": 0,
+              "ctrlMax": 360,
+              "invert": false,
+              "cycle": false,
+              "slew": 0,
+              "feedbackVisible": false,
+              "feedbackPos": {
+                "x": 20,
+                "y": 60
+              }
+            },
+            "sdf.orbitY": {
+              "id": "sdf.orbitY",
+              "value": 0,
+              "controller": null,
+              "table": "Smooooth",
+              "ctrlMin": -180,
+              "ctrlMax": 180,
+              "invert": false,
+              "cycle": false,
+              "slew": 0,
+              "feedbackVisible": false,
+              "feedbackPos": {
+                "x": 20,
+                "y": 60
+              }
             }
           },
           "mediaRefs": {
@@ -11453,789 +11596,13 @@
           "name": null,
           "thumbnail": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/4gHYSUNDX1BST0ZJTEUAAQEAAAHIAAAAAAQwAABtbnRyUkdCIFhZWiAH4AABAAEAAAAAAABhY3NwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQAA9tYAAQAAAADTLQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAlkZXNjAAAA8AAAACRyWFlaAAABFAAAABRnWFlaAAABKAAAABRiWFlaAAABPAAAABR3dHB0AAABUAAAABRyVFJDAAABZAAAAChnVFJDAAABZAAAAChiVFJDAAABZAAAAChjcHJ0AAABjAAAADxtbHVjAAAAAAAAAAEAAAAMZW5VUwAAAAgAAAAcAHMAUgBHAEJYWVogAAAAAAAAb6IAADj1AAADkFhZWiAAAAAAAABimQAAt4UAABjaWFlaIAAAAAAAACSgAAAPhAAAts9YWVogAAAAAAAA9tYAAQAAAADTLXBhcmEAAAAAAAQAAAACZmYAAPKnAAANWQAAE9AAAApbAAAAAAAAAABtbHVjAAAAAAAAAAEAAAAMZW5VUwAAACAAAAAcAEcAbwBvAGcAbABlACAASQBuAGMALgAgADIAMAAxADb/2wBDAAoHBwgHBgoICAgLCgoLDhgQDg0NDh0VFhEYIx8lJCIfIiEmKzcvJik0KSEiMEExNDk7Pj4+JS5ESUM8SDc9Pjv/2wBDAQoLCw4NDhwQEBw7KCIoOzs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozv/wAARCABaAKADASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAf/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFAEBAAAAAAAAAAAAAAAAAAAAAP/EABQRAQAAAAAAAAAAAAAAAAAAAAD/2gAMAwEAAhEDEQA/AIyAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD/2Q==",
           "created": 1781142576780
-        },
-        {
-          "values": {
-            "layer.fg": 21,
-            "layer.bg": 26,
-            "layer.ds": 0,
-            "layer.fg.blend": 0,
-            "layer.bg.blend": 0,
-            "layer.fg.blendAmount": 1,
-            "layer.bg.blendAmount": 1,
-            "keyer.active": 1,
-            "keyer.white": 80,
-            "keyer.black": 10,
-            "keyer.softness": 20.16009521484375,
-            "keyer.extkey": 0,
-            "keyer.and_displace": 0,
-            "keyer.alpha": 0,
-            "keyer.alpha_inv": 0,
-            "keyer.rawkey": 0,
-            "keyer.chroma": 0,
-            "keyer.chromahue": 120,
-            "keyer.chromarange": 20,
-            "keyer.chromasoft": 10,
-            "displace.amount": 0,
-            "displace.angle": 0,
-            "displace.offset": 0,
-            "displace.rotateg": 0,
-            "displace.warp": 0,
-            "displace.warpamt": 50,
-            "displace.warpDrawX": 50,
-            "displace.warpDrawY": 50,
-            "displace.warpDrawAmt": 100,
-            "displace.warpPreset": 0,
-            "displace.warpDrawRadius": 18,
-            "displace.warpDrawFixed": 0,
-            "displace.warpDrawAngle": 0,
-            "displace.warpSlotFade": 0,
-            "displace.warpFade": 0,
-            "blend.active": 0,
-            "feedback.active": 1,
-            "blend.amount": 50,
-            "feedback.hor": 0,
-            "feedback.ver": 0,
-            "feedback.scale": 0,
-            "feedback.rotate": 0,
-            "feedback.zoom": 0,
-            "output.colorshift": 0,
-            "feedback.mode": 0,
-            "output.interlace": 0,
-            "output.fade": 0,
-            "output.solo": 0,
-            "color1.hue": 0,
-            "color1.sat": 80,
-            "color1.val": 60,
-            "color2.hue": 50,
-            "color2.sat": 80,
-            "color2.val": 60,
-            "color2.type": 0,
-            "color2.speed": 0,
-            "palette.fg.hue": 0,
-            "palette.fg.sat": 100,
-            "palette.fg.val": 100,
-            "palette.bg.hue": 240,
-            "palette.bg.sat": 80,
-            "palette.bg.val": 60,
-            "noise.type": 6,
-            "noise.family": 1,
-            "noise.color": 2,
-            "noise.scale": 9.9,
-            "noise.octaves": 4,
-            "noise.lacunarity": 1.4000000000000001,
-            "noise.gain": 0.5,
-            "noise.swirl": 0,
-            "noise.ridge": 0,
-            "noise.speed": 0.6000000000000001,
-            "noise.offsetX": 0,
-            "noise.offsetY": 0,
-            "noise.contrast": 1.1500000000000001,
-            "noise.sharpen": 100,
-            "noise.invert": 0,
-            "noise.seed": 0,
-            "noise.period.x": 8,
-            "noise.period.y": 8,
-            "noise.alpha": 0,
-            "noise.col1.r": 0,
-            "noise.col1.g": 0,
-            "noise.col1.b": 0,
-            "noise.col2.r": 0.749,
-            "noise.col2.g": 0.976,
-            "noise.col2.b": 0.745,
-            "particle.col1.r": 0.10200000000000001,
-            "particle.col1.g": 0.2,
-            "particle.col1.b": 0.8,
-            "particle.col2.r": 1,
-            "particle.col2.g": 0.3,
-            "particle.col2.b": 0.10200000000000001,
-            "mirror.fg": 0,
-            "mirror.bg": 0,
-            "mirror.camera": 0,
-            "mirror.movie": 0,
-            "mirror.buffer": 0,
-            "buffer.source": 0,
-            "buffer.rows": 4,
-            "buffer.cols": 4,
-            "buffer.auto": 0,
-            "buffer.rate": 1,
-            "buffer.panX": 50,
-            "buffer.panY": 50,
-            "buffer.scale": 1,
-            "buffer.fs1": 0,
-            "buffer.fs2": 0,
-            "buffer.frameblend": 0,
-            "buffer.fs3": 0,
-            "buffer.scatter": 0,
-            "buffer.grainrate": 4,
-            "buffer.scan": 0,
-            "buffer.scanrate": 8,
-            "buffer.scandir": 0,
-            "buffer.cap_screen": 0,
-            "buffer.cap_video": 0,
-            "buffer.cap_movie": 0,
-            "buffer.capture": 0,
-            "movie.active": 1,
-            "movie.speed": 1,
-            "movie.pos": 0,
-            "movie.start": 0,
-            "movie.end": 100,
-            "movie.loop": 1,
-            "movie.mute": 1,
-            "movie.bpmsync": 0,
-            "movie.bpmbeats": 2,
-            "movieB.active": 1,
-            "movieB.speed": 1,
-            "movieB.pos": 0,
-            "movieB.start": 0,
-            "movieB.end": 100,
-            "movieB.loop": 1,
-            "movieB.mute": 1,
-            "movieB.bpmsync": 0,
-            "movieB.bpmbeats": 2,
-            "movie.mirror": 0,
-            "mix.srcA": 5,
-            "mix.srcB": 1,
-            "mix.xfade": 1,
-            "mix.mode": 3,
-            "mix.dispAmt": 0.1,
-            "mix.maskLo": 0.25,
-            "mix.maskHi": 0.75,
-            "mix2.srcA": 1,
-            "mix2.srcB": 25,
-            "mix2.xfade": 0,
-            "mix2.mode": 0,
-            "mix2.dispAmt": 0.1,
-            "mix2.maskLo": 0.25,
-            "mix2.maskHi": 0.75,
-            "mix3.srcA": 1,
-            "mix3.srcB": 25,
-            "mix3.xfade": 0,
-            "mix3.mode": 0,
-            "mix3.dispAmt": 0.1,
-            "mix3.maskLo": 0.25,
-            "mix3.maskHi": 0.75,
-            "clip.recordSrc": 0,
-            "clip.bank": 0,
-            "clip.slot": 0,
-            "clip.duration": 5,
-            "clip.record": 0,
-            "clip.recall": 0,
-            "camera.active": 1,
-            "camera.device": 0,
-            "scene3d.active": 0,
-            "scene3d.geo": 0,
-            "scene3d.rot.x": 0,
-            "scene3d.rot.y": 0,
-            "scene3d.rot.z": 0,
-            "scene3d.pos.screenspace": 0,
-            "scene3d.pos.x": 0,
-            "scene3d.pos.y": 0,
-            "scene3d.pos.z": 0,
-            "scene3d.scale": 1,
-            "scene3d.norm": 2,
-            "scene3d.wireframe": 0,
-            "scene3d.cam.fov": 60,
-            "scene3d.cam.x": 0,
-            "scene3d.cam.y": 0,
-            "scene3d.cam.z": 5,
-            "scene3d.mat.roughness": 0.5,
-            "scene3d.mat.metalness": 0,
-            "scene3d.mat.emissive": 0,
-            "scene3d.mat.opacity": 1,
-            "scene3d.mat.hue": 0,
-            "scene3d.mat.sat": 0,
-            "scene3d.mat.texsrc": 0,
-            "scene3d.mat.type": 0,
-            "scene3d.mat.clearcoat": 0,
-            "scene3d.mat.transmit": 0,
-            "scene3d.mat.ior": 1.5,
-            "scene3d.mat.toonSteps": 4,
-            "scene3d.mat.uvSpeedX": 0,
-            "scene3d.mat.uvSpeedY": 0,
-            "scene3d.mat.rim": 0,
-            "scene3d.mat.rimHue": 180,
-            "scene3d.mat.emissiveHue": 0,
-            "scene3d.mat.emissiveSat": 0,
-            "scene3d.mat.displace": 0,
-            "scene3d.mat.tDisplace": 0,
-            "scene3d.mat.dispScale": 1,
-            "scene3d.mat.dispSpeed": 0.5,
-            "scene3d.mat.dispTexScale": 1,
-            "scene3d.mat.dispTexProj": 0,
-            "scene3d.mat.envIntensity": 1,
-            "scene3d.light.intensity": 1,
-            "scene3d.light.ambient": 0.4,
-            "scene3d.light.point": 0.6,
-            "scene3d.light.dirX": 3,
-            "scene3d.light.dirY": 5,
-            "scene3d.light.dirZ": 3,
-            "scene3d.spin.x": 0,
-            "scene3d.spin.y": 0,
-            "scene3d.spin.z": 0,
-            "scene3d.depth.active": 0,
-            "scene3d.depth.mode": 0,
-            "scene3d.anim.active": 0,
-            "scene3d.anim.select": 0,
-            "scene3d.anim.speed": 1,
-            "scene3d.clone.mode": 0,
-            "scene3d.clone.count": 9,
-            "scene3d.clone.spread": 2,
-            "scene3d.clone.wave": 0,
-            "scene3d.clone.waveshape": 0,
-            "scene3d.clone.waveamp": 0,
-            "scene3d.clone.wavefreq": 1,
-            "scene3d.clone.twist": 0,
-            "scene3d.clone.scatter": 0,
-            "scene3d.clone.scale": 1,
-            "scene3d.clone.scalestep": 0,
-            "scene3d.blob.amount": 0,
-            "scene3d.blob.scale": 1,
-            "scene3d.blob.speed": 1,
-            "sdf.active": 1,
-            "sdf.opMode": 1,
-            "sdf.opAmount": 0.31,
-            "sdf.distance": 1.9500000000000002,
-            "sdf.shape": 0,
-            "sdf.repeat": 0,
-            "sdf.warp": 0.13,
-            "sdf.camX": 0,
-            "sdf.camY": 1.85,
-            "sdf.camZ": 2,
-            "sdf.kifsIter": 0,
-            "sdf.kifsAngle": 0,
-            "sdf.lumaWarp": 0,
-            "sdf.speed": 0.11,
-            "sdf.lumaThresh": 0.2,
-            "sdf.texBlend": 1,
-            "sdf.ao": 0.5,
-            "sdf.glow": 0,
-            "sdf.hue": 0,
-            "sdf.sat": 0,
-            "sdf.val": 0.8200000000000001,
-            "sdf.refract": 0.67,
-            "sdf.fresnel": 0.49,
-            "sdf.texSrc": 0,
-            "sdf.refractSrc": 0,
-            "draw.pensize": 0,
-            "draw.erasesize": 10,
-            "draw.x": 50,
-            "draw.y": 50,
-            "draw.color.h": 0,
-            "draw.color.s": 0,
-            "draw.color.v": 100,
-            "draw.opacity": 100,
-            "draw.fade": 0,
-            "draw.clear": 0,
-            "draw.inkSource": 0,
-            "draw.pressure.size": 100,
-            "draw.pressure.opacity": 0,
-            "draw.toParticles": 0,
-            "drawloop1.rec": 0,
-            "drawloop1.play": 0,
-            "drawloop1.clear": 0,
-            "drawloop1.speed": 100,
-            "drawloop2.rec": 0,
-            "drawloop2.play": 0,
-            "drawloop2.clear": 0,
-            "drawloop2.speed": 100,
-            "drawloop3.rec": 0,
-            "drawloop3.play": 0,
-            "drawloop3.clear": 0,
-            "drawloop3.speed": 100,
-            "drawloop4.rec": 0,
-            "drawloop4.play": 0,
-            "drawloop4.clear": 0,
-            "drawloop4.speed": 100,
-            "text.size": 72,
-            "text.x": 50,
-            "text.y": 50,
-            "text.hue": 0,
-            "text.sat": 0,
-            "text.opacity": 24.84417724609375,
-            "text.align": 0,
-            "text.font": 0,
-            "text.outline": 0,
-            "text.spacing": 1.2,
-            "text.mode": 0,
-            "text.bg": 1,
-            "text.advance": 1,
-            "text.autoplay": 0,
-            "text.rate": 0,
-            "text.letterspacing": 31.3750732421875,
-            "text.rotation": 0,
-            "text.shadowBlur": 13.136645507812501,
-            "text.shadowX": 0,
-            "text.shadowY": 0,
-            "text.bgOpacity": 100,
-            "text.outlineHue": 0,
-            "text.outlineSat": 0,
-            "text.animMode": 3,
-            "text.animSpeed": 0.6038513183593749,
-            "text.animAmt": 100,
-            "text.contentIdx": 60,
-            "text.progress": 0,
-            "text.auto": 0.6,
-            "text.anim.in": 5,
-            "text.anim.out": 6,
-            "text.anim.dur": 1.2,
-            "text.anim.ease": 0,
-            "screen.bg1": 0,
-            "screen.bg2": 0,
-            "output.interp": 0,
-            "output.resolution": 0,
-            "fg.hue": 0,
-            "fg.sat": 100,
-            "fg.bright": 100,
-            "fg.opacity": 100,
-            "bg.hue": 0,
-            "bg.sat": 100,
-            "bg.bright": 100,
-            "bg.opacity": 100,
-            "effect.pixelate": 1,
-            "effect.edge": 0,
-            "effect.edge_inv": 0,
-            "effect.rgbshift": 0,
-            "effect.rgbangle": 0,
-            "effect.posterize": 32,
-            "effect.solarize": 100,
-            "effect.kaleidoscope": 0,
-            "effect.kalerot": 0,
-            "effect.vignette": 0,
-            "effect.vigradius": 65,
-            "effect.bloom": 0,
-            "effect.bloomthresh": 70,
-            "effect.lvblack": 0,
-            "effect.lvwhite": 100,
-            "effect.lvgamma": 100,
-            "effect.quadmirror": 0,
-            "effect.strobe": 0,
-            "effect.stroberate": 8,
-            "effect.strobeduty": 50,
-            "effect.grain": 0,
-            "effect.scanlines": 0,
-            "effect.lutamount": 100,
-            "effect.wbtemp": 0,
-            "effect.wbtint": 0,
-            "effect.pixelsort": 0,
-            "effect.psortlen": 64,
-            "effect.psortthresh": 30,
-            "effect.psortdir": 0,
-            "effect.psortmode": 0,
-            "delay.frames": 5,
-            "particle.count": 4,
-            "particle.spread": 90,
-            "particle.size": 1,
-            "particle.masksrc": 0,
-            "particle.emitter": 0,
-            "particle.emitx": 50,
-            "particle.emity": 50,
-            "vasulka.active": 0,
-            "vasulka.freqh": 3,
-            "vasulka.freqv": 0,
-            "vasulka.amph": 20,
-            "vasulka.ampv": 0,
-            "vasulka.phase": 0,
-            "vasulka.freq2": 7,
-            "vasulka.amp2": 0,
-            "vasulka.color": 0,
-            "slitscan.active": 0,
-            "slitscan.pos": 50,
-            "slitscan.speed": 15,
-            "slitscan.axis": 0,
-            "slitscan.width": 2,
-            "slitscan.clear": 0,
-            "td.enabled": 0,
-            "td.captureSource": 0,
-            "td.mode": 4,
-            "td.bufferResolution": 3,
-            "td.upscaleFilter": 1,
-            "td.maxDelay": 119,
-            "td.delayCurve": 1,
-            "td.direction": 0,
-            "td.scanPosition": 0,
-            "td.scanPosY": 0.5,
-            "td.scanWidth": 0,
-            "td.invertMap": 0,
-            "vwarp.active": 0,
-            "vwarp.axis": 0,
-            "vwarp.flip": 0,
-            "vwarp.mix": 1,
-            "vwarp.bufsize": 1,
-            "vwarp.speed": 1,
-            "seq1.active": 0,
-            "seq1.source": 0,
-            "seq1.speed": 100,
-            "seq1.size": 55,
-            "seq2.active": 0,
-            "seq2.source": 0,
-            "seq2.speed": 136,
-            "seq2.size": 60,
-            "seq3.active": 0,
-            "seq3.source": 0,
-            "seq3.speed": 100,
-            "seq3.size": 60,
-            "seq1.mode": 0,
-            "seq1.tw.axis": 0,
-            "seq1.tw.flip": 0,
-            "seq1.tw.speed": 1,
-            "seq1.tw.mix": 100,
-            "seq1.tw.offset": 0,
-            "seq1.tw.warp": 0,
-            "seq2.mode": 0,
-            "seq2.tw.axis": 0,
-            "seq2.tw.flip": 0,
-            "seq2.tw.speed": 1,
-            "seq2.tw.mix": 100,
-            "seq2.tw.offset": 0,
-            "seq2.tw.warp": 0,
-            "seq3.mode": 0,
-            "seq3.tw.axis": 0,
-            "seq3.tw.flip": 0,
-            "seq3.tw.speed": 1,
-            "seq3.tw.mix": 100,
-            "seq3.tw.offset": 0,
-            "seq3.tw.warp": 0,
-            "vectorscope.mode": 10,
-            "vectorscope.gain": 200,
-            "vectorscope.decay": 99,
-            "vectorscope.linewidth": 15,
-            "vectorscope.glow": 0,
-            "vectorscope.color": 6,
-            "glsl.param1": 0.4,
-            "glsl.param2": 0.5,
-            "glsl.param3": 0,
-            "glsl.param4": 0.79,
-            "glsl.target": 0,
-            "projmap.active": 0,
-            "projmap.tl_x": 0,
-            "projmap.tl_y": 0,
-            "projmap.tr_x": 1,
-            "projmap.tr_y": 0,
-            "projmap.br_x": 1,
-            "projmap.br_y": 1,
-            "projmap.bl_x": 0,
-            "projmap.bl_y": 1,
-            "analog.sourceType": 0,
-            "analog.crop43": 1,
-            "analog.brightness": 0,
-            "analog.contrast": 100,
-            "analog.saturation": 100,
-            "analog.hueOffset": 0,
-            "analog.crt.scanlines": 30,
-            "analog.crt.bloom": 15,
-            "analog.crt.vignette": 40,
-            "analog.crt.curvature": 25,
-            "analog.crt.yokeRing": 0,
-            "analog.crt.svm": 0,
-            "analog.crt.bowl": 0,
-            "analog.crt.ripple": 0,
-            "analog.crt.decay": 30,
-            "analog.crt.halation": 10,
-            "analog.crt.bwCRT": 0,
-            "analog.crt.beamScan": 0,
-            "analog.crt.waterLens": 0,
-            "analog.crt.phosphor": 0,
-            "analog.crt.maskType": 0,
-            "analog.rf.ghost1Str": 0,
-            "analog.rf.ghost1Delay": 8,
-            "analog.rf.ghost2Str": 0,
-            "analog.rf.ghost2Delay": 20,
-            "analog.rf.ghost3Str": 0,
-            "analog.rf.ghost3Delay": 4,
-            "analog.rf.flutter": 0,
-            "analog.rf.impulse": 0,
-            "analog.rf.ringing": 0,
-            "analog.rf.hum": 0,
-            "analog.rf.cochannel": 0,
-            "analog.composite.dotCrawl": 0,
-            "analog.composite.crossColor": 0,
-            "analog.composite.chromaBleed": 0,
-            "analog.composite.rainbow": 0,
-            "analog.tuner.hHold": 0,
-            "analog.tuner.vHold": 0,
-            "analog.tuner.hPos": 50,
-            "analog.tuner.vPos": 50,
-            "analog.tuner.rfTune": 50,
-            "analog.tuner.interlaced": 0,
-            "analog.tuner.standard": 1,
-            "analog.tuner.variant": 0,
-            "analog.tuner.hanoverBars": 0,
-            "analog.tuner.delayLineErr": 0,
-            "analog.tuner.decoder": 0,
-            "teletext.page": 0,
-            "teletext.subpageInterval": 5,
-            "teletext.pollInterval": 300,
-            "teletext.latitude": 64.1466,
-            "teletext.longitude": -21.942600000000002,
-            "teletext.subPageNext": 0,
-            "teletext.subPagePrev": 0,
-            "teletext.cursorUp": 0,
-            "teletext.cursorDown": 0,
-            "teletext.openItem": 0,
-            "teletext.openItem1": 0,
-            "teletext.openItem2": 0,
-            "teletext.openItem3": 0,
-            "teletext.openItem4": 0,
-            "teletext.openItem5": 0,
-            "teletext.openItem6": 0,
-            "teletext.openItem7": 0,
-            "teletext.openItem8": 0,
-            "teletext.articleFetch": 1,
-            "hypercube.dim": 4,
-            "hypercube.morphDuration": 2000,
-            "hypercube.wDistance": 3,
-            "hypercube.scale": 1,
-            "hypercube.edgeOpacity": 1,
-            "hypercube.pointSize": 3,
-            "hypercube.rot.xy": 0.3,
-            "hypercube.rot.xz": 0.2,
-            "hypercube.rot.yz": 0.15,
-            "hypercube.rot.xw": 0.4,
-            "hypercube.edgeWidth": 1.5,
-            "hypercube.renderMode": 3,
-            "hypercube.projMode": 0,
-            "hypercube.faces.active": 0,
-            "hypercube.faces.opacity": 0.5,
-            "hypercube.faces.blend": 0,
-            "hypercube.faces.hue": 0,
-            "hypercube.faces.sat": 0,
-            "hypercube.faces.texsrc": 0,
-            "hypercube.faces.masksrc": 0,
-            "hypercube.faces.maskinv": 0,
-            "hypercube.faces.masklvl": 1,
-            "hypercube.inst.active": 0,
-            "hypercube.inst.geo": 0,
-            "hypercube.inst.scale": 0.08,
-            "hypercube.inst.opacity": 1,
-            "hypercube.inst.texsrc": 0,
-            "particle.w.gradient": 0.4,
-            "particle.w.flow": 0.3,
-            "particle.w.nbody": 0.1,
-            "particle.w.ghost": 0.2,
-            "particle.trailDecay": 0.93,
-            "particle.colorMode": 0,
-            "particle.fieldStrength": 1,
-            "particle.inertia": 0.3,
-            "particle.lifeDecay": 0.005,
-            "particle.boundaryMode": 1,
-            "particle.flowFormula": 0,
-            "particle.lorenz.rho": 28,
-            "particle.lorenz.sigma": 10,
-            "particle.lorenz.beta": 2.67,
-            "particle.nbody.radius": 0.1,
-            "particle.nbody.falloff": 2,
-            "particle.nbody.mode": 0,
-            "particle.ghost.strength": 0.4,
-            "particle.ghost.mode": 0,
-            "particle.ghost.radius": 0.08,
-            "particle.ghost.fadetime": 0.8,
-            "particle.ng1.on": 0,
-            "particle.ng1.x": 50,
-            "particle.ng1.y": 50,
-            "particle.ng1.mode": 0,
-            "particle.ng1.strength": 1,
-            "particle.ng1.radius": 0.1,
-            "particle.ng2.on": 0,
-            "particle.ng2.x": 50,
-            "particle.ng2.y": 50,
-            "particle.ng2.mode": 0,
-            "particle.ng2.strength": 1,
-            "particle.ng2.radius": 0.1,
-            "particle.ng3.on": 0,
-            "particle.ng3.x": 50,
-            "particle.ng3.y": 50,
-            "particle.ng3.mode": 0,
-            "particle.ng3.strength": 1,
-            "particle.ng3.radius": 0.1,
-            "particle.respawn": 0,
-            "particle.freeze": 0,
-            "particle.clearPins": 0
-          },
-          "fxOrder": [
-            "pixelate",
-            "edge",
-            "rgbshift",
-            "kaleidoscope",
-            "quadmirror",
-            "posterize",
-            "solarize",
-            "vignette",
-            "bloom",
-            "levels",
-            "lut",
-            "whitebal",
-            "pixelsort",
-            "grain"
-          ],
-          "controllers": {
-            "feedback.ver": {
-              "id": "feedback.ver",
-              "value": 0,
-              "controller": null,
-              "table": null,
-              "ctrlMin": -64.96727600097657,
-              "ctrlMax": 60.7489990234375,
-              "invert": false,
-              "cycle": false,
-              "slew": 1.08138427734375,
-              "feedbackVisible": false,
-              "feedbackPos": {
-                "x": 20,
-                "y": 60
-              }
-            },
-            "feedback.rotate": {
-              "id": "feedback.rotate",
-              "value": 0,
-              "controller": null,
-              "table": null,
-              "ctrlMin": -5.473329162597658,
-              "ctrlMax": 5.693811035156251,
-              "invert": false,
-              "cycle": false,
-              "slew": 0.751533203125,
-              "feedbackVisible": false,
-              "feedbackPos": {
-                "x": 20,
-                "y": 60
-              }
-            },
-            "feedback.zoom": {
-              "id": "feedback.zoom",
-              "value": 0,
-              "controller": null,
-              "table": null,
-              "ctrlMin": null,
-              "ctrlMax": 70.08380737304688,
-              "invert": false,
-              "cycle": false,
-              "slew": 1.1826605224609374,
-              "feedbackVisible": false,
-              "feedbackPos": {
-                "x": 20,
-                "y": 60
-              }
-            },
-            "scene3d.scale": {
-              "id": "scene3d.scale",
-              "value": 1,
-              "controller": null,
-              "table": null,
-              "ctrlMin": 1.025911865234375,
-              "ctrlMax": 2.0039306640624996,
-              "invert": false,
-              "cycle": false,
-              "slew": 0,
-              "feedbackVisible": false,
-              "feedbackPos": {
-                "x": 20,
-                "y": 60
-              }
-            },
-            "sdf.camX": {
-              "id": "sdf.camX",
-              "value": 0,
-              "controller": null,
-              "table": null,
-              "ctrlMin": -1.1458435058593746,
-              "ctrlMax": 1.0825195312499991,
-              "invert": false,
-              "cycle": false,
-              "slew": 0,
-              "feedbackVisible": false,
-              "feedbackPos": {
-                "x": 20,
-                "y": 60
-              }
-            },
-            "sdf.camY": {
-              "id": "sdf.camY",
-              "value": 1.85,
-              "controller": null,
-              "table": "Smooooth",
-              "ctrlMin": -1.3972259521484371,
-              "ctrlMax": 1.6362182617187493,
-              "invert": false,
-              "cycle": false,
-              "slew": 0,
-              "feedbackVisible": false,
-              "feedbackPos": {
-                "x": 20,
-                "y": 60
-              }
-            },
-            "particle.emity": {
-              "id": "particle.emity",
-              "value": 50,
-              "controller": null,
-              "table": "log",
-              "ctrlMin": null,
-              "ctrlMax": null,
-              "invert": false,
-              "cycle": false,
-              "slew": 0.345252685546875,
-              "feedbackVisible": false,
-              "feedbackPos": {
-                "x": 20,
-                "y": 60
-              }
-            },
-            "glsl.param2": {
-              "id": "glsl.param2",
-              "value": 0.5,
-              "controller": null,
-              "table": "S-curve",
-              "ctrlMin": null,
-              "ctrlMax": null,
-              "invert": false,
-              "cycle": false,
-              "slew": 2.1701702880859375,
-              "feedbackVisible": false,
-              "feedbackPos": {
-                "x": 20,
-                "y": 60
-              }
-            },
-            "particle.ng1.radius": {
-              "id": "particle.ng1.radius",
-              "value": 0.1,
-              "controller": null,
-              "table": null,
-              "ctrlMin": null,
-              "ctrlMax": 0.23793945312499998,
-              "invert": false,
-              "cycle": false,
-              "slew": 0.9497882080078125,
-              "feedbackVisible": false,
-              "feedbackPos": {
-                "x": 20,
-                "y": 60
-              }
-            }
-          },
-          "mediaRefs": {
-            "movie": null,
-            "scene3d": null,
-            "text": null,
-            "buffer": null
-          },
-          "pins": [],
-          "extra": {
-            "textContent": [
-              "ImWeb"
-            ],
-            "scene3dHasImport": false
-          },
-          "name": null,
-          "thumbnail": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/4gHYSUNDX1BST0ZJTEUAAQEAAAHIAAAAAAQwAABtbnRyUkdCIFhZWiAH4AABAAEAAAAAAABhY3NwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQAA9tYAAQAAAADTLQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAlkZXNjAAAA8AAAACRyWFlaAAABFAAAABRnWFlaAAABKAAAABRiWFlaAAABPAAAABR3dHB0AAABUAAAABRyVFJDAAABZAAAAChnVFJDAAABZAAAAChiVFJDAAABZAAAAChjcHJ0AAABjAAAADxtbHVjAAAAAAAAAAEAAAAMZW5VUwAAAAgAAAAcAHMAUgBHAEJYWVogAAAAAAAAb6IAADj1AAADkFhZWiAAAAAAAABimQAAt4UAABjaWFlaIAAAAAAAACSgAAAPhAAAts9YWVogAAAAAAAA9tYAAQAAAADTLXBhcmEAAAAAAAQAAAACZmYAAPKnAAANWQAAE9AAAApbAAAAAAAAAABtbHVjAAAAAAAAAAEAAAAMZW5VUwAAACAAAAAcAEcAbwBvAGcAbABlACAASQBuAGMALgAgADIAMAAxADb/2wBDAAoHBwgHBgoICAgLCgoLDhgQDg0NDh0VFhEYIx8lJCIfIiEmKzcvJik0KSEiMEExNDk7Pj4+JS5ESUM8SDc9Pjv/2wBDAQoLCw4NDhwQEBw7KCIoOzs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozv/wAARCABaAKADASIAAhEBAxEB/8QAGwAAAgMBAQEAAAAAAAAAAAAAAAQBAwUCBgf/xAA3EAABBAECAwUHAwIHAQAAAAABAAIDEQQSIQUxQRMiUWGBFDJxkaGxwULh8CNSBhU0Q2KS0fH/xAAXAQEBAQEAAAAAAAAAAAAAAAAAAQID/8QAHxEBAQEAAgMAAwEAAAAAAAAAAAERAiESMVETIkFh/9oADAMBAAIRAxEAPwD4yhCEAhCKQCF0GEq6PH1oF6KkNJTnsjmmiFdHiauiiazxG4qexd4LWZhX0V7MHxCamsEwu8FBjcOi9J/lgcOSol4Y5h93ZTTyYOkqKK1ZMEjcD0S78Q1YC1O2p2SQrzBYsDcKt0RCDhCCCEIBCEIBCFIFlANbavjhvnsiMN6g/NNxFg/Q7/t+yImPD1NsEH8JiHhs2rUBTR+ropicxrg4ROscjq/ZakOaap2IH6veLjd/Sk6+ppOVtVG8NJ8Wiz90zHhtZJTtTT4ONH5Va0sV8Dhpmgewf3BwPpVUn8fhWJMwxy66ddSPphA8PD7KbrN5azocFjxqD2gfA/8AiubhNHVtXV9E4OE+zY4dFkSMeL0gsoHpv3iPkEnMJGOcRLE7vWDdOPl3uXjspYmf6vjwvCj8Fc7h7XRklqS9pkhdUjHN3PmNvMnf1Pom2ZznAsDrN1pO9m+X/wBWbGbLGZkYUQJorPlw9JLmVy3HitTKk7xAG6oigLna5O6zqSrx3WpbGM/C0Gz+vkl3YttWzkzNkc4shJjJoHrfxXUWE72Zwf7w2rz/AJS1b1q68tNBpHJLObRWznRgPIHILMkj3SNyqEKS2lCqhWRsJKrHNMwuDUDWPiOeRt81r4vCdVFzmNHiSs3HyHNI0NA9LW1hapsZzjZeHVQNbbHopZPrFWDGxsaMOksno0DnsnMdrXuIxscyM02T2d6TXK+iqhibK4NlddjkeinCifHxNrYJgC3ew/n5WFrjk9ksntoRmJ+7ZiN6LNbg0ePguJo4wQ7sY3EmqDiBfmbv6KqGCSQvMjnuYbcCHUNubvM+aaZBBFCDMx7C9pq20Sb32+ilv9jGfCWhwc5vYM1DZwYX36d7fp80SxUHCw8Ee6SK+t18kZk00cJdjimsd7pFlovmD4WN9/Lray8nIyGs528Hk6gfDfzvqKUVpRwnGGpkb+9ybG8OaXDy3vl5ei7d2M0AmiDQWd2Rh2LT8Oek7fv1z8WfLe0yzOMdkXqs3tt9Pv8ABOtLWiUymi/S0OBo1Y+fM/IWmQxU0h8jXPaTpoVzryKrlnfkEtIG+2lv5PQKyNry57ISHncWBRI3Hpsft5rQxuFxkdm6UMkouAYLAoE3dpltyGKcPCd7ITpdZN+DR0/n8uZ2aYnNZVhtAJjIz2NYI20AOTRyCzZpy4aiDXRYy24z3WVkYTiSXlo9Vnz47GXW5WvMXEWRQO4J2Hp4rNyGnfmfoP3W5xrcZMzaKoTU4opU81XQK2M7qpdMdRQaeK2yCdgvRcPfpjYzqOh+y8vDNQq+ey18fIogg8lKleikYxz4qbWs0SOamJ2Pjxy6ouyANaj7zxe/w2SseQ2aEb7/AGK51nLDsaXUHtdbbPNqk+VjPrWge6Z4l1GGFkDpbO+9038fJEuHGOHuMQNNaC1w5ubQ+RQ4MpsI7kbW9m8eJA2Pnv8AdXsyw2Y4sgayL/ZkA2PQ3/Oqtl9RL16LNgPZQyyyaZJoxXPS7eqvp4pKXEhfIBZjBADWSmhsK97l16Weu2yZzeEiUujDiwi9Lb90/kJZmHxzF0u/1LIwNLWuDyB07p+1JwlqRRNiy4LT2sJaHdA12kjmECUhznHHbDHza6RrgSOlAkk+g2Wnh8RlnaWMkdBIRRc17m2b60fwrZMeU96csPaAbsaHb+b3nb5rpx4cb/V2MWXiluDYWuaxg2IaA5/mfD4JrGmnbA9jMaYZOQA1hcNLQw86J6nlypXe2ZEchZh8MeXj9bO+4+oH2ScvGOJ4pLRHJjHke4WlW7wuz2WU5i8KyGl0jsdp0ONh9vJHmeW1dKK6zyZJ3SyyxNcSC0g8q8hZHzXn5uLZsrv6k7yOvRJTZL3/AKnepWPyc8ydGVrTvxmWe11Gyabt9eaxcvKZZDWgBLySmt7PqlJHrPd9tSOZpS4qgqXG1CrYQhCDtshBTsGTXVZ6kOIQegxc7Q7nsVpxZTTJHIHAOae678LyLJiOqaizSBVqJj1mVxB7JGOq4trb4FOR5cMkRieSYpDqaR+l3iPPyXlIuJbaXmwfFWDLMNmJ1sPNhV3vWbO3pzmzYlCcdtB0eN6H4TMHEwaME93zY4ry0XFzXcd8Wn+bodkQSnUz+k/y5H06K9XuJ4vZSHEz4nHLiaZG8jRDgK/uG5+G4SMuHNi2cPPewHbRKbB8tQ2K89DxWbG7jpCB0PMIdxiVjyQ8gONk9D8V08pZ+0XGw7iefhm5sRh6a2tBH02VUn+I2PAGkxnqQf4FlHjBN82HxaUnkZsctlzWO8wKKbnquk5856rYn469+zMt4b/ya0/hZmRxBzyf6rXeZaAsqWSM+6SEs6Q+Kx5U8qdnyr6N+SSkk1FcFxKhTTQhCFECEIQCEIQCLIQhB0HkLtuQ4dVUhBcZrN8ipGU7qb81QhAz7W6quwufaCOR9FQhBaZ3FcGRxXKEAST1QhCAQhCAQhCD/9k=",
-          "created": 1785346168610
         }
       ],
       "activeState": 2,
       "created": 1777558180122,
-      "modified": 1785346168649,
-      "thumbnail": null
+      "modified": 1785538033139,
+      "thumbnail": null,
+      "sourceCount": 31
     },
     {
       "index": 2,
@@ -12264,8 +11631,9 @@
       ],
       "activeState": 0,
       "created": 1777510322697,
-      "modified": 1785242447506,
-      "thumbnail": null
+      "modified": 1785245262161,
+      "thumbnail": null,
+      "sourceCount": 31
     },
     {
       "index": 3,
@@ -12296,8 +11664,9 @@
       ],
       "activeState": 0,
       "created": 1777510322697,
-      "modified": 1785242447510,
-      "thumbnail": null
+      "modified": 1785245262171,
+      "thumbnail": null,
+      "sourceCount": 31
     },
     {
       "index": 4,
@@ -12328,8 +11697,9 @@
       ],
       "activeState": 0,
       "created": 1777510322698,
-      "modified": 1785242447511,
-      "thumbnail": null
+      "modified": 1785245262171,
+      "thumbnail": null,
+      "sourceCount": 31
     },
     {
       "index": 6,
@@ -12620,54 +11990,6 @@
             "y": 60
           }
         },
-        "sdf.camX": {
-          "id": "sdf.camX",
-          "value": 0,
-          "controller": null,
-          "table": null,
-          "ctrlMin": -4.949736022949218,
-          "ctrlMax": 0.9528930664062489,
-          "invert": false,
-          "cycle": false,
-          "slew": 1.7268539428710936,
-          "feedbackVisible": false,
-          "feedbackPos": {
-            "x": 20,
-            "y": 60
-          }
-        },
-        "sdf.camY": {
-          "id": "sdf.camY",
-          "value": 0,
-          "controller": null,
-          "table": null,
-          "ctrlMin": -2.6502960205078123,
-          "ctrlMax": 0.8515838623046879,
-          "invert": false,
-          "cycle": false,
-          "slew": 2.8342907714843752,
-          "feedbackVisible": false,
-          "feedbackPos": {
-            "x": 20,
-            "y": 60
-          }
-        },
-        "sdf.camZ": {
-          "id": "sdf.camZ",
-          "value": 5,
-          "controller": null,
-          "table": null,
-          "ctrlMin": 2.0782379150390646,
-          "ctrlMax": 5.364300537109374,
-          "invert": false,
-          "cycle": false,
-          "slew": 0,
-          "feedbackVisible": false,
-          "feedbackPos": {
-            "x": 20,
-            "y": 60
-          }
-        },
         "text.size": {
           "id": "text.size",
           "value": 72,
@@ -12877,6 +12199,54 @@
             "x": 20,
             "y": 60
           }
+        },
+        "sdf.orbitX": {
+          "id": "sdf.orbitX",
+          "value": 0,
+          "controller": null,
+          "table": null,
+          "ctrlMin": 0,
+          "ctrlMax": 360,
+          "invert": false,
+          "cycle": false,
+          "slew": 1.7268539428710936,
+          "feedbackVisible": false,
+          "feedbackPos": {
+            "x": 20,
+            "y": 60
+          }
+        },
+        "sdf.orbitY": {
+          "id": "sdf.orbitY",
+          "value": 0,
+          "controller": null,
+          "table": null,
+          "ctrlMin": -180,
+          "ctrlMax": 180,
+          "invert": false,
+          "cycle": false,
+          "slew": 2.8342907714843752,
+          "feedbackVisible": false,
+          "feedbackPos": {
+            "x": 20,
+            "y": 60
+          }
+        },
+        "sdf.camDist": {
+          "id": "sdf.camDist",
+          "value": 5,
+          "controller": null,
+          "table": null,
+          "ctrlMin": 0.5,
+          "ctrlMax": 20,
+          "invert": false,
+          "cycle": false,
+          "slew": 0,
+          "feedbackVisible": false,
+          "feedbackPos": {
+            "x": 20,
+            "y": 60
+          }
         }
       },
       "states": [
@@ -13072,11 +12442,8 @@
             "sdf.opAmount": 0.5,
             "sdf.distance": 1.5,
             "sdf.shape": 0,
-            "sdf.repeat": 0,
+            "sdf.repeat": 3,
             "sdf.warp": 0.35000000000000003,
-            "sdf.camX": 0,
-            "sdf.camY": 0,
-            "sdf.camZ": 5,
             "sdf.kifsIter": 0,
             "sdf.kifsAngle": 0,
             "sdf.lumaWarp": 0,
@@ -13392,7 +12759,11 @@
             "particle.ng3.radius": 0.1,
             "particle.respawn": 0,
             "particle.freeze": 0,
-            "particle.clearPins": 0
+            "particle.clearPins": 0,
+            "sdf.orbitX": 0,
+            "sdf.orbitY": 0,
+            "sdf.camDist": 5,
+            "sdf.tile": 0
           },
           "fxOrder": [
             "pixelate",
@@ -13449,54 +12820,6 @@
               "invert": false,
               "cycle": false,
               "slew": 1.44079345703125,
-              "feedbackVisible": false,
-              "feedbackPos": {
-                "x": 20,
-                "y": 60
-              }
-            },
-            "sdf.camX": {
-              "id": "sdf.camX",
-              "value": 0,
-              "controller": null,
-              "table": null,
-              "ctrlMin": -4.949736022949218,
-              "ctrlMax": 0.9528930664062489,
-              "invert": false,
-              "cycle": false,
-              "slew": 1.7268539428710936,
-              "feedbackVisible": false,
-              "feedbackPos": {
-                "x": 20,
-                "y": 60
-              }
-            },
-            "sdf.camY": {
-              "id": "sdf.camY",
-              "value": 0,
-              "controller": null,
-              "table": null,
-              "ctrlMin": -2.6502960205078123,
-              "ctrlMax": 0.8515838623046879,
-              "invert": false,
-              "cycle": false,
-              "slew": 2.8342907714843752,
-              "feedbackVisible": false,
-              "feedbackPos": {
-                "x": 20,
-                "y": 60
-              }
-            },
-            "sdf.camZ": {
-              "id": "sdf.camZ",
-              "value": 5,
-              "controller": null,
-              "table": null,
-              "ctrlMin": 2.0782379150390646,
-              "ctrlMax": 5.364300537109374,
-              "invert": false,
-              "cycle": false,
-              "slew": 0,
               "feedbackVisible": false,
               "feedbackPos": {
                 "x": 20,
@@ -13653,6 +12976,54 @@
               "invert": false,
               "cycle": false,
               "slew": 1.6724414062500002,
+              "feedbackVisible": false,
+              "feedbackPos": {
+                "x": 20,
+                "y": 60
+              }
+            },
+            "sdf.orbitX": {
+              "id": "sdf.orbitX",
+              "value": 0,
+              "controller": null,
+              "table": null,
+              "ctrlMin": 0,
+              "ctrlMax": 360,
+              "invert": false,
+              "cycle": false,
+              "slew": 1.7268539428710936,
+              "feedbackVisible": false,
+              "feedbackPos": {
+                "x": 20,
+                "y": 60
+              }
+            },
+            "sdf.orbitY": {
+              "id": "sdf.orbitY",
+              "value": 0,
+              "controller": null,
+              "table": null,
+              "ctrlMin": -180,
+              "ctrlMax": 180,
+              "invert": false,
+              "cycle": false,
+              "slew": 2.8342907714843752,
+              "feedbackVisible": false,
+              "feedbackPos": {
+                "x": 20,
+                "y": 60
+              }
+            },
+            "sdf.camDist": {
+              "id": "sdf.camDist",
+              "value": 5,
+              "controller": null,
+              "table": null,
+              "ctrlMin": 0.5,
+              "ctrlMax": 20,
+              "invert": false,
+              "cycle": false,
+              "slew": 0,
               "feedbackVisible": false,
               "feedbackPos": {
                 "x": 20,
@@ -14020,11 +13391,8 @@
             "sdf.opAmount": 0.5,
             "sdf.distance": 1.5,
             "sdf.shape": 0,
-            "sdf.repeat": 0,
+            "sdf.repeat": 3,
             "sdf.warp": 0.35000000000000003,
-            "sdf.camX": 0,
-            "sdf.camY": 0,
-            "sdf.camZ": 5,
             "sdf.kifsIter": 0,
             "sdf.kifsAngle": 0,
             "sdf.lumaWarp": 0,
@@ -14340,7 +13708,11 @@
             "particle.ng3.radius": 0.1,
             "particle.respawn": 0,
             "particle.freeze": 0,
-            "particle.clearPins": 0
+            "particle.clearPins": 0,
+            "sdf.orbitX": 0,
+            "sdf.orbitY": 0,
+            "sdf.camDist": 5,
+            "sdf.tile": 0
           },
           "fxOrder": [
             "pixelate",
@@ -14359,54 +13731,6 @@
             "grain"
           ],
           "controllers": {
-            "sdf.camX": {
-              "id": "sdf.camX",
-              "value": 0,
-              "controller": null,
-              "table": null,
-              "ctrlMin": -4.949736022949218,
-              "ctrlMax": 0.9528930664062489,
-              "invert": false,
-              "cycle": false,
-              "slew": 1.7268539428710936,
-              "feedbackVisible": false,
-              "feedbackPos": {
-                "x": 20,
-                "y": 60
-              }
-            },
-            "sdf.camY": {
-              "id": "sdf.camY",
-              "value": 0,
-              "controller": null,
-              "table": null,
-              "ctrlMin": -2.6502960205078123,
-              "ctrlMax": 0.8515838623046879,
-              "invert": false,
-              "cycle": false,
-              "slew": 2.8342907714843752,
-              "feedbackVisible": false,
-              "feedbackPos": {
-                "x": 20,
-                "y": 60
-              }
-            },
-            "sdf.camZ": {
-              "id": "sdf.camZ",
-              "value": 5,
-              "controller": null,
-              "table": null,
-              "ctrlMin": 2.0782379150390646,
-              "ctrlMax": 5.364300537109374,
-              "invert": false,
-              "cycle": false,
-              "slew": 0,
-              "feedbackVisible": false,
-              "feedbackPos": {
-                "x": 20,
-                "y": 60
-              }
-            },
             "text.size": {
               "id": "text.size",
               "value": 72,
@@ -14510,6 +13834,54 @@
               "table": null,
               "ctrlMin": 0.01991577148437429,
               "ctrlMax": 100.08011474609376,
+              "invert": false,
+              "cycle": false,
+              "slew": 0,
+              "feedbackVisible": false,
+              "feedbackPos": {
+                "x": 20,
+                "y": 60
+              }
+            },
+            "sdf.orbitX": {
+              "id": "sdf.orbitX",
+              "value": 0,
+              "controller": null,
+              "table": null,
+              "ctrlMin": 0,
+              "ctrlMax": 360,
+              "invert": false,
+              "cycle": false,
+              "slew": 1.7268539428710936,
+              "feedbackVisible": false,
+              "feedbackPos": {
+                "x": 20,
+                "y": 60
+              }
+            },
+            "sdf.orbitY": {
+              "id": "sdf.orbitY",
+              "value": 0,
+              "controller": null,
+              "table": null,
+              "ctrlMin": -180,
+              "ctrlMax": 180,
+              "invert": false,
+              "cycle": false,
+              "slew": 2.8342907714843752,
+              "feedbackVisible": false,
+              "feedbackPos": {
+                "x": 20,
+                "y": 60
+              }
+            },
+            "sdf.camDist": {
+              "id": "sdf.camDist",
+              "value": 5,
+              "controller": null,
+              "table": null,
+              "ctrlMin": 0.5,
+              "ctrlMax": 20,
               "invert": false,
               "cycle": false,
               "slew": 0,
@@ -14729,11 +14101,8 @@
             "sdf.opAmount": 0.5,
             "sdf.distance": 1.5,
             "sdf.shape": 0,
-            "sdf.repeat": 0,
+            "sdf.repeat": 3,
             "sdf.warp": 0.35000000000000003,
-            "sdf.camX": 0,
-            "sdf.camY": 0,
-            "sdf.camZ": 5,
             "sdf.kifsIter": 0,
             "sdf.kifsAngle": 0,
             "sdf.lumaWarp": 0,
@@ -15049,7 +14418,11 @@
             "particle.ng3.radius": 0.1,
             "particle.respawn": 0,
             "particle.freeze": 0,
-            "particle.clearPins": 1
+            "particle.clearPins": 1,
+            "sdf.orbitX": 0,
+            "sdf.orbitY": 0,
+            "sdf.camDist": 5,
+            "sdf.tile": 0
           },
           "fxOrder": [
             "pixelate",
@@ -15068,54 +14441,6 @@
             "grain"
           ],
           "controllers": {
-            "sdf.camX": {
-              "id": "sdf.camX",
-              "value": 0,
-              "controller": null,
-              "table": null,
-              "ctrlMin": -4.949736022949218,
-              "ctrlMax": 0.9528930664062489,
-              "invert": false,
-              "cycle": false,
-              "slew": 1.7268539428710936,
-              "feedbackVisible": false,
-              "feedbackPos": {
-                "x": 20,
-                "y": 60
-              }
-            },
-            "sdf.camY": {
-              "id": "sdf.camY",
-              "value": 0,
-              "controller": null,
-              "table": null,
-              "ctrlMin": -2.6502960205078123,
-              "ctrlMax": 0.8515838623046879,
-              "invert": false,
-              "cycle": false,
-              "slew": 2.8342907714843752,
-              "feedbackVisible": false,
-              "feedbackPos": {
-                "x": 20,
-                "y": 60
-              }
-            },
-            "sdf.camZ": {
-              "id": "sdf.camZ",
-              "value": 5,
-              "controller": null,
-              "table": null,
-              "ctrlMin": 2.0782379150390646,
-              "ctrlMax": 5.364300537109374,
-              "invert": false,
-              "cycle": false,
-              "slew": 0,
-              "feedbackVisible": false,
-              "feedbackPos": {
-                "x": 20,
-                "y": 60
-              }
-            },
             "text.size": {
               "id": "text.size",
               "value": 72,
@@ -15250,6 +14575,54 @@
               "invert": false,
               "cycle": false,
               "slew": 1.3055633544921876,
+              "feedbackVisible": false,
+              "feedbackPos": {
+                "x": 20,
+                "y": 60
+              }
+            },
+            "sdf.orbitX": {
+              "id": "sdf.orbitX",
+              "value": 0,
+              "controller": null,
+              "table": null,
+              "ctrlMin": 0,
+              "ctrlMax": 360,
+              "invert": false,
+              "cycle": false,
+              "slew": 1.7268539428710936,
+              "feedbackVisible": false,
+              "feedbackPos": {
+                "x": 20,
+                "y": 60
+              }
+            },
+            "sdf.orbitY": {
+              "id": "sdf.orbitY",
+              "value": 0,
+              "controller": null,
+              "table": null,
+              "ctrlMin": -180,
+              "ctrlMax": 180,
+              "invert": false,
+              "cycle": false,
+              "slew": 2.8342907714843752,
+              "feedbackVisible": false,
+              "feedbackPos": {
+                "x": 20,
+                "y": 60
+              }
+            },
+            "sdf.camDist": {
+              "id": "sdf.camDist",
+              "value": 5,
+              "controller": null,
+              "table": null,
+              "ctrlMin": 0.5,
+              "ctrlMax": 20,
+              "invert": false,
+              "cycle": false,
+              "slew": 0,
               "feedbackVisible": false,
               "feedbackPos": {
                 "x": 20,
@@ -15466,11 +14839,8 @@
             "sdf.opAmount": 0.5,
             "sdf.distance": 1.5,
             "sdf.shape": 0,
-            "sdf.repeat": 0,
+            "sdf.repeat": 3,
             "sdf.warp": 0.35000000000000003,
-            "sdf.camX": 0,
-            "sdf.camY": 0,
-            "sdf.camZ": 5,
             "sdf.kifsIter": 0,
             "sdf.kifsAngle": 0,
             "sdf.lumaWarp": 0,
@@ -15786,7 +15156,11 @@
             "particle.ng3.radius": 0.1,
             "particle.respawn": 0,
             "particle.freeze": 0,
-            "particle.clearPins": 0
+            "particle.clearPins": 0,
+            "sdf.orbitX": 0,
+            "sdf.orbitY": 0,
+            "sdf.camDist": 5,
+            "sdf.tile": 0
           },
           "fxOrder": [
             "pixelate",
@@ -15843,54 +15217,6 @@
               "invert": false,
               "cycle": false,
               "slew": 1.44079345703125,
-              "feedbackVisible": false,
-              "feedbackPos": {
-                "x": 20,
-                "y": 60
-              }
-            },
-            "sdf.camX": {
-              "id": "sdf.camX",
-              "value": 0,
-              "controller": null,
-              "table": null,
-              "ctrlMin": -4.949736022949218,
-              "ctrlMax": 0.9528930664062489,
-              "invert": false,
-              "cycle": false,
-              "slew": 1.7268539428710936,
-              "feedbackVisible": false,
-              "feedbackPos": {
-                "x": 20,
-                "y": 60
-              }
-            },
-            "sdf.camY": {
-              "id": "sdf.camY",
-              "value": 0,
-              "controller": null,
-              "table": null,
-              "ctrlMin": -2.6502960205078123,
-              "ctrlMax": 0.8515838623046879,
-              "invert": false,
-              "cycle": false,
-              "slew": 2.8342907714843752,
-              "feedbackVisible": false,
-              "feedbackPos": {
-                "x": 20,
-                "y": 60
-              }
-            },
-            "sdf.camZ": {
-              "id": "sdf.camZ",
-              "value": 5,
-              "controller": null,
-              "table": null,
-              "ctrlMin": 2.0782379150390646,
-              "ctrlMax": 5.364300537109374,
-              "invert": false,
-              "cycle": false,
-              "slew": 0,
               "feedbackVisible": false,
               "feedbackPos": {
                 "x": 20,
@@ -16047,6 +15373,54 @@
               "invert": false,
               "cycle": false,
               "slew": 1.6724414062500002,
+              "feedbackVisible": false,
+              "feedbackPos": {
+                "x": 20,
+                "y": 60
+              }
+            },
+            "sdf.orbitX": {
+              "id": "sdf.orbitX",
+              "value": 0,
+              "controller": null,
+              "table": null,
+              "ctrlMin": 0,
+              "ctrlMax": 360,
+              "invert": false,
+              "cycle": false,
+              "slew": 1.7268539428710936,
+              "feedbackVisible": false,
+              "feedbackPos": {
+                "x": 20,
+                "y": 60
+              }
+            },
+            "sdf.orbitY": {
+              "id": "sdf.orbitY",
+              "value": 0,
+              "controller": null,
+              "table": null,
+              "ctrlMin": -180,
+              "ctrlMax": 180,
+              "invert": false,
+              "cycle": false,
+              "slew": 2.8342907714843752,
+              "feedbackVisible": false,
+              "feedbackPos": {
+                "x": 20,
+                "y": 60
+              }
+            },
+            "sdf.camDist": {
+              "id": "sdf.camDist",
+              "value": 5,
+              "controller": null,
+              "table": null,
+              "ctrlMin": 0.5,
+              "ctrlMax": 20,
+              "invert": false,
+              "cycle": false,
+              "slew": 0,
               "feedbackVisible": false,
               "feedbackPos": {
                 "x": 20,
@@ -16414,11 +15788,8 @@
             "sdf.opAmount": 0.5,
             "sdf.distance": 1.5,
             "sdf.shape": 0,
-            "sdf.repeat": 0,
+            "sdf.repeat": 3,
             "sdf.warp": 0.35000000000000003,
-            "sdf.camX": 0,
-            "sdf.camY": 0,
-            "sdf.camZ": 5,
             "sdf.kifsIter": 0,
             "sdf.kifsAngle": 0,
             "sdf.lumaWarp": 0,
@@ -16734,7 +16105,11 @@
             "particle.ng3.radius": 0.1,
             "particle.respawn": 0,
             "particle.freeze": 0,
-            "particle.clearPins": 0
+            "particle.clearPins": 0,
+            "sdf.orbitX": 0,
+            "sdf.orbitY": 0,
+            "sdf.camDist": 5,
+            "sdf.tile": 0
           },
           "fxOrder": [
             "pixelate",
@@ -16791,54 +16166,6 @@
               "invert": false,
               "cycle": false,
               "slew": 1.44079345703125,
-              "feedbackVisible": false,
-              "feedbackPos": {
-                "x": 20,
-                "y": 60
-              }
-            },
-            "sdf.camX": {
-              "id": "sdf.camX",
-              "value": 0,
-              "controller": null,
-              "table": null,
-              "ctrlMin": -4.949736022949218,
-              "ctrlMax": 0.9528930664062489,
-              "invert": false,
-              "cycle": false,
-              "slew": 1.7268539428710936,
-              "feedbackVisible": false,
-              "feedbackPos": {
-                "x": 20,
-                "y": 60
-              }
-            },
-            "sdf.camY": {
-              "id": "sdf.camY",
-              "value": 0,
-              "controller": null,
-              "table": null,
-              "ctrlMin": -2.6502960205078123,
-              "ctrlMax": 0.8515838623046879,
-              "invert": false,
-              "cycle": false,
-              "slew": 2.8342907714843752,
-              "feedbackVisible": false,
-              "feedbackPos": {
-                "x": 20,
-                "y": 60
-              }
-            },
-            "sdf.camZ": {
-              "id": "sdf.camZ",
-              "value": 5,
-              "controller": null,
-              "table": null,
-              "ctrlMin": 2.0782379150390646,
-              "ctrlMax": 5.364300537109374,
-              "invert": false,
-              "cycle": false,
-              "slew": 0,
               "feedbackVisible": false,
               "feedbackPos": {
                 "x": 20,
@@ -16995,6 +16322,54 @@
               "invert": false,
               "cycle": false,
               "slew": 1.6724414062500002,
+              "feedbackVisible": false,
+              "feedbackPos": {
+                "x": 20,
+                "y": 60
+              }
+            },
+            "sdf.orbitX": {
+              "id": "sdf.orbitX",
+              "value": 0,
+              "controller": null,
+              "table": null,
+              "ctrlMin": 0,
+              "ctrlMax": 360,
+              "invert": false,
+              "cycle": false,
+              "slew": 1.7268539428710936,
+              "feedbackVisible": false,
+              "feedbackPos": {
+                "x": 20,
+                "y": 60
+              }
+            },
+            "sdf.orbitY": {
+              "id": "sdf.orbitY",
+              "value": 0,
+              "controller": null,
+              "table": null,
+              "ctrlMin": -180,
+              "ctrlMax": 180,
+              "invert": false,
+              "cycle": false,
+              "slew": 2.8342907714843752,
+              "feedbackVisible": false,
+              "feedbackPos": {
+                "x": 20,
+                "y": 60
+              }
+            },
+            "sdf.camDist": {
+              "id": "sdf.camDist",
+              "value": 5,
+              "controller": null,
+              "table": null,
+              "ctrlMin": 0.5,
+              "ctrlMax": 20,
+              "invert": false,
+              "cycle": false,
+              "slew": 0,
               "feedbackVisible": false,
               "feedbackPos": {
                 "x": 20,
@@ -17363,9 +16738,6 @@
             "sdf.shape": 1,
             "sdf.repeat": 1.9000000000000001,
             "sdf.warp": 0.22,
-            "sdf.camX": -0.65,
-            "sdf.camY": 0,
-            "sdf.camZ": 1.8,
             "sdf.kifsIter": 3,
             "sdf.kifsAngle": 0,
             "sdf.lumaWarp": 0,
@@ -17681,7 +17053,11 @@
             "particle.ng3.radius": 0.1,
             "particle.respawn": 0,
             "particle.freeze": 0,
-            "particle.clearPins": 0
+            "particle.clearPins": 0,
+            "sdf.orbitX": 340.14478563067894,
+            "sdf.orbitY": 0,
+            "sdf.camDist": 1.9137659209004638,
+            "sdf.tile": 1
           },
           "fxOrder": [
             "pixelate",
@@ -18176,9 +17552,6 @@
             "sdf.shape": 1,
             "sdf.repeat": 1.9000000000000001,
             "sdf.warp": 0,
-            "sdf.camX": -1.4735036331161449,
-            "sdf.camY": 0.03924457510305339,
-            "sdf.camZ": 3.35,
             "sdf.kifsIter": 1,
             "sdf.kifsAngle": 0,
             "sdf.lumaWarp": 0,
@@ -18494,7 +17867,11 @@
             "particle.ng3.radius": 0.1,
             "particle.respawn": 0,
             "particle.freeze": 0,
-            "particle.clearPins": 0
+            "particle.clearPins": 0,
+            "sdf.orbitX": 336.25761838798337,
+            "sdf.orbitY": 0.6143772484228939,
+            "sdf.camDist": 3.659952608092282,
+            "sdf.tile": 1
           },
           "fxOrder": [
             "pixelate",
@@ -18551,66 +17928,6 @@
               "invert": false,
               "cycle": false,
               "slew": 1.44079345703125,
-              "feedbackVisible": false,
-              "feedbackPos": {
-                "x": 20,
-                "y": 60
-              }
-            },
-            "sdf.camX": {
-              "id": "sdf.camX",
-              "value": -1.4735036331161449,
-              "controller": {
-                "type": "lfo-sh",
-                "hz": 0.1,
-                "phase": 0,
-                "width": 0.5,
-                "beatSync": false
-              },
-              "table": null,
-              "ctrlMin": -4.949736022949218,
-              "ctrlMax": 0.9528930664062489,
-              "invert": false,
-              "cycle": false,
-              "slew": 1.7268539428710936,
-              "feedbackVisible": false,
-              "feedbackPos": {
-                "x": 20,
-                "y": 60
-              }
-            },
-            "sdf.camY": {
-              "id": "sdf.camY",
-              "value": 0.03924457510305339,
-              "controller": {
-                "type": "lfo-sh",
-                "hz": 0.23082580566406247,
-                "phase": 0,
-                "width": 0.5,
-                "beatSync": false
-              },
-              "table": null,
-              "ctrlMin": -2.6502960205078123,
-              "ctrlMax": 0.8515838623046879,
-              "invert": false,
-              "cycle": false,
-              "slew": 2.8342907714843752,
-              "feedbackVisible": false,
-              "feedbackPos": {
-                "x": 20,
-                "y": 60
-              }
-            },
-            "sdf.camZ": {
-              "id": "sdf.camZ",
-              "value": 3.35,
-              "controller": null,
-              "table": null,
-              "ctrlMin": 2.0782379150390646,
-              "ctrlMax": 5.364300537109374,
-              "invert": false,
-              "cycle": false,
-              "slew": 0,
               "feedbackVisible": false,
               "feedbackPos": {
                 "x": 20,
@@ -18687,6 +18004,66 @@
               "invert": false,
               "cycle": false,
               "slew": 1.6724414062500002,
+              "feedbackVisible": false,
+              "feedbackPos": {
+                "x": 20,
+                "y": 60
+              }
+            },
+            "sdf.orbitX": {
+              "id": "sdf.orbitX",
+              "value": 336.25761838798337,
+              "controller": {
+                "type": "lfo-sh",
+                "hz": 0.1,
+                "phase": 0,
+                "width": 0.5,
+                "beatSync": false
+              },
+              "table": null,
+              "ctrlMin": 0,
+              "ctrlMax": 360,
+              "invert": false,
+              "cycle": false,
+              "slew": 1.7268539428710936,
+              "feedbackVisible": false,
+              "feedbackPos": {
+                "x": 20,
+                "y": 60
+              }
+            },
+            "sdf.orbitY": {
+              "id": "sdf.orbitY",
+              "value": 0.6143772484228939,
+              "controller": {
+                "type": "lfo-sh",
+                "hz": 0.23082580566406247,
+                "phase": 0,
+                "width": 0.5,
+                "beatSync": false
+              },
+              "table": null,
+              "ctrlMin": -180,
+              "ctrlMax": 180,
+              "invert": false,
+              "cycle": false,
+              "slew": 2.8342907714843752,
+              "feedbackVisible": false,
+              "feedbackPos": {
+                "x": 20,
+                "y": 60
+              }
+            },
+            "sdf.camDist": {
+              "id": "sdf.camDist",
+              "value": 3.659952608092282,
+              "controller": null,
+              "table": null,
+              "ctrlMin": 0.5,
+              "ctrlMax": 20,
+              "invert": false,
+              "cycle": false,
+              "slew": 0,
               "feedbackVisible": false,
               "feedbackPos": {
                 "x": 20,
@@ -19049,9 +18426,6 @@
             "sdf.shape": 6,
             "sdf.repeat": 1.8,
             "sdf.warp": 0,
-            "sdf.camX": 0.20633339103320467,
-            "sdf.camY": -0.7422461275250792,
-            "sdf.camZ": 19.3,
             "sdf.kifsIter": 0,
             "sdf.kifsAngle": 156.5,
             "sdf.lumaWarp": 0,
@@ -19367,7 +18741,11 @@
             "particle.ng3.radius": 0.1,
             "particle.respawn": 0,
             "particle.freeze": 0,
-            "particle.clearPins": 0
+            "particle.clearPins": 0,
+            "sdf.orbitX": 0.6125172079221853,
+            "sdf.orbitY": -2.20228993773436,
+            "sdf.camDist": 19.315369599934694,
+            "sdf.tile": 1
           },
           "fxOrder": [
             "pixelate",
@@ -19424,66 +18802,6 @@
               "invert": false,
               "cycle": false,
               "slew": 1.44079345703125,
-              "feedbackVisible": false,
-              "feedbackPos": {
-                "x": 20,
-                "y": 60
-              }
-            },
-            "sdf.camX": {
-              "id": "sdf.camX",
-              "value": 0.20633339103320467,
-              "controller": {
-                "type": "lfo-sh",
-                "hz": 0.1,
-                "phase": 0,
-                "width": 0.5,
-                "beatSync": false
-              },
-              "table": null,
-              "ctrlMin": -0.7238967895507802,
-              "ctrlMax": 0.9528930664062489,
-              "invert": false,
-              "cycle": false,
-              "slew": 2.1691281127929685,
-              "feedbackVisible": false,
-              "feedbackPos": {
-                "x": 20,
-                "y": 60
-              }
-            },
-            "sdf.camY": {
-              "id": "sdf.camY",
-              "value": -0.7422461275250792,
-              "controller": {
-                "type": "lfo-sh",
-                "hz": 0.23082580566406247,
-                "phase": 0,
-                "width": 0.5,
-                "beatSync": false
-              },
-              "table": null,
-              "ctrlMin": -1.5439910888671873,
-              "ctrlMax": 0.8515838623046879,
-              "invert": false,
-              "cycle": false,
-              "slew": 2.8342907714843752,
-              "feedbackVisible": false,
-              "feedbackPos": {
-                "x": 20,
-                "y": 60
-              }
-            },
-            "sdf.camZ": {
-              "id": "sdf.camZ",
-              "value": 19.3,
-              "controller": null,
-              "table": null,
-              "ctrlMin": 2.0782379150390646,
-              "ctrlMax": 5.364300537109374,
-              "invert": false,
-              "cycle": false,
-              "slew": 0,
               "feedbackVisible": false,
               "feedbackPos": {
                 "x": 20,
@@ -19640,6 +18958,66 @@
               "invert": false,
               "cycle": false,
               "slew": 1.6724414062500002,
+              "feedbackVisible": false,
+              "feedbackPos": {
+                "x": 20,
+                "y": 60
+              }
+            },
+            "sdf.orbitX": {
+              "id": "sdf.orbitX",
+              "value": 0.6125172079221853,
+              "controller": {
+                "type": "lfo-sh",
+                "hz": 0.1,
+                "phase": 0,
+                "width": 0.5,
+                "beatSync": false
+              },
+              "table": null,
+              "ctrlMin": 0,
+              "ctrlMax": 360,
+              "invert": false,
+              "cycle": false,
+              "slew": 2.1691281127929685,
+              "feedbackVisible": false,
+              "feedbackPos": {
+                "x": 20,
+                "y": 60
+              }
+            },
+            "sdf.orbitY": {
+              "id": "sdf.orbitY",
+              "value": -2.20228993773436,
+              "controller": {
+                "type": "lfo-sh",
+                "hz": 0.23082580566406247,
+                "phase": 0,
+                "width": 0.5,
+                "beatSync": false
+              },
+              "table": null,
+              "ctrlMin": -180,
+              "ctrlMax": 180,
+              "invert": false,
+              "cycle": false,
+              "slew": 2.8342907714843752,
+              "feedbackVisible": false,
+              "feedbackPos": {
+                "x": 20,
+                "y": 60
+              }
+            },
+            "sdf.camDist": {
+              "id": "sdf.camDist",
+              "value": 19.315369599934694,
+              "controller": null,
+              "table": null,
+              "ctrlMin": 0.5,
+              "ctrlMax": 20,
+              "invert": false,
+              "cycle": false,
+              "slew": 0,
               "feedbackVisible": false,
               "feedbackPos": {
                 "x": 20,
@@ -20033,11 +19411,8 @@
             "sdf.opAmount": 0.7000000000000001,
             "sdf.distance": 1.4000000000000001,
             "sdf.shape": 6,
-            "sdf.repeat": 0.9500000000000001,
+            "sdf.repeat": 1.2,
             "sdf.warp": 0,
-            "sdf.camX": 0.14334896302865144,
-            "sdf.camY": -0.6742442938089424,
-            "sdf.camZ": 19.3,
             "sdf.kifsIter": 2,
             "sdf.kifsAngle": 156.5,
             "sdf.lumaWarp": 0,
@@ -20365,7 +19740,11 @@
             "particle.ng3.radius": 0.1,
             "particle.respawn": 0,
             "particle.freeze": 0,
-            "particle.clearPins": 0
+            "particle.clearPins": 0,
+            "sdf.orbitX": 0.4255512721042587,
+            "sdf.orbitY": -2.000755636529994,
+            "sdf.camDist": 19.312305773597707,
+            "sdf.tile": 1
           },
           "fxOrder": [
             "pixelate",
@@ -20550,66 +19929,6 @@
               "invert": false,
               "cycle": false,
               "slew": 1.98125244140625,
-              "feedbackVisible": false,
-              "feedbackPos": {
-                "x": 20,
-                "y": 60
-              }
-            },
-            "sdf.camX": {
-              "id": "sdf.camX",
-              "value": 0.14334896302865144,
-              "controller": {
-                "type": "lfo-sh",
-                "hz": 0.1,
-                "phase": 0,
-                "width": 0.5,
-                "beatSync": false
-              },
-              "table": null,
-              "ctrlMin": -4.949736022949218,
-              "ctrlMax": 0.9528930664062489,
-              "invert": false,
-              "cycle": false,
-              "slew": 2.1691281127929685,
-              "feedbackVisible": false,
-              "feedbackPos": {
-                "x": 20,
-                "y": 60
-              }
-            },
-            "sdf.camY": {
-              "id": "sdf.camY",
-              "value": -0.6742442938089424,
-              "controller": {
-                "type": "lfo-sh",
-                "hz": 0.23082580566406247,
-                "phase": 0,
-                "width": 0.5,
-                "beatSync": false
-              },
-              "table": null,
-              "ctrlMin": -2.6502960205078123,
-              "ctrlMax": 0.8515838623046879,
-              "invert": false,
-              "cycle": false,
-              "slew": 2.8342907714843752,
-              "feedbackVisible": false,
-              "feedbackPos": {
-                "x": 20,
-                "y": 60
-              }
-            },
-            "sdf.camZ": {
-              "id": "sdf.camZ",
-              "value": 19.3,
-              "controller": null,
-              "table": null,
-              "ctrlMin": 2.0782379150390646,
-              "ctrlMax": 5.364300537109374,
-              "invert": false,
-              "cycle": false,
-              "slew": 0,
               "feedbackVisible": false,
               "feedbackPos": {
                 "x": 20,
@@ -20824,6 +20143,66 @@
               "invert": false,
               "cycle": false,
               "slew": 1.6724414062500002,
+              "feedbackVisible": false,
+              "feedbackPos": {
+                "x": 20,
+                "y": 60
+              }
+            },
+            "sdf.orbitX": {
+              "id": "sdf.orbitX",
+              "value": 0.4255512721042587,
+              "controller": {
+                "type": "lfo-sh",
+                "hz": 0.1,
+                "phase": 0,
+                "width": 0.5,
+                "beatSync": false
+              },
+              "table": null,
+              "ctrlMin": 0,
+              "ctrlMax": 360,
+              "invert": false,
+              "cycle": false,
+              "slew": 2.1691281127929685,
+              "feedbackVisible": false,
+              "feedbackPos": {
+                "x": 20,
+                "y": 60
+              }
+            },
+            "sdf.orbitY": {
+              "id": "sdf.orbitY",
+              "value": -2.000755636529994,
+              "controller": {
+                "type": "lfo-sh",
+                "hz": 0.23082580566406247,
+                "phase": 0,
+                "width": 0.5,
+                "beatSync": false
+              },
+              "table": null,
+              "ctrlMin": -180,
+              "ctrlMax": 180,
+              "invert": false,
+              "cycle": false,
+              "slew": 2.8342907714843752,
+              "feedbackVisible": false,
+              "feedbackPos": {
+                "x": 20,
+                "y": 60
+              }
+            },
+            "sdf.camDist": {
+              "id": "sdf.camDist",
+              "value": 19.312305773597707,
+              "controller": null,
+              "table": null,
+              "ctrlMin": 0.5,
+              "ctrlMax": 20,
+              "invert": false,
+              "cycle": false,
+              "slew": 0,
               "feedbackVisible": false,
               "feedbackPos": {
                 "x": 20,
@@ -21191,11 +20570,8 @@
             "sdf.opAmount": 0.5,
             "sdf.distance": 1.5,
             "sdf.shape": 0,
-            "sdf.repeat": 0,
+            "sdf.repeat": 3,
             "sdf.warp": 0.35000000000000003,
-            "sdf.camX": 0,
-            "sdf.camY": 0,
-            "sdf.camZ": 5,
             "sdf.kifsIter": 0,
             "sdf.kifsAngle": 0,
             "sdf.lumaWarp": 0,
@@ -21511,7 +20887,11 @@
             "particle.ng3.radius": 0.1,
             "particle.respawn": 0,
             "particle.freeze": 0,
-            "particle.clearPins": 0
+            "particle.clearPins": 0,
+            "sdf.orbitX": 0,
+            "sdf.orbitY": 0,
+            "sdf.camDist": 5,
+            "sdf.tile": 0
           },
           "fxOrder": [
             "pixelate",
@@ -21568,54 +20948,6 @@
               "invert": false,
               "cycle": false,
               "slew": 1.44079345703125,
-              "feedbackVisible": false,
-              "feedbackPos": {
-                "x": 20,
-                "y": 60
-              }
-            },
-            "sdf.camX": {
-              "id": "sdf.camX",
-              "value": 0,
-              "controller": null,
-              "table": null,
-              "ctrlMin": -4.949736022949218,
-              "ctrlMax": 0.9528930664062489,
-              "invert": false,
-              "cycle": false,
-              "slew": 1.7268539428710936,
-              "feedbackVisible": false,
-              "feedbackPos": {
-                "x": 20,
-                "y": 60
-              }
-            },
-            "sdf.camY": {
-              "id": "sdf.camY",
-              "value": 0,
-              "controller": null,
-              "table": null,
-              "ctrlMin": -2.6502960205078123,
-              "ctrlMax": 0.8515838623046879,
-              "invert": false,
-              "cycle": false,
-              "slew": 2.8342907714843752,
-              "feedbackVisible": false,
-              "feedbackPos": {
-                "x": 20,
-                "y": 60
-              }
-            },
-            "sdf.camZ": {
-              "id": "sdf.camZ",
-              "value": 5,
-              "controller": null,
-              "table": null,
-              "ctrlMin": 2.0782379150390646,
-              "ctrlMax": 5.364300537109374,
-              "invert": false,
-              "cycle": false,
-              "slew": 0,
               "feedbackVisible": false,
               "feedbackPos": {
                 "x": 20,
@@ -21772,6 +21104,54 @@
               "invert": false,
               "cycle": false,
               "slew": 1.6724414062500002,
+              "feedbackVisible": false,
+              "feedbackPos": {
+                "x": 20,
+                "y": 60
+              }
+            },
+            "sdf.orbitX": {
+              "id": "sdf.orbitX",
+              "value": 0,
+              "controller": null,
+              "table": null,
+              "ctrlMin": 0,
+              "ctrlMax": 360,
+              "invert": false,
+              "cycle": false,
+              "slew": 1.7268539428710936,
+              "feedbackVisible": false,
+              "feedbackPos": {
+                "x": 20,
+                "y": 60
+              }
+            },
+            "sdf.orbitY": {
+              "id": "sdf.orbitY",
+              "value": 0,
+              "controller": null,
+              "table": null,
+              "ctrlMin": -180,
+              "ctrlMax": 180,
+              "invert": false,
+              "cycle": false,
+              "slew": 2.8342907714843752,
+              "feedbackVisible": false,
+              "feedbackPos": {
+                "x": 20,
+                "y": 60
+              }
+            },
+            "sdf.camDist": {
+              "id": "sdf.camDist",
+              "value": 5,
+              "controller": null,
+              "table": null,
+              "ctrlMin": 0.5,
+              "ctrlMax": 20,
+              "invert": false,
+              "cycle": false,
+              "slew": 0,
               "feedbackVisible": false,
               "feedbackPos": {
                 "x": 20,
@@ -21988,11 +21368,8 @@
             "sdf.opAmount": 0.5,
             "sdf.distance": 1.5,
             "sdf.shape": 0,
-            "sdf.repeat": 0,
+            "sdf.repeat": 3,
             "sdf.warp": 0.35000000000000003,
-            "sdf.camX": 0,
-            "sdf.camY": 0,
-            "sdf.camZ": 5,
             "sdf.kifsIter": 0,
             "sdf.kifsAngle": 0,
             "sdf.lumaWarp": 0,
@@ -22308,7 +21685,11 @@
             "particle.ng3.radius": 0.1,
             "particle.respawn": 0,
             "particle.freeze": 0,
-            "particle.clearPins": 0
+            "particle.clearPins": 0,
+            "sdf.orbitX": 0,
+            "sdf.orbitY": 0,
+            "sdf.camDist": 5,
+            "sdf.tile": 0
           },
           "fxOrder": [
             "pixelate",
@@ -22365,54 +21746,6 @@
               "invert": false,
               "cycle": false,
               "slew": 1.44079345703125,
-              "feedbackVisible": false,
-              "feedbackPos": {
-                "x": 20,
-                "y": 60
-              }
-            },
-            "sdf.camX": {
-              "id": "sdf.camX",
-              "value": 0,
-              "controller": null,
-              "table": null,
-              "ctrlMin": -4.949736022949218,
-              "ctrlMax": 0.9528930664062489,
-              "invert": false,
-              "cycle": false,
-              "slew": 1.7268539428710936,
-              "feedbackVisible": false,
-              "feedbackPos": {
-                "x": 20,
-                "y": 60
-              }
-            },
-            "sdf.camY": {
-              "id": "sdf.camY",
-              "value": 0,
-              "controller": null,
-              "table": null,
-              "ctrlMin": -2.6502960205078123,
-              "ctrlMax": 0.8515838623046879,
-              "invert": false,
-              "cycle": false,
-              "slew": 2.8342907714843752,
-              "feedbackVisible": false,
-              "feedbackPos": {
-                "x": 20,
-                "y": 60
-              }
-            },
-            "sdf.camZ": {
-              "id": "sdf.camZ",
-              "value": 5,
-              "controller": null,
-              "table": null,
-              "ctrlMin": 2.0782379150390646,
-              "ctrlMax": 5.364300537109374,
-              "invert": false,
-              "cycle": false,
-              "slew": 0,
               "feedbackVisible": false,
               "feedbackPos": {
                 "x": 20,
@@ -22569,6 +21902,54 @@
               "invert": false,
               "cycle": false,
               "slew": 1.6724414062500002,
+              "feedbackVisible": false,
+              "feedbackPos": {
+                "x": 20,
+                "y": 60
+              }
+            },
+            "sdf.orbitX": {
+              "id": "sdf.orbitX",
+              "value": 0,
+              "controller": null,
+              "table": null,
+              "ctrlMin": 0,
+              "ctrlMax": 360,
+              "invert": false,
+              "cycle": false,
+              "slew": 1.7268539428710936,
+              "feedbackVisible": false,
+              "feedbackPos": {
+                "x": 20,
+                "y": 60
+              }
+            },
+            "sdf.orbitY": {
+              "id": "sdf.orbitY",
+              "value": 0,
+              "controller": null,
+              "table": null,
+              "ctrlMin": -180,
+              "ctrlMax": 180,
+              "invert": false,
+              "cycle": false,
+              "slew": 2.8342907714843752,
+              "feedbackVisible": false,
+              "feedbackPos": {
+                "x": 20,
+                "y": 60
+              }
+            },
+            "sdf.camDist": {
+              "id": "sdf.camDist",
+              "value": 5,
+              "controller": null,
+              "table": null,
+              "ctrlMin": 0.5,
+              "ctrlMax": 20,
+              "invert": false,
+              "cycle": false,
+              "slew": 0,
               "feedbackVisible": false,
               "feedbackPos": {
                 "x": 20,
@@ -22785,11 +22166,8 @@
             "sdf.opAmount": 0.5,
             "sdf.distance": 1.5,
             "sdf.shape": 0,
-            "sdf.repeat": 0,
+            "sdf.repeat": 3,
             "sdf.warp": 0.35000000000000003,
-            "sdf.camX": 0,
-            "sdf.camY": 0,
-            "sdf.camZ": 5,
             "sdf.kifsIter": 0,
             "sdf.kifsAngle": 0,
             "sdf.lumaWarp": 0,
@@ -23105,7 +22483,11 @@
             "particle.ng3.radius": 0.1,
             "particle.respawn": 0,
             "particle.freeze": 0,
-            "particle.clearPins": 0
+            "particle.clearPins": 0,
+            "sdf.orbitX": 0,
+            "sdf.orbitY": 0,
+            "sdf.camDist": 5,
+            "sdf.tile": 0
           },
           "fxOrder": [
             "pixelate",
@@ -23162,54 +22544,6 @@
               "invert": false,
               "cycle": false,
               "slew": 1.44079345703125,
-              "feedbackVisible": false,
-              "feedbackPos": {
-                "x": 20,
-                "y": 60
-              }
-            },
-            "sdf.camX": {
-              "id": "sdf.camX",
-              "value": 0,
-              "controller": null,
-              "table": null,
-              "ctrlMin": -4.949736022949218,
-              "ctrlMax": 0.9528930664062489,
-              "invert": false,
-              "cycle": false,
-              "slew": 1.7268539428710936,
-              "feedbackVisible": false,
-              "feedbackPos": {
-                "x": 20,
-                "y": 60
-              }
-            },
-            "sdf.camY": {
-              "id": "sdf.camY",
-              "value": 0,
-              "controller": null,
-              "table": null,
-              "ctrlMin": -2.6502960205078123,
-              "ctrlMax": 0.8515838623046879,
-              "invert": false,
-              "cycle": false,
-              "slew": 2.8342907714843752,
-              "feedbackVisible": false,
-              "feedbackPos": {
-                "x": 20,
-                "y": 60
-              }
-            },
-            "sdf.camZ": {
-              "id": "sdf.camZ",
-              "value": 5,
-              "controller": null,
-              "table": null,
-              "ctrlMin": 2.0782379150390646,
-              "ctrlMax": 5.364300537109374,
-              "invert": false,
-              "cycle": false,
-              "slew": 0,
               "feedbackVisible": false,
               "feedbackPos": {
                 "x": 20,
@@ -23366,6 +22700,54 @@
               "invert": false,
               "cycle": false,
               "slew": 1.6724414062500002,
+              "feedbackVisible": false,
+              "feedbackPos": {
+                "x": 20,
+                "y": 60
+              }
+            },
+            "sdf.orbitX": {
+              "id": "sdf.orbitX",
+              "value": 0,
+              "controller": null,
+              "table": null,
+              "ctrlMin": 0,
+              "ctrlMax": 360,
+              "invert": false,
+              "cycle": false,
+              "slew": 1.7268539428710936,
+              "feedbackVisible": false,
+              "feedbackPos": {
+                "x": 20,
+                "y": 60
+              }
+            },
+            "sdf.orbitY": {
+              "id": "sdf.orbitY",
+              "value": 0,
+              "controller": null,
+              "table": null,
+              "ctrlMin": -180,
+              "ctrlMax": 180,
+              "invert": false,
+              "cycle": false,
+              "slew": 2.8342907714843752,
+              "feedbackVisible": false,
+              "feedbackPos": {
+                "x": 20,
+                "y": 60
+              }
+            },
+            "sdf.camDist": {
+              "id": "sdf.camDist",
+              "value": 5,
+              "controller": null,
+              "table": null,
+              "ctrlMin": 0.5,
+              "ctrlMax": 20,
+              "invert": false,
+              "cycle": false,
+              "slew": 0,
               "feedbackVisible": false,
               "feedbackPos": {
                 "x": 20,
@@ -23733,11 +23115,8 @@
             "sdf.opAmount": 0.5,
             "sdf.distance": 1.5,
             "sdf.shape": 0,
-            "sdf.repeat": 0,
+            "sdf.repeat": 3,
             "sdf.warp": 0.35000000000000003,
-            "sdf.camX": 0,
-            "sdf.camY": 0,
-            "sdf.camZ": 5,
             "sdf.kifsIter": 0,
             "sdf.kifsAngle": 0,
             "sdf.lumaWarp": 0,
@@ -24053,7 +23432,11 @@
             "particle.ng3.radius": 0.1,
             "particle.respawn": 0,
             "particle.freeze": 0,
-            "particle.clearPins": 1
+            "particle.clearPins": 1,
+            "sdf.orbitX": 0,
+            "sdf.orbitY": 0,
+            "sdf.camDist": 5,
+            "sdf.tile": 0
           },
           "fxOrder": [
             "pixelate",
@@ -24072,54 +23455,6 @@
             "grain"
           ],
           "controllers": {
-            "sdf.camX": {
-              "id": "sdf.camX",
-              "value": 0,
-              "controller": null,
-              "table": null,
-              "ctrlMin": -4.949736022949218,
-              "ctrlMax": 0.9528930664062489,
-              "invert": false,
-              "cycle": false,
-              "slew": 1.7268539428710936,
-              "feedbackVisible": false,
-              "feedbackPos": {
-                "x": 20,
-                "y": 60
-              }
-            },
-            "sdf.camY": {
-              "id": "sdf.camY",
-              "value": 0,
-              "controller": null,
-              "table": null,
-              "ctrlMin": -2.6502960205078123,
-              "ctrlMax": 0.8515838623046879,
-              "invert": false,
-              "cycle": false,
-              "slew": 2.8342907714843752,
-              "feedbackVisible": false,
-              "feedbackPos": {
-                "x": 20,
-                "y": 60
-              }
-            },
-            "sdf.camZ": {
-              "id": "sdf.camZ",
-              "value": 5,
-              "controller": null,
-              "table": null,
-              "ctrlMin": 2.0782379150390646,
-              "ctrlMax": 5.364300537109374,
-              "invert": false,
-              "cycle": false,
-              "slew": 0,
-              "feedbackVisible": false,
-              "feedbackPos": {
-                "x": 20,
-                "y": 60
-              }
-            },
             "text.size": {
               "id": "text.size",
               "value": 72,
@@ -24254,6 +23589,54 @@
               "invert": false,
               "cycle": false,
               "slew": 1.3055633544921876,
+              "feedbackVisible": false,
+              "feedbackPos": {
+                "x": 20,
+                "y": 60
+              }
+            },
+            "sdf.orbitX": {
+              "id": "sdf.orbitX",
+              "value": 0,
+              "controller": null,
+              "table": null,
+              "ctrlMin": 0,
+              "ctrlMax": 360,
+              "invert": false,
+              "cycle": false,
+              "slew": 1.7268539428710936,
+              "feedbackVisible": false,
+              "feedbackPos": {
+                "x": 20,
+                "y": 60
+              }
+            },
+            "sdf.orbitY": {
+              "id": "sdf.orbitY",
+              "value": 0,
+              "controller": null,
+              "table": null,
+              "ctrlMin": -180,
+              "ctrlMax": 180,
+              "invert": false,
+              "cycle": false,
+              "slew": 2.8342907714843752,
+              "feedbackVisible": false,
+              "feedbackPos": {
+                "x": 20,
+                "y": 60
+              }
+            },
+            "sdf.camDist": {
+              "id": "sdf.camDist",
+              "value": 5,
+              "controller": null,
+              "table": null,
+              "ctrlMin": 0.5,
+              "ctrlMax": 20,
+              "invert": false,
+              "cycle": false,
+              "slew": 0,
               "feedbackVisible": false,
               "feedbackPos": {
                 "x": 20,
@@ -24470,11 +23853,8 @@
             "sdf.opAmount": 0.5,
             "sdf.distance": 1.5,
             "sdf.shape": 0,
-            "sdf.repeat": 0,
+            "sdf.repeat": 3,
             "sdf.warp": 0.35000000000000003,
-            "sdf.camX": 0,
-            "sdf.camY": 0,
-            "sdf.camZ": 5,
             "sdf.kifsIter": 0,
             "sdf.kifsAngle": 0,
             "sdf.lumaWarp": 0,
@@ -24790,7 +24170,11 @@
             "particle.ng3.radius": 0.1,
             "particle.respawn": 0,
             "particle.freeze": 0,
-            "particle.clearPins": 1
+            "particle.clearPins": 1,
+            "sdf.orbitX": 0,
+            "sdf.orbitY": 0,
+            "sdf.camDist": 5,
+            "sdf.tile": 0
           },
           "fxOrder": [
             "pixelate",
@@ -24809,54 +24193,6 @@
             "grain"
           ],
           "controllers": {
-            "sdf.camX": {
-              "id": "sdf.camX",
-              "value": 0,
-              "controller": null,
-              "table": null,
-              "ctrlMin": -4.949736022949218,
-              "ctrlMax": 0.9528930664062489,
-              "invert": false,
-              "cycle": false,
-              "slew": 1.7268539428710936,
-              "feedbackVisible": false,
-              "feedbackPos": {
-                "x": 20,
-                "y": 60
-              }
-            },
-            "sdf.camY": {
-              "id": "sdf.camY",
-              "value": 0,
-              "controller": null,
-              "table": null,
-              "ctrlMin": -2.6502960205078123,
-              "ctrlMax": 0.8515838623046879,
-              "invert": false,
-              "cycle": false,
-              "slew": 2.8342907714843752,
-              "feedbackVisible": false,
-              "feedbackPos": {
-                "x": 20,
-                "y": 60
-              }
-            },
-            "sdf.camZ": {
-              "id": "sdf.camZ",
-              "value": 5,
-              "controller": null,
-              "table": null,
-              "ctrlMin": 2.0782379150390646,
-              "ctrlMax": 5.364300537109374,
-              "invert": false,
-              "cycle": false,
-              "slew": 0,
-              "feedbackVisible": false,
-              "feedbackPos": {
-                "x": 20,
-                "y": 60
-              }
-            },
             "text.size": {
               "id": "text.size",
               "value": 72,
@@ -24985,6 +24321,54 @@
               "invert": false,
               "cycle": false,
               "slew": 3,
+              "feedbackVisible": false,
+              "feedbackPos": {
+                "x": 20,
+                "y": 60
+              }
+            },
+            "sdf.orbitX": {
+              "id": "sdf.orbitX",
+              "value": 0,
+              "controller": null,
+              "table": null,
+              "ctrlMin": 0,
+              "ctrlMax": 360,
+              "invert": false,
+              "cycle": false,
+              "slew": 1.7268539428710936,
+              "feedbackVisible": false,
+              "feedbackPos": {
+                "x": 20,
+                "y": 60
+              }
+            },
+            "sdf.orbitY": {
+              "id": "sdf.orbitY",
+              "value": 0,
+              "controller": null,
+              "table": null,
+              "ctrlMin": -180,
+              "ctrlMax": 180,
+              "invert": false,
+              "cycle": false,
+              "slew": 2.8342907714843752,
+              "feedbackVisible": false,
+              "feedbackPos": {
+                "x": 20,
+                "y": 60
+              }
+            },
+            "sdf.camDist": {
+              "id": "sdf.camDist",
+              "value": 5,
+              "controller": null,
+              "table": null,
+              "ctrlMin": 0.5,
+              "ctrlMax": 20,
+              "invert": false,
+              "cycle": false,
+              "slew": 0,
               "feedbackVisible": false,
               "feedbackPos": {
                 "x": 20,
@@ -25201,11 +24585,8 @@
             "sdf.opAmount": 0.5,
             "sdf.distance": 1.5,
             "sdf.shape": 0,
-            "sdf.repeat": 0,
+            "sdf.repeat": 3,
             "sdf.warp": 0.35000000000000003,
-            "sdf.camX": 0,
-            "sdf.camY": 0,
-            "sdf.camZ": 5,
             "sdf.kifsIter": 0,
             "sdf.kifsAngle": 0,
             "sdf.lumaWarp": 0,
@@ -25521,7 +24902,11 @@
             "particle.ng3.radius": 0.1,
             "particle.respawn": 0,
             "particle.freeze": 0,
-            "particle.clearPins": 1
+            "particle.clearPins": 1,
+            "sdf.orbitX": 0,
+            "sdf.orbitY": 0,
+            "sdf.camDist": 5,
+            "sdf.tile": 0
           },
           "fxOrder": [
             "pixelate",
@@ -25540,54 +24925,6 @@
             "grain"
           ],
           "controllers": {
-            "sdf.camX": {
-              "id": "sdf.camX",
-              "value": 0,
-              "controller": null,
-              "table": null,
-              "ctrlMin": -4.949736022949218,
-              "ctrlMax": 0.9528930664062489,
-              "invert": false,
-              "cycle": false,
-              "slew": 1.7268539428710936,
-              "feedbackVisible": false,
-              "feedbackPos": {
-                "x": 20,
-                "y": 60
-              }
-            },
-            "sdf.camY": {
-              "id": "sdf.camY",
-              "value": 0,
-              "controller": null,
-              "table": null,
-              "ctrlMin": -2.6502960205078123,
-              "ctrlMax": 0.8515838623046879,
-              "invert": false,
-              "cycle": false,
-              "slew": 2.8342907714843752,
-              "feedbackVisible": false,
-              "feedbackPos": {
-                "x": 20,
-                "y": 60
-              }
-            },
-            "sdf.camZ": {
-              "id": "sdf.camZ",
-              "value": 5,
-              "controller": null,
-              "table": null,
-              "ctrlMin": 2.0782379150390646,
-              "ctrlMax": 5.364300537109374,
-              "invert": false,
-              "cycle": false,
-              "slew": 0,
-              "feedbackVisible": false,
-              "feedbackPos": {
-                "x": 20,
-                "y": 60
-              }
-            },
             "text.size": {
               "id": "text.size",
               "value": 72,
@@ -25722,6 +25059,54 @@
               "invert": false,
               "cycle": false,
               "slew": 3,
+              "feedbackVisible": false,
+              "feedbackPos": {
+                "x": 20,
+                "y": 60
+              }
+            },
+            "sdf.orbitX": {
+              "id": "sdf.orbitX",
+              "value": 0,
+              "controller": null,
+              "table": null,
+              "ctrlMin": 0,
+              "ctrlMax": 360,
+              "invert": false,
+              "cycle": false,
+              "slew": 1.7268539428710936,
+              "feedbackVisible": false,
+              "feedbackPos": {
+                "x": 20,
+                "y": 60
+              }
+            },
+            "sdf.orbitY": {
+              "id": "sdf.orbitY",
+              "value": 0,
+              "controller": null,
+              "table": null,
+              "ctrlMin": -180,
+              "ctrlMax": 180,
+              "invert": false,
+              "cycle": false,
+              "slew": 2.8342907714843752,
+              "feedbackVisible": false,
+              "feedbackPos": {
+                "x": 20,
+                "y": 60
+              }
+            },
+            "sdf.camDist": {
+              "id": "sdf.camDist",
+              "value": 5,
+              "controller": null,
+              "table": null,
+              "ctrlMin": 0.5,
+              "ctrlMax": 20,
+              "invert": false,
+              "cycle": false,
+              "slew": 0,
               "feedbackVisible": false,
               "feedbackPos": {
                 "x": 20,
@@ -25969,11 +25354,8 @@
             "sdf.opAmount": 0.5,
             "sdf.distance": 1.5,
             "sdf.shape": 0,
-            "sdf.repeat": 0,
+            "sdf.repeat": 3,
             "sdf.warp": 0.35000000000000003,
-            "sdf.camX": 0,
-            "sdf.camY": 0,
-            "sdf.camZ": 5,
             "sdf.kifsIter": 0,
             "sdf.kifsAngle": 0,
             "sdf.lumaWarp": 0,
@@ -26289,7 +25671,11 @@
             "particle.ng3.radius": 0.1,
             "particle.respawn": 0,
             "particle.freeze": 0,
-            "particle.clearPins": 1
+            "particle.clearPins": 1,
+            "sdf.orbitX": 0,
+            "sdf.orbitY": 0,
+            "sdf.camDist": 5,
+            "sdf.tile": 0
           },
           "fxOrder": [
             "pixelate",
@@ -26434,54 +25820,6 @@
                 "y": 60
               }
             },
-            "sdf.camX": {
-              "id": "sdf.camX",
-              "value": 0,
-              "controller": null,
-              "table": null,
-              "ctrlMin": -4.949736022949218,
-              "ctrlMax": 0.9528930664062489,
-              "invert": false,
-              "cycle": false,
-              "slew": 1.7268539428710936,
-              "feedbackVisible": false,
-              "feedbackPos": {
-                "x": 20,
-                "y": 60
-              }
-            },
-            "sdf.camY": {
-              "id": "sdf.camY",
-              "value": 0,
-              "controller": null,
-              "table": null,
-              "ctrlMin": -2.6502960205078123,
-              "ctrlMax": 0.8515838623046879,
-              "invert": false,
-              "cycle": false,
-              "slew": 2.8342907714843752,
-              "feedbackVisible": false,
-              "feedbackPos": {
-                "x": 20,
-                "y": 60
-              }
-            },
-            "sdf.camZ": {
-              "id": "sdf.camZ",
-              "value": 5,
-              "controller": null,
-              "table": null,
-              "ctrlMin": 2.0782379150390646,
-              "ctrlMax": 5.364300537109374,
-              "invert": false,
-              "cycle": false,
-              "slew": 0,
-              "feedbackVisible": false,
-              "feedbackPos": {
-                "x": 20,
-                "y": 60
-              }
-            },
             "text.size": {
               "id": "text.size",
               "value": 72,
@@ -26616,6 +25954,54 @@
               "invert": false,
               "cycle": false,
               "slew": 3,
+              "feedbackVisible": false,
+              "feedbackPos": {
+                "x": 20,
+                "y": 60
+              }
+            },
+            "sdf.orbitX": {
+              "id": "sdf.orbitX",
+              "value": 0,
+              "controller": null,
+              "table": null,
+              "ctrlMin": 0,
+              "ctrlMax": 360,
+              "invert": false,
+              "cycle": false,
+              "slew": 1.7268539428710936,
+              "feedbackVisible": false,
+              "feedbackPos": {
+                "x": 20,
+                "y": 60
+              }
+            },
+            "sdf.orbitY": {
+              "id": "sdf.orbitY",
+              "value": 0,
+              "controller": null,
+              "table": null,
+              "ctrlMin": -180,
+              "ctrlMax": 180,
+              "invert": false,
+              "cycle": false,
+              "slew": 2.8342907714843752,
+              "feedbackVisible": false,
+              "feedbackPos": {
+                "x": 20,
+                "y": 60
+              }
+            },
+            "sdf.camDist": {
+              "id": "sdf.camDist",
+              "value": 5,
+              "controller": null,
+              "table": null,
+              "ctrlMin": 0.5,
+              "ctrlMax": 20,
+              "invert": false,
+              "cycle": false,
+              "slew": 0,
               "feedbackVisible": false,
               "feedbackPos": {
                 "x": 20,
@@ -26863,11 +26249,8 @@
             "sdf.opAmount": 0.5,
             "sdf.distance": 1.5,
             "sdf.shape": 0,
-            "sdf.repeat": 0,
+            "sdf.repeat": 3,
             "sdf.warp": 0.35000000000000003,
-            "sdf.camX": 0,
-            "sdf.camY": 0,
-            "sdf.camZ": 5,
             "sdf.kifsIter": 0,
             "sdf.kifsAngle": 0,
             "sdf.lumaWarp": 0,
@@ -27183,7 +26566,11 @@
             "particle.ng3.radius": 0.1,
             "particle.respawn": 0,
             "particle.freeze": 0,
-            "particle.clearPins": 1
+            "particle.clearPins": 1,
+            "sdf.orbitX": 0,
+            "sdf.orbitY": 0,
+            "sdf.camDist": 5,
+            "sdf.tile": 0
           },
           "fxOrder": [
             "pixelate",
@@ -27328,54 +26715,6 @@
                 "y": 60
               }
             },
-            "sdf.camX": {
-              "id": "sdf.camX",
-              "value": 0,
-              "controller": null,
-              "table": null,
-              "ctrlMin": -4.949736022949218,
-              "ctrlMax": 0.9528930664062489,
-              "invert": false,
-              "cycle": false,
-              "slew": 1.7268539428710936,
-              "feedbackVisible": false,
-              "feedbackPos": {
-                "x": 20,
-                "y": 60
-              }
-            },
-            "sdf.camY": {
-              "id": "sdf.camY",
-              "value": 0,
-              "controller": null,
-              "table": null,
-              "ctrlMin": -2.6502960205078123,
-              "ctrlMax": 0.8515838623046879,
-              "invert": false,
-              "cycle": false,
-              "slew": 2.8342907714843752,
-              "feedbackVisible": false,
-              "feedbackPos": {
-                "x": 20,
-                "y": 60
-              }
-            },
-            "sdf.camZ": {
-              "id": "sdf.camZ",
-              "value": 5,
-              "controller": null,
-              "table": null,
-              "ctrlMin": 2.0782379150390646,
-              "ctrlMax": 5.364300537109374,
-              "invert": false,
-              "cycle": false,
-              "slew": 0,
-              "feedbackVisible": false,
-              "feedbackPos": {
-                "x": 20,
-                "y": 60
-              }
-            },
             "text.size": {
               "id": "text.size",
               "value": 72,
@@ -27510,6 +26849,54 @@
               "invert": false,
               "cycle": false,
               "slew": 3,
+              "feedbackVisible": false,
+              "feedbackPos": {
+                "x": 20,
+                "y": 60
+              }
+            },
+            "sdf.orbitX": {
+              "id": "sdf.orbitX",
+              "value": 0,
+              "controller": null,
+              "table": null,
+              "ctrlMin": 0,
+              "ctrlMax": 360,
+              "invert": false,
+              "cycle": false,
+              "slew": 1.7268539428710936,
+              "feedbackVisible": false,
+              "feedbackPos": {
+                "x": 20,
+                "y": 60
+              }
+            },
+            "sdf.orbitY": {
+              "id": "sdf.orbitY",
+              "value": 0,
+              "controller": null,
+              "table": null,
+              "ctrlMin": -180,
+              "ctrlMax": 180,
+              "invert": false,
+              "cycle": false,
+              "slew": 2.8342907714843752,
+              "feedbackVisible": false,
+              "feedbackPos": {
+                "x": 20,
+                "y": 60
+              }
+            },
+            "sdf.camDist": {
+              "id": "sdf.camDist",
+              "value": 5,
+              "controller": null,
+              "table": null,
+              "ctrlMin": 0.5,
+              "ctrlMax": 20,
+              "invert": false,
+              "cycle": false,
+              "slew": 0,
               "feedbackVisible": false,
               "feedbackPos": {
                 "x": 20,
@@ -27757,11 +27144,8 @@
             "sdf.opAmount": 0.5,
             "sdf.distance": 1.5,
             "sdf.shape": 0,
-            "sdf.repeat": 0,
+            "sdf.repeat": 3,
             "sdf.warp": 0.35000000000000003,
-            "sdf.camX": 0,
-            "sdf.camY": 0,
-            "sdf.camZ": 5,
             "sdf.kifsIter": 0,
             "sdf.kifsAngle": 0,
             "sdf.lumaWarp": 0,
@@ -28077,7 +27461,11 @@
             "particle.ng3.radius": 0.1,
             "particle.respawn": 0,
             "particle.freeze": 0,
-            "particle.clearPins": 1
+            "particle.clearPins": 1,
+            "sdf.orbitX": 0,
+            "sdf.orbitY": 0,
+            "sdf.camDist": 5,
+            "sdf.tile": 0
           },
           "fxOrder": [
             "pixelate",
@@ -28222,54 +27610,6 @@
                 "y": 60
               }
             },
-            "sdf.camX": {
-              "id": "sdf.camX",
-              "value": 0,
-              "controller": null,
-              "table": null,
-              "ctrlMin": -4.949736022949218,
-              "ctrlMax": 0.9528930664062489,
-              "invert": false,
-              "cycle": false,
-              "slew": 1.7268539428710936,
-              "feedbackVisible": false,
-              "feedbackPos": {
-                "x": 20,
-                "y": 60
-              }
-            },
-            "sdf.camY": {
-              "id": "sdf.camY",
-              "value": 0,
-              "controller": null,
-              "table": null,
-              "ctrlMin": -2.6502960205078123,
-              "ctrlMax": 0.8515838623046879,
-              "invert": false,
-              "cycle": false,
-              "slew": 2.8342907714843752,
-              "feedbackVisible": false,
-              "feedbackPos": {
-                "x": 20,
-                "y": 60
-              }
-            },
-            "sdf.camZ": {
-              "id": "sdf.camZ",
-              "value": 5,
-              "controller": null,
-              "table": null,
-              "ctrlMin": 2.0782379150390646,
-              "ctrlMax": 5.364300537109374,
-              "invert": false,
-              "cycle": false,
-              "slew": 0,
-              "feedbackVisible": false,
-              "feedbackPos": {
-                "x": 20,
-                "y": 60
-              }
-            },
             "text.size": {
               "id": "text.size",
               "value": 72,
@@ -28404,6 +27744,54 @@
               "invert": false,
               "cycle": false,
               "slew": 3,
+              "feedbackVisible": false,
+              "feedbackPos": {
+                "x": 20,
+                "y": 60
+              }
+            },
+            "sdf.orbitX": {
+              "id": "sdf.orbitX",
+              "value": 0,
+              "controller": null,
+              "table": null,
+              "ctrlMin": 0,
+              "ctrlMax": 360,
+              "invert": false,
+              "cycle": false,
+              "slew": 1.7268539428710936,
+              "feedbackVisible": false,
+              "feedbackPos": {
+                "x": 20,
+                "y": 60
+              }
+            },
+            "sdf.orbitY": {
+              "id": "sdf.orbitY",
+              "value": 0,
+              "controller": null,
+              "table": null,
+              "ctrlMin": -180,
+              "ctrlMax": 180,
+              "invert": false,
+              "cycle": false,
+              "slew": 2.8342907714843752,
+              "feedbackVisible": false,
+              "feedbackPos": {
+                "x": 20,
+                "y": 60
+              }
+            },
+            "sdf.camDist": {
+              "id": "sdf.camDist",
+              "value": 5,
+              "controller": null,
+              "table": null,
+              "ctrlMin": 0.5,
+              "ctrlMax": 20,
+              "invert": false,
+              "cycle": false,
+              "slew": 0,
               "feedbackVisible": false,
               "feedbackPos": {
                 "x": 20,
@@ -28651,11 +28039,8 @@
             "sdf.opAmount": 0.5,
             "sdf.distance": 1.5,
             "sdf.shape": 0,
-            "sdf.repeat": 0,
+            "sdf.repeat": 3,
             "sdf.warp": 0.35000000000000003,
-            "sdf.camX": 0,
-            "sdf.camY": 0,
-            "sdf.camZ": 5,
             "sdf.kifsIter": 0,
             "sdf.kifsAngle": 0,
             "sdf.lumaWarp": 0,
@@ -28971,7 +28356,11 @@
             "particle.ng3.radius": 0.1,
             "particle.respawn": 0,
             "particle.freeze": 0,
-            "particle.clearPins": 1
+            "particle.clearPins": 1,
+            "sdf.orbitX": 0,
+            "sdf.orbitY": 0,
+            "sdf.camDist": 5,
+            "sdf.tile": 0
           },
           "fxOrder": [
             "pixelate",
@@ -29116,54 +28505,6 @@
                 "y": 60
               }
             },
-            "sdf.camX": {
-              "id": "sdf.camX",
-              "value": 0,
-              "controller": null,
-              "table": null,
-              "ctrlMin": -4.949736022949218,
-              "ctrlMax": 0.9528930664062489,
-              "invert": false,
-              "cycle": false,
-              "slew": 1.7268539428710936,
-              "feedbackVisible": false,
-              "feedbackPos": {
-                "x": 20,
-                "y": 60
-              }
-            },
-            "sdf.camY": {
-              "id": "sdf.camY",
-              "value": 0,
-              "controller": null,
-              "table": null,
-              "ctrlMin": -2.6502960205078123,
-              "ctrlMax": 0.8515838623046879,
-              "invert": false,
-              "cycle": false,
-              "slew": 2.8342907714843752,
-              "feedbackVisible": false,
-              "feedbackPos": {
-                "x": 20,
-                "y": 60
-              }
-            },
-            "sdf.camZ": {
-              "id": "sdf.camZ",
-              "value": 5,
-              "controller": null,
-              "table": null,
-              "ctrlMin": 2.0782379150390646,
-              "ctrlMax": 5.364300537109374,
-              "invert": false,
-              "cycle": false,
-              "slew": 0,
-              "feedbackVisible": false,
-              "feedbackPos": {
-                "x": 20,
-                "y": 60
-              }
-            },
             "text.size": {
               "id": "text.size",
               "value": 72,
@@ -29298,6 +28639,54 @@
               "invert": false,
               "cycle": false,
               "slew": 3,
+              "feedbackVisible": false,
+              "feedbackPos": {
+                "x": 20,
+                "y": 60
+              }
+            },
+            "sdf.orbitX": {
+              "id": "sdf.orbitX",
+              "value": 0,
+              "controller": null,
+              "table": null,
+              "ctrlMin": 0,
+              "ctrlMax": 360,
+              "invert": false,
+              "cycle": false,
+              "slew": 1.7268539428710936,
+              "feedbackVisible": false,
+              "feedbackPos": {
+                "x": 20,
+                "y": 60
+              }
+            },
+            "sdf.orbitY": {
+              "id": "sdf.orbitY",
+              "value": 0,
+              "controller": null,
+              "table": null,
+              "ctrlMin": -180,
+              "ctrlMax": 180,
+              "invert": false,
+              "cycle": false,
+              "slew": 2.8342907714843752,
+              "feedbackVisible": false,
+              "feedbackPos": {
+                "x": 20,
+                "y": 60
+              }
+            },
+            "sdf.camDist": {
+              "id": "sdf.camDist",
+              "value": 5,
+              "controller": null,
+              "table": null,
+              "ctrlMin": 0.5,
+              "ctrlMax": 20,
+              "invert": false,
+              "cycle": false,
+              "slew": 0,
               "feedbackVisible": false,
               "feedbackPos": {
                 "x": 20,
@@ -29545,11 +28934,8 @@
             "sdf.opAmount": 0.5,
             "sdf.distance": 1.5,
             "sdf.shape": 0,
-            "sdf.repeat": 0,
+            "sdf.repeat": 3,
             "sdf.warp": 0.35000000000000003,
-            "sdf.camX": 0,
-            "sdf.camY": 0,
-            "sdf.camZ": 5,
             "sdf.kifsIter": 0,
             "sdf.kifsAngle": 0,
             "sdf.lumaWarp": 0,
@@ -29865,7 +29251,11 @@
             "particle.ng3.radius": 0.1,
             "particle.respawn": 0,
             "particle.freeze": 0,
-            "particle.clearPins": 1
+            "particle.clearPins": 1,
+            "sdf.orbitX": 0,
+            "sdf.orbitY": 0,
+            "sdf.camDist": 5,
+            "sdf.tile": 0
           },
           "fxOrder": [
             "pixelate",
@@ -30010,54 +29400,6 @@
                 "y": 60
               }
             },
-            "sdf.camX": {
-              "id": "sdf.camX",
-              "value": 0,
-              "controller": null,
-              "table": null,
-              "ctrlMin": -4.949736022949218,
-              "ctrlMax": 0.9528930664062489,
-              "invert": false,
-              "cycle": false,
-              "slew": 1.7268539428710936,
-              "feedbackVisible": false,
-              "feedbackPos": {
-                "x": 20,
-                "y": 60
-              }
-            },
-            "sdf.camY": {
-              "id": "sdf.camY",
-              "value": 0,
-              "controller": null,
-              "table": null,
-              "ctrlMin": -2.6502960205078123,
-              "ctrlMax": 0.8515838623046879,
-              "invert": false,
-              "cycle": false,
-              "slew": 2.8342907714843752,
-              "feedbackVisible": false,
-              "feedbackPos": {
-                "x": 20,
-                "y": 60
-              }
-            },
-            "sdf.camZ": {
-              "id": "sdf.camZ",
-              "value": 5,
-              "controller": null,
-              "table": null,
-              "ctrlMin": 2.0782379150390646,
-              "ctrlMax": 5.364300537109374,
-              "invert": false,
-              "cycle": false,
-              "slew": 0,
-              "feedbackVisible": false,
-              "feedbackPos": {
-                "x": 20,
-                "y": 60
-              }
-            },
             "text.size": {
               "id": "text.size",
               "value": 72,
@@ -30192,6 +29534,54 @@
               "invert": false,
               "cycle": false,
               "slew": 3,
+              "feedbackVisible": false,
+              "feedbackPos": {
+                "x": 20,
+                "y": 60
+              }
+            },
+            "sdf.orbitX": {
+              "id": "sdf.orbitX",
+              "value": 0,
+              "controller": null,
+              "table": null,
+              "ctrlMin": 0,
+              "ctrlMax": 360,
+              "invert": false,
+              "cycle": false,
+              "slew": 1.7268539428710936,
+              "feedbackVisible": false,
+              "feedbackPos": {
+                "x": 20,
+                "y": 60
+              }
+            },
+            "sdf.orbitY": {
+              "id": "sdf.orbitY",
+              "value": 0,
+              "controller": null,
+              "table": null,
+              "ctrlMin": -180,
+              "ctrlMax": 180,
+              "invert": false,
+              "cycle": false,
+              "slew": 2.8342907714843752,
+              "feedbackVisible": false,
+              "feedbackPos": {
+                "x": 20,
+                "y": 60
+              }
+            },
+            "sdf.camDist": {
+              "id": "sdf.camDist",
+              "value": 5,
+              "controller": null,
+              "table": null,
+              "ctrlMin": 0.5,
+              "ctrlMax": 20,
+              "invert": false,
+              "cycle": false,
+              "slew": 0,
               "feedbackVisible": false,
               "feedbackPos": {
                 "x": 20,
@@ -30439,11 +29829,8 @@
             "sdf.opAmount": 0.5,
             "sdf.distance": 1.5,
             "sdf.shape": 0,
-            "sdf.repeat": 0,
+            "sdf.repeat": 3,
             "sdf.warp": 0.35000000000000003,
-            "sdf.camX": 0,
-            "sdf.camY": 0,
-            "sdf.camZ": 5,
             "sdf.kifsIter": 0,
             "sdf.kifsAngle": 0,
             "sdf.lumaWarp": 0,
@@ -30759,7 +30146,11 @@
             "particle.ng3.radius": 0.1,
             "particle.respawn": 0,
             "particle.freeze": 0,
-            "particle.clearPins": 0
+            "particle.clearPins": 0,
+            "sdf.orbitX": 0,
+            "sdf.orbitY": 0,
+            "sdf.camDist": 5,
+            "sdf.tile": 0
           },
           "fxOrder": [
             "pixelate",
@@ -30880,54 +30271,6 @@
               "invert": false,
               "cycle": false,
               "slew": 0.9616082763671875,
-              "feedbackVisible": false,
-              "feedbackPos": {
-                "x": 20,
-                "y": 60
-              }
-            },
-            "sdf.camX": {
-              "id": "sdf.camX",
-              "value": 0,
-              "controller": null,
-              "table": null,
-              "ctrlMin": -4.949736022949218,
-              "ctrlMax": 0.9528930664062489,
-              "invert": false,
-              "cycle": false,
-              "slew": 1.7268539428710936,
-              "feedbackVisible": false,
-              "feedbackPos": {
-                "x": 20,
-                "y": 60
-              }
-            },
-            "sdf.camY": {
-              "id": "sdf.camY",
-              "value": 0,
-              "controller": null,
-              "table": null,
-              "ctrlMin": -2.6502960205078123,
-              "ctrlMax": 0.8515838623046879,
-              "invert": false,
-              "cycle": false,
-              "slew": 2.8342907714843752,
-              "feedbackVisible": false,
-              "feedbackPos": {
-                "x": 20,
-                "y": 60
-              }
-            },
-            "sdf.camZ": {
-              "id": "sdf.camZ",
-              "value": 5,
-              "controller": null,
-              "table": null,
-              "ctrlMin": 2.0782379150390646,
-              "ctrlMax": 5.364300537109374,
-              "invert": false,
-              "cycle": false,
-              "slew": 0,
               "feedbackVisible": false,
               "feedbackPos": {
                 "x": 20,
@@ -31100,6 +30443,54 @@
               "invert": false,
               "cycle": false,
               "slew": 1.6724414062500002,
+              "feedbackVisible": false,
+              "feedbackPos": {
+                "x": 20,
+                "y": 60
+              }
+            },
+            "sdf.orbitX": {
+              "id": "sdf.orbitX",
+              "value": 0,
+              "controller": null,
+              "table": null,
+              "ctrlMin": 0,
+              "ctrlMax": 360,
+              "invert": false,
+              "cycle": false,
+              "slew": 1.7268539428710936,
+              "feedbackVisible": false,
+              "feedbackPos": {
+                "x": 20,
+                "y": 60
+              }
+            },
+            "sdf.orbitY": {
+              "id": "sdf.orbitY",
+              "value": 0,
+              "controller": null,
+              "table": null,
+              "ctrlMin": -180,
+              "ctrlMax": 180,
+              "invert": false,
+              "cycle": false,
+              "slew": 2.8342907714843752,
+              "feedbackVisible": false,
+              "feedbackPos": {
+                "x": 20,
+                "y": 60
+              }
+            },
+            "sdf.camDist": {
+              "id": "sdf.camDist",
+              "value": 5,
+              "controller": null,
+              "table": null,
+              "ctrlMin": 0.5,
+              "ctrlMax": 20,
+              "invert": false,
+              "cycle": false,
+              "slew": 0,
               "feedbackVisible": false,
               "feedbackPos": {
                 "x": 20,
@@ -31342,11 +30733,8 @@
             "sdf.opAmount": 0.5,
             "sdf.distance": 1.5,
             "sdf.shape": 0,
-            "sdf.repeat": 0,
+            "sdf.repeat": 3,
             "sdf.warp": 0,
-            "sdf.camX": 0,
-            "sdf.camY": 0,
-            "sdf.camZ": 5,
             "sdf.kifsIter": 0,
             "sdf.kifsAngle": 0,
             "sdf.lumaWarp": 0,
@@ -31674,7 +31062,11 @@
             "particle.ng3.radius": 0.1,
             "particle.respawn": 0,
             "particle.freeze": 0,
-            "particle.clearPins": 0
+            "particle.clearPins": 0,
+            "sdf.orbitX": 0,
+            "sdf.orbitY": 0,
+            "sdf.camDist": 5,
+            "sdf.tile": 0
           },
           "fxOrder": [
             "pixelate",
@@ -31978,54 +31370,6 @@
                 "y": 60
               }
             },
-            "sdf.camX": {
-              "id": "sdf.camX",
-              "value": 0,
-              "controller": null,
-              "table": null,
-              "ctrlMin": -4.949736022949218,
-              "ctrlMax": 0.9528930664062489,
-              "invert": false,
-              "cycle": false,
-              "slew": 1.7268539428710936,
-              "feedbackVisible": false,
-              "feedbackPos": {
-                "x": 20,
-                "y": 60
-              }
-            },
-            "sdf.camY": {
-              "id": "sdf.camY",
-              "value": 0,
-              "controller": null,
-              "table": null,
-              "ctrlMin": -2.6502960205078123,
-              "ctrlMax": 0.8515838623046879,
-              "invert": false,
-              "cycle": false,
-              "slew": 2.8342907714843752,
-              "feedbackVisible": false,
-              "feedbackPos": {
-                "x": 20,
-                "y": 60
-              }
-            },
-            "sdf.camZ": {
-              "id": "sdf.camZ",
-              "value": 5,
-              "controller": null,
-              "table": null,
-              "ctrlMin": 2.0782379150390646,
-              "ctrlMax": 5.364300537109374,
-              "invert": false,
-              "cycle": false,
-              "slew": 0,
-              "feedbackVisible": false,
-              "feedbackPos": {
-                "x": 20,
-                "y": 60
-              }
-            },
             "text.size": {
               "id": "text.size",
               "value": 72,
@@ -32230,6 +31574,54 @@
               "invert": false,
               "cycle": false,
               "slew": 1.6724414062500002,
+              "feedbackVisible": false,
+              "feedbackPos": {
+                "x": 20,
+                "y": 60
+              }
+            },
+            "sdf.orbitX": {
+              "id": "sdf.orbitX",
+              "value": 0,
+              "controller": null,
+              "table": null,
+              "ctrlMin": 0,
+              "ctrlMax": 360,
+              "invert": false,
+              "cycle": false,
+              "slew": 1.7268539428710936,
+              "feedbackVisible": false,
+              "feedbackPos": {
+                "x": 20,
+                "y": 60
+              }
+            },
+            "sdf.orbitY": {
+              "id": "sdf.orbitY",
+              "value": 0,
+              "controller": null,
+              "table": null,
+              "ctrlMin": -180,
+              "ctrlMax": 180,
+              "invert": false,
+              "cycle": false,
+              "slew": 2.8342907714843752,
+              "feedbackVisible": false,
+              "feedbackPos": {
+                "x": 20,
+                "y": 60
+              }
+            },
+            "sdf.camDist": {
+              "id": "sdf.camDist",
+              "value": 5,
+              "controller": null,
+              "table": null,
+              "ctrlMin": 0.5,
+              "ctrlMax": 20,
+              "invert": false,
+              "cycle": false,
+              "slew": 0,
               "feedbackVisible": false,
               "feedbackPos": {
                 "x": 20,
@@ -32597,11 +31989,8 @@
             "sdf.opAmount": 0.5,
             "sdf.distance": 1.5,
             "sdf.shape": 0,
-            "sdf.repeat": 0,
+            "sdf.repeat": 3,
             "sdf.warp": 0,
-            "sdf.camX": 0,
-            "sdf.camY": 0,
-            "sdf.camZ": 5,
             "sdf.kifsIter": 0,
             "sdf.kifsAngle": 0,
             "sdf.lumaWarp": 0,
@@ -32917,7 +32306,11 @@
             "particle.ng3.radius": 0.1,
             "particle.respawn": 0,
             "particle.freeze": 0,
-            "particle.clearPins": 0
+            "particle.clearPins": 0,
+            "sdf.orbitX": 0,
+            "sdf.orbitY": 0,
+            "sdf.camDist": 5,
+            "sdf.tile": 0
           },
           "fxOrder": [
             "pixelate",
@@ -33060,54 +32453,6 @@
               "invert": false,
               "cycle": false,
               "slew": 1.98125244140625,
-              "feedbackVisible": false,
-              "feedbackPos": {
-                "x": 20,
-                "y": 60
-              }
-            },
-            "sdf.camX": {
-              "id": "sdf.camX",
-              "value": 0,
-              "controller": null,
-              "table": null,
-              "ctrlMin": -4.949736022949218,
-              "ctrlMax": 0.9528930664062489,
-              "invert": false,
-              "cycle": false,
-              "slew": 1.7268539428710936,
-              "feedbackVisible": false,
-              "feedbackPos": {
-                "x": 20,
-                "y": 60
-              }
-            },
-            "sdf.camY": {
-              "id": "sdf.camY",
-              "value": 0,
-              "controller": null,
-              "table": null,
-              "ctrlMin": -2.6502960205078123,
-              "ctrlMax": 0.8515838623046879,
-              "invert": false,
-              "cycle": false,
-              "slew": 2.8342907714843752,
-              "feedbackVisible": false,
-              "feedbackPos": {
-                "x": 20,
-                "y": 60
-              }
-            },
-            "sdf.camZ": {
-              "id": "sdf.camZ",
-              "value": 5,
-              "controller": null,
-              "table": null,
-              "ctrlMin": 2.0782379150390646,
-              "ctrlMax": 5.364300537109374,
-              "invert": false,
-              "cycle": false,
-              "slew": 0,
               "feedbackVisible": false,
               "feedbackPos": {
                 "x": 20,
@@ -33302,6 +32647,54 @@
               "invert": false,
               "cycle": false,
               "slew": 1.6724414062500002,
+              "feedbackVisible": false,
+              "feedbackPos": {
+                "x": 20,
+                "y": 60
+              }
+            },
+            "sdf.orbitX": {
+              "id": "sdf.orbitX",
+              "value": 0,
+              "controller": null,
+              "table": null,
+              "ctrlMin": 0,
+              "ctrlMax": 360,
+              "invert": false,
+              "cycle": false,
+              "slew": 1.7268539428710936,
+              "feedbackVisible": false,
+              "feedbackPos": {
+                "x": 20,
+                "y": 60
+              }
+            },
+            "sdf.orbitY": {
+              "id": "sdf.orbitY",
+              "value": 0,
+              "controller": null,
+              "table": null,
+              "ctrlMin": -180,
+              "ctrlMax": 180,
+              "invert": false,
+              "cycle": false,
+              "slew": 2.8342907714843752,
+              "feedbackVisible": false,
+              "feedbackPos": {
+                "x": 20,
+                "y": 60
+              }
+            },
+            "sdf.camDist": {
+              "id": "sdf.camDist",
+              "value": 5,
+              "controller": null,
+              "table": null,
+              "ctrlMin": 0.5,
+              "ctrlMax": 20,
+              "invert": false,
+              "cycle": false,
+              "slew": 0,
               "feedbackVisible": false,
               "feedbackPos": {
                 "x": 20,
@@ -33695,11 +33088,8 @@
             "sdf.opAmount": 0.5,
             "sdf.distance": 1.5,
             "sdf.shape": 0,
-            "sdf.repeat": 0,
+            "sdf.repeat": 3,
             "sdf.warp": 0.35000000000000003,
-            "sdf.camX": 0,
-            "sdf.camY": 0,
-            "sdf.camZ": 5,
             "sdf.kifsIter": 0,
             "sdf.kifsAngle": 0,
             "sdf.lumaWarp": 0,
@@ -34027,7 +33417,11 @@
             "particle.ng3.radius": 0.1,
             "particle.respawn": 0,
             "particle.freeze": 0,
-            "particle.clearPins": 1
+            "particle.clearPins": 1,
+            "sdf.orbitX": 0,
+            "sdf.orbitY": 0,
+            "sdf.camDist": 5,
+            "sdf.tile": 0
           },
           "fxOrder": [
             "pixelate",
@@ -34168,54 +33562,6 @@
               "invert": false,
               "cycle": false,
               "slew": 1.98125244140625,
-              "feedbackVisible": false,
-              "feedbackPos": {
-                "x": 20,
-                "y": 60
-              }
-            },
-            "sdf.camX": {
-              "id": "sdf.camX",
-              "value": 0,
-              "controller": null,
-              "table": null,
-              "ctrlMin": -4.949736022949218,
-              "ctrlMax": 0.9528930664062489,
-              "invert": false,
-              "cycle": false,
-              "slew": 1.7268539428710936,
-              "feedbackVisible": false,
-              "feedbackPos": {
-                "x": 20,
-                "y": 60
-              }
-            },
-            "sdf.camY": {
-              "id": "sdf.camY",
-              "value": 0,
-              "controller": null,
-              "table": null,
-              "ctrlMin": -2.6502960205078123,
-              "ctrlMax": 0.8515838623046879,
-              "invert": false,
-              "cycle": false,
-              "slew": 2.8342907714843752,
-              "feedbackVisible": false,
-              "feedbackPos": {
-                "x": 20,
-                "y": 60
-              }
-            },
-            "sdf.camZ": {
-              "id": "sdf.camZ",
-              "value": 5,
-              "controller": null,
-              "table": null,
-              "ctrlMin": 2.0782379150390646,
-              "ctrlMax": 5.364300537109374,
-              "invert": false,
-              "cycle": false,
-              "slew": 0,
               "feedbackVisible": false,
               "feedbackPos": {
                 "x": 20,
@@ -34377,6 +33723,54 @@
                 "x": 20,
                 "y": 60
               }
+            },
+            "sdf.orbitX": {
+              "id": "sdf.orbitX",
+              "value": 0,
+              "controller": null,
+              "table": null,
+              "ctrlMin": 0,
+              "ctrlMax": 360,
+              "invert": false,
+              "cycle": false,
+              "slew": 1.7268539428710936,
+              "feedbackVisible": false,
+              "feedbackPos": {
+                "x": 20,
+                "y": 60
+              }
+            },
+            "sdf.orbitY": {
+              "id": "sdf.orbitY",
+              "value": 0,
+              "controller": null,
+              "table": null,
+              "ctrlMin": -180,
+              "ctrlMax": 180,
+              "invert": false,
+              "cycle": false,
+              "slew": 2.8342907714843752,
+              "feedbackVisible": false,
+              "feedbackPos": {
+                "x": 20,
+                "y": 60
+              }
+            },
+            "sdf.camDist": {
+              "id": "sdf.camDist",
+              "value": 5,
+              "controller": null,
+              "table": null,
+              "ctrlMin": 0.5,
+              "ctrlMax": 20,
+              "invert": false,
+              "cycle": false,
+              "slew": 0,
+              "feedbackVisible": false,
+              "feedbackPos": {
+                "x": 20,
+                "y": 60
+              }
             }
           },
           "mediaRefs": {
@@ -34399,8 +33793,9 @@
       ],
       "activeState": 21,
       "created": 1777405620402,
-      "modified": 1785242447511,
-      "thumbnail": null
+      "modified": 1785245262172,
+      "thumbnail": null,
+      "sourceCount": 31
     },
     {
       "index": 7,
@@ -34659,11 +34054,8 @@
             "sdf.opAmount": 0.5,
             "sdf.distance": 1.5,
             "sdf.shape": 0,
-            "sdf.repeat": 0,
+            "sdf.repeat": 3,
             "sdf.warp": 0.35000000000000003,
-            "sdf.camX": 0,
-            "sdf.camY": 0,
-            "sdf.camZ": 5,
             "sdf.kifsIter": 0,
             "sdf.kifsAngle": 0,
             "sdf.lumaWarp": 0,
@@ -34979,7 +34371,11 @@
             "particle.ng3.radius": 0.1,
             "particle.respawn": 0,
             "particle.freeze": 0,
-            "particle.clearPins": 0
+            "particle.clearPins": 0,
+            "sdf.orbitX": 0,
+            "sdf.orbitY": 0,
+            "sdf.camDist": 5,
+            "sdf.tile": 0
           },
           "fxOrder": [
             "pixelate",
@@ -35440,11 +34836,8 @@
             "sdf.opAmount": 0.5,
             "sdf.distance": 1.5,
             "sdf.shape": 0,
-            "sdf.repeat": 0,
+            "sdf.repeat": 3,
             "sdf.warp": 0.35000000000000003,
-            "sdf.camX": 0,
-            "sdf.camY": 0,
-            "sdf.camZ": 5,
             "sdf.kifsIter": 0,
             "sdf.kifsAngle": 0,
             "sdf.lumaWarp": 0,
@@ -35760,7 +35153,11 @@
             "particle.ng3.radius": 0.1,
             "particle.respawn": 0,
             "particle.freeze": 0,
-            "particle.clearPins": 0
+            "particle.clearPins": 0,
+            "sdf.orbitX": 0,
+            "sdf.orbitY": 0,
+            "sdf.camDist": 5,
+            "sdf.tile": 0
           },
           "fxOrder": [
             "pixelate",
@@ -36072,11 +35469,8 @@
             "sdf.opAmount": 0.5,
             "sdf.distance": 1.5,
             "sdf.shape": 0,
-            "sdf.repeat": 0,
+            "sdf.repeat": 3,
             "sdf.warp": 0.35000000000000003,
-            "sdf.camX": 0,
-            "sdf.camY": 0,
-            "sdf.camZ": 5,
             "sdf.kifsIter": 0,
             "sdf.kifsAngle": 0,
             "sdf.lumaWarp": 0,
@@ -36392,7 +35786,11 @@
             "particle.ng3.radius": 0.1,
             "particle.respawn": 0,
             "particle.freeze": 0,
-            "particle.clearPins": 1
+            "particle.clearPins": 1,
+            "sdf.orbitX": 0,
+            "sdf.orbitY": 0,
+            "sdf.camDist": 5,
+            "sdf.tile": 0
           },
           "fxOrder": [
             "pixelate",
@@ -36486,8 +35884,9 @@
       ],
       "activeState": 2,
       "created": 1777453915447,
-      "modified": 1785242447547,
-      "thumbnail": null
+      "modified": 1785245262203,
+      "thumbnail": null,
+      "sourceCount": 31
     }
   ],
   "tables": {
@@ -53815,8 +53214,8 @@
     "modelName": null
   },
   "glsl": {
-    "source": "// uParam1=Speed(-1..+1, 0.5=stop)  uParam2=DirX  uParam3=Zoom(1-8x)  uParam4=Width\nvoid main() {\n  float spd   = uParam1 * 2.0 - 1.0;               // -1..+1 travel speed\n  float width = 0.05 + uParam4 * 0.55;             // tube tightness / depth scale\n  float zoom  = 1.0 + uParam3 * 7.0;               // texture tiling: 1-8x around tube\n  float dscale = 0.05 + uParam3 * 0.45;            // depth tiling follows zoom\n  vec2  dir   = vec2(uParam2 - 0.5, 0.0) * 0.3;   // horizontal look offset\n\n  vec2 uv = vUv - 0.5 - dir;\n  float a = atan(uv.y, uv.x);\n  float r = max(length(uv), 0.0001);\n  float depth = width / r;                          // depth into tunnel\n\n  // Tube UV: zoom-controlled tiling around circumference + scaled depth\n  vec2 tuv = vec2(\n    a / 6.2832 * zoom + depth * 0.08 + sin(uTime * 0.25) * 0.04,\n    depth * dscale - uTime * spd * 0.1\n  );\n  vec4 col = texture2D(uTexture, fract(tuv));\n\n  // Vignette: circular tube wall — sharp cutoff at r=0.48\n  float vign = smoothstep(0.48, 0.20, r);\n  // Depth atmosphere: gentler fade, full texture brightness preserved\n  float atmo = 1.0 / (1.0 + depth * 0.06);\n  col.rgb *= vign * atmo;\n\n  gl_FragColor = col;\n}",
+    "source": "// VJ uniform contract (auto-declared — just use them):\n//   varying vec2 vUv        — 0..1 UV coords\n//   sampler2D uTexture      — input at the routed insert point\n//   sampler2D tAudio        — 256x2: y<0.5 FFT bins, y>0.5 waveform; .r = 0..1\n//   sampler2D tPrev         — previous output frame (feedback/trails)\n//   vec2  uResolution       — canvas size in px\n//   float uTime             — seconds\n//   float uBPM              — detected tempo (0 = unknown; enable Sound)\n//   float uBeat             — beat phase 0..1 (0 = on the beat)\n//   float uLevel/uBass/uMid/uHigh — audio levels 0..1\n//   float uParam1..uParam4  — performance knobs (bind any controller below)\n\nvoid main() {\n  vec4 col = texture2D(uTexture, vUv);\n  gl_FragColor = col;\n}",
     "autoApply": false,
-    "active": true
+    "active": false
   }
 }
