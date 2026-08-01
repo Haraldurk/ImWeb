@@ -33,7 +33,12 @@ FX Chain is **reorderable** by dragging nodes in the Signal Path display.
 | **Draw** | Freehand canvas, 1024×1024; map position to mouse |
 | **Text** | Live text, 512×512; Char/Word/Line advance mode |
 | **Particles** | GPU particle field; physics (gravity, wind, life) |
-| **SDF Generator** | GPU-raymarched metaballs; Sphere/Box/Torus; KIFS fractal folding; camera nav; luma warp; triplanar texturing; AO/glow; HSV colour; glass refraction; dedicated texture routing |
+| **SDF Generator** | GPU-raymarched field; 13 shapes + second shape w/ Union/Subtract/Intersect; KIFS folding; orbit camera (Orbit X/Y + Distance) + FOV; luma warp; triplanar texturing; AO; two-stop glow; self-reflection; glass refraction; dedicated texture + refraction routing |
+| **Rutt-Etra** | Scanline Z-displacement in 3D; 7 lattice shapes; Lines/Points/Both; per-line rise/fall follower; persistence + spread |
+| **Mix Buses ×3** | Two free source inputs each; Crossfade/Add/Multiply/Luma Mask/Displace. Double-buffered — a later bus reading an earlier one sees this frame, otherwise last frame. Self-routing is legal (1-frame loop) |
+| **Warp Tape** | Rolling time buffer (8/16/32 s); scrub or smear along Time (X) or Picture (Y) |
+| **Time Displace** | Per-pixel delay from a map image; 7 modes; up to 119 frames deep. Buffer res is the memory cost — drop from Native first |
+| **3D Depth / SDF Depth** | Depth outputs of the 3D Scene and SDF field, routable like any source |
 | **Sequencers ×3** | Record/loop any source; 4–480 frames; independent |
 | **Vectorscope** | Audio visualiser (Lissajous / Waveform / FFT) |
 
