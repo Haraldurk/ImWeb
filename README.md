@@ -3,7 +3,7 @@
 ![ImWeb Preview](assets/preview.png)
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
-[![Version](https://img.shields.io/badge/version-v0.14.0-brightgreen)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-v0.15.0-brightgreen)](CHANGELOG.md)
 [![Live Demo](https://img.shields.io/badge/demo-live-orange)](https://imweb.image-ine.org)
 
 **ImWeb is Image/ine — reimagined** — The legendary real-time video synthesis instrument created by Tom Demeyer and Steina Vasulka at STEIM Amsterdam, rebuilt for the modern browser and pointed toward what comes next. Free, open source, no installation required.
@@ -61,7 +61,7 @@ Firefox and Safari supported in WebGL mode with minor limitations.
 
 ---
 
-## Features (v0.14.0)
+## Features (v0.15.0)
 
 ### Input Sources
 
@@ -267,13 +267,16 @@ ffmpeg -i old.mp4 -c copy -movflags +faststart new.mp4
 
 ## Roadmap
 
-Phases 1–24 complete, through v0.14.0. Recently shipped:
+Phases 1–26 complete, through v0.15.0. Recently shipped:
 
 - [x] Touch instrument — gesture arbitration, responsive layout, iPad-sized targets (v0.10–v0.11)
 - [x] Dual-deck video and mix buses (v0.12–v0.13)
 - [x] Live GLSL editor — CodeMirror, AI shader generation, last-good compile fallback (v0.13)
 - [x] Performative warp drawing — draw the displacement map on the output (v0.13)
 - [x] Movie Library — unlimited catalogue, two racks (v0.14)
+- [x] Spacetime — shared frame history, a source on every temporal engine (v0.15)
+- [x] Rutt-Etra Scan Processor — seven surfaces, phosphor decay, temporal slew (v0.15)
+- [x] SDF field renderer — thirteen shapes, orbit camera, two-stop glow (v0.15)
 
 Still open:
 
