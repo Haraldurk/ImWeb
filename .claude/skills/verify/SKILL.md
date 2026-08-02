@@ -41,6 +41,66 @@ frame ONLY when a CDP screenshot forces one. Consequences:
 - Time-based behavior (fade decay, loop cycles) advances ~1 frame per
   screenshot; don't judge speeds/durations in this state.
 
+**Check `document.hidden` FIRST, before anything else.** Hidden means the render
+loop is stopped, so 0 fps, stale param readouts and a black canvas are all
+expected — and every in-app observation you make is void. Establish this before
+forming any hypothesis, or you will debug the app instead of the tab.
+
+**Never `await` a bare `requestAnimationFrame` from a probe.** A backgrounded
+tab suspends rAF, the promise never settles, and the CDP call dies at its 45 s
+timeout looking exactly like a frozen renderer. Two "renderer wedges" in one
+session were this, and the second nearly got blamed on a large unrolled shader.
+Race every rAF against a `setTimeout`:
+
+```js
+await Promise.race([
+  new Promise(r => requestAnimationFrame(r)),
+  new Promise(r => setTimeout(r, 250)),
+]);
+```
+
+## Driving the custom `.imw-sel` dropdowns
+
+These are not `<select>` elements, and two properties of them have each cost a
+session.
+
+**Scope every click to the one open menu.** Matching option text with a
+document-wide query lands in the wrong menu — several can be in the DOM at once.
+Three scripted picks in a row once hit the wrong selector and left the owner's
+live tab on `Foreground = Fractal`. Use `.imw-sel-menu .imw-sel-item` scoped to
+the menu you just opened, or click by screenshot coordinates.
+
+**`.imw-sel-trigger` TOGGLES.** A probe that opens a menu and then fails leaves
+it open, so the next attempt *closes* it and reports `menus=0` — forever, across
+retries that all look like "the dropdown will not open". Reset any visible menu
+before opening one.
+
+**Testing visibility: `offsetParent !== null` is always false here.** The menu is
+`position: fixed`, so that check can never succeed. Test `style.display` plus a
+non-zero bounding rect instead.
+
+## Readings that lie
+
+Numbers that look plausible are the failure mode this app specialises in. Two
+readbacks are dead by construction:
+
+- **A service worker (`imweb-v0.7`) serves a CACHED `index.html` on localhost.**
+  `curl` returns the new markup while the tab renders the old one, so every new
+  container id reads as MISSING. Unregister the SW and clear caches before
+  concluding a DOM change did not land.
+- **`drawImage(webglCanvas)` into a 2D canvas returns a STALE frame** without
+  `preserveDrawingBuffer`. Four different source selections once gave
+  bit-identical luma/chroma to 0.1 while the field was visibly animating.
+
+The general rule: **identical readings across a control that visibly moves means
+the READBACK is dead, not the control.** Fall back to the screenshot tool.
+
+**And a failing headless check is a real signal until proven otherwise.** Verify
+with a positive control before blaming the environment — zero CodeMirror
+highlight spans were dismissed as a headless artifact, and the legacy clike mode
+turned out to be genuinely broken in real Chrome too. "It's just the automation"
+is a conclusion, not a starting assumption.
+
 ## Known-good check sequence (Draw features)
 
 1. Draw tab → expand DRAW LAYER → click Pen → drag on preview → stroke appears smooth.
