@@ -203,6 +203,11 @@ public/Projects/*.imweb
 # shipping — the exact thing the comment above exists to prevent.
 public/Projects/*.imbank
 !public/Projects/FactoryBank.imbank
+# .imstate was the third one, and it was still open: a single exported Display
+# State dropped into public/Projects had no re-ignore at all. No factory
+# .imstate exists, so this needs no negation. Found by
+# tests/audit-gitignore-banks.mjs on its first run.
+public/Projects/*.imstate
 
 # Re-ignore Finder metadata inside public/ (overrides the !public/** above)
 public/.DS_Store
