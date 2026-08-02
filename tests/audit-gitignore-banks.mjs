@@ -26,7 +26,7 @@
  */
 
 import { execFileSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 
@@ -38,11 +38,33 @@ const check = (label, cond, detail = '') => {
   else { console.error(`  FAIL ${label}${detail ? ` — ${detail}` : ''}`); failures++; }
 };
 
-const isIgnored = (p) => {
+// Every git spawn from node costs ~330ms on macOS (vs ~49ms from a shell), so
+// this asks git ONCE for all paths rather than once per path. Fourteen spawns
+// took five seconds; two take well under one, and this audit runs from the
+// audit-after-edit hook on every source edit.
+//
+// `check-ignore --stdin -z` reads NUL-separated paths and prints back only the
+// ignored ones. It exits 1 when nothing matches, which execFileSync throws on,
+// so the output is read off the error too.
+const ignoredSet = (paths) => {
+  let out = '';
   try {
-    execFileSync('git', ['check-ignore', '-q', p], { cwd: root, stdio: 'ignore' });
-    return true;
-  } catch { return false; }
+    out = execFileSync('git', ['check-ignore', '--stdin', '-z'],
+      { cwd: root, input: paths.join('\0'), encoding: 'utf8' });
+  } catch (e) {
+    out = e.stdout ?? '';
+  }
+  return new Set(out.split('\0').filter(Boolean));
+};
+
+// Which of these paths does git track? One spawn, and it names them.
+const trackedSet = (paths) => {
+  let out = '';
+  try {
+    out = execFileSync('git', ['ls-files', '-z', '--', ...paths],
+      { cwd: root, encoding: 'utf8' });
+  } catch { /* nothing tracked */ }
+  return new Set(out.split('\0').filter(Boolean));
 };
 
 // ── 1. Real files on disk ────────────────────────────────────────────────────
@@ -50,20 +72,26 @@ const isIgnored = (p) => {
 // ignored right now.
 const FACTORY = new Set(['MasterProject.imweb', 'FactoryBank.imbank']);
 
-const listed = execFileSync('git', ['ls-files', '--others', '--ignored', '--exclude-standard',
-  '--directory', 'public/Projects'], { cwd: root, encoding: 'utf8' })
-  .split('\n').filter(Boolean);
-
 console.log('\npublic/Projects on disk');
-const present = execFileSync('ls', ['public/Projects'], { cwd: root, encoding: 'utf8' })
-  .split('\n').filter(Boolean);
+const present = readdirSync(resolve(root, 'public/Projects'));
+
+// Hypothetical names too — the real risk is the NEXT save, not the ones already
+// here. check-ignore evaluates patterns, not the filesystem, so these need not
+// exist. Asked in the same single call as the real files.
+const FUTURE = [
+  'Bank 99.imweb', 'Untitled.imweb', 'gig-2027-01-14.imweb',
+  'Bank 1 (7).imweb', 'set list.imstate', 'live.imbank',
+];
+
+const ignored = ignoredSet(
+  [...present, ...FUTURE].map((n) => `public/Projects/${n}`));
 
 for (const name of present) {
   const p = `public/Projects/${name}`;
   if (FACTORY.has(name)) {
-    check(`${name} is shippable factory content`, !isIgnored(p));
+    check(`${name} is shippable factory content`, !ignored.has(p));
   } else {
-    check(`${name} is excluded`, isIgnored(p),
+    check(`${name} is excluded`, ignored.has(p),
       'a user save would be committed by a careless `git add`');
   }
 }
@@ -75,11 +103,8 @@ check('at least one non-factory save was actually examined',
 // The real risk is the NEXT save, not the ones already here. These are
 // hypothetical paths: check-ignore evaluates patterns, not the filesystem.
 console.log('\nfuture save names');
-for (const name of [
-  'Bank 99.imweb', 'Untitled.imweb', 'gig-2027-01-14.imweb',
-  'Bank 1 (7).imweb', 'set list.imstate', 'live.imbank',
-]) {
-  check(`a future "${name}" would be excluded`, isIgnored(`public/Projects/${name}`));
+for (const name of FUTURE) {
+  check(`a future "${name}" would be excluded`, ignored.has(`public/Projects/${name}`));
 }
 
 // ── 3. The ordering that makes it work ───────────────────────────────────────
@@ -98,12 +123,9 @@ check('the re-ignore comes AFTER the negation (later rules win)',
 
 // ── 4. Factory content stays reachable ───────────────────────────────────────
 console.log('\nfactory content');
+const tracked = trackedSet([...FACTORY].map((n) => `public/Projects/${n}`));
 for (const name of FACTORY) {
-  const p = `public/Projects/${name}`;
-  let tracked = true;
-  try { execFileSync('git', ['ls-files', '--error-unmatch', p], { cwd: root, stdio: 'ignore' }); }
-  catch { tracked = false; }
-  check(`${name} is tracked`, tracked,
+  check(`${name} is tracked`, tracked.has(`public/Projects/${name}`),
     'the app ships this — an over-broad rule has excluded it');
 }
 
