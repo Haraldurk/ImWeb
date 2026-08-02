@@ -1,7 +1,7 @@
 {
   "name": "imweb",
-  "version": "0.14.0",
-  "description": "Image/ine Reimagine \u2014 Real-time video synthesis instrument",
+  "version": "0.15.0",
+  "description": "Image/ine Reimagine — Real-time video synthesis instrument",
   "type": "module",
   "scripts": {
     "dev": "vite",

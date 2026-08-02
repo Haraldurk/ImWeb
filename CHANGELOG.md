@@ -6,7 +6,7 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
 
 ---
 
-## [Unreleased] — Phase 26 — The Scan Processor
+## [0.15.0] — 2026-08-02 — The Scan Processor (Phase 26)
 
 *Rutt-Etra (1972) sat beside the Sandin Image Processor and the Paik/Abe
 synthesiser in the lineage this project claims, and was the only one of the three
@@ -250,6 +250,87 @@ the whole `sdf.*` namespace already said SDF.*
   `scene()` runs up to 96 times per ray, so an unconditional fetch was ~107
   dependent samples per pixel; `mix()` evaluates both arguments, so AO ran in
   full at Occlusion 0.
+
+---
+
+## [0.15.0] — 2026-08-02 — Spacetime & the Warp Family (Phase 25)
+
+*Four temporal engines had grown up separately, each owning both halves of the
+same idea: a history of frames, and a way to read across it. The history is VRAM
+and there should be exactly one of it; a read is one fullscreen pass into a small
+target and there can be several. This phase separates those halves, then gives
+every engine the two things they were all missing — a source of its own, and
+controls over where in time it reads. Design doc:
+`docs/ImWeb-Spacetime-Blueprint.md`, corrected in place where it was wrong.*
+
+### Added
+- **A source selector on every temporal engine.** Slit Scan, Warp Tape and the
+  Video Delay Line each read whatever they were hardwired to; all three now take
+  any source. Warp Tape in particular was camera-only by heuristic rather than by
+  design (`slitscan.source`, `vwarp.source`, `delay.source`).
+- **FG Src / BG Src / DS Src on every capture selector** — "whatever that layer
+  is currently showing" rather than a fixed source, so an engine follows your
+  routing instead of being pinned to a decision made once. Available on
+  `td.captureSource`, `td.mapSource`, `slitscan.source`, `vwarp.source` and
+  `delay.source`.
+- **Time Displace gains an angle and a map source** — `td.angle` (0–360°, rotates
+  the delay map about the frame centre), `td.mapSource` (any source drives the
+  map) and `td.mapAmount` (blends that map into the analytic shapes). Defaults
+  are a bit-exact identity with the previous behaviour.
+- **Warp Tape scrubbing** — `vwarp.pos` (which moment sits at which column),
+  `vwarp.span` (how much of the tape covers the frame), `vwarp.anchor` and
+  `vwarp.clear`. The tape stopped being a fixed mapping and became something you
+  can play across.
+- **Video Delay Line depth** — `delay.size` (30 / 60 / 120 / 240 / 480 frames),
+  `delay.bufferResolution` decoupled from the canvas, and `delay.frames` raised
+  from 30 to 480. Long echoes are now a setting rather than a rebuild.
+
+### Changed
+- **The ring is split from the tap.** Four engines each held a private history of
+  the same frames. One shared history now feeds many reads — no behaviour change,
+  a large VRAM change.
+- **One delay map, two dialects.** `DELAY_MAP_CHUNK` holds the map function and
+  its uniforms; both read shaders include it and differ only in how they sample
+  (GLSL3 `texture()` vs GLSL1 `texture2D()`), so mode semantics cannot drift
+  between the two paths.
+- **"Warp" is now the family name**, with Time Displace and Tape under it, and
+  Slit X/Y renamed to Shear X/Y. **Labels and markup only** — no parameter id,
+  source index or container id changed, so saved states, Display States, `.imweb`
+  projects and MIDI mappings are untouched.
+
+### Fixed
+- **`_resolveLayerTex()` handled 16 of 29 sources.** Thirteen — Color, Color2,
+  BG1, BG2, Text, Sound, Delay, Scope, SlitScan, Particles, 3D Depth, SDF and
+  Warp Tape — fell through to the composited output instead of the thing named in
+  the dropdown. No error and no warning: the failure mode is a plausible-looking
+  picture, which is why it survived so long. Now covered by
+  `tests/audit-source-resolution.mjs`, which checks both resolvers.
+- **Appending a source no longer breaks saved captures.** `CAPTURE_SOURCES`
+  appends FG/BG/DS Src *after* the source list, so adding one source slid that
+  tail up by one and every saved capture selector silently re-read as the new
+  source. Files now carry the base they were written at and migrate on load.
+- **Warp Tape: Buf Size finally means something.** The strip target was allocated
+  at canvas width while the write head wrapped at `bufSize`, and the read used
+  the target's full width — so anything under 1920 covered only part of the frame.
+- **Warp Tape: the sweeping tear is the effect, not a bug.** An earlier fix
+  anchored the read to the write head, which removed it; that was a misreading of
+  one report as two. Anchoring is now a control (`vwarp.anchor`, default 0) and
+  the sweep is back as the default.
+- **Video Delay Line saturates past the history** instead of vanishing. Requesting
+  a frame beyond what the ring holds returned null, so pushing the knob up dropped
+  the source to black rather than giving a long echo.
+
+### Tooling & docs
+- **The Full Manual covers every source.** It described an older instrument —
+  22 of 31 sources, with none of Phases 23–26 present. SDF, Rutt-Etra, Warp Tape,
+  Time Displace, the three mix buses and the depth companions now have sections,
+  as does warp drawing. Every parameter id cited was verified against the live
+  registry.
+- **`docs/LEARNED.md` entries carry an enforcement tag** — `[audit]`, `[hook]`,
+  `[skill]` or `[advisory]` — so the lessons still carried only in prose are
+  greppable as a risk register, and `npm test` grew from 4 invariant audits to 9.
+  One of the new audits found a live hole on its first run: exported `.imstate`
+  files had no gitignore protection at all.
 
 ---
 
