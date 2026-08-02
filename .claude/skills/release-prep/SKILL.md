@@ -132,8 +132,27 @@ gh release create vX.Y.Z --title "vX.Y.Z — <title>" --notes-file RELEASE_NOTES
 Then confirm what actually went out:
 
 ```bash
-gh release view vX.Y.Z --json name,tagName,body --jq '.name, .tagName'
-diff <(gh release view vX.Y.Z --json body --jq .body) RELEASE_NOTES.md && echo "byte-identical"
+gh release view vX.Y.Z --json name,tagName,isDraft --jq '.name, .tagName, .isDraft'
+```
+
+**GitHub appends a trailing newline to the body**, so a raw `diff` against
+RELEASE_NOTES.md always reports a difference of exactly one byte and one line.
+That is normalisation, not a content mismatch — do not chase it. Compare with
+trailing blank lines stripped from both sides:
+
+```bash
+gh release view vX.Y.Z --json body --jq .body | sed 's/\r$//' > /tmp/pub.md
+diff <(sed -e :a -e '/^\n*$/{$d;N;};/\n$/ba' /tmp/pub.md) \
+     <(sed -e :a -e '/^\n*$/{$d;N;};/\n$/ba' RELEASE_NOTES.md) \
+  && echo "content identical"
+```
+
+A difference of more than one byte IS real: either the body was retyped instead
+of passed with `--notes-file`, or one side was edited after publishing. Fix it
+from the file, never by hand:
+
+```bash
+gh release edit vX.Y.Z --notes-file RELEASE_NOTES.md
 ```
 
 ## 7. After
