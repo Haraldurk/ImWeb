@@ -5,8 +5,37 @@ description: Turn a just-fixed bug into a permanent invariant audit in tests/, i
 
 # Adding an invariant audit
 
-ImWeb has no CI. The four scripts behind `npm test` **are** the test system, and
-each one exists because a specific bug got through. This skill adds the next one.
+ImWeb has no CI. The scripts behind `npm test` **are** the test system, and each
+one exists because a specific bug got through. This skill adds the next one.
+
+## Promote one lesson per phase
+
+`docs/LEARNED.md` tags every entry with its enforcement status. The `[advisory]`
+ones are carried in prose only — they protect whoever remembers to read them,
+which is the weakest guarantee in the project.
+
+**At the end of each phase, pick one `[advisory]` entry and promote it.**
+
+```bash
+grep '\[advisory\]' docs/LEARNED.md
+```
+
+Choose by mechanizability, not by how dramatic the original bug was. A lesson is
+a good candidate when its rule can be checked without a WebGL context and
+without judgment: an ordering, a list that must stay in sync, a value that must
+appear on every write path. Lessons about *technique* — how to verify, what to
+suspect first, when to stop and reimplement — usually cannot be promoted, and
+should stay `[advisory]` rather than be forced into a weak test.
+
+When the audit lands, change the tag in LEARNED.md from `[advisory]` to
+`[audit]`. Leave the entry text alone.
+
+**Write the test against the rule, not against the incident.** The lesson names
+the case that burned you; the audit has to cover the ones that haven't yet. The
+first promotion did exactly this and found a live hole on its first run — a
+bank-save lesson naming one file and one extension became a check across three
+extensions and six hypothetical future filenames, and `.imstate` turned out to
+have no protection at all.
 
 ## When an audit is warranted
 
