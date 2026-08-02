@@ -18,6 +18,15 @@
             "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/guard-write.sh\""
           }
         ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/guard-dev-server.sh\""
+          }
+        ]
       }
     ],
     "PostToolUse": [
@@ -27,6 +36,15 @@
           {
             "type": "command",
             "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/audit-after-edit.sh\""
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/post-install-check.sh\""
           }
         ]
       }
