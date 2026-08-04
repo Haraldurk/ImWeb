@@ -272,8 +272,27 @@ export class Pipeline {
   setLUT(lut, amount = 1) {
     this._lutTex?.dispose();
     const N = lut.size;
-    // Encode as 2D texture: width = N*N, height = N (horizontal slices)
-    const tex = new THREE.DataTexture(lut.data, N * N, N, THREE.RGBFormat, THREE.FloatType);
+    // Encode as 2D texture: width = N*N, height = N (horizontal slices).
+    //
+    // NOT RGBFormat+FloatType. three still defines RGBFormat, but it picks no
+    // sized internal format for it (getInternalFormat only upgrades RGB for
+    // UNSIGNED_INT_5_9_9_9_REV), so the upload is unsized RGB + FLOAT — an
+    // invalid WebGL2 combination. texImage2D throws INVALID_OPERATION, the
+    // texture stays incomplete, every texture2D() returns (0,0,0,1), and the
+    // whole picture goes black the moment LUT amount comes off zero.
+    //
+    // Half-float, not float: RGBA16F is filterable in core WebGL2, while
+    // RGBA32F needs OES_texture_float_linear and samples black without it —
+    // the same black screen with a narrower blast radius.
+    const src = lut.data;
+    const rgba = new Uint16Array(N * N * N * 4);
+    for (let i = 0, o = 0; i < src.length; i += 3, o += 4) {
+      rgba[o]     = THREE.DataUtils.toHalfFloat(src[i]);
+      rgba[o + 1] = THREE.DataUtils.toHalfFloat(src[i + 1]);
+      rgba[o + 2] = THREE.DataUtils.toHalfFloat(src[i + 2]);
+      rgba[o + 3] = 0x3c00; // 1.0
+    }
+    const tex = new THREE.DataTexture(rgba, N * N, N, THREE.RGBAFormat, THREE.HalfFloatType);
     tex.minFilter = THREE.LinearFilter;
     tex.magFilter = THREE.LinearFilter;
     tex.wrapS     = THREE.ClampToEdgeWrapping;
