@@ -8,7 +8,7 @@
 // content hash for the bundle each time — so a stale cached index.html points
 // at an asset that no longer exists on disk. That fails as a BLANK APP, not as
 // "my change didn't show up" (see docs/LEARNED.md, 2026-07-31).
-const CACHE = 'imweb-v0.10'; // bumped: per-deck upload counters in telemetry rows
+const CACHE = 'imweb-v0.11'; // bumped: DC log removed, draws() on __dbg
 
 const APP_SHELL = [
   '/',

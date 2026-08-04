@@ -7599,7 +7599,12 @@ void main() {
       }
     });
 
-    if (frameCount % 60 === 0) console.log('DC:', renderer.info.render.calls, 'Tri:', renderer.info.render.triangles);
+    // Draw-call/triangle counts are available on demand via __dbg.draws() and
+    // in __dbg.state() (?soak=1) — deliberately NOT logged from here. A
+    // console.log inside the render loop distorts the frame timings a perf run
+    // exists to measure, and gating it on ?soak=1 would have switched the spam
+    // ON exactly when measuring. autoReset leaves the counts readable between
+    // frames, so polling costs nothing.
     renderer.info.autoReset = true;
 
     // Profiler + debug overlay
@@ -7959,7 +7964,7 @@ void main() {
   // Soak-test instrumentation — inert unless the page is loaded with ?soak=1.
   // Installs window.__dbg (one-call patch readout) and ships window.__perfStats
   // to the vite server, so a soak run survives the Web Inspector dropping.
-  initSoak({ ps, pipeline, movieInput, movieInputB });
+  initSoak({ ps, pipeline, movieInput, movieInputB, renderer });
 
   // Register service worker for PWA / offline support — PRODUCTION ONLY.
   // sw.js is cache-first for the app shell (style.css, main.js); in dev its

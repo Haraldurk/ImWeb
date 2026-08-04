@@ -34,7 +34,7 @@ export function initSoak(h) {
   const q = new URLSearchParams(location.search);
   if (!q.has("soak")) return false;
 
-  const { ps, pipeline, movieInput, movieInputB } = h;
+  const { ps, pipeline, movieInput, movieInputB, renderer } = h;
   const val = (id) => ps.get(id)?.value;
   const deck = (d) => ({
     clips: d?.clips?.length ?? 0,
@@ -42,11 +42,24 @@ export function initSoak(h) {
     active: !!d?.active,
   });
 
+  // Draw-call counts for the last completed frame. `renderer.info.autoReset`
+  // is true, so three.js clears these at the START of each render — meaning a
+  // read from the console (between frames) reports the frame just finished.
+  // This replaces a `console.log` that used to run inside the render loop; the
+  // count is genuinely useful (it is what showed the displacement pass was NOT
+  // executing — 7 draws instead of 8) but it belongs on demand, not in the
+  // hot path where it perturbs the timings a perf run is measuring.
+  const draws = () => {
+    const r = renderer?.info?.render;
+    return r ? { calls: r.calls, triangles: r.triangles, lines: r.lines, points: r.points } : null;
+  };
+
   // Every precondition a phase depends on, in ONE call. Read-only by intent —
   // this is a window onto the patch, not a second way to set it.
   const state = () => ({
     displace: val("displace.amount"),
     keyer: val("keyer.active"),
+    draws: draws(),
     layer: {
       fg: srcLabel(val("layer.fg")),
       bg: srcLabel(val("layer.bg")),
@@ -148,6 +161,7 @@ export function initSoak(h) {
     movieInputB,
     state,
     uploads,
+    draws,
     srcLabel,
     /** Label everything logged from here on. Call at the start of each phase. */
     phase(name) {
@@ -166,7 +180,7 @@ export function initSoak(h) {
 
   post({ t: Date.now(), phase, kind: "session-start", state: state() });
   console.log(
-    `%c[soak] armed — phase "${phase}". __dbg.state() / .uploads() / .phase(n) / .mark(s) / .status()`,
+    `%c[soak] armed — phase "${phase}". __dbg.state() / .uploads() / .draws() / .phase(n) / .mark(s) / .status()`,
     "color:#7ac",
   );
   return true;
