@@ -3,7 +3,12 @@
  * Cache-first strategy for app shell; network-first for anything else.
  */
 
-const CACHE = 'imweb-v0.7'; // bumped: sw now bypasses /Projects/ fetches (MasterProject race)
+// BUMP THIS ON EVERY REBUILD YOU NEED A DEVICE TO ACTUALLY PICK UP. The fetch
+// handler is cache-first (`cached || network`), and `vite build` emits a NEW
+// content hash for the bundle each time — so a stale cached index.html points
+// at an asset that no longer exists on disk. That fails as a BLANK APP, not as
+// "my change didn't show up" (see docs/LEARNED.md, 2026-07-31).
+const CACHE = 'imweb-v0.8'; // bumped: soak telemetry + window.__dbg (?soak=1)
 
 const APP_SHELL = [
   '/',
