@@ -6,6 +6,63 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
 
 ---
 
+## [Unreleased] — Soak instrumentation, and two debts closed
+
+*The v0.12 dual-deck work shipped with two verification debts that needed real
+hardware. Both are now closed — and closing them turned up a measurement the
+protocol could not make, which is the more useful half of the result.*
+
+### Added
+- **`?soak=1` instrumentation** (`src/soak.js`) — inert without the URL param.
+  Installs `window.__dbg` (a one-call readout of every patch precondition) and
+  POSTs `window.__perfStats` to a `/__soak` sink on the vite server every 5s,
+  appended as NDJSON to a gitignored `soak.log`. This exists because a remote
+  Safari Web Inspector is a single point of failure for a 40-minute run: when it
+  drops, the phase becomes unreadable even though the page is still sampling
+  fine. Registered on the dev **and** preview servers, for the same reason the
+  raw-video route is. Gated on a URL param rather than `import.meta.env.DEV`,
+  because soak runs are verified against `vite preview` — a production build, so
+  a DEV guard would be dead code at the only line that evaluates it.
+- **Per-deck upload counters** — `MovieInput.stats` (`ticks`/`gated`/`uploads`),
+  carried on every telemetry row as `upA`/`gA`/`upB`/`gB`, cumulative so a
+  dropped row costs nothing. Every telemetry row also carries the phase-defining
+  parameters, so a run proves its own conditions instead of relying on memory.
+
+### Verified
+- **Dual-deck thermal + decoder budget — PASS.** Four phases, ~55 min on a real
+  iPad over LAN, full chain (keyer + 91% displacement + Displace-mode mix bus):
+  avg_ms 16.675 / 16.670 / 16.670 / 16.670 for deck-B-empty, loaded-idle,
+  both-live and recovered. P2vP1 −0.03% (criterion 15%), P4vP2 0.00%
+  (criterion 10%), P3 sustained 60fps at p95 17ms. Zero drift in every phase;
+  `worst` frame time *fell* 56 → 26 ms across the run, so there is no thermal
+  ceiling here. **Two 1080p ALL-I streams fit this device's budget with headroom.**
+- **v0.12 idle-deck upload gating — CONFIRMED, by counting rather than by soak.**
+  At `mix.xfade` 0, Deck B logged +3917 gated and +0 uploads over 65s with its
+  upload counter frozen; flipped to 0.5, +46616 uploads and +0 gated. A clean
+  inversion in both directions, which is what separates a working gate from a
+  stuck counter. Deck A independently showed 175 real gated events, so the
+  `_uploadA` hidden branch fires too.
+- **The tab bar — PASS, on a premise that had already expired.** Phase 24 cut the
+  bar from 8 tabs to five fixed ones plus an injected contextual workspace tab,
+  so the open "fold Output back to 7" question is moot. Labels never truncate:
+  `.tab` is `nowrap` + `flex-shrink: 0`, so the bar scrolls instead and
+  "Project" renders as "Proj". All five are hit first time one-handed on device.
+
+### Notes
+- **A soak cannot answer the gating question it was written to answer.** All four
+  phases sat pinned at the 16.67 ms vsync ceiling, where "the gate fires" and
+  "the deck uploads and there is headroom to absorb it" produce identical frame
+  times — so the phase-2-vs-phase-1 comparison passes either way. Three integer
+  counters settled in 65 seconds what 55 minutes could not. Recorded in
+  `docs/LEARNED.md` alongside a second entry on verifying preconditions
+  programmatically rather than by eye.
+- Service worker cache bumped (v0.7 → v0.10) with a comment at the constant:
+  the handler is cache-first and every build emits a new content hash, so a
+  stale cached `index.html` points at an asset that no longer exists — which
+  fails as a blank app on device, not as a change that quietly did not land.
+
+---
+
 ## [0.15.0] — 2026-08-02 — The Scan Processor (Phase 26)
 
 *Rutt-Etra (1972) sat beside the Sandin Image Processor and the Paik/Abe
