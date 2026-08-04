@@ -101,6 +101,66 @@ highlight spans were dismissed as a headless artifact, and the legacy clike mode
 turned out to be genuinely broken in real Chrome too. "It's just the automation"
 is a conclusion, not a starting assumption.
 
+## Fixtures that cannot fail
+
+A dead readback and a dead *fixture* look identical from here — both give you
+the same picture whether or not the fix is present. The rule above catches the
+first. This catches the second: **choose the input so that "applied" and "not
+applied" cannot be mistaken for each other.**
+
+Colour transforms are where this bites, because the default sources are the
+worst possible fixtures:
+
+- **The Noise source is greyscale** (`r == g == b`), so any channel-swap LUT is
+  the *identity* on it. An R↔B swap verified against Noise proves nothing.
+- **Inverting greyscale noise still looks like greyscale noise.** Symmetric
+  around mid-grey, so the before and after screenshots are indistinguishable
+  by eye.
+
+Both of those read as "the effect isn't doing anything" — which is the exact
+symptom of the bug you're trying to confirm you fixed.
+
+**Use a saturating fixture instead.** For a LUT, a constant-colour `.cube` —
+every one of the N³ entries the same magenta — settles it in one screenshot:
+the whole canvas must become that colour regardless of input. Then sweep the
+amount **0 → 50 → 100** rather than checking one endpoint, which proves the
+blend as well as the application.
+
+```js
+// constant-magenta .cube, N=17
+let cube = `TITLE "Magenta"\nLUT_3D_SIZE 17\n`;
+for (let i = 0; i < 17 ** 3; i++) cube += `1.0 0.0 1.0\n`;
+```
+
+**Do the numeric half outside the app.** Drive the exact shader over known
+input colours in a raw WebGL2 context and read pixels back — that gives exact
+values (six colours, maxErr 0/255) instead of an impression, and it works while
+the tab is hidden. For an upload, `gl.getError()` immediately after
+`texImage2D` is the direct evidence: the LUT's old `RGBFormat + FloatType` path
+reproduces as `INVALID_OPERATION` with every output pixel `0,0,0`. Reproduce
+the *old* path too — a probe that only passes on the new code has not shown you
+that it was ever broken.
+
+**Loading a file without the native picker.** File inputs are created on demand
+and `inp.click()` opens a picker automation can't see. Patch the prototype, let
+the app's own handler run, then restore it — this exercises the real load path
+rather than a reimplementation of it:
+
+```js
+const orig = HTMLInputElement.prototype.click;
+HTMLInputElement.prototype.click = function () {
+  if (this.type === 'file') {
+    Object.defineProperty(this, 'files', { value: [file], configurable: true });
+    this.onchange({ target: this });          // handler is async — await it below
+    return;
+  }
+  return orig.call(this);
+};
+document.getElementById('btn-load-lut').click();
+HTMLInputElement.prototype.click = orig;
+// the handler awaits file.text(), so the name element updates a tick later
+```
+
 ## Known-good check sequence (Draw features)
 
 1. Draw tab → expand DRAW LAYER → click Pen → drag on preview → stroke appears smooth.
