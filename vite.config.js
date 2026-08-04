@@ -72,6 +72,49 @@ const serveRawVideos = (server) => {
   });
 };
 
+/**
+ * Soak telemetry sink — `POST /__soak`, one JSON object per request, appended
+ * as NDJSON to `soak.log` at the repo root.
+ *
+ * The iPad soak tests read their numbers out of Safari's remote Web Inspector,
+ * which makes a cabled debugger a single point of failure for a 40-minute run:
+ * when it drops, the phase is unreadable even though the page kept sampling
+ * fine. This sink lets the page ship its own numbers to the host instead, so
+ * the inspector becomes optional rather than load-bearing.
+ *
+ * Registered on the dev server AND the preview server, for the same reason
+ * serveRawVideos is: CLAUDE.md mandates verifying against `vite preview`.
+ *
+ * POST is load-bearing, not just semantics — public/sw.js returns early for any
+ * request whose method is not GET, so these never enter its cache-first path
+ * and cannot be answered from a stale cache.
+ *
+ * `soak.log` matches the existing `*.log` rule in .gitignore, so run data
+ * cannot reach a commit. Do not rename it to `.ndjson` without adding a rule.
+ */
+const soakSink = (server) => {
+  server.middlewares.use('/__soak', (req, res, next) => {
+    if (req.method !== 'POST') return next();
+    let body = '';
+    let over = false;
+    req.on('data', (c) => {
+      body += c;
+      // A wedged client must not be able to grow this without bound.
+      if (body.length > 65536) { over = true; req.destroy(); }
+    });
+    req.on('end', () => {
+      if (over) return;
+      try {
+        fs.appendFileSync(resolve(__dirname, 'soak.log'), body.trim() + '\n');
+        res.writeHead(204);
+      } catch {
+        res.writeHead(500);
+      }
+      res.end();
+    });
+  });
+};
+
 export default defineConfig({
   root: ".",
   plugins: [
@@ -80,6 +123,11 @@ export default defineConfig({
       name: 'serve-raw-videos',
       configureServer: serveRawVideos,
       configurePreviewServer: serveRawVideos,
+    },
+    {
+      name: 'soak-sink',
+      configureServer: soakSink,
+      configurePreviewServer: soakSink,
     },
   ],
   server: {

@@ -151,6 +151,7 @@ import {
 import { openCtrlPopover } from "./ui/components/CtrlPopover.js";
 import { LONG_PRESS_MS } from "./ui/touch.js";
 import { perfFrame } from "./perf-logger.js";
+import { initSoak } from "./soak.js";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Main
@@ -7954,6 +7955,11 @@ void main() {
     "%cImWeb ready — press V to start camera, 3D tab for scene",
     "color:#9090a8",
   );
+
+  // Soak-test instrumentation — inert unless the page is loaded with ?soak=1.
+  // Installs window.__dbg (one-call patch readout) and ships window.__perfStats
+  // to the vite server, so a soak run survives the Web Inspector dropping.
+  initSoak({ ps, pipeline, movieInput, movieInputB });
 
   // Register service worker for PWA / offline support — PRODUCTION ONLY.
   // sw.js is cache-first for the app shell (style.css, main.js); in dev its
