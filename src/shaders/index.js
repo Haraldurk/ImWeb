@@ -1621,22 +1621,24 @@ export const LUT3D = /* glsl */ `
     // clamp to [0,1]
     col = clamp(col, 0.0, 1.0);
 
-    // Map into [offset, scale+offset]
+    // Map into [offset, scale+offset] — texel CENTRES within one N-wide slice.
     float r = col.r * scale + offset;
     float g = col.g * scale + offset;
-    float b = col.b * scale + offset;
 
     // The texture is laid out as N horizontal slices each N×N pixels.
     // Total texture size: (N*N) wide × N tall.
-    // Slice index = floor(b * N) and b fraction within slice.
-    float bSlice  = b * (N - 1.0);
+    // The slice index comes from the RAW blue, not the centre-mapped one:
+    // feeding the scaled+offset value in here compressed the blue axis by
+    // (N-1)/N and shifted it, so pure blue never reached the last slice.
+    float bSlice  = col.b * (N - 1.0);
     float bFloor  = floor(bSlice);
     float bFrac   = bSlice - bFloor;
+    float bNext   = min(bFloor + 1.0, N - 1.0);
 
     // UV for floor slice
     float sliceW  = 1.0 / N;
     float uBase0  = bFloor * sliceW + r * sliceW;
-    float uBase1  = (bFloor + 1.0) * sliceW + r * sliceW;
+    float uBase1  = bNext  * sliceW + r * sliceW;
     float vCoord  = g;
 
     vec3 c0 = texture2D(uLUT, vec2(uBase0, vCoord)).rgb;
