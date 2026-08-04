@@ -976,6 +976,7 @@ export class Pipeline {
     if (key === 'tdisp'     && inputs.tdisp)     return inputs.tdisp;
     if (key === 'rutt'      && inputs.rutt)      return inputs.rutt;
     if (key === 'sdfdepth'  && inputs.sdfdepth)  return inputs.sdfdepth;
+    if (key === 'rgbdelay'  && inputs.rgbdelay)  return inputs.rgbdelay;
     return inputs.color ?? this._getFallbackTexture();
   }
 
