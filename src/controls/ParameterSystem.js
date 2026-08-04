@@ -517,6 +517,10 @@ export const SOURCE_DEFS = [
   // 30 — the raymarcher's depth, packed into its colour target's alpha and
   // expanded by a blit. Not a second raymarch: WebGL 1 has no MRT here.
   { key: "sdfdepth",  label: "SDF Depth" }, // 30
+  // 31 — per-channel time offset over the Video Delay ring. Appended at the
+  // true end; the indirect capture entries that sat at 31 move with it, kept in
+  // register by the base stamp in migrateCaptureBase().
+  { key: "rgbdelay",  label: "RGB Delay" }, // 31
 ];
 
 /** Source indices of the three mix buses, in evaluation order (1 → 2 → 3). */
@@ -542,7 +546,8 @@ export const SOURCE_DISPLAY_ORDER = [
                                 11 /* Text */,
                                 7 /* Draw */, 6 /* 3D Scene */, 20 /* 3D Depth */,
                                 23 /* Analog */, 29 /* Rutt-Etra */,
-  { header: "From the Signal" }, 8 /* Output */, 13 /* Delay */, 24 /* TimeDisp */,
+  { header: "From the Signal" }, 8 /* Output */, 13 /* Delay */, 31 /* RGB Delay */,
+                                24 /* TimeDisp */,
                                 15 /* SlitScan */, 17 /* Seq1 */, 18 /* Seq2 */,
                                 19 /* Seq3 */, 14 /* Scope */, 22 /* VWarp */,
   { header: "Mix" },            26 /* Mix 1 */, 27 /* Mix 2 */, 28 /* Mix 3 */,
@@ -4342,6 +4347,44 @@ export function registerCoreParameters(ps) {
     options: ["Native", "640×480", "640×360", "320×240"],
     value: 0,
   });
+
+  // ── RGB Channel Delay (source 31) ───────────────────────────────────────────
+  // Per-channel age over the SAME ring Video Delay records, so there is no
+  // second buffer and no second source selector: these read delay.source.
+  //
+  // Units match delay.frames — same ring, so a number means the same thing in
+  // both panels. The ceiling is a request, not a promise: getTexture()
+  // saturates at the achievable depth.
+  //
+  // MIN IS 1, NOT 0. getTexture() does Math.max(1, framesAgo), so 0 and 1 are
+  // the same frame — a 0-based range would alias its bottom two steps and make
+  // "R 0, G 1, B 2" sample only TWO distinct frames while looking like three.
+  // That reads as "the effect barely works", not as an off-by-one, which is
+  // exactly how it was found: a 0/1/2 test came back grey because R and G were
+  // identical by construction.
+  //
+  // Defaults are a visible spread (1 / 5 / 9 frames ≈ 0 / 67 / 133 ms at 60fps)
+  // rather than a neutral 1/1/1. This is a NEW source, not a parameter carved
+  // out of an existing constant, so there is no prior picture to reproduce —
+  // and a source that renders identically to its input on first selection reads
+  // as broken. Equal values on all three ARE a bit-exact passthrough, so
+  // neutral is one drag away.
+  for (const [ch, label, dflt] of [
+    ["r", "Red delay",   1],
+    ["g", "Green delay", 5],
+    ["b", "Blue delay",  9],
+  ]) {
+    ps.register({
+      id: `rgbdelay.${ch}`,
+      label,
+      group: "rgbdelay",
+      type: PARAM_TYPE.CONTINUOUS,
+      min: 1,
+      max: 480,
+      value: dflt,
+      step: 1,
+    });
+  }
 
   // ── Particles ─────────────────────────────────────────────────────────────
   ps.register({
