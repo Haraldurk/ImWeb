@@ -6,7 +6,7 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
 
 ---
 
-## [Unreleased] — Soak instrumentation, and two debts closed
+## [Unreleased] — Soak instrumentation, two debts closed, and the LUT fixed
 
 *The v0.12 dual-deck work shipped with two verification debts that needed real
 hardware. Both are now closed — and closing them turned up a measurement the
@@ -48,7 +48,39 @@ protocol could not make, which is the more useful half of the result.*
   `.tab` is `nowrap` + `flex-shrink: 0`, so the bar scrolls instead and
   "Project" renders as "Proj". All five are hit first time one-handed on device.
 
+### Fixed
+- **Loading a `.cube` and raising LUT Amount no longer blanks the image to
+  black.** The LUT was uploaded as `RGBFormat + FloatType`. three r168 still
+  *defines* `RGBFormat`, so nothing failed loudly — but `getInternalFormat`
+  picks no sized internal format for RGB (it only upgrades RGB for
+  `UNSIGNED_INT_5_9_9_9_REV`), so the call went out as unsized RGB + FLOAT, a
+  combination WebGL2 rejects. `texImage2D` raised `INVALID_OPERATION`, the
+  texture stayed incomplete, and every `texture2D()` against it returned
+  `(0,0,0,1)` — so the whole picture went black the moment the blend came off
+  zero. The colour grade panel had therefore never worked in WebGL2, and looked
+  like a shader bug rather than an upload one. **"three still exports the
+  constant" is not "three still supports the upload"** — the constant table and
+  `getInternalFormat` disagree, and only the second one runs.
+- **LUT data is now packed to RGBA half-float.** Half rather than full float
+  deliberately: `RGBA16F` is filterable in core WebGL2, while `RGBA32F` needs
+  `OES_texture_float_linear` and samples black without it — the same failure
+  with a narrower blast radius, which is exactly the kind that reaches the iPad
+  and not the desk.
+- **The LUT's blue axis was compressed by (N-1)/N.** `LUT3D` derived the slice
+  index from the centre-mapped blue (`col.b * scale + offset`) instead of raw
+  `col.b`, so blue never reached the last slice — pure blue graded to 247 where
+  it should have hit 255. Red and green were authored at texel centres correctly
+  and were always right, which is why the error read as a mild cast rather than
+  as a broken axis. The upper slice is clamped now too.
+
 ### Notes
+- **A LUT is hard to verify by eye, and the obvious fixtures all hide it.** An
+  R↔B swap is invisible on greyscale noise; an invert of greyscale noise still
+  looks like greyscale noise. A **constant-colour `.cube`** (every entry
+  magenta) is the fixture that makes a LUT visibly land at all, and a raw
+  WebGL2 `gl.getError()` probe is what actually proves the upload — the old
+  path reproduces as `INVALID_OPERATION` with every output pixel `0,0,0`, the
+  new one as `NO_ERROR` with six test colours exact to 0/255.
 - **A soak cannot answer the gating question it was written to answer.** All four
   phases sat pinned at the 16.67 ms vsync ceiling, where "the gate fires" and
   "the deck uploads and there is headroom to absorb it" produce identical frame
