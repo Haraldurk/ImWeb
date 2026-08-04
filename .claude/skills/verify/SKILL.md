@@ -84,10 +84,24 @@ non-zero bounding rect instead.
 Numbers that look plausible are the failure mode this app specialises in. Two
 readbacks are dead by construction:
 
-- **A service worker (`imweb-v0.7`) serves a CACHED `index.html` on localhost.**
-  `curl` returns the new markup while the tab renders the old one, so every new
-  container id reads as MISSING. Unregister the SW and clear caches before
-  concluding a DOM change did not land.
+- **A service worker serves a CACHED `index.html` on localhost.** `curl` returns
+  the new markup while the tab renders the old one, so every new container id
+  reads as MISSING. The cache name is bumped per release — read it from
+  `public/sw.js` (`const CACHE = …`) rather than trusting any version written
+  down here, this one included.
+
+  **Unregistering is not enough on its own — you must also RELOAD.** The
+  existing controller stays attached to the current page, so `getRegistrations()
+  → unregister()` plus `caches.delete()` leaves the *already-loaded* tab still
+  being served by the old worker. A file added to `dist/` mid-session read as
+  "not served" through three retries until the page was reloaded:
+
+  ```js
+  const regs = await navigator.serviceWorker.getRegistrations();
+  for (const r of regs) await r.unregister();
+  for (const k of await caches.keys()) await caches.delete(k);
+  // then navigate/reload — and confirm navigator.serviceWorker.controller === null
+  ```
 - **`drawImage(webglCanvas)` into a 2D canvas returns a STALE frame** without
   `preserveDrawingBuffer`. Four different source selections once gave
   bit-identical luma/chroma to 0.1 while the field was visibly animating.
