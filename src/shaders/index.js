@@ -15,6 +15,67 @@ export const VERT = /* glsl */ `
   }
 `;
 
+// ── Motion Extraction ─────────────────────────────────────────────────────────
+// Two passes over one source: a background estimate that adapts over time, and
+// the matte that comes out of comparing the live frame against it.
+//
+// ONE mechanism, not two modes. Background subtraction and frame differencing
+// are the two ENDS of the same control: the background is an exponential
+// running average, so a long adapt time gives a stable background (a subject
+// who pauses stays visible), and an adapt time of zero makes the background
+// equal to the previous frame, which IS frame differencing. Shipping them as a
+// mode select would offer two points on a continuum the shader already spans.
+//
+// The matte is a clean continuous signal on purpose — no threshold, no
+// softness. Those already exist on the keyer as White/Black/Softness, and this
+// is meant to be fed to the keyer's key source, so growing its own copies would
+// mean two sets of controls doing one job.
+
+export const MOTION_MATTE = /* glsl */ `
+  uniform sampler2D uCurrent;
+  uniform sampler2D uBg;      // background estimate (previous state)
+  uniform sampler2D uTrail;   // matte from last frame, for persistence
+  uniform float     uGain;    // difference multiplier
+  uniform float     uDecay;   // per-frame trail retention, 0 = no trail
+
+  varying vec2 vUv;
+
+  void main() {
+    vec3 cur = texture2D(uCurrent, vUv).rgb;
+    vec3 bg  = texture2D(uBg,      vUv).rgb;
+
+    // Largest per-channel departure, not luminance of the difference: a change
+    // that swaps hue at constant luminance is still movement, and a luma-only
+    // measure scores it near zero.
+    vec3  d = abs(cur - bg);
+    float m = clamp(max(max(d.r, d.g), d.b) * uGain, 0.0, 1.0);
+
+    // max(), never +=. Instant attack, exponential release — which is a flake
+    // streaking and fading — and bounded by construction, so where two paths
+    // cross the matte holds at 1 instead of compounding toward white.
+    float prev = texture2D(uTrail, vUv).r;
+    float t    = max(m, prev * uDecay);
+
+    gl_FragColor = vec4(vec3(t), 1.0);
+  }
+`;
+
+export const MOTION_BG = /* glsl */ `
+  uniform sampler2D uCurrent;
+  uniform sampler2D uBg;
+  uniform float     uAdapt;   // 0..1 — share of the live frame folded in
+
+  varying vec2 vUv;
+
+  void main() {
+    vec3 cur = texture2D(uCurrent, vUv).rgb;
+    vec3 bg  = texture2D(uBg,      vUv).rgb;
+    // uAdapt = 1 makes the background exactly this frame, so next frame's
+    // comparison is against the previous one: frame differencing, no branch.
+    gl_FragColor = vec4(mix(bg, cur, uAdapt), 1.0);
+  }
+`;
+
 // ── RGB Channel Delay ─────────────────────────────────────────────────────────
 // Three frames of ONE delay ring, one colour channel taken from each. A moving
 // edge separates into coloured fringes trailing its own past, because each
