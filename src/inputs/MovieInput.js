@@ -34,6 +34,12 @@ export class MovieInput {
     this._pingDir  = 1;       // ping-pong direction: 1 = forward, -1 = backward
     this._lastPos  = -1;     // last seen movie.pos value (for change detection)
     this._revAccum = 0;      // accumulator for reverse frame stepping (seconds)
+    // Idle-deck gating counters. Free (three integer increments per frame) and
+    // always on, because the question they answer — does the gate actually fire
+    // — is NOT answerable from frame timings: an unsaturated device sits pinned
+    // at the vsync ceiling whether the hidden deck uploads or not, so a soak
+    // measures 16.67ms either way. Read via window.__dbg.uploads() (?soak=1).
+    this.stats = { ticks: 0, gated: 0, uploads: 0 };
   }
 
   /**
@@ -223,10 +229,12 @@ export class MovieInput {
     // the 'seeked' listener in addClip covers async seek completion (the
     // new frame decodes after currentTime already reads the target).
     const uploadIfNewFrame = () => {
-      if (!upload) return;
+      this.stats.ticks++;
+      if (!upload) { this.stats.gated++; return; }
       if (v.readyState >= v.HAVE_CURRENT_DATA && v.currentTime !== clip._lastUploadT) {
         clip._lastUploadT = v.currentTime;
         clip.texture.needsUpdate = true;
+        this.stats.uploads++;
       }
     };
 
