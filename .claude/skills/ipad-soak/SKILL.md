@@ -1,9 +1,51 @@
 ---
 name: ipad-soak
-description: Run the pending iPad soak tests on real hardware — dual-deck thermal/decoder budget and the 8-tab bar. Device checklist with defined pass criteria. Use when an iPad is available and the open verification debts need closing.
+description: RUN AND CLOSED 2026-08-04 — both debts settled, results at the top of this file. Keep for the re-run procedure (telemetry setup, phase protocol, traps) when dual-deck perf needs re-measuring after a change.
 ---
 
 # iPad soak test
+
+> ## BOTH DEBTS CLOSED — 2026-08-04
+>
+> **Test A — dual-deck thermal + decoder budget: PASS.** Real iPad, LAN,
+> `vite preview` :4173, full chain (keyer + displace 91% + Displace-mode mix
+> bus, DS Src = Noise). ~55 min across four phases, every parameter verified
+> constant per phase from telemetry:
+>
+> | phase | rows | min | avg_ms | fps | p95 | worst | jank |
+> |---|---|---|---|---|---|---|---|
+> | P1 deck B empty, xf 0 | 150 | 12.4 | 16.675 | 59.98 | 17 | 56 | 43 |
+> | P2 loaded, xf 0 | 155 | 12.9 | 16.670 | 60.00 | 17 | 43 | 26 |
+> | P3 loaded, xf 0.5 | 231 | 19.2 | 16.670 | 60.00 | 17 | 26 | 36 |
+> | P4 back to xf 0 | 133 | 11.0 | 16.670 | 60.00 | 17 | 26 | 28 |
+>
+> P2vP1 −0.03% (crit 15%) · P4vP2 0.00% (crit 10%) · P3 ≥30fps and p95<40ms.
+> Zero drift in all four; `worst` FELL 56→26ms as the run went on — no thermal
+> ceiling. **Two 1080p ALL-I streams fit this device's budget with headroom.**
+>
+> **The gating assertion this protocol is built around cannot be answered by
+> this protocol.** All four phases sat pinned at the 16.67ms vsync ceiling, where
+> "gate fires" and "deck uploads, headroom absorbs it" are identical. Phase 2
+> passes either way. Settled instead by counting the events: `MovieInput.stats`
+> (commit 968ca2b) carries `upA/gA/upB/gB` on every telemetry row. At xfade 0,
+> deck B logged +3917 gated / +0 uploads over 65s; flipped to 0.5, +46616
+> uploads / +0 gated. Clean inversion — **the v0.12 idle-deck gate works.**
+> Deck A also showed 175 real gated events, so `_uploadA`'s hidden branch fires.
+> If you re-run this, read the counters; do not re-derive it from frame times.
+>
+> **Test B — the tab bar: PASS, and its premise was obsolete.** Phase 24 cut the
+> bar from 8 tabs to **5 fixed** (Sources·Mix·Effects·Output·Project) plus one
+> injected contextual workspace tab. The "should Output fold in to get back to 7"
+> question is moot. Measured at `pointer:coarse` on the 300px slide-over: 5 tabs
+> total 334.5px in a 300px bar (10.3% clipped), 6 with a workspace open = 433.7px
+> (30.8% clipped); tab height 37.4px. Labels never truncate — `.tab` is `nowrap`
+> + `flex-shrink:0` and the BAR scrolls instead, so "Project" renders as "Proj".
+> Owner verdict on device: all five hit first time one-handed, the clip is fine,
+> it works. Known-and-accepted, not a defect.
+>
+> Open follow-ups, neither blocking: tab height 37.4px is under the 44px floor
+> the same `pointer:coarse` block mandates for `.param-row` ("touch floor — do
+> not shrink"); and `CLAUDE.md` still documents the retired 8-tab structure.
 
 Two verification debts have been open since v0.12, both recorded in
 `docs/imweb-obsidian.md` (lines 375, 415, 568):
