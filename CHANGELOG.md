@@ -13,6 +13,34 @@ hardware. Both are now closed — and closing them turned up a measurement the
 protocol could not make, which is the more useful half of the result.*
 
 ### Added
+- **RGB Channel Delay** (Sources ▸ Warp ▸ RGB Channel Delay, source index 31) —
+  per-channel time offset. Red, green and blue are each read from a different
+  frame of history and packed into one picture, so a moving edge separates into
+  coloured fringes trailing its own past. Anything still stays exactly itself:
+  where three frames agree, taking one channel from each reproduces the pixel,
+  which makes equal values on all three a bit-exact passthrough rather than a
+  near-miss.
+- It owns **no history**. It reads the `VideoDelayLine` ring that is already
+  captured every frame for Video Delay, so it costs one render target and one
+  pass instead of a second ring — the expensive part of a time effect is the
+  buffer, and this one is second-hand. The consequence is deliberate: the
+  channels come from `delay.source`, so `Delay src`, `Ring depth` and
+  `Buffer res` are its controls too. One ring, two views of it. The design note
+  that proposed this as "three `SpacetimeTap`s" was wrong about the mechanism —
+  `getTexture(framesAgo)` already returns any frame by age, so no Spacetime
+  machinery is involved at all.
+- `rgbdelay.r` / `rgbdelay.g` / `rgbdelay.b`, 1–480 frames, defaulting to a
+  visible 1 / 5 / 9. **Minimum is 1, not 0**, because `getTexture()` clamps with
+  `Math.max(1, framesAgo)` — ages 0 and 1 are the same frame, so a 0-based range
+  would alias its bottom two steps and sample two frames while appearing to
+  offer three. That is not a theoretical concern: a 0/1/2 test came back grey
+  because red and green were identical by construction, and it reads as "the
+  effect barely works" rather than as an off-by-one.
+- The output target **sizes itself from the ring every frame** rather than from
+  the canvas at construction. `setBufferResolution` fires only on *change*, so
+  anything sized once at boot inherits `canvas.parentElement.clientWidth` —
+  which is 0 in a page that boots hidden, leaving a 0×0 target that draws into
+  nothing and never errors.
 - **`?soak=1` instrumentation** (`src/soak.js`) — inert without the URL param.
   Installs `window.__dbg` (a one-call readout of every patch precondition) and
   POSTs `window.__perfStats` to a `/__soak` sink on the vite server every 5s,

@@ -1062,6 +1062,32 @@ The following effects run in sequence after the main composite. Their order can 
 |-----------|-------|-------------|
 | `delay.frames` | 1–30 | Temporal delay in frames |
 
+#### RGB Channel Delay (source 31)
+
+Per-channel time offset. Red, green and blue are each read from a different
+frame of history and packed into one picture, so a moving edge separates into
+coloured fringes trailing its own past. Anything still stays exactly itself —
+where three frames agree, taking one channel from each reproduces the pixel, so
+**equal values on all three are a bit-exact passthrough**.
+
+Select it as a source (Foreground / Background / DisplaceSrc → *From the
+Signal* → **RGB Delay**); the controls are in **Sources ▸ Warp ▸ RGB Channel
+Delay**.
+
+| Parameter | Range | Description |
+|-----------|-------|-------------|
+| `rgbdelay.r` | 1–480 | Red channel age, in frames |
+| `rgbdelay.g` | 1–480 | Green channel age, in frames |
+| `rgbdelay.b` | 1–480 | Blue channel age, in frames |
+
+It owns no history — it reads the **Video Delay ring**, so `Delay src`,
+`Ring depth` and `Buffer res` above are its controls too. One ring, two views of
+it: re-pointing Video Delay re-points this. Depth is limited by `Ring depth`,
+and a channel asking for more frames than the ring has captured holds at the
+oldest available frame rather than dropping to black.
+
+Minimum is 1, not 0, because age 0 and age 1 are the same frame.
+
 ---
 
 ### 5.11 LUT (3D Lookup Table)
