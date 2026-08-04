@@ -1088,6 +1088,41 @@ oldest available frame rather than dropping to black.
 
 Minimum is 1, not 0, because age 0 and age 1 are the same frame.
 
+#### Motion Extraction (source 32)
+
+Produces a **matte**, not a picture: white where the source is moving, black
+where it is not. Its destination is the keyer's **Key src**, not a layer —
+select the thing you want to reveal as Foreground, the thing behind it as
+Background, then key the Foreground by Motion. Only the moving part shows.
+
+| Parameter | Range | Description |
+|-----------|-------|-------------|
+| `motion.source` | SELECT | What is watched for movement |
+| `motion.gain` | 1–50 | Sensitivity — a raw frame difference is only a few percent |
+| `motion.bgtime` | 0–30 s | Background adapt half-life. **0 = frame differencing** |
+| `motion.trail` | 0–10 s | How long a trail survives after the movement passes |
+
+**`Bg adapt` is the important control, and it spans two classical methods.**
+The background is a running average of the source. A long adapt time gives a
+stable background, so a subject who stops moving *stays* in the matte — that is
+background subtraction. At 0 the background is simply the previous frame, which
+is frame differencing: only edges of change register, and anything that stops
+vanishes. The useful settings are usually in between.
+
+**Trail** rides on the matte, so the streak reveals whatever the Foreground
+shows *now* along that path, rather than a frozen copy of what passed through.
+It uses instant attack and exponential release, and cannot blow out where two
+moving things cross.
+
+> **Setting up the key:** the keyer passes a *band* between KeyLevelBlack and
+> KeyLevelWhite, so it rejects the very bright as well as the very dark. At the
+> default KeyLevelWhite of 80% a fully lit matte is keyed **out** — which looks
+> like the strongest motion being the one thing that fails to show. Set
+> **KeyLevelWhite to 100%** and let KeyLevelBlack do the cutting.
+>
+> For glowing trails, turn **Alpha Emissive** on: a fading trail is light
+> *added*, not an object occluding. Leave it off for a hard cutout of a person.
+
 ---
 
 ### 5.11 LUT (3D Lookup Table)

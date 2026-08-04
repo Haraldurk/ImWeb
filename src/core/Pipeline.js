@@ -476,7 +476,11 @@ export class Pipeline {
       keyed = this._pass(this.m.keyer, {
         uFG:          keyedFG,
         uBG:          bgTexFinal,
-        uEK:          dsTex,
+        // The external key follows keyer.keysrc, resolved in main.js because
+        // CAPTURE_SOURCES carries the indirect FG/BG/DS Src entries that only
+        // _captureIdx knows how to follow. Falling back to dsTex keeps the
+        // pre-keysrc wiring for any caller that does not supply one.
+        uEK:          inputs.keysrc ?? dsTex,
         uFGRaw:       fgTex,
         uKeyWhite:    p.get('keyer.white').value / 100,
         uKeyBlack:    p.get('keyer.black').value / 100,
@@ -977,6 +981,7 @@ export class Pipeline {
     if (key === 'rutt'      && inputs.rutt)      return inputs.rutt;
     if (key === 'sdfdepth'  && inputs.sdfdepth)  return inputs.sdfdepth;
     if (key === 'rgbdelay'  && inputs.rgbdelay)  return inputs.rgbdelay;
+    if (key === 'motion'    && inputs.motion)    return inputs.motion;
     return inputs.color ?? this._getFallbackTexture();
   }
 

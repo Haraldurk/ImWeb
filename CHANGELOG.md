@@ -13,6 +13,32 @@ hardware. Both are now closed — and closing them turned up a measurement the
 protocol could not make, which is the more useful half of the result.*
 
 ### Added
+- **Motion Extraction** (Sources ▸ Warp ▸ Motion Extraction, source index 32) —
+  a **matte**, not a picture: white where the source moves, black where it does
+  not. Route it to the keyer's new Key src and the moving part of one layer
+  shows over another, the rest transparent. That is the whole feature, and the
+  reason it is one source rather than a subsystem: layers do not composite by
+  alpha in ImWeb (`BLEND` is `mix(curr, prev, amount)`), so transparency only
+  ever comes from the keyer — which already knew how to take an external matte.
+- **One control spans both classical methods, instead of a mode select.** The
+  background is an exponential running average of the source; comparing the live
+  frame against it is background subtraction, and shortening the adapt time to
+  zero makes the background exactly the previous frame, which is frame
+  differencing. Same shader, no branch. This matters for the intended use:
+  frame differencing alone shows only the *edges* of change and collapses the
+  moment motion stops, so a person who pauses disappears — which reads as the
+  effect breaking rather than as a property of the method.
+- `motion.source`, `motion.gain`, `motion.bgtime` (background half-life in
+  seconds, 0 = frame differencing) and `motion.trail` (seconds until a trail is
+  gone). Deliberately **no threshold and no softness** — the keyer already has
+  White / Black / Softness and this matte is its input, so a second set would be
+  two controls doing one job.
+- Trail is `max(motion, trail * decay)`, never `+=`: instant attack, exponential
+  release, and bounded by construction, so where two moving things cross the
+  matte holds at 1 instead of compounding toward white. Both time constants are
+  in seconds against the real `dt`, following `rutt.rise`/`rutt.fall`, and `dt`
+  is clamped so a tab regaining focus cannot wipe the trail in one step.
+
 - **RGB Channel Delay** (Sources ▸ Warp ▸ RGB Channel Delay, source index 31) —
   per-channel time offset. Red, green and blue are each read from a different
   frame of history and packed into one picture, so a moving edge separates into
@@ -55,6 +81,21 @@ protocol could not make, which is the more useful half of the result.*
   carried on every telemetry row as `upA`/`gA`/`upB`/`gB`, cumulative so a
   dropped row costs nothing. Every telemetry row also carries the phase-defining
   parameters, so a run proves its own conditions instead of relying on memory.
+
+### Changed
+- **The keyer's external key has its own source selector** (`keyer.keysrc`,
+  Mix ▸ Keyer ▸ Key src). ExtKey was hardwired to the DisplaceSrc texture, so
+  keying externally *cost* you displacement — one slot doing two unrelated jobs.
+  Default is "DS Src", the old wiring, so every saved state, bank and `.imweb`
+  project keys exactly as before. Declared against `CAPTURE_SOURCES`, which is
+  what enrols it in the capture-base migration: a param declared against a
+  hand-written copy of that list would be silently absent from it.
+
+  Worth knowing when keying on a matte — the keyer passes a *band*, so it
+  rejects the very bright as well as the very dark. At the default
+  KeyLevelWhite of 80% a fully lit matte is keyed **out**, which looks like the
+  strongest motion being the one thing that fails to show. Set KeyLevelWhite to
+  100% and let KeyLevelBlack do the cutting.
 
 ### Verified
 - **Dual-deck thermal + decoder budget — PASS.** Four phases, ~55 min on a real

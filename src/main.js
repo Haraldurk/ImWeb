@@ -82,6 +82,7 @@ import { StillsBuffer } from "./inputs/StillsBuffer.js";
 import { SequenceBuffer } from "./inputs/SequenceBuffer.js";
 import { VideoDelayLine } from "./inputs/VideoDelayLine.js";
 import { RGBDelay } from "./inputs/RGBDelay.js";
+import { MotionExtract } from "./inputs/MotionExtract.js";
 import { TimeDisplaceEngine } from "./inputs/TimeDisplaceEngine.js";
 import { VectorscopeInput } from "./inputs/VectorscopeInput.js";
 import { SlitScanBuffer } from "./inputs/SlitScanBuffer.js";
@@ -316,6 +317,15 @@ async function main() {
   // Per-channel view of the SAME ring — no history of its own, so it costs one
   // target and one pass rather than a second buffer. See src/inputs/RGBDelay.js.
   const rgbDelay = new RGBDelay(renderer, W, H);
+  // Motion matte. Its buffers are its own (a background estimate and a trail),
+  // so unlike RGBDelay it cannot borrow a size — it follows the canvas, and
+  // clamps to at least 1×1 so a hidden boot cannot leave it degenerate.
+  const motionExtract = new MotionExtract(renderer, W, H);
+  // By KEY, never by a bare number. A literal index here is exactly the shape
+  // that drifted in `_sdfSrcToLayerIdx` — every value stays in range and
+  // resolves to a real texture, so the failure reads as an effect bug rather
+  // than a routing one.
+  const MOTION_IDX = SOURCE_KEYS.indexOf("motion");
   // Ring depth and working resolution, both reallocating (history is discarded
   // either way, so they share VideoDelayLine._realloc). Resolution is the lever
   // that makes a long echo affordable — 30 frames at Native costs 237 MB for
@@ -3800,6 +3810,7 @@ async function main() {
     // a fresh route falls through to Output rather than binding nothing.
     if (key === "sdfdepth") return sdfGen.depthTexture ?? pipeline.prev.texture;
     if (key === "rgbdelay") return rgbDelay.texture;
+    if (key === "motion")   return motionExtract.texture;
     if (key === "seq1") return seq1.texture;
     if (key === "seq2") return seq2.texture;
     if (key === "seq3") return seq3.texture;
@@ -6997,10 +7008,24 @@ void main() {
     const _sdfOn   = ps.get("sdf.active").value;
     const _cSdfTex = _sdfOn ? (_sdfSrcToLayerIdx[ps.get("sdf.texSrc").value] ?? -1) : -1;
     const _cSdfRef = _sdfOn ? (_sdfSrcToLayerIdx[ps.get("sdf.refractSrc").value] ?? -1) : -1;
+    // The keyer's external key is a real consumer of whatever it points at —
+    // only while the keyer is on AND in ExtKey mode AND not keying on alpha,
+    // since the alpha branch never samples uEK.
+    const _cKeySrc =
+      ps.get("keyer.active").value &&
+      ps.get("keyer.extkey").value &&
+      !ps.get("keyer.alpha").value
+        ? _captureIdx(ps.get("keyer.keysrc").value)
+        : -1;
+    // Motion watches a source of its own, and only while something needs the
+    // matte. That is circular by nature — motion is used ⇒ its source is used —
+    // so it resolves through the same fixpoint rather than beside it.
+    const _cMotion = _captureIdx(ps.get("motion.source").value);
+
     const _direct = (i) =>
       _cFg === i || _cBg === i || _cDs === i || _cTd === i || _cTdMap === i ||
       _cSlit === i || _cVwarp === i || _cDelay === i || _cRutt === i ||
-      _cSdfTex === i || _cSdfRef === i;
+      _cSdfTex === i || _cSdfRef === i || _cKeySrc === i;
 
     // Per-bus inputs. Which one can actually reach the bus output? MIXBUS
     // computes mix(a, modeResult, xfade): xfade=0 is pure srcA (srcB hidden),
@@ -7037,9 +7062,18 @@ void main() {
     }
     const _mixbusNeeded = _bus.map((b) => b.needed);
 
-    const _srcUsed = (i) =>
+    const _usedBase = (i) =>
       _direct(i) ||
       _bus.some((b) => b.needed && ((b.aReaches && b.srcA === i) || (b.bReaches && b.srcB === i)));
+
+    // Motion pulls its own source in behind it: if anything needs the matte,
+    // the thing the matte watches is needed too. Seeded from _usedBase rather
+    // than from _srcUsed so that a Motion watching Motion terminates instead of
+    // recursing — in that case the flag is already true and adds nothing.
+    const _motionNeeded = _usedBase(MOTION_IDX);
+
+    const _srcUsed = (i) =>
+      _usedBase(i) || (_motionNeeded && i === _cMotion);
 
     // ── Idle-deck upload gating (v0.12 Step 5) ──────────────────────────────
     // Skip the texImage2D upload for a deck that cannot contribute to this
@@ -7477,6 +7511,11 @@ void main() {
       text: textLayer.texture,
       delay: videoDelay.getTexture(ps.get("delay.frames").value),
       rgbdelay: rgbDelay.texture,
+      motion: motionExtract.texture,
+      // The keyer's external key, resolved here rather than in Pipeline because
+      // CAPTURE_SOURCES includes the indirect FG/BG/DS Src entries and only
+      // main.js knows how to follow them (_captureIdx).
+      keysrc: _resolveCaptureTex(ps.get("keyer.keysrc").value),
       scope: vectorscope.texture,
       slitscan: slitScan.texture,
       vwarp: vasulkaWarp.outputRT.texture,
@@ -7544,6 +7583,23 @@ void main() {
       } else {
         pipeline.setCustomVJ(null);
       }
+    }
+
+    // Motion matte — BEFORE the composite, because the keyer consumes it this
+    // frame. Everything it watches is already resolvable: `inputs` is built
+    // above, which is what _resolveLayerTex reads. Gated on the fixpoint, so a
+    // project that routes it nowhere pays neither the passes nor the buffers.
+    if (_srcUsed(MOTION_IDX)) {
+      motionExtract.setSize(canvas.width, canvas.height);
+      motionExtract.render(
+        _resolveCaptureTex(ps.get("motion.source").value),
+        dt,
+        {
+          gain:         ps.get("motion.gain").value,
+          bgSeconds:    ps.get("motion.bgtime").value,
+          trailSeconds: ps.get("motion.trail").value,
+        },
+      );
     }
 
     // Run compositing pipeline
