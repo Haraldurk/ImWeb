@@ -72,6 +72,14 @@ export function initSoak(h) {
     ds: srcLabel(val("layer.ds")),
     fg: srcLabel(val("layer.fg")),
     deckB: movieInputB?.clips?.length ?? 0,
+    // Cumulative gating counters, carried on every row so the log answers "did
+    // the idle deck upload" by itself — frame timings cannot, since an
+    // unsaturated device reads 16.67ms whether the gate fires or not. Sent
+    // cumulative rather than as deltas so a dropped row costs nothing.
+    upA: movieInput?.stats?.uploads ?? 0,
+    gA: movieInput?.stats?.gated ?? 0,
+    upB: movieInputB?.stats?.uploads ?? 0,
+    gB: movieInputB?.stats?.gated ?? 0,
   });
 
   let phase = q.get("soak") || "unlabelled";
@@ -96,12 +104,50 @@ export function initSoak(h) {
   };
   setInterval(tick, POLL_MS);
 
+  // Idle-deck gating, observed rather than inferred. A soak cannot answer this:
+  // on an unsaturated device every phase sits pinned at the vsync ceiling, so
+  // "gate fires" and "deck uploads, headroom absorbs it" both read 16.67ms.
+  // Counting the actual texImage2D triggers separates them in seconds.
+  //
+  // NOTE `uploads` counts the per-frame upload path only. MovieInput also sets
+  // needsUpdate from its 'seeked' listener (async seek completion), which is
+  // deliberately NOT gated and NOT counted — it is not a per-frame cost.
+  let uPrev = null;
+  const uploads = () => {
+    const snap = {
+      A: { ...movieInput.stats },
+      B: { ...movieInputB.stats },
+    };
+    const prev = uPrev;
+    uPrev = snap;
+    if (!prev) return { baseline: "set — call again after a few seconds", total: snap };
+    const d = (k) => ({
+      ticks: snap[k].ticks - prev[k].ticks,
+      gated: snap[k].gated - prev[k].gated,
+      uploads: snap[k].uploads - prev[k].uploads,
+    });
+    const A = d("A"), B = d("B");
+    const verdict = (x) =>
+      x.ticks === 0 ? "idle (not ticking)"
+      : x.uploads > 0 ? `UPLOADING (${x.uploads})`
+      : x.gated > 0 ? `GATED (${x.gated} skipped)`
+      : "ticking, no new frame";
+    return {
+      xfade: val("mix.xfade"),
+      deckA: `${verdict(A)}`,
+      deckB: `${verdict(B)}`,
+      since: { A, B },
+      total: snap,
+    };
+  };
+
   window.__dbg = {
     ps,
     pipeline,
     movieInput,
     movieInputB,
     state,
+    uploads,
     srcLabel,
     /** Label everything logged from here on. Call at the start of each phase. */
     phase(name) {
@@ -120,7 +166,7 @@ export function initSoak(h) {
 
   post({ t: Date.now(), phase, kind: "session-start", state: state() });
   console.log(
-    `%c[soak] armed — phase "${phase}". __dbg.state() / .phase(n) / .mark(s) / .status()`,
+    `%c[soak] armed — phase "${phase}". __dbg.state() / .uploads() / .phase(n) / .mark(s) / .status()`,
     "color:#7ac",
   );
   return true;
