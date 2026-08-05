@@ -1,6 +1,6 @@
 # ImWeb — Quick Reference
 
-> Browser-based real-time video synthesis instrument · v0.8.9
+> Browser-based real-time video synthesis instrument · v0.17.0
 
 ---
 
@@ -23,8 +23,7 @@ FX Chain is **reorderable** by dragging nodes in the Signal Path display.
 | **Camera** | WebRTC, auto-starts on load (`V` to toggle) |
 | **Movie Library** | Every movie you have — unlimited, thumbnails load lazily, filter box. `+ Add Movie`, or drop files on the canvas. Drag a row (or `→A`/`→B`) onto a deck to play it |
 | **Movie A / Movie B** | Two decks, 8 loaded slots each. `Shift+1–8` selects on A, `Option+1–8` on B. A full rack evicts its oldest clip, never the one playing. Both decks start off; routing a layer to one switches it on |
-| **Analog TV** | Self-contained 720x480 analog signal simulator. Currently supports 4:3 cropping and base signal color grading (hue, saturation, brightness, contrast). Routes as a standard layer source. |
-| **Teletext** | Teletext input source simulating classic teletext pages; customizable page data and draw utilities; routes as WebGLRenderTarget. |
+| **Analog TV** | Self-contained 720×480 analog signal simulator: 4:3 cropping and base signal colour grading (hue, saturation, brightness, contrast). Routes as a standard layer source. **Teletext** is one of its signal types (`analog.sourceType` → Teletext), not a source of its own — selecting it reveals the page-navigation panel |
 | **Stills Buffer** | Up to 64 captured frames (configurable rows×cols grid, 1–8 each, default 4×4=16); `C` to capture; scan/blend between slots |
 | **Color** | Solid or gradient (H/V/radial); HSV + animated hue |
 | **Noise** | GPU fractal (Perlin/Voronoi/Worley/Simplex); 512×512; resolution-independent |
@@ -39,8 +38,15 @@ FX Chain is **reorderable** by dragging nodes in the Signal Path display.
 | **Warp Tape** | Rolling time buffer (8/16/32 s); scrub or smear along Time (X) or Picture (Y) |
 | **Time Displace** | Per-pixel delay from a map image; 7 modes; up to 119 frames deep. Buffer res is the memory cost — drop from Native first |
 | **3D Depth / SDF Depth** | Depth outputs of the 3D Scene and SDF field, routable like any source |
-| **Sequencers ×3** | Record/loop any source; 4–480 frames; independent |
+| **Sequencers ×3** | Record/loop any source; 4–480 frames; ±300% speed (negative = reverse); independent |
 | **Vectorscope** | Audio visualiser (Lissajous / Waveform / FFT) |
+| **Motion Extraction** | A **matte**, not a picture — white where the source moves. Route it to the keyer's **Key src**. `Bg adapt` spans background subtraction (long) to frame differencing (0); `Smoothness` is what makes a live camera usable |
+| **Delay** | Frame ring; 0.5–8 s depth, resolution-capped for VRAM |
+| **RGB Delay** | Reads the *same* ring three times, one per channel — moving edges separate into coloured fringes. Equal values = bit-exact passthrough |
+| **Sound** | Microphone / audio input as a routable texture |
+| **Color / Color2** | Two independent solid-or-gradient generators |
+| **BG1 / BG2** | Two frozen background stills held by the Stills Buffer. `Freeze BG1` / `Freeze BG2` (triggers) grab the current frame into them — a held plate to key or mix against |
+| **Output** | The finished frame, fed back in as a source (`pipeline.prev`) — the raw material for feedback routing |
 
 ---
 
@@ -52,30 +58,43 @@ FX Chain is **reorderable** by dragging nodes in the Signal Path display.
 |--------|----------------|
 | **Displacement** | amount 0–100%, angle 0–360°, warp map slot |
 | **WarpMap** | interactive brush editor; PUSH / SMOOTH / ERASE tools |
-| **Keyer** | luma: white/black/softness; chroma: hue/range/soft; ExtKey from DS |
-| **Blend** | amount 0–100%; feedback hor/ver/scale/rotate/zoom |
+| **Keyer** | luma: white/black/softness; chroma: hue/range/soft; **ExtKey + Key src** — key from *any* source, not just DS |
+| **Blend** | amount 0–100%; feedback hor/ver/scale/rotate/zoom + centre; loop shaping: **FBDecay** (reach for this first when feedback runs away), FBBlur, FBHue, FBEdge, FBMirror, and 21 Feedback Modes |
 | **ColorShift** | hue rotation 0–100% |
 | **Interlace** | scanline intensity 0–1 |
 | **Fade** | fade to black 0–100% |
 
 ### Post-FX chain (reorderable)
 
+**All FX** (`effect.enable`) bypasses the whole chain without losing a single
+value or the chain order — a real parameter, so it is MIDI-mappable and captured
+by States. **Clear All FX** resets every effect parameter to default, leaving the
+order and the master toggle alone.
+
 | Effect | Key parameters |
 |--------|----------------|
-| Kaleidoscope | intensity, rotation |
+| Kaleidoscope | intensity, rotation, centre X/Y, edge mode |
 | Levels | black point, white point, gamma |
 | Quad Mirror | strength |
 | Pixelate | block size |
-| Edge | strength, invert |
+| Edge | strength, invert, keep colour |
 | RGB Shift | amount, angle |
 | Posterize | colour levels |
-| Solarize | inversion strength |
-| Film Grain | grain, scanlines |
-| Bloom | strength, threshold |
-| Vignette | strength, radius |
+| Solarize | inversion strength, softness |
+| Film Grain | grain, scanlines, scanline count |
+| Bloom | strength, threshold, radius |
+| Vignette | strength, radius, centre X/Y, hue + tint |
 | White Balance | colour temperature (2000–8000K), tint |
 | Pixel Sort | length, threshold, direction, sort mode |
-| Video Delay | delay in frames (1–30) |
+| **Polar** | amount, Wrap/Unroll, rotation — turns every effect after it into a different one |
+| **Wave** | amp X/Y, freq X/Y, phase (drive phase with an LFO) |
+| **Halftone** | amount, dot size, screen angle, Mono/Colour (Colour rosettes instead of moiré) |
+| **Duotone** | amount, dark hue, light hue |
+| **Lens / Twirl** | barrel↔pincushion, twirl, shared centre + edge mode |
+| Strobe | on/off, rate 0.5–60 Hz, duty — ⚠ photosensitivity |
+| Sharpen / Flip | unsharp amount; Off/H/V/Both |
+| Output grade | Out.Hue, Out.Sat, Out.Bright — the tail of the chain |
+| Video Delay | delay in frames (1–480), ring depth, buffer res |
 | **LUT** | `.cube` file; blend amount |
 
 ---
@@ -181,7 +200,9 @@ Auto-declared uniforms: `uTexture` `tAudio` (FFT+waveform) `tPrev` (feedback) `u
 | `Cmd+S` | Save project → download `.imweb` |
 | `Cmd+E` | Export `.imweb` (same as Cmd+S) |
 | `Cmd+O` | Import `.imweb` |
-| `Cmd+F` | Fullscreen |
+| `F` | Fullscreen (or double-click the canvas) |
+| `Shift+Esc` | **Panic** — reset all parameters to defaults |
+| `D` | Debug overlay |
 | `Shift+P` | Float/dock signal path |
 | `Shift+V` | Output spy |
 | `N` | AI Narrator |
