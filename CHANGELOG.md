@@ -138,6 +138,28 @@ protocol could not make, which is the more useful half of the result.*
   "Project" renders as "Proj". All five are hit first time one-handed on device.
 
 ### Fixed
+- **The Video Delay ring is no longer allocated 0×0 when the page boots before
+  layout.** `W`/`H` came straight from `canvas.parentElement.clientWidth`, which
+  is 0 in a tab that boots in the background, a `display:none` container, or a
+  frame that has not been shown. Most of the instrument survives that, because
+  `applyResolution()` runs later and resizes everything that follows the canvas
+  — but `VideoDelayLine` and `TimeDisplaceEngine` deliberately make `resize()` a
+  no-op so a display change cannot wipe their history, which means they take
+  their working size ONCE, here, and only ever reallocate from a
+  `bufferResolution` change. That fires on *change*, so it never fires at
+  startup. The rings stayed 0×0 for the whole session.
+
+  Nothing errored. `capture()` and `getTexture()` both keep working against
+  zero-sized targets, so Delay and RGB Delay simply rendered nothing and the
+  only symptom was an effect that looked unimplemented — until you touched
+  Buffer res, which reallocated from real numbers and fixed it by accident.
+
+  Fixed by falling back to a plausible size rather than healing later: a heal
+  would need a guard that is false on every normal boot plus a realloc that
+  throws away history, for a size that was only ever an approximation anyway
+  (Native already clamps, and these buffers are decoupled from the canvas by
+  design). Now covered by `tests/audit-boot-buffer-size.mjs`, which also fails
+  if another engine adopts the no-op resize without being considered here.
 - **Loading a `.cube` and raising LUT Amount no longer blanks the image to
   black.** The LUT was uploaded as `RGBFormat + FloatType`. three r168 still
   *defines* `RGBFormat`, so nothing failed loudly — but `getInternalFormat`
