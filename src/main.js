@@ -153,6 +153,12 @@ import {
   buildAnalogPresetBar,
 } from "./ui/UI.js";
 import { openCtrlPopover } from "./ui/components/CtrlPopover.js";
+import {
+  initGuide,
+  openGuide,
+  toggleGuide,
+  revealParam as _revealParam,
+} from "./ui/Guide.js";
 import { LONG_PRESS_MS } from "./ui/touch.js";
 import { perfFrame } from "./perf-logger.js";
 import { initSoak } from "./soak.js";
@@ -1549,6 +1555,11 @@ async function main() {
     el.addEventListener("click", () => openWorkspace(el.dataset.workspace));
   });
 
+  // The guided tour points at parameter rows, and four of them (Live GLSL, 3D,
+  // Analog, Draw) live in workspace panes that no .tab button reaches. The
+  // router is a closure in this scope, so it is injected rather than imported.
+  initGuide({ ps, openWorkspace });
+
   // Collapse / expand all sections
   const collapseAllBtn = document.getElementById("btn-collapse-all");
   collapseAllBtn?.addEventListener("click", () => {
@@ -2350,11 +2361,18 @@ async function main() {
   if (!localStorage.getItem("imweb-onboarding-dismissed")) {
     _onboarding?.classList.remove("hidden");
   }
+  const _dismissOnboarding = () => {
+    _onboarding?.classList.add("hidden");
+    localStorage.setItem("imweb-onboarding-dismissed", "1");
+  };
   document
     .getElementById("onboarding-dismiss")
+    ?.addEventListener("click", _dismissOnboarding);
+  document
+    .getElementById("onboarding-guide")
     ?.addEventListener("click", () => {
-      _onboarding?.classList.add("hidden");
-      localStorage.setItem("imweb-onboarding-dismissed", "1");
+      _dismissOnboarding();
+      openGuide(0); // from the top — this reader has not been here before
     });
 
   // Keyboard lock toggle
@@ -2953,8 +2971,11 @@ async function main() {
   // Camera (source 0) sits under LIVE IN in its own panel, parallel to Sound,
   // rather than inside the generic I/O block. Falls back to ioBlock so the
   // control can never be silently dropped.
-  (document.getElementById("camera-params") ?? ioBlock)
-    .appendChild(_ioRow("Camera", btnCameraOn, camDeviceSel));
+  const _camRow = _ioRow("Camera", btnCameraOn, camDeviceSel);
+  // Hand-built row — claim the param id so the `/` search's ⌖ and the guided
+  // tour can point at the control that turns the camera on.
+  _camRow.dataset.paramId = "camera.active";
+  (document.getElementById("camera-params") ?? ioBlock).appendChild(_camRow);
 
   // ── Audio In ──
   const btnAudioIn = document.createElement("button");
@@ -5442,6 +5463,11 @@ void main() {
     const selRow = document.createElement("div");
     selRow.style.cssText =
       "display:flex;gap:4px;padding:4px 8px 0;align-items:center;";
+    // Hand-built row, so it must claim its param id explicitly — buildParamRow
+    // does this for every other row. Without it the `/` search lists
+    // glsl.preset (it is registered) but its ⌖ button finds no element and
+    // silently does nothing, and the guided tour cannot point here at all.
+    selRow.dataset.paramId = "glsl.preset";
     const lbl = document.createElement("span");
     lbl.textContent = "Preset:";
     lbl.style.cssText =
@@ -5995,18 +6021,13 @@ void main() {
   }
 
   function activateSearchResult(p) {
-    // Scroll to the param row and flash it (skip the search-results copy of
-    // the row, which now also carries .param-row + data-param-id)
-    const row = Array.from(
-      document.querySelectorAll(`.param-row[data-param-id="${p.id}"]`),
-    ).find((el) => !el.closest("#param-search-results"));
-    if (row) {
-      row.scrollIntoView({ behavior: "smooth", block: "center" });
-      row.style.outline = "1px solid var(--accent)";
-      setTimeout(() => {
-        row.style.outline = "";
-      }, 1500);
-    }
+    // Delegates to the guided tour's reveal, which is the same gesture done
+    // properly: switch to the owning tab (or open its workspace), expand the
+    // collapsed section and subsection, THEN scroll and flash. The version
+    // that used to live here only scrolled and outlined, so ⌖ silently did
+    // nothing whenever the target sat on another tab or inside a collapsed
+    // section — which, since sections boot collapsed, is most of them.
+    _revealParam(p.id);
     closeParamSearch();
   }
 
@@ -6118,6 +6139,15 @@ void main() {
       (/^[vmcbskdxhtfqazgiu]$/i.test(e.key) || /^Digit[0-9]$/.test(e.code))
     )
       return;
+
+    // Shift+G = guided tour. Shift-prefixed because plain `g` already cycles
+    // the canvas interaction mode — and the tour's warp-drawing step is the one
+    // that tells you to press it.
+    if (e.shiftKey && e.key === 'G' && !e.target.closest('input,textarea')) {
+      e.preventDefault();
+      toggleGuide();
+      return;
+    }
 
     // Shift+S = quick-save State to next empty slot (with auto-thumbnail)
     if (e.shiftKey && e.key === 'S' && !e.target.closest('input,textarea')) {

@@ -156,6 +156,12 @@ export function buildParamRow(param, contextMenu) {
       // the param flip-flopped between the two writers while the finger
       // held the thumb.
       if (e.target.closest('.param-slider')) return;
+      // Same single-writer rule for BUTTONS placed inside a row: capturing here
+      // retargets the pointer stream to the row, so the button never receives
+      // its click. That is why the parameter search's ⌖ locate button did
+      // nothing on continuous rows — the only row type that captures — while
+      // working fine on toggles and selects.
+      if (e.target.closest('button')) return;
       row.setPointerCapture(e.pointerId);
       _dragPid = e.pointerId;
       startX   = e.clientX;
