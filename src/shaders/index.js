@@ -486,20 +486,6 @@ export const TRANSFERMODE = /* glsl */ `
   }
 `;
 
-// Lightweight Copy-only transfer mode — avoids register pressure from 190+ line
-// TRANSFERMODE shader when the mode is guaranteed to be 0 (Copy/identity).
-export const TRANSFER_COPY = /* glsl */ `
-  uniform sampler2D uFG;
-  uniform sampler2D uBG;
-  uniform float     uBlendAmount;
-  varying vec2 vUv;
-  void main() {
-    vec4 fg = texture2D(uFG, vUv);
-    vec4 bg = texture2D(uBG, vUv);
-    gl_FragColor = vec4(mix(bg.rgb, fg.rgb, uBlendAmount), fg.a);
-  }
-`;
-
 // ── Color Shift ───────────────────────────────────────────────────────────────
 
 export const COLORSHIFT = /* glsl */ `
@@ -1232,25 +1218,6 @@ export const MIRROR = /* glsl */ `
   }
 `;
 
-// ── Solid color ───────────────────────────────────────────────────────────────
-
-export const SOLID_COLOR = /* glsl */ `
-  uniform float uHue;
-  uniform float uSat;
-  uniform float uVal;
-  varying vec2 vUv;
-
-  vec3 hsv2rgb(vec3 c) {
-    vec4 K = vec4(1.0, 2.0/3.0, 1.0/3.0, 3.0);
-    vec3 p = abs(fract(c.xxx + K.xyz) * 6.0 - K.www);
-    return c.z * mix(K.xxx, clamp(p - K.xxx, 0.0, 1.0), c.y);
-  }
-
-  void main() {
-    gl_FragColor = vec4(hsv2rgb(vec3(uHue, uSat, uVal)), 1.0);
-  }
-`;
-
 // ── WarpMap ───────────────────────────────────────────────────────────────────
 
 export const WARP = /* glsl */ `
@@ -1882,7 +1849,7 @@ export const DUOTONE = /* glsl */ `
 export const LENS = /* glsl */ `
   uniform sampler2D uTexture;
   uniform float uDistort;  // <0 pincushion, 0 none, >0 barrel
-  uniform float uTwirl;    // turns at the rim, falling to 0 at the centre
+  uniform float uTwirl;    // turns at the centre, falling to 0 by half-radius
   uniform vec2  uCenter;
   uniform float uAspect;
   uniform int   uEdge;
@@ -1895,7 +1862,8 @@ ${FEEDBACK_EDGE_GLSL}
     float r = length(d);
 
     // Twirl first: rotate by an amount that falls off with radius, so the
-    // centre stays put and the rim shears round it.
+    // centre winds up and the rim stays put. The falloff reaches zero at
+    // r = 0.5, not at the frame edge, so the corners are never twisted.
     if (uTwirl != 0.0) {
       float a = uTwirl * 6.28318530718 * (1.0 - clamp(r * 2.0, 0.0, 1.0));
       float ca = cos(a), sa = sin(a);
@@ -2094,45 +2062,6 @@ export const TIMEWARP = /* glsl */ `
     vec4 warped = texture2D(tStrip, stripUv);
     vec4 live   = texture2D(tLive,  vUv);
     gl_FragColor = mix(live, warped, uMix);
-  }
-`;
-
-// ── Vasulka Warp ──────────────────────────────────────────────────────────────
-// Dual-oscillator scan-line UV warp inspired by Steina Vasulka's Wobbulator.
-// Two independent H oscillators + one V oscillator distort the UV coordinates.
-// Optional color modulation tints based on displacement magnitude.
-
-export const VASULKA_WARP = /* glsl */ `
-  uniform sampler2D uTexture;
-  uniform float uFreqH;  // H oscillator 1 frequency (cycles)
-  uniform float uFreqV;  // V oscillator frequency (cycles)
-  uniform float uAmpH;   // H oscillator 1 amplitude (UV units)
-  uniform float uAmpV;   // V oscillator amplitude (UV units)
-  uniform float uPhase;  // primary phase offset (radians)
-  uniform float uFreq2;  // H oscillator 2 frequency
-  uniform float uAmp2;   // H oscillator 2 amplitude (UV units)
-  uniform float uColor;  // color modulation strength 0–1
-  varying vec2 vUv;
-
-  void main() {
-    float tau = 6.2831853;
-    // Horizontal warp: two scan-line oscillators summed (Lissajous-like)
-    float wH = sin(vUv.y * uFreqH * tau + uPhase) * uAmpH
-             + sin(vUv.y * uFreq2 * tau + uPhase * 1.6180) * uAmp2;
-    // Vertical warp: one oscillator across horizontal scanlines
-    float wV = sin(vUv.x * uFreqV * tau + uPhase * 0.7) * uAmpV;
-
-    vec2 uv = vec2(fract(vUv.x + wH), fract(vUv.y + wV));
-    vec4 col = texture2D(uTexture, uv);
-
-    if (uColor > 0.001) {
-      float maxAmp = uAmpH + uAmp2;
-      float t = (maxAmp > 0.0) ? (wH / maxAmp) * 0.5 + 0.5 : 0.5;
-      vec3 tint = vec3(t, 1.0 - t * 0.7, 0.5 + wV * 2.0);
-      col.rgb = mix(col.rgb, col.rgb * tint, uColor);
-    }
-
-    gl_FragColor = col;
   }
 `;
 
