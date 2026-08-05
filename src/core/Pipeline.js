@@ -18,7 +18,7 @@
 import * as THREE from 'three';
 import {
   VERT, KEYER, DISPLACE, BLEND, FEEDBACK,
-  TRANSFERMODE, TRANSFER_COPY, COLORSHIFT, NOISE_BFG, INTERLACE, MIRROR, SOLID_COLOR, WARP, FADE, PASSTHROUGH,
+  TRANSFERMODE, COLORSHIFT, NOISE_BFG, INTERLACE, MIRROR, WARP, FADE, PASSTHROUGH,
   BUFFER_TRANSFORM, INTERP,
   PIXELATE, EDGE, RGBSHIFT, POSTERIZE, SOLARIZE, COLOR_CORRECT, CHROMA_KEY,
   VIGNETTE, BLOOM_EXTRACT, BLOOM_BLUR, BLOOM_COMPOSITE, KALEIDOSCOPE, PIXEL_SORT,
@@ -1294,7 +1294,6 @@ export class Pipeline {
         uMaskLo:  { value: 0.25 },
         uMaskHi:  { value: 0.75 },
       }),
-      transfercopy: this._mat(TRANSFER_COPY, { uBlendAmount: { value: 1.0 } }),
       colorshift:   this._mat(COLORSHIFT,   { uShift: { value: 0 } }),
       interlace:    this._mat(INTERLACE, {
         uResY: { value: 720 }, uAmount: { value: 0 }, uTime: { value: 0 },
@@ -1305,9 +1304,6 @@ export class Pipeline {
         uStrength: { value: 0 },
       }),
       fade:        this._mat(FADE, { uAmount: { value: 1 } }),
-      solidcolor:  this._mat(SOLID_COLOR, {
-        uHue: { value: 0 }, uSat: { value: 0.8 }, uVal: { value: 0.6 },
-      }),
       noise: this._mat(NOISE_BFG, {
         uTime:       { value: 0 },
         uPhase:      { value: 0 },
