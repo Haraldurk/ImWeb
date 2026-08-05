@@ -409,6 +409,7 @@ Resolution-independent GPU noise field, regenerated each frame.
 | `noise.invert` | TOGGLE | Invert black/white |
 | `noise.seed` | 0–100 | Pattern seed |
 | `noise.color` | TOGGLE | RGB vs grayscale output |
+| `noise.sharpen` | 0–100% | Hardens the gradient between light and dark, taking the field from cloud toward cell structure |
 
 Rendered to a 512×512 GPU texture. Smooth animation when speed ≠ 0.
 
@@ -424,7 +425,13 @@ Sphere, Cube, Torus, Icosahedron, Cone, Pyramid, Plane, Ring, Octahedron, Dodeca
 
 #### Importing models
 
-Drop `.glb / .gltf / .obj / .stl / .dae` onto the canvas, or use the **3D tab** import button. Models auto-fit to a 2×2×2 bounding box on load.
+Drop `.glb / .gltf / .obj / .stl / .dae` onto the canvas, or use the import
+button in the 3D workspace (opened from its row in **Sources**). Models auto-fit
+to a 2×2×2 bounding box on load.
+
+| Parameter | Range | Description |
+|-----------|-------|-------------|
+| `scene3d.norm` | 0.1–10 | **Normalization** — multiplies the auto-fit scale. **Imported models only** — it has no effect on built-in geometry, which uses `scene3d.scale` alone. Raise it if a model comes in too small to see |
 
 #### Parameters — Transform
 
@@ -434,7 +441,8 @@ Drop `.glb / .gltf / .obj / .stl / .dae` onto the canvas, or use the **3D tab** 
 | `scene3d.geo` | SELECT | Built-in geometry |
 | `scene3d.rot.x/y/z` | 0–360° | Static rotation |
 | `scene3d.spin.x/y/z` | 0–360°/sec | Auto-rotation speed |
-| `scene3d.pos.x/y/z` | −10 – 10 | Position offset |
+| `scene3d.pos.x/y/z` | −5 – 5 | Position offset |
+| `scene3d.pos.screenspace` | TOGGLE | **Screen XY** — reinterpret X/Y as normalised screen coordinates, ±1 being the edge of frame. Position converts through the camera FOV and distance, so the object lands where you point it regardless of how the camera is set |
 | `scene3d.scale` | 0.1–10 | Scale |
 | `scene3d.wireframe` | TOGGLE | Wireframe render |
 
@@ -447,17 +455,113 @@ Drop `.glb / .gltf / .obj / .stl / .dae` onto the canvas, or use the **3D tab** 
 
 #### Parameters — Material
 
+`scene3d.mat.type` (**Material Shader**) chooses the lighting model, and it
+governs which of the parameters below do anything:
+
+| Shader | Character | Reads |
+|--------|-----------|-------|
+| **Standard** | PBR default | roughness, metalness |
+| **Physical** | Standard plus glass and coatings | + clearcoat, transmit, IOR |
+| **Toon** | Banded cel shading | toonSteps |
+| **Normal** | Surface normals as RGB — unlit | nothing else |
+| **Matcap** | Baked-lighting look; ignores scene lights | base colour |
+| **Lambert** | Cheap diffuse | — |
+| **Phong** | Classic specular | — |
+
 | Parameter | Range | Description |
 |-----------|-------|-------------|
+| `scene3d.mat.type` | SELECT | Material shader — see above |
 | `scene3d.mat.hue` | 0–360° | Base colour hue |
 | `scene3d.mat.sat` | 0–100% | Saturation (0 = white) |
 | `scene3d.mat.roughness` | 0–1 | Surface roughness |
 | `scene3d.mat.metalness` | 0–1 | Metallic quality |
-| `scene3d.mat.emissive` | 0–1 | Self-illumination |
 | `scene3d.mat.opacity` | 0–1 | Transparency |
-| `scene3d.mat.texsrc` | SELECT | Live texture source (None / Camera / Movie / Screen / Draw / Buffer / Noise) |
+| `scene3d.mat.clearcoat` | 0–1 | **Physical only** — a lacquer layer over the base |
+| `scene3d.mat.transmit` | 0–1 | **Physical only** — light transmission. This is what makes glass |
+| `scene3d.mat.ior` | 1–3 | **Physical only** — index of refraction (1.5 ≈ glass, 2.4 ≈ diamond) |
+| `scene3d.mat.toonSteps` | 2–10 | **Toon only** — number of shading bands |
 
-Default material is **white** (hue=0, sat=0). Cranking up saturation enables coloured materials.
+**Glow and rim**
+
+| Parameter | Range | Description |
+|-----------|-------|-------------|
+| `scene3d.mat.emissive` | 0–1 | Self-illumination |
+| `scene3d.mat.emissiveHue` | 0–360° | **Glow Hue** |
+| `scene3d.mat.emissiveSat` | 0–100% | **Glow Sat** — 0 gives a white glow |
+| `scene3d.mat.rim` | 0–1 | **Rim Intensity** — brightens grazing angles, separating the silhouette from the background |
+| `scene3d.mat.rimHue` | 0–360° | **Rim Hue** (default 180°) |
+| `scene3d.mat.envIntensity` | 0–2 | **EnvInt** — how strongly the environment is reflected |
+
+Default material is **white** (hue=0, sat=0). Cranking up saturation enables
+coloured materials. Rim is the cheapest way to keep a dark object readable over a
+dark composite — reach for it before adding lights.
+
+**Texturing and UV motion**
+
+| Parameter | Range | Description |
+|-----------|-------|-------------|
+| `scene3d.mat.texsrc` | SELECT | Live texture source (None / Camera / Movie / Screen / Draw / Buffer / Noise) |
+| `scene3d.mat.uvSpeedX` | −2 – 2 | **UVSpeedX** — scrolls the texture across the surface |
+| `scene3d.mat.uvSpeedY` | −2 – 2 | **UVSpeedY** |
+
+**Geometry displacement** — pushes vertices, so it changes the silhouette rather
+than just the shading. Two independent sources, which sum:
+
+| Parameter | Range | Description |
+|-----------|-------|-------------|
+| `scene3d.mat.displace` | 0–2 | **Math Displace** — procedural noise displacement |
+| `scene3d.mat.dispScale` | 0.1–10 | **DispScale** — spatial frequency of that noise |
+| `scene3d.mat.dispSpeed` | −5 – 5 | **Disp. Speed** — how fast it evolves |
+| `scene3d.mat.tDisplace` | 0–2 | **T-Displace** — displacement driven by the *texture* instead, so the live picture becomes relief |
+| `scene3d.mat.dispTexScale` | 0.1–10 | **Disp. Tex Scale** |
+| `scene3d.mat.dispTexProj` | SELECT | **Disp. Projection** — *UV (Skin)* wraps with the model, *Screen (Projector)* stays fixed in frame while the object turns under it |
+
+Displacement needs vertices to move: a low-poly geometry will show faceting
+rather than a smooth deformation.
+
+#### Parameters — Cloner
+
+Repeats the object into an array. `scene3d.clone.mode` **Off** disables the
+whole system, so none of the rest costs anything until you turn it on.
+
+| Parameter | Range | Description |
+|-----------|-------|-------------|
+| `scene3d.clone.mode` | SELECT | **Cloner** — Off / Grid / Ring / Line |
+| `scene3d.clone.count` | 2–200 | **CloneN** — number of copies |
+| `scene3d.clone.spread` | 0–10 | **Spread** — spacing between them |
+| `scene3d.clone.scale` | 0.1–10 | **CloneScale** — uniform scale of the clones |
+| `scene3d.clone.scalestep` | −2 – 2 | **ScaleStep** — progressive scaling along the array, for a taper |
+| `scene3d.clone.twist` | −360–360° | **Twist** — progressive rotation along the array |
+| `scene3d.clone.scatter` | 0–10 u | **Scatter** — random displacement per clone |
+
+**Wave** — a travelling offset through the array, which is what makes a cloner
+read as motion rather than as a static pattern:
+
+| Parameter | Range | Description |
+|-----------|-------|-------------|
+| `scene3d.clone.wave` | −5 – 5 Hz | **Wave** — travel speed. 0 holds the wave still |
+| `scene3d.clone.waveshape` | SELECT | Sine / Square / Triangle / Sawtooth |
+| `scene3d.clone.waveamp` | 0–10 u | **WaveAmp** — displacement depth |
+| `scene3d.clone.wavefreq` | 0.1–10 | **WaveFreq** — how many wavelengths span the array |
+
+#### Parameters — Metaballs
+
+| Parameter | Range | Description |
+|-----------|-------|-------------|
+| `scene3d.blob.amount` | 0–5 u | **Metaball Amount** — 0 is off |
+| `scene3d.blob.scale` | 0.1–10 | **Metaball Scale** |
+| `scene3d.blob.speed` | −5 – 5 Hz | **Metaball Speed** |
+
+#### Parameters — Animation (imported models)
+
+| Parameter | Range | Description |
+|-----------|-------|-------------|
+| `scene3d.anim.active` | TOGGLE | **Anim On** |
+| `scene3d.anim.select` | SELECT | **Animation** — clips found in the loaded file. Reads *None* until a model with animation is imported |
+| `scene3d.anim.speed` | −2 – 2 | **Anim Speed**. Negative runs the clip backwards |
+
+Dropping a `.glb` with animation switches the scene and its animation on
+automatically.
 
 #### Parameters — Depth Pass
 
@@ -468,11 +572,20 @@ Default material is **white** (hue=0, sat=0). Cranking up saturation enables col
 
 #### Parameters — Lighting
 
+Three lights: ambient, one directional, one point.
+
 | Parameter | Range | Description |
 |-----------|-------|-------------|
-| `scene3d.light.intensity` | 0–2 | Directional light strength |
+| `scene3d.light.ambient` | 0–2 | **Ambient** — fills the shadows. Default 0.4 |
+| `scene3d.light.intensity` | 0–2 | **Light Int.** — directional strength |
+| `scene3d.light.dirX` | −10 – 10 | **Light X** — direction of the key light |
+| `scene3d.light.dirY` | −10 – 10 | **Light Y** |
+| `scene3d.light.dirZ` | −10 – 10 | **Light Z** |
+| `scene3d.light.point` | 0–5 | **Point Int.** — blue-tinted point light. Default 0.6 |
 
-Scene has three lights: ambient (0.4 intensity), directional (white, 1.0), point (blue-tinted, 0.6).
+The light direction params are worth assigning controllers to: an LFO on
+`dirX` swings the key light across the object, which reads as far more motion
+than rotating the object itself.
 
 ---
 
@@ -505,8 +618,33 @@ Freehand canvas drawing that becomes a live texture.
 | `draw.opacity` | 0–100% | Brush opacity |
 | `draw.fade` | 0–100% | Canvas fade-out over time |
 | `draw.clear` | TRIGGER | Clear canvas |
+| `draw.inkSource` | SELECT | **InkSource** — Color / Camera / Movie / MovieB / Noise / Output. The brush paints *with a live source* instead of a flat colour, so a stroke reveals video through its own shape |
+| `draw.pressure.size` | 0–100% | **PressSize** — how much stylus pressure drives brush size. Default 100% |
+| `draw.pressure.opacity` | 0–100% | **PressOpacity** — pressure to opacity. Default 0 |
+| `draw.toParticles` | TOGGLE | **StrokeEmit** — strokes emit particles as you draw |
 
-Canvas is 1024×1024 and persists across frames. Map `draw.x` and `draw.y` to mouse for interactive drawing.
+Canvas is 1024×1024 and persists across frames. Map `draw.x` and `draw.y` to
+mouse for interactive drawing.
+
+`draw.inkSource` is the one worth trying first: set it to Camera and the drawing
+is not a mark on top of the picture, it *is* the picture, appearing only where
+you have drawn.
+
+Pressure needs a stylus that reports it — the pressure params do nothing under a
+mouse or a plain finger.
+
+#### Stroke loopers (×3)
+
+Record a gesture and let it replay itself, so a drawn mark becomes an animation.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `drawloop1.rec` | TRIGGER | **Loop1Rec** — start/stop recording strokes |
+| `drawloop1.play` | TOGGLE | **Loop1Play** — replay the recorded gesture |
+| `drawloop1.speed` | — | **Loop1Speed** — replay rate |
+| `drawloop1.clear` | TRIGGER | **Loop1Clear** |
+
+Three independent loopers (`drawloop1`, `drawloop2`, `drawloop3`).
 
 ---
 
@@ -621,6 +759,8 @@ Real-time audio visualisation as a source texture.
 | `vectorscope.gain` | 0.1–5 | Amplitude scaling |
 | `vectorscope.decay` | 0–1 sec | Trail decay |
 | `vectorscope.color` | 0–360° | Display hue |
+| `vectorscope.linewidth` | 0.5–15 px | **VScope Width** — trace thickness |
+| `vectorscope.glow` | 0–50 px | **VScope Glow** — bloom around the trace |
 
 ---
 
@@ -803,6 +943,30 @@ across the recorded axis — a tape head over a time-image.
 | `vwarp.pos` | 0–1 | Read position along the tape |
 | `vwarp.span` | 0.01–1 | Width of the read window |
 | `vwarp.clear` | TRIGGER | Zero the tape |
+
+**It is not a slit-scan**, despite the historical name. A slit-scan takes one
+fixed source column and spreads it across every output column — that is the Slit
+Scan Buffer (§4.8), which remaps *space*. The Warp Tape writes one column of
+video per frame at a moving head and reads the whole tape as a frame, so output
+column X shows source column X as it was *(writeIdx − X)* frames ago. Static
+content passes through untouched; moving content shears.
+
+**Why it coexists with Time Displace (§4.18).** They overlap, and neither should
+absorb the other. The Warp Tape stores one *column* per time step, so ~8 MB buys
+1920 time steps at full resolution. Time Displace stores a whole *frame* per step
+because its delay map is arbitrary per-pixel, so 120 frames at 640×480 costs
+~147 MB. For an axis-aligned monotonic gradient the tape is ~18× cheaper and
+sharper; for a radial or noise-driven map it cannot express the map at all. The
+tape is the fast path, the ring is the general case.
+
+> **The retired `vasulka.*` parameters.** An older, unrelated shader effect used
+> the `vasulka.` namespace (`vasulka.active`, `freqh`, `freqv`, `amph`, `ampv`,
+> `phase`, `freq2`, `amp2`, `color`). It is **deprecated and not reachable**: it
+> is commented out of `DEFAULT_FX_ORDER` and has no panel, so the parameters
+> exist but nothing in the running app sets them or renders them. The handler is
+> kept only so a saved preset that references it does not crash on load. Its job
+> — temporal slit-scan — is done by the Warp Tape and by Time Displace. Do not
+> map controllers to `vasulka.*`; the namespace to use is `vwarp.*` above.
 
 ---
 
@@ -1814,8 +1978,33 @@ When morphspeed > 0, recalling a State starts a morph animation that interpolate
 |-----------|-------|-------------|
 | `global.bpm` | 20–300 bpm | Global tempo |
 | `global.beatdetect` | TOGGLE | Auto-detect BPM from audio onsets |
+| `global.tap` | TRIGGER | **Tap Tempo** (`T`) |
+| `global.morph` | — | State morph time |
 
-**Tap Tempo:** Click the BPM indicator in the status bar 2–5 times. The tap interval derives BPM. All BPM-synced LFOs retrigger.
+**Tap Tempo:** Click the BPM indicator in the status bar 2–5 times, or press `T`.
+The tap interval derives BPM. All BPM-synced LFOs retrigger.
+
+#### Clock sync
+
+| Parameter | Range | Description |
+|-----------|-------|-------------|
+| `global.midisync` | TOGGLE | **MidiSync** — follow incoming MIDI clock instead of the internal BPM |
+| `global.midisyncres` | 1–120 | **MidiSyncRes** — clock divisions per beat |
+| `global.autosync` | 1–1000 | **AutoSync** — realign BPM-synced controllers every N beats, correcting drift |
+| `global.framedone` | TOGGLE | **FrameDonePulse** — emit a pulse on each completed frame, for external sync |
+
+#### Interface toggles
+
+| Parameter | Range | Description |
+|-----------|-------|-------------|
+| `global.osd` | TOGGLE | **Param OSD** (`I`) — parameter feedback text over the canvas. Default on |
+| `global.keylock` | TOGGLE | **KeyLock** (⌨) — block letter/number shortcuts so typing in fields works |
+| `global.showwarpgrid` | TOGGLE | **WarpGrid** — overlay the warp map's grid on the canvas while editing |
+| `global.debug` | TOGGLE | **Debug** (`D`) — diagnostic overlay |
+| `global.tableSlot` | SELECT | **Table Slot** — the global response table, selectable per parameter as `'global'` |
+
+`global.keylock` is the one to reach for before typing into a text field during
+a show: without it, letters land as shortcuts. The ⌨ toolbar button toggles it.
 
 ---
 
@@ -2009,7 +2198,7 @@ Click the ⊞ button in any section header to detach it as a floating panel. Dra
 | `Shift+P` | Float / dock signal path (floating always shows it) |
 | `I` | Parameter OSD on/off (feedback text over the canvas) |
 | `U` | State bar show/hide (canvas reclaims the strip) |
-| `G` | Cycle canvas interaction mode (Camera / Pad / Locked) |
+| `G` | Cycle canvas interaction mode (Camera / Pad / Locked / Draw / Warp) |
 | `F` | Fullscreen (double-clicking the canvas does the same) |
 | `Shift+V` | Output spy toggle |
 | `D` | Debug overlay |
@@ -2223,7 +2412,17 @@ Plain `npm run dev` stays http for desktop work.
 ### Canvas touch grammar
 
 Touch behaviour on the output canvas is governed by **Touch Mode**
-(GLOBAL section: Camera / Pad / Locked):
+(`touch.mode`, GLOBAL section). It has five settings, and `G` cycles all of them:
+
+| Mode | Canvas does |
+|------|-------------|
+| **Camera** | Orbits, pans and zooms the 3D scene |
+| **Pad** | Drives every mouse-X/Y-mapped parameter |
+| **Locked** | Nothing — the safe setting mid-performance |
+| **Draw** | Draws into the Draw Layer (§4.9) |
+| **Warp** | Draws into the warp map (§5.6) |
+
+The gesture table below describes the first three:
 
 | Gesture | Camera mode | Pad mode | Locked |
 |---------|-------------|----------|--------|
@@ -2279,8 +2478,8 @@ The same grammar reaches the desktop, gated on the same Touch Mode
 |-------|--------|
 | Left-drag on canvas | Orbit the 3D scene — release with speed and it coasts with the same momentum as a touch flick |
 | Right-drag on canvas | Pan (`scene3d.pos.x/y`) |
-| Wheel / trackpad pinch | Zoom (`scene3d.scale`) — eased so notches feel continuous; **Wheel Zoom** toggle and **Zoom Sens** live in the GLOBAL section |
-| `G` key | Cycle Camera / Pad / Locked (trackpads never see 3-finger taps — macOS consumes them) |
+| Wheel / trackpad pinch | Zoom (`scene3d.scale`) — eased so notches feel continuous. `canvas.wheelZoom` (**Wheel Zoom**, default on) disables it; `canvas.wheelSens` (**Zoom Sens**, 0.1–3) scales it. Both in the GLOBAL section |
+| `G` key | Cycle Touch Mode — all five (trackpads never see 3-finger taps, macOS consumes them) |
 
 ### Camera on mobile
 

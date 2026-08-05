@@ -27,7 +27,7 @@ FX Chain is **reorderable** by dragging nodes in the Signal Path display.
 | **Stills Buffer** | Up to 64 captured frames (configurable rows×cols grid, 1–8 each, default 4×4=16); `C` to capture; scan/blend between slots |
 | **Color** | Solid or gradient (H/V/radial); HSV + animated hue |
 | **Noise** | GPU fractal (Perlin/Voronoi/Worley/Simplex); 512×512; resolution-independent |
-| **3D Scene** | Three.js; built-in shapes + imported `.glb/.gltf/.obj/.stl/.dae`; auto-fits |
+| **3D Scene** | Three.js; built-in shapes + imported `.glb/.gltf/.obj/.stl/.dae`; auto-fits. 7 material shaders (Standard/Physical/Toon/Normal/Matcap/Lambert/Phong); glass via Physical's Transmit+IOR; rim light; live texture with UV scroll; geometry displacement from noise or from the texture; Cloner (Grid/Ring/Line, up to 200, with twist/scatter/travelling wave); metaballs; glTF animation clips |
 | **Slit Scan** | Classic time→space mapping; V/H/centre axes |
 | **Draw** | Freehand canvas, 1024×1024; map position to mouse |
 | **Text** | Live text, 512×512; Char/Word/Line advance mode |
@@ -35,7 +35,7 @@ FX Chain is **reorderable** by dragging nodes in the Signal Path display.
 | **SDF Generator** | GPU-raymarched field; 13 shapes + second shape w/ Union/Subtract/Intersect; KIFS folding; orbit camera (Orbit X/Y + Distance) + FOV; luma warp; triplanar texturing; AO; two-stop glow; self-reflection; glass refraction; dedicated texture + refraction routing |
 | **Rutt-Etra** | Scanline Z-displacement in 3D; 7 lattice shapes; Lines/Points/Both; per-line rise/fall follower; persistence + spread |
 | **Mix Buses ×3** | Two free source inputs each; Crossfade/Add/Multiply/Luma Mask/Displace. Double-buffered — a later bus reading an earlier one sees this frame, otherwise last frame. Self-routing is legal (1-frame loop) |
-| **Warp Tape** | Rolling time buffer (8/16/32 s); scrub or smear along Time (X) or Picture (Y) |
+| **Warp Tape** | Rolling time buffer (8/16/32 s); scrub or smear along Time (X) or Picture (Y). One *column* per time step — ~18× cheaper than Time Displace for an axis-aligned gradient, and cannot express anything else. Params are `vwarp.*`; the old `vasulka.*` namespace is deprecated and unreachable |
 | **Time Displace** | Per-pixel delay from a map image; 7 modes; up to 119 frames deep. Buffer res is the memory cost — drop from Native first |
 | **3D Depth / SDF Depth** | Depth outputs of the 3D Scene and SDF field, routable like any source |
 | **Sequencers ×3** | Record/loop any source; 4–480 frames; ±300% speed (negative = reverse); independent |
@@ -176,7 +176,7 @@ Auto-declared uniforms: `uTexture` `tAudio` (FFT+waveform) `tPrev` (feedback) `u
 | `H` | Fade to black |
 | `X` | External key toggle |
 | `T` | Tap tempo |
-| `G` | Cycle canvas mode (Camera / Pad / Locked) |
+| `G` | Cycle canvas mode (Camera / Pad / Locked / Draw / Warp) |
 | `I` | Parameter OSD on/off |
 | `U` | State bar show/hide |
 
