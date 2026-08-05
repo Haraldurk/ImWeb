@@ -7598,6 +7598,7 @@ void main() {
           gain:         ps.get("motion.gain").value,
           bgSeconds:    ps.get("motion.bgtime").value,
           trailSeconds: ps.get("motion.trail").value,
+          blur:         ps.get("motion.blur").value,
         },
       );
     }

@@ -33,6 +33,26 @@ protocol could not make, which is the more useful half of the result.*
   gone). Deliberately **no threshold and no softness** — the keyer already has
   White / Black / Softness and this matte is its input, so a second set would be
   two controls doing one job.
+- **`motion.blur` ("Smoothness")** — blurs the source *before* the comparison,
+  reusing the bloom kernel rather than growing a second Gaussian. This is the
+  control that makes a live camera usable: sensor grain is high-frequency, and
+  before the difference is the only place it can be removed cheaply, because
+  downstream it has already been multiplied by Sensitivity and accumulated into
+  the trail. It also fills interiors — a blurred moving object differs from the
+  blurred background across its whole *area* rather than only at its edges, so
+  silhouettes come out solid instead of hollow. Its targets are allocated on
+  first use, and the default of 0 reproduces the previous picture exactly.
+
+  Both frames must be blurred: the matte, the background update and the priming
+  blit all read the same processed frame. Comparing a blurred current against
+  an unblurred background is a constant mismatch at every edge in the picture,
+  which reads as permanent motion that no setting turns off.
+
+  **Brightness and contrast were considered and rejected as dead controls.**
+  Brightness shifts the live frame and the background by the same amount — the
+  background is an average of past frames — so it cancels in `|cur - bg|` and
+  would do nothing at any setting. Contrast scales both, giving `k·|cur - bg|`,
+  which is exactly what Sensitivity already does.
 - Trail is `max(motion, trail * decay)`, never `+=`: instant attack, exponential
   release, and bounded by construction, so where two moving things cross the
   matte holds at 1 instead of compounding toward white. Both time constants are

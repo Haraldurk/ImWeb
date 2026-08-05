@@ -1098,9 +1098,10 @@ Background, then key the Foreground by Motion. Only the moving part shows.
 | Parameter | Range | Description |
 |-----------|-------|-------------|
 | `motion.source` | SELECT | What is watched for movement |
-| `motion.gain` | 1–50 | Sensitivity — a raw frame difference is only a few percent |
-| `motion.bgtime` | 0–30 s | Background adapt half-life. **0 = frame differencing** |
+| `motion.gain` | 1–20 | Sensitivity — a raw frame difference is only a few percent |
+| `motion.bgtime` | 0–10 s | Background adapt half-life. **0 = frame differencing** |
 | `motion.trail` | 0–10 s | How long a trail survives after the movement passes |
+| `motion.blur` | 0–4 | Smoothness — blurs the source before comparing. 0 = off |
 
 **`Bg adapt` is the important control, and it spans two classical methods.**
 The background is a running average of the source. A long adapt time gives a
@@ -1108,6 +1109,21 @@ stable background, so a subject who stops moving *stays* in the matte — that i
 background subtraction. At 0 the background is simply the previous frame, which
 is frame differencing: only edges of change register, and anything that stops
 vanishes. The useful settings are usually in between.
+
+**Smoothness** blurs the source *before* the comparison, and it is the control
+that cleans up a live camera. Sensor grain is high-frequency, and this is the
+only place it can be removed cheaply: downstream it has already been multiplied
+by Sensitivity and accumulated into the trail, and neither is reversible. It
+also fills interiors — a blurred moving object differs from the blurred
+background across its whole area rather than only at its edges, so silhouettes
+come out solid instead of hollow. 1–2 is the useful range on a camera; 0 is off
+and costs nothing.
+
+> There is deliberately no brightness or contrast here. Brightness shifts the
+> live frame and the background by the same amount — the background *is* an
+> average of past frames — so it cancels in the difference and would do nothing
+> at any setting. Contrast scales both, which gives exactly what Sensitivity
+> already gives; the two would multiply.
 
 **Trail** rides on the matte, so the streak reveals whatever the Foreground
 shows *now* along that path, rather than a frozen copy of what passed through.
