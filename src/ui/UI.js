@@ -135,7 +135,12 @@ export function buildMappingPanels(ps, contextMenu) {
         p.id.startsWith('displace.warp') && p.id !== 'displace.warp' && p.id !== 'displace.warpamt'),
       ps.get('displace.warpSlot'),
     ].filter(Boolean),
-    'blend-params':    ps.getGroup('blend'),
+    // output.interlace is excluded by ID, not by rule: it is group 'blend' for
+    // persistence, but it is now _FX.interlace — a node in the reorderable
+    // chain — so its row belongs with the other effects. Same shape as the
+    // displace.warpSlot exception below: a stated exception, appended by id to
+    // the section it actually belongs to, not a return to hand-listing.
+    'blend-params':    ps.getGroup('blend').filter(p => p.id !== 'output.interlace'),
     'color-params':    ps.getGroup('color'),
     // noise-params-top and noise-params are built by buildNoisePanel()
     'output-params':   ps.getGroup('output').filter(p => p.id !== 'output.resolution' && p.id !== 'output.interp'),
@@ -160,7 +165,47 @@ export function buildMappingPanels(ps, contextMenu) {
     'text-params':     ps.getGroup('text'),
     'fg-params':       ps.getGroup('fg'),
     'bg-params':       ps.getGroup('bg'),
-    'effect-params':   ps.getGroup('effect'),
+    // Effects — one group across five SUBsections of a single panel section,
+    // the same treatment Metaballs and Rutt-Etra get. 29 rows in registration
+    // order mixed geometry, colour, texture and timing in one flat list; the
+    // sections are what make it readable, and the reading order inside each is
+    // deliberate (the effect, then the controls that shape it).
+    //
+    // These are pick() lists, so tests/audit-panel-coverage.mjs fails the build
+    // if an effect.* param lands in no section, in two, or under a dead name —
+    // which is the whole reason it is safe to slice a group this way.
+    // Master row first — the bypass and the reset belong above the thing they
+    // act on, not buried in whichever subsection would otherwise claim them.
+    'effect-master-params':  pick('effect', ['enable', 'clearall']),
+    'effect-geo-params':     pick('effect', ['pixelate', 'kaleidoscope', 'kalerot',
+                                             'kalecx', 'kalecy', 'kaleedge',
+                                             'quadmirror', 'flip',
+                                             'polar', 'polarmode', 'polarrot',
+                                             'wavex', 'wavey', 'wavefx', 'wavefy',
+                                             'wavephase',
+                                             'lens', 'twirl',
+                                             // shared by Polar / Wave / Lens
+                                             'warpcx', 'warpcy', 'warpedge']),
+    'effect-optics-params':  pick('effect', ['edge', 'edge_inv', 'edge_color',
+                                             'rgbshift', 'rgbangle',
+                                             'sharpen',
+                                             'bloom', 'bloomthresh', 'bloomradius',
+                                             'vignette', 'vigradius', 'vigcx', 'vigcy',
+                                             'vighue', 'vigtint']),
+    'effect-quant-params':   pick('effect', ['posterize', 'solarize', 'solarsoft',
+                                             'halftone', 'halfsize', 'halfangle',
+                                             'halfmode',
+                                             'duotone', 'duohue1', 'duohue2',
+                                             'outhue', 'outsat', 'outbright']),
+    'effect-texture-params': [
+      ...pick('effect', ['grain', 'scanlines', 'scancount']),
+      ps.get('output.interlace'),
+      ...pick('effect', ['pixelsort', 'psortlen', 'psortthresh', 'psortdir', 'psortmode']),
+    ].filter(Boolean),
+    'effect-time-params':    pick('effect', ['strobe', 'stroberate', 'strobeduty']),
+    // Colour grade — moved out of the Effects list into the section named for it.
+    'grade-levels-params':   pick('effect', ['lvblack', 'lvwhite', 'lvgamma']),
+    'grade-wb-params':       pick('effect', ['wbtemp', 'wbtint']),
     // glsl.preset is global-group only to escape state capture — its row
     // (badge + dropdown) lives in the GLSL panel, built in main.js
     // Excluded: params that are group 'global' only to dodge Display State
@@ -1167,10 +1212,26 @@ const _FX_NODE_INFO = {
   vignette:    { label: 'vign',    isActive: p => p.get('effect.vignette').value > 0 },
   bloom:       { label: 'bloom',   isActive: p => p.get('effect.bloom').value > 0 },
   levels:      { label: 'levels',  isActive: p => p.get('effect.lvblack').value > 0 || p.get('effect.lvwhite').value < 100 || p.get('effect.lvgamma').value !== 100 },
-  lut:         { label: 'lut',     isActive: p => (p.get('effect.lutamount')?.value ?? 0) > 0 },
+  // The only entry that needs more than the params: LUT Amount defaults above
+  // zero, so this drew a node for a pass that returns immediately whenever no
+  // .cube was loaded. isActive gets the pipeline as a second argument for
+  // exactly this — the flow should claim what _FX.lut actually does.
+  lut:         { label: 'lut',     isActive: (p, pipe) => (p.get('effect.lutamount')?.value ?? 0) > 0 && (pipe?.lutLoaded ?? false) },
   whitebal:    { label: 'wbal',    isActive: p => (p.get('effect.wbtemp')?.value ?? 0) !== 0 || (p.get('effect.wbtint')?.value ?? 0) !== 0 },
   pixelsort:   { label: 'psort',   isActive: p => p.get('effect.pixelsort').value > 0 },
   grain:       { label: 'grain',   isActive: p => p.get('effect.grain').value > 0 || p.get('effect.scanlines').value > 0 },
+  // Every id in DEFAULT_FX_ORDER needs an entry here or it is invisible in the
+  // flow AND undraggable — the map is what makes a node exist for the reorder
+  // UI, not just what labels it. tests/audit-panel-coverage.mjs enforces it.
+  sharpen:     { label: 'sharp',   isActive: p => (p.get('effect.sharpen')?.value ?? 0) > 0 },
+  flip:        { label: 'flip',    isActive: p => (p.get('effect.flip')?.value ?? 0) > 0 },
+  outhsv:      { label: 'hsv',     isActive: p => (p.get('effect.outhue')?.value ?? 0) !== 0 || (p.get('effect.outsat')?.value ?? 100) !== 100 || (p.get('effect.outbright')?.value ?? 100) !== 100 },
+  interlace:   { label: 'ilace',   isActive: p => (p.get('output.interlace')?.value ?? 0) > 0 },
+  polar:       { label: 'polar',   isActive: p => (p.get('effect.polar')?.value ?? 0) > 0 },
+  wave:        { label: 'wave',    isActive: p => (p.get('effect.wavex')?.value ?? 0) > 0 || (p.get('effect.wavey')?.value ?? 0) > 0 },
+  lens:        { label: 'lens',    isActive: p => (p.get('effect.lens')?.value ?? 0) !== 0 || (p.get('effect.twirl')?.value ?? 0) !== 0 },
+  halftone:    { label: 'half',    isActive: p => (p.get('effect.halftone')?.value ?? 0) > 0 },
+  duotone:     { label: 'duo',     isActive: p => (p.get('effect.duotone')?.value ?? 0) > 0 },
 };
 
 export class SignalPath {
@@ -1199,6 +1260,10 @@ export class SignalPath {
       'feedback.decay','feedback.blur','feedback.hue','feedback.mirror',
       'output.colorshift','output.fade',
       'effect.pixelate','effect.edge','effect.rgbshift','effect.kaleidoscope','effect.posterize','effect.solarize',
+      'effect.enable',
+      'effect.sharpen','effect.flip','effect.outhue','effect.outsat','effect.outbright','output.interlace',
+      'effect.polar','effect.wavex','effect.wavey','effect.lens','effect.twirl',
+      'effect.halftone','effect.duotone',
       'effect.vignette','effect.bloom','effect.pixelsort','effect.grain','effect.scanlines','effect.strobe',
       'effect.quadmirror','effect.lvblack','effect.lvwhite','effect.lvgamma',
       'effect.lutamount','effect.wbtemp','effect.wbtint',
@@ -1266,12 +1331,17 @@ export class SignalPath {
       ...(csOn   ? [{ label: 'cshift',  type: 'active' }] : []),
     ].filter(Boolean);
 
-    // Build post-FX nodes in current order (only active ones rendered, but fxId stored for drag)
-    const fxNodes = this._fxOrder
+    // Master bypass: the chain does not run, so the flow must not claim it does.
+    // Showing the nodes greyed would be worse than showing none — they are still
+    // draggable, and a drag that reorders a chain nobody is running invites
+    // exactly the confusion this node exists to prevent. One 'fx bypass' node
+    // says what is happening and why the picture is plain.
+    const fxEnabled = p.get('effect.enable')?.value !== 0;
+    const fxNodes = !fxEnabled ? [{ label: 'fx bypass', type: 'node' }] : this._fxOrder
       .map(fxId => {
         const info = _FX_NODE_INFO[fxId];
         if (!info) return null;
-        const active = info.isActive(p);
+        const active = info.isActive(p, this.pipeline);
         if (!active) return null;
         return { label: info.label, type: 'active', fxId, draggable: true };
       })
