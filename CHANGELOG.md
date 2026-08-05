@@ -8,7 +8,73 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
 
 ## [Unreleased]
 
+### Added
+- **All FX** — a master bypass for the whole post-FX chain. Not a mute: every
+  parameter keeps its value and the chain keeps its order, so switching back on
+  returns exactly the look you left. It skips the loop rather than each handler,
+  so a bypassed chain costs nothing. A real parameter, not a panel button, so it
+  is MIDI-mappable, controller-drivable and captured by Display States.
+- **Clear All FX** — resets every effect parameter to its default. It does *not*
+  touch the chain order (an arrangement you built on purpose) or the master
+  toggle (clearing the effects and leaving them bypassed would look like the
+  reset had failed).
+- **Five new effects.** All default to off.
+  - **Polar** — maps the frame between rectangular and polar coordinates, in
+    both directions. It turns every other effect in the chain into a different
+    one: a scanline becomes a ring, a horizontal wipe becomes a sweep.
+  - **Wave** — sine displacement per axis, with frequency, amplitude and a
+    phase made to be driven by an LFO. Each axis is displaced by the *other*
+    axis's coordinate, which is what makes it a wave rather than a smear.
+  - **Halftone** — ordered dot screen, mono or per-channel. The colour mode
+    gives each channel its own screen angle, so the three grids rosette instead
+    of beating into moiré.
+  - **Duotone** — remaps luminance through a two-colour ramp. Shadows to one
+    hue, highlights to the other.
+  - **Lens** — barrel and pincushion on one signed control, plus twirl. With
+    Scanlines it is a CRT; with Halftone it is a printed page photographed off
+    one.
+  - Polar, Wave and Lens share one centre and one edge mode (`Warp.Center`,
+    `Warp.Edge`) — they are the three that sample outside the frame.
+- **Four effects the codebase already had, now in the chain.** No new shader
+  code behind any of them: **Sharpen** (`SHARPEN` drove only the noise
+  generator), **Out.Hue / Out.Sat / Out.Bright** (`COLOR_CORRECT` drove only the
+  per-layer tint, so the composite could never be turned), **Flip** (`MIRROR`
+  was per-layer only), and **Interlace**, which moves from a fixed pass after
+  the chain into the chain itself — same position, but reorderable.
+- **Controls for things that were hardcoded**: Bloom radius, Scanline count,
+  Solarize softness, Edge keep-colour, and a centre for both Kaleidoscope and
+  Vignette, plus a vignette tint.
+
 ### Fixed
+- **A saved fxOrder silently dropped effects it had never heard of.** The chain
+  order is captured by Display States and written into `.imweb` files, and
+  `setFxOrder` filtered to known ids — so every state saved before an effect
+  existed recalled with that effect *absent from the chain*: row in the panel,
+  slider moves, readout updates, nothing renders. Unknown effects are now
+  appended at their default position. This is what makes the rest of this
+  release reach existing patches at all.
+- **Kaleidoscope worked in raw UV**, so its wedges were sheared on any
+  non-square output, and `fract()` wrapped a hard seam through everything
+  outside the disc. Aspect-corrected, with a real edge mode. **This changes how
+  an existing kaleidoscope patch renders** — it is the one intentional visual
+  change in this release.
+- **Posterize and Solarize are OFF at their maximum**, the opposite of every
+  other row in the panel. The mappings can't move without moving saved patches,
+  so the labels now say what the number is: **Post.Levels** and **Sol.Thresh**.
+- **Scanlines were pinned to 400 lines** regardless of output resolution, so the
+  pitch meant something different on every display.
+- **Film grain crawled instead of scintillating** — the seed offset the same
+  amount on both axes, sliding one fixed noise field diagonally rather than
+  drawing a new one each frame.
+- **The signal-flow display claimed a LUT pass with no LUT loaded** — the node
+  appeared whenever LUT Amount was above zero, which is true out of the box,
+  while `_FX.lut` returns immediately without a `.cube`. It now asks the
+  pipeline. The flow also listed every effect while the chain was bypassed;
+  it shows a single `fx bypass` node instead.
+- **The Effects panel was 29 rows in registration order**, mixing geometry,
+  colour, texture and timing. It is five subsections now — Geometry, Optics,
+  Quantise, Texture, Time — and Levels / White Balance move to the **LUT /
+  Colour Grade** section that had been sitting under them holding a single row.
 - **Transforming the feedback could delete the live picture.** The prev-frame
   rotate/zoom and offset/scale passes ping-ponged through the same two render
   targets that held the composited live frame, so whether the second transform

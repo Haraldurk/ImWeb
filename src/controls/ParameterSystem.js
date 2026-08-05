@@ -4182,6 +4182,33 @@ export function registerCoreParameters(ps) {
   });
 
   // ── Effects ───────────────────────────────────────────────────────────────
+  // ── Master ────────────────────────────────────────────────────────────────
+  // Both are real parameters rather than panel buttons, so they can be MIDI
+  // mapped, driven by a controller and captured by a Display State like
+  // everything else. A bypass you cannot reach from a controller is not much
+  // use to anyone performing.
+  //
+  // Default 1 = effects on, which is what every existing patch already does.
+  // A state saved before this param existed simply has no value for it and
+  // lands on the default, so nothing switches itself off on load.
+  ps.register({
+    id: "effect.enable",
+    label: "All FX",
+    group: "effect",
+    type: PARAM_TYPE.TOGGLE,
+    value: 1,
+    feedbackVisible: true,
+  });
+  // Resets every effect parameter to its registered default. It does NOT touch
+  // the chain ORDER: the order is an arrangement you built on purpose, and
+  // losing it because you cleared some slider values would be a nasty surprise.
+  ps.register({
+    id: "effect.clearall",
+    label: "Clear All FX",
+    group: "effect",
+    type: PARAM_TYPE.TRIGGER,
+  });
+
   ps.register({
     id: "effect.pixelate",
     label: "Pixelate",
@@ -4226,9 +4253,15 @@ export function registerCoreParameters(ps) {
     value: 0,
     unit: "°",
   });
+  // These two are OFF at their maximum, which is the opposite of every other
+  // row in the panel — 32 levels is no posterisation, and a threshold of 100 %
+  // is nothing to invert. The mappings cannot change without moving every saved
+  // patch, so the LABELS say what the number is instead: a level count and a
+  // threshold, not an effect amount. (Renaming a label is safe: ids, values and
+  // MIDI mappings are untouched.)
   ps.register({
     id: "effect.posterize",
-    label: "Posterize",
+    label: "Post.Levels",
     group: "effect",
     min: 2,
     max: 32,
@@ -4237,7 +4270,7 @@ export function registerCoreParameters(ps) {
   });
   ps.register({
     id: "effect.solarize",
-    label: "Solarize",
+    label: "Sol.Thresh",
     group: "effect",
     min: 0,
     max: 100,
@@ -4297,6 +4330,357 @@ export function registerCoreParameters(ps) {
     max: 100,
     value: 70,
     unit: "%",
+  });
+  // Tap SPACING, not tap count — the 9-tap Gaussian is unchanged, so a wide
+  // bloom costs the same as a narrow one. Past ~4 the taps undersample into
+  // visible rings, which is where the range stops.
+  ps.register({
+    id: "effect.bloomradius",
+    label: "BloomRadius",
+    group: "effect",
+    min: 0.25,
+    max: 4,
+    value: 1, // the original fixed kernel spacing
+    step: 0.05,
+    unit: "×",
+  });
+
+  // ── Geometry-effect placement ─────────────────────────────────────────────
+  // Kaleidoscope and Vignette were both pinned to the middle of the frame and
+  // both measured distance in raw UV. A centre is the single biggest thing
+  // either one was missing — the same gap FBZoom/FBRotate had before v0.17.
+  ps.register({
+    id: "effect.kalecx",
+    label: "Kale.CenterX",
+    group: "effect",
+    min: 0,
+    max: 100,
+    value: 50,
+    unit: "%",
+  });
+  ps.register({
+    id: "effect.kalecy",
+    label: "Kale.CenterY",
+    group: "effect",
+    min: 0,
+    max: 100,
+    value: 50,
+    unit: "%",
+  });
+  // What the mirror finds outside the frame. Was hardcoded fract() — a wrap,
+  // and the one option nobody would have chosen for the area beyond the disc.
+  ps.register({
+    id: "effect.kaleedge",
+    label: "Kale.Edge",
+    group: "effect",
+    type: PARAM_TYPE.SELECT,
+    options: ["Clamp", "Mirror", "Wrap", "Black"],
+    value: 1, // Mirror — the seamless one; Wrap reproduces the old fract()
+  });
+  ps.register({
+    id: "effect.vigcx",
+    label: "Vign.CenterX",
+    group: "effect",
+    min: 0,
+    max: 100,
+    value: 50,
+    unit: "%",
+  });
+  ps.register({
+    id: "effect.vigcy",
+    label: "Vign.CenterY",
+    group: "effect",
+    min: 0,
+    max: 100,
+    value: 50,
+    unit: "%",
+  });
+  // Vignette tint. Hue alone would be meaningless at zero saturation, so the
+  // pair is hue + how far from black to take it; Tint 0 is the classic
+  // darkening and leaves every existing patch untouched.
+  ps.register({
+    id: "effect.vighue",
+    label: "Vign.Hue",
+    group: "effect",
+    min: 0,
+    max: 360,
+    value: 0,
+    unit: "°",
+  });
+  ps.register({
+    id: "effect.vigtint",
+    label: "Vign.Tint",
+    group: "effect",
+    min: 0,
+    max: 100,
+    value: 0,
+    unit: "%",
+  });
+  ps.register({
+    id: "effect.edge_color",
+    label: "EdgeColor",
+    group: "effect",
+    type: PARAM_TYPE.TOGGLE,
+    value: 0, // grey edges, as before
+  });
+  // Roll-off width around the threshold. 0 is the original hard switch.
+  ps.register({
+    id: "effect.solarsoft",
+    label: "Sol.Soft",
+    group: "effect",
+    min: 0,
+    max: 50,
+    value: 0,
+    unit: "%",
+  });
+  ps.register({
+    id: "effect.scancount",
+    label: "Scan.Count",
+    group: "effect",
+    min: 20,
+    max: 1200,
+    value: 400, // the number that was hardcoded in the shader
+    step: 1,
+  });
+
+  // ── Effects that already existed, wired to something else ─────────────────
+  // No new shader code behind any of these four: SHARPEN drove only the noise
+  // generator, COLOR_CORRECT only the per-layer tint, MIRROR only the per-layer
+  // flip, and INTERLACE ran outside the reorderable chain.
+  ps.register({
+    id: "effect.sharpen",
+    label: "Sharpen",
+    group: "effect",
+    min: 0,
+    max: 100,
+    value: 0,
+    unit: "%",
+  });
+  // Whole-output HSV. The per-layer FG/BG rows could already do this to each
+  // layer separately; there was no way to turn the composite.
+  ps.register({
+    id: "effect.outhue",
+    label: "Out.Hue",
+    group: "effect",
+    min: -180,
+    max: 180,
+    value: 0,
+    unit: "°",
+  });
+  ps.register({
+    id: "effect.outsat",
+    label: "Out.Sat",
+    group: "effect",
+    min: 0,
+    max: 200,
+    value: 100,
+    unit: "%",
+  });
+  ps.register({
+    id: "effect.outbright",
+    label: "Out.Bright",
+    group: "effect",
+    min: 0,
+    max: 200,
+    value: 100,
+    unit: "%",
+  });
+  ps.register({
+    id: "effect.flip",
+    label: "Flip",
+    group: "effect",
+    type: PARAM_TYPE.SELECT,
+    options: ["Off", "H", "V", "Both"],
+    value: 0,
+  });
+
+  // ── New effects (v0.17) ───────────────────────────────────────────────────
+  // All default to off, so they cost nothing and change nothing until asked for.
+  // Each geometry effect carries its own centre and edge mode rather than
+  // borrowing the kaleidoscope's — they are independent nodes in a reorderable
+  // chain and can be used in any combination.
+  ps.register({
+    id: "effect.polar",
+    label: "Polar",
+    group: "effect",
+    min: 0,
+    max: 100,
+    value: 0,
+    unit: "%",
+  });
+  ps.register({
+    id: "effect.polarmode",
+    label: "Polar.Mode",
+    group: "effect",
+    type: PARAM_TYPE.SELECT,
+    options: ["Wrap", "Unroll"],
+    value: 0,
+  });
+  ps.register({
+    id: "effect.polarrot",
+    label: "Polar.Rot",
+    group: "effect",
+    min: 0,
+    max: 100,
+    value: 0,
+    unit: "% turn",
+  });
+  ps.register({
+    id: "effect.wavex",
+    label: "Wave.AmpX",
+    group: "effect",
+    min: 0,
+    max: 100,
+    value: 0,
+    unit: "‰",
+  });
+  ps.register({
+    id: "effect.wavey",
+    label: "Wave.AmpY",
+    group: "effect",
+    min: 0,
+    max: 100,
+    value: 0,
+    unit: "‰",
+  });
+  ps.register({
+    id: "effect.wavefx",
+    label: "Wave.FreqX",
+    group: "effect",
+    min: 0,
+    max: 60,
+    value: 12,
+    step: 0.1,
+  });
+  ps.register({
+    id: "effect.wavefy",
+    label: "Wave.FreqY",
+    group: "effect",
+    min: 0,
+    max: 60,
+    value: 12,
+    step: 0.1,
+  });
+  // The one to put an LFO on.
+  ps.register({
+    id: "effect.wavephase",
+    label: "Wave.Phase",
+    group: "effect",
+    min: 0,
+    max: 100,
+    value: 0,
+    unit: "% turn",
+  });
+  ps.register({
+    id: "effect.halftone",
+    label: "Halftone",
+    group: "effect",
+    min: 0,
+    max: 100,
+    value: 0,
+    unit: "%",
+  });
+  ps.register({
+    id: "effect.halfsize",
+    label: "Half.Size",
+    group: "effect",
+    min: 2,
+    max: 40,
+    value: 6,
+    step: 0.5,
+    unit: "px",
+  });
+  ps.register({
+    id: "effect.halfangle",
+    label: "Half.Angle",
+    group: "effect",
+    min: 0,
+    max: 90,
+    value: 15,
+    unit: "°",
+  });
+  ps.register({
+    id: "effect.halfmode",
+    label: "Half.Mode",
+    group: "effect",
+    type: PARAM_TYPE.SELECT,
+    options: ["Mono", "Colour"],
+    value: 0,
+  });
+  ps.register({
+    id: "effect.duotone",
+    label: "Duotone",
+    group: "effect",
+    min: 0,
+    max: 100,
+    value: 0,
+    unit: "%",
+  });
+  ps.register({
+    id: "effect.duohue1",
+    label: "Duo.Dark",
+    group: "effect",
+    min: 0,
+    max: 360,
+    value: 260,
+    unit: "°",
+  });
+  ps.register({
+    id: "effect.duohue2",
+    label: "Duo.Light",
+    group: "effect",
+    min: 0,
+    max: 360,
+    value: 45,
+    unit: "°",
+  });
+  // Signed: negative pincushion, positive barrel, 0 flat.
+  ps.register({
+    id: "effect.lens",
+    label: "Lens",
+    group: "effect",
+    min: -100,
+    max: 100,
+    value: 0,
+    unit: "%",
+  });
+  ps.register({
+    id: "effect.twirl",
+    label: "Twirl",
+    group: "effect",
+    min: -100,
+    max: 100,
+    value: 0,
+    unit: "% turn",
+  });
+  // One centre and one edge mode shared by Polar, Wave and Lens — they are the
+  // three effects that sample outside the frame, and a per-effect centre for
+  // each would be six more rows for a distinction nobody performs.
+  ps.register({
+    id: "effect.warpcx",
+    label: "Warp.CenterX",
+    group: "effect",
+    min: 0,
+    max: 100,
+    value: 50,
+    unit: "%",
+  });
+  ps.register({
+    id: "effect.warpcy",
+    label: "Warp.CenterY",
+    group: "effect",
+    min: 0,
+    max: 100,
+    value: 50,
+    unit: "%",
+  });
+  ps.register({
+    id: "effect.warpedge",
+    label: "Warp.Edge",
+    group: "effect",
+    type: PARAM_TYPE.SELECT,
+    options: ["Clamp", "Mirror", "Wrap", "Black"],
+    value: 1, // Mirror — seamless, and the least like a mistake at the corners
   });
 
   // ── Levels ────────────────────────────────────────────────────────────────

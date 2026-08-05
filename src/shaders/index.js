@@ -1359,6 +1359,7 @@ export const EDGE = /* glsl */ `
   uniform sampler2D uTexture;
   uniform float uAmount;
   uniform int   uInvert;
+  uniform int   uColor;   // 1 = keep source colour, 0 = grey edges (original)
   uniform vec2  uResolution;
   varying vec2 vUv;
 
@@ -1380,7 +1381,10 @@ export const EDGE = /* glsl */ `
     float edge = clamp(sqrt(gx*gx + gy*gy) * uAmount * 4.0, 0.0, 1.0);
     float v    = uInvert == 1 ? (1.0 - edge) : edge;
     vec4 orig  = texture2D(uTexture, vUv);
-    gl_FragColor = mix(orig, vec4(vec3(v), orig.a), uAmount);
+    // uColor keeps the source colour and uses the Sobel response as a mask
+    // instead of drawing grey edges — the picture, outlined in itself.
+    vec3 e = uColor == 1 ? orig.rgb * v : vec3(v);
+    gl_FragColor = mix(orig, vec4(e, orig.a), uAmount);
   }
 `;
 
@@ -1447,12 +1451,19 @@ export const POSTERIZE = /* glsl */ `
 export const SOLARIZE = /* glsl */ `
   uniform sampler2D uTexture;
   uniform float uThreshold;
+  uniform float uSoftness;   // 0 = the original hard switch
   varying vec2 vUv;
   float luma(vec3 c) { return dot(c, vec3(0.2126, 0.7152, 0.0722)); }
   void main() {
     vec4 c = texture2D(uTexture, vUv);
     float l = luma(c.rgb);
-    gl_FragColor = l > uThreshold ? vec4(1.0 - c.rgb, c.a) : c;
+    // Softness 0 must stay the old hard switch, but smoothstep is UNDEFINED
+    // when edge0 >= edge1 — on some drivers that is a divide by zero, not a
+    // step. Clamp to a sub-8-bit epsilon instead: narrower than one code value,
+    // so it is a step in every frame anyone will ever render, and defined.
+    float s = max(uSoftness, 0.0005);
+    float t = smoothstep(uThreshold - s, uThreshold + s, l);
+    gl_FragColor = vec4(mix(c.rgb, 1.0 - c.rgb, t), c.a);
   }
 `;
 
@@ -1527,16 +1538,29 @@ export const KALEIDOSCOPE = /* glsl */ `
   uniform sampler2D uTexture;
   uniform float uSegments;  // number of mirror segments (2-16)
   uniform float uRotation;  // 0-1 rotation of the pattern
+  uniform vec2  uCenter;    // pivot, 0.5,0.5 = the old hardcoded middle
+  uniform float uAspect;    // width / height, 1.0 reproduces the old behaviour
+  uniform int   uEdge;      // 0 clamp, 1 mirror, 2 wrap, 3 black
   varying vec2 vUv;
+
+${FEEDBACK_EDGE_GLSL}
+
   void main() {
-    vec2 uv = vUv - 0.5;
+    // Work in ASPECT-CORRECTED space. The old version measured angle and radius
+    // in raw UV, where one unit across is a different number of pixels from one
+    // unit down — so on any non-square output the wedges came out sheared and
+    // the "circle" was an ellipse. Correcting on the way in and undoing it on
+    // the way out keeps the sampling in the original frame.
+    vec2 uv = (vUv - uCenter) * vec2(uAspect, 1.0);
     float angle = atan(uv.y, uv.x);
     float r     = length(uv);
     float seg   = 3.14159265 / max(1.0, uSegments);
     angle = mod(angle + uRotation * 3.14159265 * 2.0, seg * 2.0);
     if (angle > seg) angle = seg * 2.0 - angle; // mirror
-    vec2 nuv = vec2(cos(angle), sin(angle)) * r + 0.5;
-    gl_FragColor = texture2D(uTexture, fract(nuv));
+    vec2 nuv = vec2(cos(angle), sin(angle)) * r / vec2(uAspect, 1.0) + uCenter;
+    // Edge handling is a CHOICE now, not a fallback. It used to be fract(),
+    // which wrapped a hard seam into everything outside the disc.
+    gl_FragColor = fbSample(uTexture, nuv, uEdge);
   }
 `;
 
@@ -1544,13 +1568,17 @@ export const VIGNETTE = /* glsl */ `
   uniform sampler2D uTexture;
   uniform float uAmount;   // 0=none, 1=full black edges
   uniform float uRadius;   // 0=center point, 1=edges (default ~0.6)
+  uniform vec2  uCenter;   // 0.5,0.5 = the old hardcoded middle
+  uniform vec3  uColor;    // what the edges fall TO — black by default
   varying vec2 vUv;
   void main() {
     vec4 c = texture2D(uTexture, vUv);
-    vec2 uv = vUv - 0.5;
+    vec2 uv = vUv - uCenter;
     float d  = length(uv * vec2(1.0, 0.85)); // slightly oval
     float vig = smoothstep(uRadius, uRadius - uAmount * 0.5, d);
-    gl_FragColor = vec4(c.rgb * vig, c.a);
+    // mix TO the colour rather than multiplying by vig: identical at uColor =
+    // black (mix(0,c,v) == c*v), and a real tint at any other colour.
+    gl_FragColor = vec4(mix(uColor, c.rgb, vig), c.a);
   }
 `;
 
@@ -1572,9 +1600,13 @@ export const BLOOM_BLUR = /* glsl */ `
   uniform sampler2D uTexture;
   uniform vec2      uDirection;  // (1,0) or (0,1)
   uniform vec2      uResolution;
+  uniform float     uRadius;     // tap spacing multiplier, 1.0 = original
   varying vec2 vUv;
   void main() {
-    vec2 texel = uDirection / uResolution;
+    // Widening the tap spacing rather than adding taps: the kernel weights stay
+    // the same 9-tap Gaussian, so radius is nearly free. Far enough out it
+    // undersamples into rings, which is why the parameter tops out at 4.
+    vec2 texel = uDirection / uResolution * uRadius;
     vec4 c = vec4(0.0);
     // 9-tap Gaussian
     float w[5];
@@ -1678,6 +1710,7 @@ export const FILM_GRAIN = /* glsl */ `
   uniform sampler2D uTexture;
   uniform float uGrain;
   uniform float uScanlines;
+  uniform float uCount;      // scanline count over the frame height
   uniform float uTime;
   varying vec2 vUv;
 
@@ -1692,19 +1725,189 @@ export const FILM_GRAIN = /* glsl */ `
 
     // Grain
     if (uGrain > 0.0) {
-      float n = hash(vUv + fract(uTime * 0.017));
+      // The seed used to be vUv + fract(uTime * 0.017) — the SAME offset on
+      // both axes, which slides one fixed noise field diagonally instead of
+      // drawing a new one. That reads as grain crawling across the picture
+      // rather than scintillating in place. Decorrelating the two axes and
+      // using a large multiplier gives an independent field per frame.
+      float n = hash(vUv * 1024.0 + vec2(fract(uTime * 71.7) * 512.0,
+                                         fract(uTime * 37.3) * 512.0));
       n = (n - 0.5) * 2.0; // centre around 0
       col.rgb += n * uGrain * 0.25;
     }
 
-    // Scanlines
+    // Scanlines — uCount was hardcoded at 400 regardless of output size, so the
+    // line pitch meant something different on every display and moiréd against
+    // some of them. It is a parameter now; the default is still 400.
     if (uScanlines > 0.0) {
-      float line = sin(vUv.y * 400.0) * 0.5 + 0.5;
+      float line = sin(vUv.y * uCount) * 0.5 + 0.5;
       float mask = 1.0 - uScanlines * (1.0 - line) * 0.4;
       col.rgb *= mask;
     }
 
     gl_FragColor = vec4(clamp(col.rgb, 0.0, 1.0), col.a);
+  }
+`;
+
+// ─── Polar ────────────────────────────────────────────────────────────────────
+// Maps the frame between rectangular and polar coordinates. Cheap, and it turns
+// every other effect in the chain into a different one — a horizontal scanline
+// becomes a ring, a vertical wipe becomes a sweep.
+// uMode 0: rect→polar (the picture wraps around the centre)
+// uMode 1: polar→rect (the inverse — unrolls a radial picture into a strip)
+export const POLAR = /* glsl */ `
+  uniform sampler2D uTexture;
+  uniform int   uMode;
+  uniform float uAmount;   // 0..1 blend with the untransformed picture
+  uniform float uRotate;   // turns
+  uniform vec2  uCenter;
+  uniform float uAspect;
+  uniform int   uEdge;
+  varying vec2 vUv;
+
+${FEEDBACK_EDGE_GLSL}
+
+  void main() {
+    vec2 src = vUv;
+    vec2 dst;
+    float TAU = 6.28318530718;
+
+    if (uMode == 0) {
+      // rect → polar: x becomes angle, y becomes radius.
+      vec2 d = (src - uCenter) * vec2(uAspect, 1.0);
+      float a = atan(d.y, d.x) / TAU + 0.5 + uRotate;
+      float r = length(d) * 2.0;
+      dst = vec2(fract(a), clamp(r, 0.0, 1.0));
+    } else {
+      // polar → rect: read the picture as (angle, radius) and lay it flat.
+      float a = (src.x + uRotate) * TAU;
+      float r = src.y * 0.5;
+      dst = vec2(cos(a), sin(a)) * r / vec2(uAspect, 1.0) + uCenter;
+    }
+
+    vec4 warped = fbSample(uTexture, dst, uEdge);
+    gl_FragColor = mix(texture2D(uTexture, src), warped, uAmount);
+  }
+`;
+
+// ─── Wave ─────────────────────────────────────────────────────────────────────
+// Sine displacement on both axes. The oldest gesture in the instrument's
+// lineage, and the one that most rewards an LFO on its phase.
+export const WAVE = /* glsl */ `
+  uniform sampler2D uTexture;
+  uniform float uAmpX;    // UV displacement
+  uniform float uAmpY;
+  uniform float uFreqX;
+  uniform float uFreqY;
+  uniform float uPhase;   // radians
+  uniform int   uEdge;
+  varying vec2 vUv;
+
+${FEEDBACK_EDGE_GLSL}
+
+  void main() {
+    // Each axis is driven by the OTHER axis's coordinate — displacing x by
+    // sin(x) only stretches the picture along its own direction and reads as a
+    // smear. Driving x by sin(y) is what makes it a wave you can see.
+    vec2 uv = vUv;
+    uv.x += sin(vUv.y * uFreqX + uPhase) * uAmpX;
+    uv.y += sin(vUv.x * uFreqY + uPhase) * uAmpY;
+    gl_FragColor = fbSample(uTexture, uv, uEdge);
+  }
+`;
+
+// ─── Halftone ─────────────────────────────────────────────────────────────────
+// Ordered dot screen. Pairs with Post.Levels, and it is the one effect here that
+// reads BETTER on a projector than on a monitor.
+export const HALFTONE = /* glsl */ `
+  uniform sampler2D uTexture;
+  uniform float uAmount;
+  uniform float uSize;      // dot pitch in pixels
+  uniform float uAngle;     // screen angle in radians
+  uniform int   uMode;      // 0 mono, 1 per-channel (colour separation)
+  uniform vec2  uResolution;
+  varying vec2 vUv;
+
+  float luma(vec3 c) { return dot(c, vec3(0.2126, 0.7152, 0.0722)); }
+
+  // Distance from the centre of the nearest cell, 0 at centre, ~1 at corner.
+  float cellDist(vec2 pos, float ang) {
+    float ca = cos(ang), sa = sin(ang);
+    vec2 r = vec2(ca * pos.x - sa * pos.y, sa * pos.x + ca * pos.y);
+    return length(fract(r) - 0.5) * 2.0;
+  }
+
+  void main() {
+    vec4 c = texture2D(uTexture, vUv);
+    if (uAmount <= 0.0) { gl_FragColor = c; return; }
+    vec2 pos = vUv * uResolution / max(uSize, 1.0);
+
+    vec3 dots;
+    if (uMode == 1) {
+      // Classic separation: each channel gets its own screen angle, which is
+      // what stops the three grids beating against each other into moiré.
+      dots = vec3(
+        step(cellDist(pos, uAngle),              c.r * 1.4),
+        step(cellDist(pos, uAngle + 0.4014),     c.g * 1.4),
+        step(cellDist(pos, uAngle + 0.8029),     c.b * 1.4)
+      );
+    } else {
+      dots = vec3(step(cellDist(pos, uAngle), luma(c.rgb) * 1.4));
+    }
+    gl_FragColor = vec4(mix(c.rgb, dots, uAmount), c.a);
+  }
+`;
+
+// ─── Duotone ──────────────────────────────────────────────────────────────────
+// Remaps luminance through a two-colour ramp. Not a tint: shadows go to one
+// hue and highlights to the other, which is why it survives being fed back.
+export const DUOTONE = /* glsl */ `
+  uniform sampler2D uTexture;
+  uniform float uAmount;
+  uniform vec3  uDark;
+  uniform vec3  uLight;
+  varying vec2 vUv;
+  float luma(vec3 c) { return dot(c, vec3(0.2126, 0.7152, 0.0722)); }
+  void main() {
+    vec4 c = texture2D(uTexture, vUv);
+    if (uAmount <= 0.0) { gl_FragColor = c; return; }
+    vec3 mapped = mix(uDark, uLight, luma(c.rgb));
+    gl_FragColor = vec4(mix(c.rgb, mapped, uAmount), c.a);
+  }
+`;
+
+// ─── Lens ─────────────────────────────────────────────────────────────────────
+// Barrel/pincushion on one signed control, plus twirl. With Scanlines it is a
+// CRT; with Halftone it is a printed page photographed off one.
+export const LENS = /* glsl */ `
+  uniform sampler2D uTexture;
+  uniform float uDistort;  // <0 pincushion, 0 none, >0 barrel
+  uniform float uTwirl;    // turns at the rim, falling to 0 at the centre
+  uniform vec2  uCenter;
+  uniform float uAspect;
+  uniform int   uEdge;
+  varying vec2 vUv;
+
+${FEEDBACK_EDGE_GLSL}
+
+  void main() {
+    vec2 d = (vUv - uCenter) * vec2(uAspect, 1.0);
+    float r = length(d);
+
+    // Twirl first: rotate by an amount that falls off with radius, so the
+    // centre stays put and the rim shears round it.
+    if (uTwirl != 0.0) {
+      float a = uTwirl * 6.28318530718 * (1.0 - clamp(r * 2.0, 0.0, 1.0));
+      float ca = cos(a), sa = sin(a);
+      d = vec2(ca * d.x - sa * d.y, sa * d.x + ca * d.y);
+    }
+
+    // Then the radial polynomial. r*r keeps the centre linear, which is what
+    // makes a small amount read as a lens rather than as a zoom.
+    d *= 1.0 + uDistort * r * r;
+
+    vec2 uv = d / vec2(uAspect, 1.0) + uCenter;
+    gl_FragColor = fbSample(uTexture, uv, uEdge);
   }
 `;
 

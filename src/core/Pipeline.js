@@ -24,6 +24,7 @@ import {
   VIGNETTE, BLOOM_EXTRACT, BLOOM_BLUR, BLOOM_COMPOSITE, KALEIDOSCOPE, PIXEL_SORT,
   FILM_GRAIN, FEEDBACK_ROTATE, QUAD_MIRROR, LEVELS, LUT3D, WHITE_BALANCE, VASULKA_WARP,
   SHARPEN, MIXBUS,
+  POLAR, WAVE, HALFTONE, DUOTONE, LENS,
 } from '../shaders/index.js';
 import { SOURCE_KEYS } from '../controls/ParameterSystem.js';
 
@@ -32,8 +33,15 @@ const MIX_PREFIX = ['mix', 'mix2', 'mix3'];
 
 export const DEFAULT_FX_ORDER = [
   // VasulkaWarp — hidden, experimental, architecture unresolved. See dev notes.
-  'pixelate','edge',/*'vasulka',*/'rgbshift','kaleidoscope','quadmirror',
-  'posterize','solarize','vignette','bloom','levels','lut','whitebal','pixelsort','grain',
+  'pixelate','edge','sharpen',/*'vasulka',*/'rgbshift',
+  'wave','lens','polar','kaleidoscope','quadmirror','flip',
+  'posterize','solarize','halftone','duotone','vignette','bloom',
+  'outhsv','levels','lut','whitebal','pixelsort','grain',
+  // Interlace used to run as a FIXED pass after the whole chain. It is an
+  // effect, so it is in the chain now — placed last, which is exactly where it
+  // sat, so a default order renders identically. Being IN the chain is the
+  // point: it can be dragged in front of bloom or grain, which it could not be.
+  'interlace',
 ];
 
 const _FX = {
@@ -50,6 +58,7 @@ const _FX = {
     return pipe._pass(pipe.m.edge, {
       uTexture: tex, uAmount: amt,
       uInvert: p.get('effect.edge_inv').value,
+      uColor:  p.get('effect.edge_color')?.value ?? 0,
     });
   },
   // DEPRECATED — vasulka (VASULKA_WARP shader effect) is hidden from DEFAULT_FX_ORDER.
@@ -80,9 +89,18 @@ const _FX = {
   kaleidoscope: (pipe, tex, p) => {
     const segs = p.get('effect.kaleidoscope').value;
     if (segs < 2) return tex;
+    pipe.m.kaleidoscope.uniforms.uCenter.value.set(
+      (p.get('effect.kalecx')?.value ?? 50) / 100,
+      (p.get('effect.kalecy')?.value ?? 50) / 100,
+    );
     return pipe._pass(pipe.m.kaleidoscope, {
       uTexture: tex, uSegments: segs,
       uRotation: p.get('effect.kalerot').value / 100,
+      // Real aspect, so the wedges are wedges. This DOES change how an existing
+      // kaleidoscope patch renders on a non-square output — the old raw-UV
+      // version sheared them — and that is the fix, not a side effect.
+      uAspect: pipe.width / Math.max(1, pipe.height),
+      uEdge:   p.get('effect.kaleedge')?.value ?? 1,
     });
   },
   quadmirror: (pipe, tex, p) => {
@@ -98,11 +116,23 @@ const _FX = {
   solarize: (pipe, tex, p) => {
     const thresh = p.get('effect.solarize').value / 100;
     if (thresh >= 1) return tex;
-    return pipe._pass(pipe.m.solarize, { uTexture: tex, uThreshold: thresh });
+    return pipe._pass(pipe.m.solarize, {
+      uTexture: tex, uThreshold: thresh,
+      uSoftness: (p.get('effect.solarsoft')?.value ?? 0) / 100,
+    });
   },
   vignette: (pipe, tex, p) => {
     const amt = p.get('effect.vignette').value / 100;
     if (amt <= 0) return tex;
+    pipe.m.vignette.uniforms.uCenter.value.set(
+      (p.get('effect.vigcx')?.value ?? 50) / 100,
+      (p.get('effect.vigcy')?.value ?? 50) / 100,
+    );
+    // Tint 0 leaves the target colour black, which is exactly the old multiply.
+    const tint = (p.get('effect.vigtint')?.value ?? 0) / 100;
+    const hue  = (p.get('effect.vighue')?.value ?? 0) / 360;
+    const c = pipe.m.vignette.uniforms.uColor.value;
+    c.setHSL(hue, 1, 0.5).multiplyScalar(tint);
     return pipe._pass(pipe.m.vignette, {
       uTexture: tex, uAmount: amt,
       uRadius: p.get('effect.vigradius').value / 100,
@@ -117,6 +147,10 @@ const _FX = {
 
     // 1. Extract bright pixels at full resolution (uses ping-pong: 1 flip)
     const bright = pipe._pass(pipe.m.bloomExtract, { uTexture: tex, uThreshold: thresh });
+
+    const radius = p.get('effect.bloomradius')?.value ?? 1;
+    pipe.m.bloomBlurH.uniforms.uRadius.value = radius;
+    pipe.m.bloomBlurV.uniforms.uRadius.value = radius;
 
     // 2. BlurH at half-res → dedicated target (no ping-pong flip).
     //    Resolution uniform uses full dimensions so the Gaussian kernel step
@@ -181,9 +215,118 @@ const _FX = {
     if (grainAmt <= 0 && scanAmt <= 0) return tex;
     return pipe._pass(pipe.m.filmgrain, {
       uTexture: tex, uGrain: grainAmt, uScanlines: scanAmt, uTime: pipe._noiseTime,
+      uCount: p.get('effect.scancount')?.value ?? 400,
     });
   },
+  // ── Effects that were already written, and wired to something else ────────
+  // The four below add no new shader code. SHARPEN drove only the noise
+  // generator, COLOR_CORRECT only the per-layer tint, MIRROR only the per-layer
+  // flip, and INTERLACE ran as a fixed pass outside the reorderable chain.
+  sharpen: (pipe, tex, p) => {
+    const amt = (p.get('effect.sharpen')?.value ?? 0) / 100;
+    if (amt <= 0) return tex;
+    // pipe.m.sharpen, NOT pipe.m.noiseSharpen: the noise path pins uResolution
+    // to 512 and _pass writes only the uniforms it is handed, so one shared
+    // material would take whichever resolution ran last — the same stale-uniform
+    // bug the BG self-blend had. A second instance costs one material.
+    return pipe._pass(pipe.m.sharpen, { uTexture: tex, uAmount: amt * 3 });
+  },
+  outhsv: (pipe, tex, p) => {
+    const hue    = (p.get('effect.outhue')?.value ?? 0) / 360;
+    const sat    = (p.get('effect.outsat')?.value ?? 100) / 100;
+    const bright = (p.get('effect.outbright')?.value ?? 100) / 100;
+    if (hue === 0 && sat === 1 && bright === 1) return tex;
+    return pipe._pass(pipe.m.colorcorrectFx, {
+      uTexture: tex, uHue: hue, uSat: sat, uBright: bright, uFlipH: 0,
+    });
+  },
+  flip: (pipe, tex, p) => {
+    const mode = p.get('effect.flip')?.value ?? 0;
+    if (mode <= 0) return tex;
+    return pipe._pass(pipe.m.mirror, {
+      uTexture: tex,
+      uFlipH: (mode === 1 || mode === 3) ? 1 : 0,
+      uFlipV: (mode === 2 || mode === 3) ? 1 : 0,
+    });
+  },
+  interlace: (pipe, tex, p) => {
+    const il = p.get('output.interlace').value;
+    if (il <= 0) return tex;
+    return pipe._pass(pipe.m.interlace, {
+      uTexture: tex, uResY: pipe.height, uAmount: il, uTime: pipe._noiseTime,
+    });
+  },
+  // ── New in v0.17 ──────────────────────────────────────────────────────────
+  // Polar, Wave and Lens share one centre and one edge mode (effect.warp*) —
+  // they are the three that sample outside the frame, and six more rows for a
+  // per-effect centre would buy a distinction nobody performs.
+  polar: (pipe, tex, p) => {
+    const amt = (p.get('effect.polar')?.value ?? 0) / 100;
+    if (amt <= 0) return tex;
+    _warpCenter(pipe, p, pipe.m.polar);
+    return pipe._pass(pipe.m.polar, {
+      uTexture: tex,
+      uMode:   p.get('effect.polarmode').value,
+      uAmount: amt,
+      uRotate: p.get('effect.polarrot').value / 100,
+      uAspect: pipe.width / Math.max(1, pipe.height),
+      uEdge:   p.get('effect.warpedge').value,
+    });
+  },
+  wave: (pipe, tex, p) => {
+    const ax = (p.get('effect.wavex')?.value ?? 0) / 1000;
+    const ay = (p.get('effect.wavey')?.value ?? 0) / 1000;
+    if (ax === 0 && ay === 0) return tex;
+    return pipe._pass(pipe.m.wave, {
+      uTexture: tex,
+      uAmpX: ax, uAmpY: ay,
+      uFreqX: p.get('effect.wavefx').value,
+      uFreqY: p.get('effect.wavefy').value,
+      uPhase: p.get('effect.wavephase').value / 100 * Math.PI * 2,
+      uEdge:  p.get('effect.warpedge').value,
+    });
+  },
+  lens: (pipe, tex, p) => {
+    const d = (p.get('effect.lens')?.value ?? 0) / 100;
+    const t = (p.get('effect.twirl')?.value ?? 0) / 100;
+    if (d === 0 && t === 0) return tex;
+    _warpCenter(pipe, p, pipe.m.lens);
+    return pipe._pass(pipe.m.lens, {
+      uTexture: tex,
+      uDistort: d, uTwirl: t,
+      uAspect: pipe.width / Math.max(1, pipe.height),
+      uEdge:   p.get('effect.warpedge').value,
+    });
+  },
+  halftone: (pipe, tex, p) => {
+    const amt = (p.get('effect.halftone')?.value ?? 0) / 100;
+    if (amt <= 0) return tex;
+    return pipe._pass(pipe.m.halftone, {
+      uTexture: tex,
+      uAmount: amt,
+      uSize:  p.get('effect.halfsize').value,
+      uAngle: p.get('effect.halfangle').value * Math.PI / 180,
+      uMode:  p.get('effect.halfmode').value,
+    });
+  },
+  duotone: (pipe, tex, p) => {
+    const amt = (p.get('effect.duotone')?.value ?? 0) / 100;
+    if (amt <= 0) return tex;
+    // Shadows keep some value and highlights are not blown to white: a ramp
+    // between two fully saturated ends would posterise the midtones.
+    pipe.m.duotone.uniforms.uDark.value.setHSL(p.get('effect.duohue1').value / 360, 0.85, 0.18);
+    pipe.m.duotone.uniforms.uLight.value.setHSL(p.get('effect.duohue2').value / 360, 0.85, 0.72);
+    return pipe._pass(pipe.m.duotone, { uTexture: tex, uAmount: amt });
+  },
 };
+
+/** Shared centre for the three warp effects (Polar / Wave / Lens). */
+function _warpCenter(pipe, p, mat) {
+  mat.uniforms.uCenter.value.set(
+    (p.get('effect.warpcx')?.value ?? 50) / 100,
+    (p.get('effect.warpcy')?.value ?? 50) / 100,
+  );
+}
 
 export class Pipeline {
   constructor(renderer, width, height) {
@@ -324,15 +467,52 @@ export class Pipeline {
     this._lutActive = true;
   }
 
+  /**
+   * Is a .cube actually loaded and armed?
+   *
+   * Public because the signal-flow display needs the same answer _FX.lut acts
+   * on. It used to draw a "lut" node whenever LUT Amount was above zero, which
+   * is true out of the box with no file loaded — so the flow claimed a pass
+   * that returns immediately. Exposing the state beats copying the private
+   * two-field check into the UI, where it would drift.
+   */
+  get lutLoaded() {
+    return !!(this._lutTex && this._lutActive);
+  }
+
   clearLUT() {
     this._lutTex?.dispose();
     this._lutTex    = null;
     this._lutActive = false;
   }
 
-  /** Set the post-FX execution order. Unknown IDs are silently dropped. */
+  /**
+   * Set the post-FX execution order.
+   *
+   * Unknown ids are dropped — but effects the saved order has never HEARD of are
+   * appended, in their DEFAULT_FX_ORDER position, instead of being left out.
+   *
+   * The order is captured by Display States and written into .imweb files, so
+   * without the append every state saved before an effect existed would recall
+   * with that effect silently absent from the chain: the row is in the panel,
+   * the slider moves, the readout updates, and nothing renders. That is not a
+   * theoretical migration — it happens to every state on disk the moment a new
+   * effect ships, and it looks like the new effect is broken.
+   *
+   * 'vasulka' is deliberately NOT appended: it is deprecated and hidden from
+   * DEFAULT_FX_ORDER, so it only runs for an order that names it explicitly.
+   */
   setFxOrder(order) {
-    this.fxOrder = order.filter(id => id in _FX);
+    const known = order.filter(id => id in _FX);
+    const missing = DEFAULT_FX_ORDER.filter(id => !known.includes(id));
+    // Splice each missing id back at its default neighbour rather than at the
+    // end, so a new effect lands where it was designed to sit in the chain.
+    for (const id of missing) {
+      const at = DEFAULT_FX_ORDER.indexOf(id);
+      const after = DEFAULT_FX_ORDER.slice(0, at).reverse().find(x => known.includes(x));
+      known.splice(after ? known.indexOf(after) + 1 : 0, 0, id);
+    }
+    this.fxOrder = known;
   }
 
   // ── Public: render one frame ──────────────────────────────────────────────
@@ -637,22 +817,24 @@ export class Pipeline {
     }
 
     // ── Post-FX chain (reorderable) ───────────────────────────────────────
+    // effect.enable is a master bypass, not a mute: every parameter keeps its
+    // value, the chain keeps its order, and switching back on returns exactly
+    // the look you left. It skips the LOOP rather than each handler, so a
+    // bypassed chain costs nothing at all — which is the point of having it on
+    // a controller. Scope is the post-FX chain only: Blend & Feedback and the
+    // colour shift are their own section and are not touched.
     let postOut = shifted;
-    for (const fx of this.fxOrder) {
-      postOut = _FX[fx]?.(this, postOut, p) ?? postOut;
+    if (p.get('effect.enable')?.value !== 0) {
+      for (const fx of this.fxOrder) {
+        postOut = _FX[fx]?.(this, postOut, p) ?? postOut;
+      }
     }
 
-    // ── Interlace ─────────────────────────────────────────────────────────
-    let interlaced = postOut;
-    const il = p.get('output.interlace').value;
-    if (il > 0) {
-      interlaced = this._pass(this.m.interlace, {
-        uTexture: postOut, uResY: this.height, uAmount: il, uTime: this._noiseTime,
-      });
-    }
+    // Interlace used to be a fixed pass here. It is _FX.interlace now, last in
+    // DEFAULT_FX_ORDER — the same position, but reorderable.
 
     // ── Fade ──────────────────────────────────────────────────────────────
-    let faded = interlaced;
+    let faded = postOut;
     const fadeAmt = 1 - (p.get('output.fade').value / 100);
     if (fadeAmt < 1) {
       faded = this._pass(this.m.fade, {
@@ -894,6 +1076,8 @@ export class Pipeline {
       this.m.bloomBlurH.uniforms.uResolution.value.set(w, h);
       this.m.bloomBlurV.uniforms.uResolution.value.set(w, h);
       this.m.pixelsort.uniforms.uResolution.value.set(w, h);
+      this.m.sharpen.uniforms.uResolution.value.set(w, h);
+      this.m.halftone.uniforms.uResolution.value.set(w, h);
       this.m.feedback.uniforms.uResolution.value.set(w, h);
       this.m.interp.uniforms.uResolution.value.set(w, h);
       this._lastResW = w;
@@ -1177,12 +1361,58 @@ export class Pipeline {
         uAmount: { value: 1 }, uResolution: { value: new THREE.Vector2(1280, 720) },
       }),
       edge:      this._mat(EDGE, {
-        uAmount: { value: 0 }, uInvert: { value: 0 },
+        uAmount: { value: 0 }, uInvert: { value: 0 }, uColor: { value: 0 },
         uResolution: { value: new THREE.Vector2(1280, 720) },
       }),
       rgbshift:  this._mat(RGBSHIFT, { uAmount: { value: 0 }, uAngle: { value: 0 } }),
       posterize: this._mat(POSTERIZE, { uLevels: { value: 32 } }),
-      solarize:  this._mat(SOLARIZE,  { uThreshold: { value: 1 } }),
+      solarize:  this._mat(SOLARIZE,  { uThreshold: { value: 1 }, uSoftness: { value: 0 } }),
+      // Second COLOR_CORRECT instance for the whole-output HSV effect. Same
+      // reason as sharpen below: the layer path sets uFlipH per call and the two
+      // must not share state.
+      colorcorrectFx: this._mat(COLOR_CORRECT, {
+        uHue:    { value: 0 },
+        uSat:    { value: 1 },
+        uBright: { value: 1 },
+        uFlipH:  { value: 0 },
+      }),
+      polar: this._mat(POLAR, {
+        uMode:   { value: 0 },
+        uAmount: { value: 0 },
+        uRotate: { value: 0 },
+        uCenter: { value: new THREE.Vector2(0.5, 0.5) },
+        uAspect: { value: 1 },
+        uEdge:   { value: 1 },
+      }),
+      wave: this._mat(WAVE, {
+        uAmpX:  { value: 0 }, uAmpY:  { value: 0 },
+        uFreqX: { value: 12 }, uFreqY: { value: 12 },
+        uPhase: { value: 0 },
+        uEdge:  { value: 1 },
+      }),
+      lens: this._mat(LENS, {
+        uDistort: { value: 0 },
+        uTwirl:   { value: 0 },
+        uCenter:  { value: new THREE.Vector2(0.5, 0.5) },
+        uAspect:  { value: 1 },
+        uEdge:    { value: 1 },
+      }),
+      halftone: this._mat(HALFTONE, {
+        uAmount: { value: 0 },
+        uSize:   { value: 6 },
+        uAngle:  { value: 0 },
+        uMode:   { value: 0 },
+        uResolution: { value: new THREE.Vector2(1280, 720) },
+      }),
+      duotone: this._mat(DUOTONE, {
+        uAmount: { value: 0 },
+        uDark:   { value: new THREE.Color(0, 0, 0) },
+        uLight:  { value: new THREE.Color(1, 1, 1) },
+      }),
+      sharpen: this._mat(SHARPEN, {
+        uAmount:     { value: 0 },
+        uResolution: { value: new THREE.Vector2(1280, 720) },
+      }),
       colorcorrect: this._mat(COLOR_CORRECT, {
         uHue:    { value: 0 },
         uSat:    { value: 1 },
@@ -1198,19 +1428,26 @@ export class Pipeline {
       kaleidoscope: this._mat(KALEIDOSCOPE, {
         uSegments: { value: 4 },
         uRotation: { value: 0 },
+        uCenter:   { value: new THREE.Vector2(0.5, 0.5) },
+        uAspect:   { value: 1 },
+        uEdge:     { value: 1 },
       }),
       vignette: this._mat(VIGNETTE, {
         uAmount: { value: 0 },
         uRadius: { value: 0.65 },
+        uCenter: { value: new THREE.Vector2(0.5, 0.5) },
+        uColor:  { value: new THREE.Color(0, 0, 0) },
       }),
       bloomExtract: this._mat(BLOOM_EXTRACT, { uThreshold: { value: 0.7 } }),
       bloomBlurH: this._mat(BLOOM_BLUR, {
         uDirection:  { value: new THREE.Vector2(1, 0) },
         uResolution: { value: new THREE.Vector2(1280, 720) },
+        uRadius:     { value: 1 },
       }),
       bloomBlurV: this._mat(BLOOM_BLUR, {
         uDirection:  { value: new THREE.Vector2(0, 1) },
         uResolution: { value: new THREE.Vector2(1280, 720) },
+        uRadius:     { value: 1 },
       }),
       bloomComposite: this._mat(BLOOM_COMPOSITE, {
         uBloom:    { value: null },
