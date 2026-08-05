@@ -6,7 +6,15 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
 
 ---
 
-## [Unreleased]
+## [0.17.0] — 2026-08-05 — The Chain
+
+*Everything downstream of the layers, gone over end to end. The feedback loop
+gets the decay knob it never had — and stops occasionally deleting the live
+picture. The effects chain gets five new effects, four more that were already
+written and wired to something else, a master bypass, and labels that say what
+their numbers mean. Three of the fixes here are the same shape: a control that
+was live in the panel and dead in the render, or a chain that quietly dropped
+what it did not recognise.*
 
 ### Added
 - **All FX** — a master bypass for the whole post-FX chain. Not a mute: every
