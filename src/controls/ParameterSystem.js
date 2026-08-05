@@ -5089,92 +5089,15 @@ export function registerCoreParameters(ps) {
   // PScaleBy, Attr1/Attr2 removed — belonged to legacy ParticleSystem.js (never instantiated).
   // Attractors replaced by Ghost 1/2/3 in the GPU Engine section.
 
-  // ── Slit Scan ─────────────────────────────────────────────────────────────
-  // ── Sine Warp FX pass (`vasulka.*`) — DEAD, and NOT the Warp Tape ─────────
-  // A sine-displacement post-effect (freqh/freqv/amph/ampv), unrelated to the
-  // tape engine in `vwarp.*` despite both having been called "Vasulka Warp".
-  // Its handler is `_FX.vasulka` (Pipeline.js:59), which is commented out of
-  // DEFAULT_FX_ORDER (Pipeline.js:35) — so `vasulka.active` is read by code that
-  // never runs. Params stay registered so old presets referencing them still
-  // load without throwing; do not wire them back up without deciding what the
-  // effect is FOR, which is why it was shelved.
-  ps.register({
-    id: "vasulka.active",
-    label: "Vasulka",
-    group: "vasulka",
-    type: PARAM_TYPE.TOGGLE,
-    value: 0,
-  });
-  ps.register({
-    id: "vasulka.freqh",
-    label: "FreqH",
-    group: "vasulka",
-    min: 0,
-    max: 20,
-    value: 3,
-  });
-  ps.register({
-    id: "vasulka.freqv",
-    label: "FreqV",
-    group: "vasulka",
-    min: 0,
-    max: 20,
-    value: 0,
-  });
-  ps.register({
-    id: "vasulka.amph",
-    label: "AmpH",
-    group: "vasulka",
-    min: 0,
-    max: 100,
-    value: 20,
-    unit: "%",
-  });
-  ps.register({
-    id: "vasulka.ampv",
-    label: "AmpV",
-    group: "vasulka",
-    min: 0,
-    max: 100,
-    value: 0,
-    unit: "%",
-  });
-  ps.register({
-    id: "vasulka.phase",
-    label: "Phase",
-    group: "vasulka",
-    min: 0,
-    max: 100,
-    value: 0,
-    unit: "%",
-  });
-  ps.register({
-    id: "vasulka.freq2",
-    label: "Freq2",
-    group: "vasulka",
-    min: 0,
-    max: 20,
-    value: 7,
-  });
-  ps.register({
-    id: "vasulka.amp2",
-    label: "Amp2",
-    group: "vasulka",
-    min: 0,
-    max: 100,
-    value: 0,
-    unit: "%",
-  });
-  ps.register({
-    id: "vasulka.color",
-    label: "VasColor",
-    group: "vasulka",
-    min: 0,
-    max: 100,
-    value: 0,
-    unit: "%",
-  });
+  // The `vasulka.*` sine-warp FX pass was removed here. It was a dead
+  // post-effect — commented out of DEFAULT_FX_ORDER, no panel — kept only so
+  // old presets naming it would still load. Both load paths already skip
+  // unknown ids (ParameterSystem.restoreState guards on the param existing,
+  // ControllerManager.assign warns and returns), so nothing needed migrating.
+  // NOT to be confused with the Warp Tape, which is `vwarp.*` and very much
+  // alive — the shared "Vasulka Warp" name is why this note is here.
 
+  // ── Slit Scan ─────────────────────────────────────────────────────────────
   // What the slit samples. Was hardwired to the composited output, which made
   // the engine self-referential: route a layer to SlitScan and the strip it
   // grabs is a column of its own already-scrolled canvas, so it scans itself

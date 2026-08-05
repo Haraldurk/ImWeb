@@ -22,7 +22,7 @@ import {
   BUFFER_TRANSFORM, INTERP,
   PIXELATE, EDGE, RGBSHIFT, POSTERIZE, SOLARIZE, COLOR_CORRECT, CHROMA_KEY,
   VIGNETTE, BLOOM_EXTRACT, BLOOM_BLUR, BLOOM_COMPOSITE, KALEIDOSCOPE, PIXEL_SORT,
-  FILM_GRAIN, FEEDBACK_ROTATE, QUAD_MIRROR, LEVELS, LUT3D, WHITE_BALANCE, VASULKA_WARP,
+  FILM_GRAIN, FEEDBACK_ROTATE, QUAD_MIRROR, LEVELS, LUT3D, WHITE_BALANCE,
   SHARPEN, MIXBUS,
   POLAR, WAVE, HALFTONE, DUOTONE, LENS,
 } from '../shaders/index.js';
@@ -32,8 +32,7 @@ import { SOURCE_KEYS } from '../controls/ParameterSystem.js';
 const MIX_PREFIX = ['mix', 'mix2', 'mix3'];
 
 export const DEFAULT_FX_ORDER = [
-  // VasulkaWarp — hidden, experimental, architecture unresolved. See dev notes.
-  'pixelate','edge','sharpen',/*'vasulka',*/'rgbshift',
+  'pixelate','edge','sharpen','rgbshift',
   'wave','lens','polar','kaleidoscope','quadmirror','flip',
   'posterize','solarize','halftone','duotone','vignette','bloom',
   'outhsv','levels','lut','whitebal','pixelsort','grain',
@@ -59,23 +58,6 @@ const _FX = {
       uTexture: tex, uAmount: amt,
       uInvert: p.get('effect.edge_inv').value,
       uColor:  p.get('effect.edge_color')?.value ?? 0,
-    });
-  },
-  // DEPRECATED — vasulka (VASULKA_WARP shader effect) is hidden from DEFAULT_FX_ORDER.
-  // SequenceBuffer timewarp mode supersedes this for temporal slit-scan.
-  // Keep the handler so saved presets that somehow reference it don't crash.
-  vasulka: (pipe, tex, p) => {
-    if (!p.get('vasulka.active')?.value) return tex;
-    return pipe._pass(pipe.m.vasulka, {
-      uTexture: tex,
-      uFreqH:  p.get('vasulka.freqh').value,
-      uFreqV:  p.get('vasulka.freqv').value,
-      uAmpH:   p.get('vasulka.amph').value  / 100 * 0.15,
-      uAmpV:   p.get('vasulka.ampv').value  / 100 * 0.10,
-      uPhase:  p.get('vasulka.phase').value / 100 * Math.PI * 2,
-      uFreq2:  p.get('vasulka.freq2').value,
-      uAmp2:   p.get('vasulka.amp2').value  / 100 * 0.08,
-      uColor:  p.get('vasulka.color').value / 100,
     });
   },
   rgbshift: (pipe, tex, p) => {
@@ -499,8 +481,9 @@ export class Pipeline {
    * theoretical migration — it happens to every state on disk the moment a new
    * effect ships, and it looks like the new effect is broken.
    *
-   * 'vasulka' is deliberately NOT appended: it is deprecated and hidden from
-   * DEFAULT_FX_ORDER, so it only runs for an order that names it explicitly.
+   * The drop is what retires an effect safely. 'vasulka' was removed from _FX
+   * entirely; a saved order that still names it filters out here and the chain
+   * closes over the gap, with no migration pass and nothing to clean up.
    */
   setFxOrder(order) {
     const known = order.filter(id => id in _FX);
@@ -1489,13 +1472,6 @@ export class Pipeline {
       whitebal:   this._mat(WHITE_BALANCE, {
         uTemperature: { value: 0 },
         uTint:        { value: 0 },
-      }),
-      vasulka:    this._mat(VASULKA_WARP, {
-        uFreqH: { value: 3 }, uFreqV: { value: 0 },
-        uAmpH:  { value: 0.03 }, uAmpV: { value: 0 },
-        uPhase: { value: 0 },
-        uFreq2: { value: 7 }, uAmp2:  { value: 0 },
-        uColor: { value: 0 },
       }),
     };
   }
