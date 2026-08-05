@@ -138,6 +138,29 @@ protocol could not make, which is the more useful half of the result.*
   "Project" renders as "Proj". All five are hit first time one-handed on device.
 
 ### Fixed
+- **Motion Extraction's background actually adapts now.** It was stored in an
+  8-bit buffer, and `mix(bg, cur, adapt)` at `Bg adapt` 4 s gives a per-frame
+  step of 2.9e-3 against an 8-bit level of 3.9e-3 — below one representable
+  value, so it rounded to no change and the background **froze on the frame it
+  was primed with**, permanently. Above ~2.95 s nothing could move it at all,
+  for any difference including full black-to-white.
+
+  It did not look like a precision bug. A frozen background is a static
+  reference plate, so it produced clean, solid silhouettes and read as the
+  feature working — until you noticed it was always the *first* frame, ghosting
+  everything that had changed since boot and never fading.
+
+  The background and the trail are now float32. Float rather than a
+  guaranteed-progress floor: a floor relinearises the tail and would have made
+  the long end of a 0–10 s range a lie. Measured over 10 s of model time, the
+  8-bit buffer closed **2%** of a gap where float32 closed the specified
+  **82%**. `NearestFilter`, because both are sampled 1:1 and RGBA32F is not
+  filterable without `OES_texture_float_linear`.
+
+  This is the half-float slew lesson recurring one buffer coarser;
+  `tests/audit-halffloat-slew.mjs` has been widened from "half-float slews" to
+  "exponential accumulators", and now asserts the storage *and* the arithmetic
+  that decides what storage is sufficient.
 - **The Video Delay ring is no longer allocated 0×0 when the page boots before
   layout.** `W`/`H` came straight from `canvas.parentElement.clientWidth`, which
   is 0 in a tab that boots in the background, a `display:none` container, or a
