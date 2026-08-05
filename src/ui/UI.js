@@ -3419,6 +3419,7 @@ export function buildAISettingsPanel(ai, panelEl) {
   panelEl.appendChild(resHdr);
 
   const links = [
+    { label: 'Quick Start',     href: 'docs/ImWeb_Quick_Start.md' },
     { label: 'Quick Reference', href: 'docs/ImWeb_Quick_Reference.md' },
     { label: 'Full Manual',     href: 'docs/ImWeb_Full_Manual.md' },
   ];
