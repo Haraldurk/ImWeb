@@ -32,8 +32,13 @@ const MIX_PREFIX = ['mix', 'mix2', 'mix3'];
 
 export const DEFAULT_FX_ORDER = [
   // VasulkaWarp — hidden, experimental, architecture unresolved. See dev notes.
-  'pixelate','edge',/*'vasulka',*/'rgbshift','kaleidoscope','quadmirror',
-  'posterize','solarize','vignette','bloom','levels','lut','whitebal','pixelsort','grain',
+  'pixelate','edge','sharpen',/*'vasulka',*/'rgbshift','kaleidoscope','quadmirror','flip',
+  'posterize','solarize','vignette','bloom','outhsv','levels','lut','whitebal','pixelsort','grain',
+  // Interlace used to run as a FIXED pass after the whole chain. It is an
+  // effect, so it is in the chain now — placed last, which is exactly where it
+  // sat, so a default order renders identically. Being IN the chain is the
+  // point: it can be dragged in front of bloom or grain, which it could not be.
+  'interlace',
 ];
 
 const _FX = {
@@ -208,6 +213,44 @@ const _FX = {
     return pipe._pass(pipe.m.filmgrain, {
       uTexture: tex, uGrain: grainAmt, uScanlines: scanAmt, uTime: pipe._noiseTime,
       uCount: p.get('effect.scancount')?.value ?? 400,
+    });
+  },
+  // ── Effects that were already written, and wired to something else ────────
+  // The four below add no new shader code. SHARPEN drove only the noise
+  // generator, COLOR_CORRECT only the per-layer tint, MIRROR only the per-layer
+  // flip, and INTERLACE ran as a fixed pass outside the reorderable chain.
+  sharpen: (pipe, tex, p) => {
+    const amt = (p.get('effect.sharpen')?.value ?? 0) / 100;
+    if (amt <= 0) return tex;
+    // pipe.m.sharpen, NOT pipe.m.noiseSharpen: the noise path pins uResolution
+    // to 512 and _pass writes only the uniforms it is handed, so one shared
+    // material would take whichever resolution ran last — the same stale-uniform
+    // bug the BG self-blend had. A second instance costs one material.
+    return pipe._pass(pipe.m.sharpen, { uTexture: tex, uAmount: amt * 3 });
+  },
+  outhsv: (pipe, tex, p) => {
+    const hue    = (p.get('effect.outhue')?.value ?? 0) / 360;
+    const sat    = (p.get('effect.outsat')?.value ?? 100) / 100;
+    const bright = (p.get('effect.outbright')?.value ?? 100) / 100;
+    if (hue === 0 && sat === 1 && bright === 1) return tex;
+    return pipe._pass(pipe.m.colorcorrectFx, {
+      uTexture: tex, uHue: hue, uSat: sat, uBright: bright, uFlipH: 0,
+    });
+  },
+  flip: (pipe, tex, p) => {
+    const mode = p.get('effect.flip')?.value ?? 0;
+    if (mode <= 0) return tex;
+    return pipe._pass(pipe.m.mirror, {
+      uTexture: tex,
+      uFlipH: (mode === 1 || mode === 3) ? 1 : 0,
+      uFlipV: (mode === 2 || mode === 3) ? 1 : 0,
+    });
+  },
+  interlace: (pipe, tex, p) => {
+    const il = p.get('output.interlace').value;
+    if (il <= 0) return tex;
+    return pipe._pass(pipe.m.interlace, {
+      uTexture: tex, uResY: pipe.height, uAmount: il, uTime: pipe._noiseTime,
     });
   },
 };
@@ -693,17 +736,11 @@ export class Pipeline {
       postOut = _FX[fx]?.(this, postOut, p) ?? postOut;
     }
 
-    // ── Interlace ─────────────────────────────────────────────────────────
-    let interlaced = postOut;
-    const il = p.get('output.interlace').value;
-    if (il > 0) {
-      interlaced = this._pass(this.m.interlace, {
-        uTexture: postOut, uResY: this.height, uAmount: il, uTime: this._noiseTime,
-      });
-    }
+    // Interlace used to be a fixed pass here. It is _FX.interlace now, last in
+    // DEFAULT_FX_ORDER — the same position, but reorderable.
 
     // ── Fade ──────────────────────────────────────────────────────────────
-    let faded = interlaced;
+    let faded = postOut;
     const fadeAmt = 1 - (p.get('output.fade').value / 100);
     if (fadeAmt < 1) {
       faded = this._pass(this.m.fade, {
@@ -945,6 +982,7 @@ export class Pipeline {
       this.m.bloomBlurH.uniforms.uResolution.value.set(w, h);
       this.m.bloomBlurV.uniforms.uResolution.value.set(w, h);
       this.m.pixelsort.uniforms.uResolution.value.set(w, h);
+      this.m.sharpen.uniforms.uResolution.value.set(w, h);
       this.m.feedback.uniforms.uResolution.value.set(w, h);
       this.m.interp.uniforms.uResolution.value.set(w, h);
       this._lastResW = w;
@@ -1234,6 +1272,19 @@ export class Pipeline {
       rgbshift:  this._mat(RGBSHIFT, { uAmount: { value: 0 }, uAngle: { value: 0 } }),
       posterize: this._mat(POSTERIZE, { uLevels: { value: 32 } }),
       solarize:  this._mat(SOLARIZE,  { uThreshold: { value: 1 }, uSoftness: { value: 0 } }),
+      // Second COLOR_CORRECT instance for the whole-output HSV effect. Same
+      // reason as sharpen below: the layer path sets uFlipH per call and the two
+      // must not share state.
+      colorcorrectFx: this._mat(COLOR_CORRECT, {
+        uHue:    { value: 0 },
+        uSat:    { value: 1 },
+        uBright: { value: 1 },
+        uFlipH:  { value: 0 },
+      }),
+      sharpen: this._mat(SHARPEN, {
+        uAmount:     { value: 0 },
+        uResolution: { value: new THREE.Vector2(1280, 720) },
+      }),
       colorcorrect: this._mat(COLOR_CORRECT, {
         uHue:    { value: 0 },
         uSat:    { value: 1 },
