@@ -225,6 +225,26 @@ export class Pipeline {
     this._bloomTargetH = this._makeTarget(hw, hh);
     this._bloomTargetV = this._makeTarget(hw, hh);
 
+    // Feedback transform targets — dedicated, OUTSIDE the ping-pong pool, for
+    // the same reason the mix buses are: a second target beats a guard.
+    //
+    // The prev-frame transform passes used to ping-pong through this.targets
+    // while the composited live frame was ALSO parked in one of them. Two
+    // targets, and the composite plus up to two transform passes in flight, so
+    // whether the second transform overwrote the live frame came down to how
+    // many passes the keyer/chroma/warp/displace chain had run before it —
+    // parity, not intent. When it landed wrong the blend received the
+    // transformed prev frame as BOTH its inputs and the live picture vanished
+    // from the output entirely, which reads as "feedback ate my image" rather
+    // than as a buffer bug.
+    //
+    // The identity guard in _pass() cannot catch this: it fires when a pass
+    // reads the texture it is about to write, and here the clobbered texture is
+    // read by a LATER pass. Nothing is aliased at the moment of the write.
+    // Allocated lazily — a project that never transforms its feedback pays no
+    // VRAM for these.
+    this._fbRT = null;
+
     // Mix buses ×3 — dedicated full-res targets, outside the ping-pong pool
     // because layer resolution reads them later in the frame (and main.js
     // reads them for secondary lookups).
@@ -440,7 +460,15 @@ export class Pipeline {
     const bgBlend = Math.round(p.get('layer.bg.blend')?.value ?? 0);
     // Self-blend is degenerate for Difference/Exclude/Subtract/Divide — skip
     const BG_DEGENERATE = bgBlend === 7 || bgBlend === 8 || bgBlend === 14 || bgBlend === 15;
-    if (bgBlend > 0 && !BG_DEGENERATE) bgTexFinal  = this._pass(this.m.transfermode, { uFG: bgTexFinal,  uBG: bgTexFinal,  uMode: bgBlend });
+    // uBlendAmount MUST be passed explicitly. _pass() only writes the uniforms
+    // it is given, and this material is shared with the FG blend and with the
+    // feedback blend — omitting it left the BG self-blend running at whichever
+    // strength another pass set last frame. Harmless-looking while the bitwise
+    // modes ignored uBlendAmount entirely; now that they honour it, a stale
+    // value would be visible in BG XOR/OR/AND.
+    if (bgBlend > 0 && !BG_DEGENERATE) bgTexFinal  = this._pass(this.m.transfermode, {
+      uFG: bgTexFinal, uBG: bgTexFinal, uMode: bgBlend, uBlendAmount: 1,
+    });
     if (fgBlend > 0) workingFG   = this._pass(this.m.transfermode, {
       uFG: workingFG, uBG: bgTexFinal, uMode: fgBlend,
       uBlendAmount: (p.get('layer.fg.blendAmount')?.value ?? 1),
@@ -534,22 +562,57 @@ export class Pipeline {
       const fbScale  = p.get('feedback.scale').value / 50;
       const fbAngle  = p.get('feedback.rotate').value / 100;
       const fbZoom   = p.get('feedback.zoom').value   / 100 + 1; // 0→1x, 100→2x
+      const fbEdge   = p.get('feedback.edge').value;
+      const fbDecay  = p.get('feedback.decay').value / 100;
+      const fbBlur   = p.get('feedback.blur').value  / 100;
+      const fbHue    = p.get('feedback.hue').value * Math.PI / 180;
+      const fbMirror = p.get('feedback.mirror').value;
       let prevTex = this.prev.texture;
-      // Apply rotate/zoom first (centred), then offset/scale (pan)
+      // Both transform passes write to the dedicated feedback targets via
+      // _passTo, never to the ping-pong pool — see _fbRT above. They alternate
+      // between the two so the second pass never reads the target it writes.
+      let fbSlot = 0;
+      const fbTarget = () => {
+        if (!this._fbRT) {
+          this._fbRT = [
+            this._makeTarget(this.width, this.height),
+            this._makeTarget(this.width, this.height),
+          ];
+        }
+        return this._fbRT[fbSlot++ & 1];
+      };
+      // Apply rotate/zoom first (about the chosen centre), then mirror/offset/
+      // scale, then the colour work. Centre is read here but only matters when
+      // one of angle/zoom is live, which is why it is not part of the gate.
       if (fbAngle !== 0 || fbZoom !== 1) {
-        prevTex = this._pass(this.m.feedbackRotate, {
+        this.m.feedbackRotate.uniforms.uCenter.value.set(
+          p.get('feedback.centerx').value / 100,
+          p.get('feedback.centery').value / 100,
+        );
+        prevTex = this._passTo(this.m.feedbackRotate, {
           uTexture: prevTex,
           uAngle:   fbAngle,
           uZoom:    fbZoom,
-        });
+          uEdge:    fbEdge,
+        }, fbTarget());
       }
-      if (fbHor !== 0 || fbVer !== 0 || fbScale !== 0) {
-        prevTex = this._pass(this.m.feedback, {
+      // Decay, blur, hue and mirror live in this pass too, so the gate has to
+      // ask about them as well — otherwise setting decay alone would skip the
+      // only pass that applies it and do nothing at all. (Edge is NOT in the
+      // gate: with no transform there is nothing sampling outside the frame.)
+      if (fbHor !== 0 || fbVer !== 0 || fbScale !== 0 ||
+          fbDecay !== 1 || fbBlur > 0 || fbHue !== 0 || fbMirror !== 0) {
+        prevTex = this._passTo(this.m.feedback, {
           uOutput:    prevTex,
           uHorOffset: fbHor,
           uVerOffset: fbVer,
           uScale:     fbScale,
-        });
+          uDecay:     fbDecay,
+          uBlur:      fbBlur,
+          uHue:       fbHue,
+          uMirror:    fbMirror,
+          uEdge:      fbEdge,
+        }, fbTarget());
       }
       const fbMode = p.get('feedback.mode').value;
       if (fbMode === 0) {
@@ -824,6 +887,7 @@ export class Pipeline {
     this._bloomTargetH.setSize(hw, hh);
     this._bloomTargetV.setSize(hw, hh);
     this._mixRT.forEach(rt => rt && rt.forEach(t => t.setSize(w, h)));
+    this._fbRT?.forEach(t => t.setSize(w, h));
     if (w !== this._lastResW || h !== this._lastResH) {
       this.m.pixelate.uniforms.uResolution.value.set(w, h);
       this.m.edge.uniforms.uResolution.value.set(w, h);
@@ -1049,6 +1113,11 @@ export class Pipeline {
         uVerOffset: { value: 0 },
         uScale:     { value: 0 },
         uResolution: { value: new THREE.Vector2(1280, 720) },
+        uDecay:     { value: 1 },
+        uBlur:      { value: 0 },
+        uHue:       { value: 0 },
+        uMirror:    { value: 0 },
+        uEdge:      { value: 0 },
       }),
       transfermode: this._mat(TRANSFERMODE, { uMode: { value: 0 }, uBlendAmount: { value: 1.0 } }),
       mixbus:       this._mat(MIXBUS, {
@@ -1164,8 +1233,10 @@ export class Pipeline {
         uResolution: { value: new THREE.Vector2(512, 512) },
       }),
       feedbackRotate: this._mat(FEEDBACK_ROTATE, {
-        uAngle: { value: 0 },
-        uZoom:  { value: 1 },
+        uAngle:  { value: 0 },
+        uZoom:   { value: 1 },
+        uCenter: { value: new THREE.Vector2(0.5, 0.5) },
+        uEdge:   { value: 0 },
       }),
       quadmirror: this._mat(QUAD_MIRROR, { uMode: { value: 0 } }),
       levels:     this._mat(LEVELS, {
