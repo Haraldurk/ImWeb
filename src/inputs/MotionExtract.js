@@ -89,8 +89,25 @@ export class MotionExtract {
     this._scene.add(this._mesh);
     this._cam   = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
 
-    this._bg    = [this._makeTarget(), this._makeTarget()];
-    this._trail = [this._makeTarget(), this._makeTarget()];
+    // FLOAT, not 8-bit. Both of these are exponential accumulators, and an
+    // exponential approach dies of quantisation long before it dies of anything
+    // else: the per-frame step is `adapt × (cur - bg)`, and if that lands below
+    // one representable level it rounds to NO CHANGE and the buffer freezes
+    // where it stands. In an 8-bit buffer one level is 1/255 = 3.9e-3, while
+    // `Bg adapt` 4 s at 60fps gives a step of 2.9e-3 for a FULL black-to-white
+    // difference — so above about 2.95 s nothing could ever move the
+    // background, and it stayed frozen on the frame it was primed with for the
+    // rest of the session. Half-float only moves the wall (it stalls at 10 s).
+    //
+    // Float32 clears the whole 0–10 s range with ~1000x margin, which is why
+    // there is no guaranteed-progress floor here: with enough precision the
+    // exponential simply works, and a floor would quietly relinearise the tail.
+    //
+    // NearestFilter deliberately: both are sampled 1:1 at canvas size, so
+    // nothing needs interpolating — and RGBA32F is NOT filterable without
+    // OES_texture_float_linear, which would sample black where it is missing.
+    this._bg    = [this._makeTarget(true), this._makeTarget(true)];
+    this._trail = [this._makeTarget(true), this._makeTarget(true)];
     this._cur   = 0;
 
     // The background starts empty, so the first comparison would be against
@@ -102,12 +119,18 @@ export class MotionExtract {
     this._primed = false;
   }
 
-  _makeTarget() {
+  /**
+   * @param {boolean} accumulator  true for the buffers that integrate over
+   *   time (background, trail) and therefore need float precision; false for
+   *   the scratch targets that just hold one processed frame.
+   */
+  _makeTarget(accumulator = false) {
+    const filter = accumulator ? THREE.NearestFilter : THREE.LinearFilter;
     return new THREE.WebGLRenderTarget(this._w, this._h, {
-      minFilter: THREE.LinearFilter,
-      magFilter: THREE.LinearFilter,
+      minFilter: filter,
+      magFilter: filter,
       format: THREE.RGBAFormat,
-      type: THREE.UnsignedByteType,
+      type: accumulator ? THREE.FloatType : THREE.UnsignedByteType,
       depthBuffer: false,
       stencilBuffer: false,
     });
