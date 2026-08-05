@@ -15,6 +15,30 @@ export const VERT = /* glsl */ `
   }
 `;
 
+// ── RGB Channel Delay ─────────────────────────────────────────────────────────
+// Three frames of ONE delay ring, one colour channel taken from each. A moving
+// edge separates into coloured fringes trailing its own past, because each
+// channel is showing a different moment. Anything still is unaffected: where
+// three frames agree, taking one channel from each reproduces the pixel exactly,
+// which is why equal delays are a bit-exact identity rather than a near-miss.
+
+export const RGB_DELAY = /* glsl */ `
+  uniform sampler2D tR;
+  uniform sampler2D tG;
+  uniform sampler2D tB;
+
+  varying vec2 vUv;
+
+  void main() {
+    gl_FragColor = vec4(
+      texture2D(tR, vUv).r,
+      texture2D(tG, vUv).g,
+      texture2D(tB, vUv).b,
+      1.0
+    );
+  }
+`;
+
 // ── Passthrough ───────────────────────────────────────────────────────────────
 
 export const PASSTHROUGH = /* glsl */ `
