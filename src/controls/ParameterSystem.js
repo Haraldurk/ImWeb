@@ -4432,12 +4432,18 @@ export function registerCoreParameters(ps) {
     options: CAPTURE_SOURCES,
     value: 0,                        // Camera — the case this was built for
   });
+  // Ranges narrowed after the first real-camera session: 50 and 30 were both
+  // well past the useful end, which wastes most of the knob's travel on
+  // settings nobody reaches and leaves the part that matters too coarse to
+  // dial. Narrowing a max CLAMPS any saved value above it, so this is a change
+  // that is free now — the parameters have never shipped — and would silently
+  // rewrite people's looks once they had.
   ps.register({
     id: "motion.gain",
     label: "Sensitivity",
     group: "motion",
     type: PARAM_TYPE.CONTINUOUS,
-    min: 1, max: 50, value: 8, step: 0.1,
+    min: 1, max: 20, value: 8, step: 0.1,
   });
   // Background half-life, in SECONDS. This one control spans both algorithms:
   // long values give a stable background estimate, so a subject who stops
@@ -4451,7 +4457,7 @@ export function registerCoreParameters(ps) {
     label: "Bg adapt",
     group: "motion",
     type: PARAM_TYPE.CONTINUOUS,
-    min: 0, max: 30, value: 4, step: 0.1,
+    min: 0, max: 10, value: 4, step: 0.05,
   });
   // Time until a trail is visually gone, in seconds — `rutt.rise`/`rutt.fall`
   // convention. Frame counts would mean different things at different frame
