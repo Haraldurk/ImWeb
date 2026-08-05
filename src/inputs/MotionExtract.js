@@ -183,11 +183,19 @@ export class MotionExtract {
     // go — the effect appears to reset itself whenever the tab regains focus.
     const step = Math.min(Math.max(dt, 0), 0.1);
 
-    // Half-life in seconds → per-frame coefficients. bgSeconds 0 collapses to
-    // adapt 1 (background := this frame ⇒ frame differencing next frame), and
-    // trailSeconds 0 to decay 0 (no persistence), so both knobs reach their
-    // degenerate ends exactly rather than approaching them.
-    const adapt = bgSeconds    > 0 ? 1 - Math.pow(0.5,  step / bgSeconds)    : 1;
+    // Seconds → per-frame coefficients. BOTH use the same base, so both dials
+    // mean the same kind of thing: "the time until this is 98% done", not a
+    // half-life. They did not always agree — the background was a half-life
+    // while the trail was time-to-gone, which put two different meanings of
+    // "seconds" side by side in one panel. At Bg adapt 4 that left a ghost
+    // still 50% visible after 4 s and 12.5% after 12, so the number read as
+    // simply wrong rather than as a different convention.
+    //
+    // 0.02 is the "visually gone" threshold: after `T` seconds, 2% remains.
+    // bgSeconds 0 collapses to adapt 1 (background := this frame ⇒ frame
+    // differencing next frame) and trailSeconds 0 to decay 0 (no persistence),
+    // so both reach their degenerate ends exactly rather than approaching them.
+    const adapt = bgSeconds    > 0 ? 1 - Math.pow(0.02, step / bgSeconds)    : 1;
     const decay = trailSeconds > 0 ?     Math.pow(0.02, step / trailSeconds) : 0;
 
     // `src`, not `srcTex`. The matte, the background update and the priming
