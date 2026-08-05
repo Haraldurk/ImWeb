@@ -24,6 +24,7 @@ import {
   VIGNETTE, BLOOM_EXTRACT, BLOOM_BLUR, BLOOM_COMPOSITE, KALEIDOSCOPE, PIXEL_SORT,
   FILM_GRAIN, FEEDBACK_ROTATE, QUAD_MIRROR, LEVELS, LUT3D, WHITE_BALANCE, VASULKA_WARP,
   SHARPEN, MIXBUS,
+  POLAR, WAVE, HALFTONE, DUOTONE, LENS,
 } from '../shaders/index.js';
 import { SOURCE_KEYS } from '../controls/ParameterSystem.js';
 
@@ -32,8 +33,10 @@ const MIX_PREFIX = ['mix', 'mix2', 'mix3'];
 
 export const DEFAULT_FX_ORDER = [
   // VasulkaWarp — hidden, experimental, architecture unresolved. See dev notes.
-  'pixelate','edge','sharpen',/*'vasulka',*/'rgbshift','kaleidoscope','quadmirror','flip',
-  'posterize','solarize','vignette','bloom','outhsv','levels','lut','whitebal','pixelsort','grain',
+  'pixelate','edge','sharpen',/*'vasulka',*/'rgbshift',
+  'wave','lens','polar','kaleidoscope','quadmirror','flip',
+  'posterize','solarize','halftone','duotone','vignette','bloom',
+  'outhsv','levels','lut','whitebal','pixelsort','grain',
   // Interlace used to run as a FIXED pass after the whole chain. It is an
   // effect, so it is in the chain now — placed last, which is exactly where it
   // sat, so a default order renders identically. Being IN the chain is the
@@ -253,7 +256,77 @@ const _FX = {
       uTexture: tex, uResY: pipe.height, uAmount: il, uTime: pipe._noiseTime,
     });
   },
+  // ── New in v0.17 ──────────────────────────────────────────────────────────
+  // Polar, Wave and Lens share one centre and one edge mode (effect.warp*) —
+  // they are the three that sample outside the frame, and six more rows for a
+  // per-effect centre would buy a distinction nobody performs.
+  polar: (pipe, tex, p) => {
+    const amt = (p.get('effect.polar')?.value ?? 0) / 100;
+    if (amt <= 0) return tex;
+    _warpCenter(pipe, p, pipe.m.polar);
+    return pipe._pass(pipe.m.polar, {
+      uTexture: tex,
+      uMode:   p.get('effect.polarmode').value,
+      uAmount: amt,
+      uRotate: p.get('effect.polarrot').value / 100,
+      uAspect: pipe.width / Math.max(1, pipe.height),
+      uEdge:   p.get('effect.warpedge').value,
+    });
+  },
+  wave: (pipe, tex, p) => {
+    const ax = (p.get('effect.wavex')?.value ?? 0) / 1000;
+    const ay = (p.get('effect.wavey')?.value ?? 0) / 1000;
+    if (ax === 0 && ay === 0) return tex;
+    return pipe._pass(pipe.m.wave, {
+      uTexture: tex,
+      uAmpX: ax, uAmpY: ay,
+      uFreqX: p.get('effect.wavefx').value,
+      uFreqY: p.get('effect.wavefy').value,
+      uPhase: p.get('effect.wavephase').value / 100 * Math.PI * 2,
+      uEdge:  p.get('effect.warpedge').value,
+    });
+  },
+  lens: (pipe, tex, p) => {
+    const d = (p.get('effect.lens')?.value ?? 0) / 100;
+    const t = (p.get('effect.twirl')?.value ?? 0) / 100;
+    if (d === 0 && t === 0) return tex;
+    _warpCenter(pipe, p, pipe.m.lens);
+    return pipe._pass(pipe.m.lens, {
+      uTexture: tex,
+      uDistort: d, uTwirl: t,
+      uAspect: pipe.width / Math.max(1, pipe.height),
+      uEdge:   p.get('effect.warpedge').value,
+    });
+  },
+  halftone: (pipe, tex, p) => {
+    const amt = (p.get('effect.halftone')?.value ?? 0) / 100;
+    if (amt <= 0) return tex;
+    return pipe._pass(pipe.m.halftone, {
+      uTexture: tex,
+      uAmount: amt,
+      uSize:  p.get('effect.halfsize').value,
+      uAngle: p.get('effect.halfangle').value * Math.PI / 180,
+      uMode:  p.get('effect.halfmode').value,
+    });
+  },
+  duotone: (pipe, tex, p) => {
+    const amt = (p.get('effect.duotone')?.value ?? 0) / 100;
+    if (amt <= 0) return tex;
+    // Shadows keep some value and highlights are not blown to white: a ramp
+    // between two fully saturated ends would posterise the midtones.
+    pipe.m.duotone.uniforms.uDark.value.setHSL(p.get('effect.duohue1').value / 360, 0.85, 0.18);
+    pipe.m.duotone.uniforms.uLight.value.setHSL(p.get('effect.duohue2').value / 360, 0.85, 0.72);
+    return pipe._pass(pipe.m.duotone, { uTexture: tex, uAmount: amt });
+  },
 };
+
+/** Shared centre for the three warp effects (Polar / Wave / Lens). */
+function _warpCenter(pipe, p, mat) {
+  mat.uniforms.uCenter.value.set(
+    (p.get('effect.warpcx')?.value ?? 50) / 100,
+    (p.get('effect.warpcy')?.value ?? 50) / 100,
+  );
+}
 
 export class Pipeline {
   constructor(renderer, width, height) {
@@ -983,6 +1056,7 @@ export class Pipeline {
       this.m.bloomBlurV.uniforms.uResolution.value.set(w, h);
       this.m.pixelsort.uniforms.uResolution.value.set(w, h);
       this.m.sharpen.uniforms.uResolution.value.set(w, h);
+      this.m.halftone.uniforms.uResolution.value.set(w, h);
       this.m.feedback.uniforms.uResolution.value.set(w, h);
       this.m.interp.uniforms.uResolution.value.set(w, h);
       this._lastResW = w;
@@ -1280,6 +1354,39 @@ export class Pipeline {
         uSat:    { value: 1 },
         uBright: { value: 1 },
         uFlipH:  { value: 0 },
+      }),
+      polar: this._mat(POLAR, {
+        uMode:   { value: 0 },
+        uAmount: { value: 0 },
+        uRotate: { value: 0 },
+        uCenter: { value: new THREE.Vector2(0.5, 0.5) },
+        uAspect: { value: 1 },
+        uEdge:   { value: 1 },
+      }),
+      wave: this._mat(WAVE, {
+        uAmpX:  { value: 0 }, uAmpY:  { value: 0 },
+        uFreqX: { value: 12 }, uFreqY: { value: 12 },
+        uPhase: { value: 0 },
+        uEdge:  { value: 1 },
+      }),
+      lens: this._mat(LENS, {
+        uDistort: { value: 0 },
+        uTwirl:   { value: 0 },
+        uCenter:  { value: new THREE.Vector2(0.5, 0.5) },
+        uAspect:  { value: 1 },
+        uEdge:    { value: 1 },
+      }),
+      halftone: this._mat(HALFTONE, {
+        uAmount: { value: 0 },
+        uSize:   { value: 6 },
+        uAngle:  { value: 0 },
+        uMode:   { value: 0 },
+        uResolution: { value: new THREE.Vector2(1280, 720) },
+      }),
+      duotone: this._mat(DUOTONE, {
+        uAmount: { value: 0 },
+        uDark:   { value: new THREE.Color(0, 0, 0) },
+        uLight:  { value: new THREE.Color(1, 1, 1) },
       }),
       sharpen: this._mat(SHARPEN, {
         uAmount:     { value: 0 },

@@ -176,7 +176,13 @@ export function buildMappingPanels(ps, contextMenu) {
     // which is the whole reason it is safe to slice a group this way.
     'effect-geo-params':     pick('effect', ['pixelate', 'kaleidoscope', 'kalerot',
                                              'kalecx', 'kalecy', 'kaleedge',
-                                             'quadmirror', 'flip']),
+                                             'quadmirror', 'flip',
+                                             'polar', 'polarmode', 'polarrot',
+                                             'wavex', 'wavey', 'wavefx', 'wavefy',
+                                             'wavephase',
+                                             'lens', 'twirl',
+                                             // shared by Polar / Wave / Lens
+                                             'warpcx', 'warpcy', 'warpedge']),
     'effect-optics-params':  pick('effect', ['edge', 'edge_inv', 'edge_color',
                                              'rgbshift', 'rgbangle',
                                              'sharpen',
@@ -184,6 +190,9 @@ export function buildMappingPanels(ps, contextMenu) {
                                              'vignette', 'vigradius', 'vigcx', 'vigcy',
                                              'vighue', 'vigtint']),
     'effect-quant-params':   pick('effect', ['posterize', 'solarize', 'solarsoft',
+                                             'halftone', 'halfsize', 'halfangle',
+                                             'halfmode',
+                                             'duotone', 'duohue1', 'duohue2',
                                              'outhue', 'outsat', 'outbright']),
     'effect-texture-params': [
       ...pick('effect', ['grain', 'scanlines', 'scancount']),
@@ -1204,6 +1213,18 @@ const _FX_NODE_INFO = {
   whitebal:    { label: 'wbal',    isActive: p => (p.get('effect.wbtemp')?.value ?? 0) !== 0 || (p.get('effect.wbtint')?.value ?? 0) !== 0 },
   pixelsort:   { label: 'psort',   isActive: p => p.get('effect.pixelsort').value > 0 },
   grain:       { label: 'grain',   isActive: p => p.get('effect.grain').value > 0 || p.get('effect.scanlines').value > 0 },
+  // Every id in DEFAULT_FX_ORDER needs an entry here or it is invisible in the
+  // flow AND undraggable — the map is what makes a node exist for the reorder
+  // UI, not just what labels it. tests/audit-panel-coverage.mjs enforces it.
+  sharpen:     { label: 'sharp',   isActive: p => (p.get('effect.sharpen')?.value ?? 0) > 0 },
+  flip:        { label: 'flip',    isActive: p => (p.get('effect.flip')?.value ?? 0) > 0 },
+  outhsv:      { label: 'hsv',     isActive: p => (p.get('effect.outhue')?.value ?? 0) !== 0 || (p.get('effect.outsat')?.value ?? 100) !== 100 || (p.get('effect.outbright')?.value ?? 100) !== 100 },
+  interlace:   { label: 'ilace',   isActive: p => (p.get('output.interlace')?.value ?? 0) > 0 },
+  polar:       { label: 'polar',   isActive: p => (p.get('effect.polar')?.value ?? 0) > 0 },
+  wave:        { label: 'wave',    isActive: p => (p.get('effect.wavex')?.value ?? 0) > 0 || (p.get('effect.wavey')?.value ?? 0) > 0 },
+  lens:        { label: 'lens',    isActive: p => (p.get('effect.lens')?.value ?? 0) !== 0 || (p.get('effect.twirl')?.value ?? 0) !== 0 },
+  halftone:    { label: 'half',    isActive: p => (p.get('effect.halftone')?.value ?? 0) > 0 },
+  duotone:     { label: 'duo',     isActive: p => (p.get('effect.duotone')?.value ?? 0) > 0 },
 };
 
 export class SignalPath {
@@ -1232,6 +1253,9 @@ export class SignalPath {
       'feedback.decay','feedback.blur','feedback.hue','feedback.mirror',
       'output.colorshift','output.fade',
       'effect.pixelate','effect.edge','effect.rgbshift','effect.kaleidoscope','effect.posterize','effect.solarize',
+      'effect.sharpen','effect.flip','effect.outhue','effect.outsat','effect.outbright','output.interlace',
+      'effect.polar','effect.wavex','effect.wavey','effect.lens','effect.twirl',
+      'effect.halftone','effect.duotone',
       'effect.vignette','effect.bloom','effect.pixelsort','effect.grain','effect.scanlines','effect.strobe',
       'effect.quadmirror','effect.lvblack','effect.lvwhite','effect.lvgamma',
       'effect.lutamount','effect.wbtemp','effect.wbtint',

@@ -1749,6 +1749,168 @@ export const FILM_GRAIN = /* glsl */ `
   }
 `;
 
+// ─── Polar ────────────────────────────────────────────────────────────────────
+// Maps the frame between rectangular and polar coordinates. Cheap, and it turns
+// every other effect in the chain into a different one — a horizontal scanline
+// becomes a ring, a vertical wipe becomes a sweep.
+// uMode 0: rect→polar (the picture wraps around the centre)
+// uMode 1: polar→rect (the inverse — unrolls a radial picture into a strip)
+export const POLAR = /* glsl */ `
+  uniform sampler2D uTexture;
+  uniform int   uMode;
+  uniform float uAmount;   // 0..1 blend with the untransformed picture
+  uniform float uRotate;   // turns
+  uniform vec2  uCenter;
+  uniform float uAspect;
+  uniform int   uEdge;
+  varying vec2 vUv;
+
+${FEEDBACK_EDGE_GLSL}
+
+  void main() {
+    vec2 src = vUv;
+    vec2 dst;
+    float TAU = 6.28318530718;
+
+    if (uMode == 0) {
+      // rect → polar: x becomes angle, y becomes radius.
+      vec2 d = (src - uCenter) * vec2(uAspect, 1.0);
+      float a = atan(d.y, d.x) / TAU + 0.5 + uRotate;
+      float r = length(d) * 2.0;
+      dst = vec2(fract(a), clamp(r, 0.0, 1.0));
+    } else {
+      // polar → rect: read the picture as (angle, radius) and lay it flat.
+      float a = (src.x + uRotate) * TAU;
+      float r = src.y * 0.5;
+      dst = vec2(cos(a), sin(a)) * r / vec2(uAspect, 1.0) + uCenter;
+    }
+
+    vec4 warped = fbSample(uTexture, dst, uEdge);
+    gl_FragColor = mix(texture2D(uTexture, src), warped, uAmount);
+  }
+`;
+
+// ─── Wave ─────────────────────────────────────────────────────────────────────
+// Sine displacement on both axes. The oldest gesture in the instrument's
+// lineage, and the one that most rewards an LFO on its phase.
+export const WAVE = /* glsl */ `
+  uniform sampler2D uTexture;
+  uniform float uAmpX;    // UV displacement
+  uniform float uAmpY;
+  uniform float uFreqX;
+  uniform float uFreqY;
+  uniform float uPhase;   // radians
+  uniform int   uEdge;
+  varying vec2 vUv;
+
+${FEEDBACK_EDGE_GLSL}
+
+  void main() {
+    // Each axis is driven by the OTHER axis's coordinate — displacing x by
+    // sin(x) only stretches the picture along its own direction and reads as a
+    // smear. Driving x by sin(y) is what makes it a wave you can see.
+    vec2 uv = vUv;
+    uv.x += sin(vUv.y * uFreqX + uPhase) * uAmpX;
+    uv.y += sin(vUv.x * uFreqY + uPhase) * uAmpY;
+    gl_FragColor = fbSample(uTexture, uv, uEdge);
+  }
+`;
+
+// ─── Halftone ─────────────────────────────────────────────────────────────────
+// Ordered dot screen. Pairs with Post.Levels, and it is the one effect here that
+// reads BETTER on a projector than on a monitor.
+export const HALFTONE = /* glsl */ `
+  uniform sampler2D uTexture;
+  uniform float uAmount;
+  uniform float uSize;      // dot pitch in pixels
+  uniform float uAngle;     // screen angle in radians
+  uniform int   uMode;      // 0 mono, 1 per-channel (colour separation)
+  uniform vec2  uResolution;
+  varying vec2 vUv;
+
+  float luma(vec3 c) { return dot(c, vec3(0.2126, 0.7152, 0.0722)); }
+
+  // Distance from the centre of the nearest cell, 0 at centre, ~1 at corner.
+  float cellDist(vec2 pos, float ang) {
+    float ca = cos(ang), sa = sin(ang);
+    vec2 r = vec2(ca * pos.x - sa * pos.y, sa * pos.x + ca * pos.y);
+    return length(fract(r) - 0.5) * 2.0;
+  }
+
+  void main() {
+    vec4 c = texture2D(uTexture, vUv);
+    if (uAmount <= 0.0) { gl_FragColor = c; return; }
+    vec2 pos = vUv * uResolution / max(uSize, 1.0);
+
+    vec3 dots;
+    if (uMode == 1) {
+      // Classic separation: each channel gets its own screen angle, which is
+      // what stops the three grids beating against each other into moiré.
+      dots = vec3(
+        step(cellDist(pos, uAngle),              c.r * 1.4),
+        step(cellDist(pos, uAngle + 0.4014),     c.g * 1.4),
+        step(cellDist(pos, uAngle + 0.8029),     c.b * 1.4)
+      );
+    } else {
+      dots = vec3(step(cellDist(pos, uAngle), luma(c.rgb) * 1.4));
+    }
+    gl_FragColor = vec4(mix(c.rgb, dots, uAmount), c.a);
+  }
+`;
+
+// ─── Duotone ──────────────────────────────────────────────────────────────────
+// Remaps luminance through a two-colour ramp. Not a tint: shadows go to one
+// hue and highlights to the other, which is why it survives being fed back.
+export const DUOTONE = /* glsl */ `
+  uniform sampler2D uTexture;
+  uniform float uAmount;
+  uniform vec3  uDark;
+  uniform vec3  uLight;
+  varying vec2 vUv;
+  float luma(vec3 c) { return dot(c, vec3(0.2126, 0.7152, 0.0722)); }
+  void main() {
+    vec4 c = texture2D(uTexture, vUv);
+    if (uAmount <= 0.0) { gl_FragColor = c; return; }
+    vec3 mapped = mix(uDark, uLight, luma(c.rgb));
+    gl_FragColor = vec4(mix(c.rgb, mapped, uAmount), c.a);
+  }
+`;
+
+// ─── Lens ─────────────────────────────────────────────────────────────────────
+// Barrel/pincushion on one signed control, plus twirl. With Scanlines it is a
+// CRT; with Halftone it is a printed page photographed off one.
+export const LENS = /* glsl */ `
+  uniform sampler2D uTexture;
+  uniform float uDistort;  // <0 pincushion, 0 none, >0 barrel
+  uniform float uTwirl;    // turns at the rim, falling to 0 at the centre
+  uniform vec2  uCenter;
+  uniform float uAspect;
+  uniform int   uEdge;
+  varying vec2 vUv;
+
+${FEEDBACK_EDGE_GLSL}
+
+  void main() {
+    vec2 d = (vUv - uCenter) * vec2(uAspect, 1.0);
+    float r = length(d);
+
+    // Twirl first: rotate by an amount that falls off with radius, so the
+    // centre stays put and the rim shears round it.
+    if (uTwirl != 0.0) {
+      float a = uTwirl * 6.28318530718 * (1.0 - clamp(r * 2.0, 0.0, 1.0));
+      float ca = cos(a), sa = sin(a);
+      d = vec2(ca * d.x - sa * d.y, sa * d.x + ca * d.y);
+    }
+
+    // Then the radial polynomial. r*r keeps the centre linear, which is what
+    // makes a small amount read as a lens rather than as a zoom.
+    d *= 1.0 + uDistort * r * r;
+
+    vec2 uv = d / vec2(uAspect, 1.0) + uCenter;
+    gl_FragColor = fbSample(uTexture, uv, uEdge);
+  }
+`;
+
 // ─── Feedback Rotate/Zoom ─────────────────────────────────────────────────────
 // Applies a centred rotation and/or zoom to the feedback (prev) texture
 // before it is blended, creating spiral and vortex effects.
