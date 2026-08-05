@@ -39,7 +39,7 @@
  */
 
 import * as THREE from 'three';
-import { VERT, MOTION_MATTE, MOTION_BG, PASSTHROUGH } from '../shaders/index.js';
+import { VERT, MOTION_MATTE, MOTION_BG, PASSTHROUGH, BLOOM_BLUR } from '../shaders/index.js';
 
 export class MotionExtract {
   constructor(renderer, width, height) {
@@ -67,6 +67,21 @@ export class MotionExtract {
       vertexShader: VERT, fragmentShader: PASSTHROUGH,
       depthTest: false, depthWrite: false,
     });
+    // Reuses the bloom kernel rather than growing a second Gaussian. Its taps
+    // step by `uDirection` texels, so passing (r, 0) and (0, r) widens the
+    // blur — a scaled 9-tap instead of a longer one, which is the right trade
+    // here because this is noise suppression, not a look.
+    this._blurMat = new THREE.ShaderMaterial({
+      uniforms: {
+        uTexture:    { value: null },
+        uDirection:  { value: new THREE.Vector2(1, 0) },
+        uResolution: { value: new THREE.Vector2(1, 1) },
+      },
+      vertexShader: VERT, fragmentShader: BLOOM_BLUR,
+      depthTest: false, depthWrite: false,
+    });
+    // Allocated on first use: a project that never smooths pays no VRAM.
+    this._blurRT = null;
 
     this._geom  = new THREE.PlaneGeometry(2, 2);
     this._scene = new THREE.Scene();
@@ -115,15 +130,25 @@ export class MotionExtract {
    * @param {number} opts.gain      difference multiplier
    * @param {number} opts.bgSeconds background half-life; 0 = frame differencing
    * @param {number} opts.trailSeconds  time until a trail is visually gone; 0 = none
+   * @param {number} opts.blur      pre-blur radius in texels; 0 = off
    */
-  render(srcTex, dt, { gain, bgSeconds, trailSeconds }) {
+  render(srcTex, dt, { gain, bgSeconds, trailSeconds, blur }) {
     if (!srcTex) return;
 
     const cur  = this._cur;
     const next = cur ^ 1;
 
+    // Smooth the source BEFORE anything looks at it. Sensor grain is
+    // high-frequency and this is the only place it can be removed for free:
+    // downstream it has already been multiplied by gain and accumulated into
+    // the trail, and neither of those is reversible. It also fills interiors —
+    // a blurred moving object differs from the blurred background across its
+    // whole area rather than only at its edges, so silhouettes come out solid
+    // instead of hollow.
+    const src = blur > 0 ? this._blurred(srcTex, blur) : srcTex;
+
     if (!this._primed) {
-      this._copyMat.uniforms.uTexture.value = srcTex;
+      this._copyMat.uniforms.uTexture.value = src;
       this._blit(this._copyMat, this._bg[cur]);
       this._blit(this._copyMat, this._bg[next]);
       this._primed = true;
@@ -142,7 +167,11 @@ export class MotionExtract {
     const adapt = bgSeconds    > 0 ? 1 - Math.pow(0.5,  step / bgSeconds)    : 1;
     const decay = trailSeconds > 0 ?     Math.pow(0.02, step / trailSeconds) : 0;
 
-    this._matteMat.uniforms.uCurrent.value = srcTex;
+    // `src`, not `srcTex`. The matte, the background update and the priming
+    // blit must ALL see the same processed frame — comparing a blurred current
+    // against an unblurred background is a constant mismatch at every edge in
+    // the picture, which reads as permanent motion that no setting turns off.
+    this._matteMat.uniforms.uCurrent.value = src;
     this._matteMat.uniforms.uBg.value      = this._bg[cur].texture;
     this._matteMat.uniforms.uTrail.value   = this._trail[cur].texture;
     this._matteMat.uniforms.uGain.value    = gain;
@@ -151,12 +180,36 @@ export class MotionExtract {
 
     // Background update reads the SAME state the matte just compared against,
     // so the two agree on what "the background" was this frame.
-    this._bgMat.uniforms.uCurrent.value = srcTex;
+    this._bgMat.uniforms.uCurrent.value = src;
     this._bgMat.uniforms.uBg.value      = this._bg[cur].texture;
     this._bgMat.uniforms.uAdapt.value   = adapt;
     this._blit(this._bgMat, this._bg[next]);
 
     this._cur = next;
+  }
+
+  /**
+   * Separable Gaussian, horizontal then vertical, returning the blurred
+   * texture. Its two targets are its own and are allocated on first use, so
+   * they neither disturb the background/trail ping-pong nor cost anything in a
+   * project that leaves Smoothness at zero.
+   */
+  _blurred(srcTex, radius) {
+    if (!this._blurRT) {
+      this._blurRT = [this._makeTarget(), this._makeTarget()];
+    }
+    const u = this._blurMat.uniforms;
+    u.uResolution.value.set(this._w, this._h);
+
+    u.uTexture.value = srcTex;
+    u.uDirection.value.set(radius, 0);
+    this._blit(this._blurMat, this._blurRT[0]);
+
+    u.uTexture.value = this._blurRT[0].texture;
+    u.uDirection.value.set(0, radius);
+    this._blit(this._blurMat, this._blurRT[1]);
+
+    return this._blurRT[1].texture;
   }
 
   /** The matte. Greyscale; the keyer reads its luminance. */
@@ -168,7 +221,7 @@ export class MotionExtract {
     if (w === this._w && h === this._h) return;
     this._w = w;
     this._h = h;
-    for (const t of [...this._bg, ...this._trail]) t.setSize(w, h);
+    for (const t of [...this._bg, ...this._trail, ...(this._blurRT ?? [])]) t.setSize(w, h);
     this._primed = false;           // history is meaningless at a new size
   }
 
@@ -176,10 +229,11 @@ export class MotionExtract {
   reset() { this._primed = false; }
 
   dispose() {
-    for (const t of [...this._bg, ...this._trail]) t.dispose();
+    for (const t of [...this._bg, ...this._trail, ...(this._blurRT ?? [])]) t.dispose();
     this._geom.dispose();
     this._matteMat.dispose();
     this._bgMat.dispose();
     this._copyMat.dispose();
+    this._blurMat.dispose();
   }
 }

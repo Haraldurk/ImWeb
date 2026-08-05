@@ -4469,6 +4469,30 @@ export function registerCoreParameters(ps) {
     type: PARAM_TYPE.CONTINUOUS,
     min: 0, max: 10, value: 0.6, step: 0.05,
   });
+  // Blur applied to the SOURCE, before the comparison — the only place sensor
+  // grain can be removed for free. Downstream it has already been multiplied by
+  // Sensitivity and accumulated into the trail, and neither is reversible.
+  // It also fills interiors: a blurred moving object differs from the blurred
+  // background across its whole area rather than only at its edges, so
+  // silhouettes come out solid instead of hollow.
+  //
+  // Brightness and contrast were considered here and deliberately left out.
+  // Brightness shifts the current frame and the background by the SAME amount —
+  // the background is an average of past frames — so it cancels in
+  // |cur - bg| and would be a control that does nothing at every setting.
+  // Contrast scales both, giving k·|cur - bg|, which is exactly what
+  // Sensitivity already does; the two would multiply and you would have to
+  // reason about the product to predict anything.
+  //
+  // Default 0 reproduces the pre-Smoothness picture bit for bit. 1–2 is the
+  // useful range on a live camera.
+  ps.register({
+    id: "motion.blur",
+    label: "Smoothness",
+    group: "motion",
+    type: PARAM_TYPE.CONTINUOUS,
+    min: 0, max: 4, value: 0, step: 0.05,
+  });
 
   // ── Particles ─────────────────────────────────────────────────────────────
   ps.register({
