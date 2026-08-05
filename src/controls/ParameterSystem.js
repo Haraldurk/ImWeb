@@ -521,6 +521,9 @@ export const SOURCE_DEFS = [
   // true end; the indirect capture entries that sat at 31 move with it, kept in
   // register by the base stamp in migrateCaptureBase().
   { key: "rgbdelay",  label: "RGB Delay" }, // 31
+  // 32 — the motion matte. White where the picture moves, black where it does
+  // not; meant for the keyer's key source rather than for looking at directly.
+  { key: "motion",    label: "Motion"    }, // 32
 ];
 
 /** Source indices of the three mix buses, in evaluation order (1 → 2 → 3). */
@@ -547,7 +550,7 @@ export const SOURCE_DISPLAY_ORDER = [
                                 7 /* Draw */, 6 /* 3D Scene */, 20 /* 3D Depth */,
                                 23 /* Analog */, 29 /* Rutt-Etra */,
   { header: "From the Signal" }, 8 /* Output */, 13 /* Delay */, 31 /* RGB Delay */,
-                                24 /* TimeDisp */,
+                                32 /* Motion */, 24 /* TimeDisp */,
                                 15 /* SlitScan */, 17 /* Seq1 */, 18 /* Seq2 */,
                                 19 /* Seq3 */, 14 /* Scope */, 22 /* VWarp */,
   { header: "Mix" },            26 /* Mix 1 */, 27 /* Mix 2 */, 28 /* Mix 3 */,
@@ -922,6 +925,24 @@ export function registerCoreParameters(ps) {
     group: "keyer",
     type: PARAM_TYPE.TOGGLE,
     value: 0,
+  });
+  // What ExtKey keys on. Until now the external key was hardwired to the
+  // DisplaceSrc texture, which meant keying externally COST you displacement —
+  // one slot doing two unrelated jobs. Now it is a free selector.
+  //
+  // Default is "DS Src", the old hardwiring, so every saved state, bank and
+  // .imweb project keys exactly as it did before this parameter existed.
+  // Options are CAPTURE_SOURCES rather than SOURCES so it can also follow
+  // whatever a layer is set to, and because that registration is what puts it
+  // in CAPTURE_PARAM_IDS — the capture-base migration is automatic for any
+  // param declared against that list, and silently absent for one that is not.
+  ps.register({
+    id: "keyer.keysrc",
+    label: "Key src",
+    group: "keyer",
+    type: PARAM_TYPE.SELECT,
+    options: CAPTURE_SOURCES,
+    value: CAPTURE_INDIRECT_BASE + 2,   // "DS Src"
   });
   ps.register({
     id: "keyer.and_displace",
@@ -4385,6 +4406,93 @@ export function registerCoreParameters(ps) {
       step: 1,
     });
   }
+
+  // ── Motion Extraction (source 32) ───────────────────────────────────────────
+  // A matte: white where the source moves, black where it does not. Built to be
+  // routed into the keyer's key source, not to be looked at directly.
+  //
+  // There is deliberately no threshold and no softness here. The keyer already
+  // has White / Black / Softness and this matte is its input, so a second set
+  // would be two controls doing one job. What IS here is gain, because a raw
+  // frame-to-frame difference is a few percent and would otherwise sit at the
+  // very bottom of the keyer's range.
+  //
+  // ONE THING TO KNOW when routing this to the keyer: the keyer passes a BAND —
+  // `alpha = smoothstep(black..) * (1 - smoothstep(white..))` — so it rejects
+  // the very bright as well as the very dark. At the default KeyLevelWhite of
+  // 80% a fully lit matte is keyed OUT, which looks like the brightest motion
+  // being the only thing that fails to show. Set KeyLevelWhite to 100% and let
+  // KeyLevelBlack alone do the cutting. That is a property of the keyer, not of
+  // this matte, which is why it is documented rather than worked around here.
+  ps.register({
+    id: "motion.source",
+    label: "Motion src",
+    group: "motion",
+    type: PARAM_TYPE.SELECT,
+    options: CAPTURE_SOURCES,
+    value: 0,                        // Camera — the case this was built for
+  });
+  // Ranges narrowed after the first real-camera session: 50 and 30 were both
+  // well past the useful end, which wastes most of the knob's travel on
+  // settings nobody reaches and leaves the part that matters too coarse to
+  // dial. Narrowing a max CLAMPS any saved value above it, so this is a change
+  // that is free now — the parameters have never shipped — and would silently
+  // rewrite people's looks once they had.
+  ps.register({
+    id: "motion.gain",
+    label: "Sensitivity",
+    group: "motion",
+    type: PARAM_TYPE.CONTINUOUS,
+    min: 1, max: 20, value: 8, step: 0.1,
+  });
+  // Background half-life, in SECONDS. This one control spans both algorithms:
+  // long values give a stable background estimate, so a subject who stops
+  // moving STAYS in the matte; 0 makes the background exactly the previous
+  // frame, which is frame differencing, where anything that stops vanishes.
+  // It is one knob rather than a mode select because those are the two ends of
+  // a continuum the shader already spans — and because the interesting settings
+  // are in between.
+  ps.register({
+    id: "motion.bgtime",
+    label: "Bg adapt",
+    group: "motion",
+    type: PARAM_TYPE.CONTINUOUS,
+    min: 0, max: 10, value: 4, step: 0.05,
+  });
+  // Time until a trail is visually gone, in seconds — `rutt.rise`/`rutt.fall`
+  // convention. Frame counts would mean different things at different frame
+  // rates, and dt is not trustworthy here.
+  ps.register({
+    id: "motion.trail",
+    label: "Trail (s)",
+    group: "motion",
+    type: PARAM_TYPE.CONTINUOUS,
+    min: 0, max: 10, value: 0.6, step: 0.05,
+  });
+  // Blur applied to the SOURCE, before the comparison — the only place sensor
+  // grain can be removed for free. Downstream it has already been multiplied by
+  // Sensitivity and accumulated into the trail, and neither is reversible.
+  // It also fills interiors: a blurred moving object differs from the blurred
+  // background across its whole area rather than only at its edges, so
+  // silhouettes come out solid instead of hollow.
+  //
+  // Brightness and contrast were considered here and deliberately left out.
+  // Brightness shifts the current frame and the background by the SAME amount —
+  // the background is an average of past frames — so it cancels in
+  // |cur - bg| and would be a control that does nothing at every setting.
+  // Contrast scales both, giving k·|cur - bg|, which is exactly what
+  // Sensitivity already does; the two would multiply and you would have to
+  // reason about the product to predict anything.
+  //
+  // Default 0 reproduces the pre-Smoothness picture bit for bit. 1–2 is the
+  // useful range on a live camera.
+  ps.register({
+    id: "motion.blur",
+    label: "Smoothness",
+    group: "motion",
+    type: PARAM_TYPE.CONTINUOUS,
+    min: 0, max: 4, value: 0, step: 0.05,
+  });
 
   // ── Particles ─────────────────────────────────────────────────────────────
   ps.register({
