@@ -188,27 +188,45 @@ check(
 );
 
 // The arithmetic that makes 8-bit insufficient, simulated rather than asserted
-// from a comment, so this still means something if the constants move.
+// from a comment — and with the decay base READ FROM THE SOURCE, so that
+// changing the convention cannot leave this test quietly modelling a formula
+// the engine no longer uses. (It did exactly that once: the base moved from
+// 0.5 to 0.02 and every assertion here still passed, against the old curve.)
 const DT = 1 / 60, ULP8 = 1 / 255, ULP32 = 6e-8;
-const adaptFor = (T) => 1 - Math.pow(0.5, DT / T);
 const BG_MAX = 10;                       // motion.bgtime max, seconds
+const TYPICAL_DIFF = 0.2;                // a real scene change, not full-scale
 
-const worst = adaptFor(BG_MAX) * 1.0;    // full-scale difference, slowest setting
+const baseMatch = motionSrc.match(/1\s*-\s*Math\.pow\(([\d.]+),\s*step\s*\/\s*bgSeconds\)/);
+check('background decay base found in MotionExtract', !!baseMatch,
+  'expected `1 - Math.pow(<base>, step / bgSeconds)`');
+const BASE = baseMatch ? Number(baseMatch[1]) : NaN;
+
+const trailBase = motionSrc.match(/Math\.pow\(([\d.]+),\s*step\s*\/\s*trailSeconds\)/);
 check(
-  `slowest setting (${BG_MAX}s) is below one 8-bit level — 8-bit WOULD stall ` +
-  `(${worst.toExponential(2)} < ${ULP8.toExponential(2)})`,
+  `background and trail use the SAME base (${BASE} / ${trailBase?.[1]}) — one meaning of "seconds"`,
+  !!trailBase && Number(trailBase[1]) === BASE,
+  'a half-life next to a time-to-gone puts two different meanings of the same ' +
+  'unit in one panel; at Bg adapt 4 that left a ghost 50% visible after 4s.',
+);
+
+const adaptFor = (T) => 1 - Math.pow(BASE, DT / T);
+const worst = adaptFor(BG_MAX) * TYPICAL_DIFF;
+check(
+  `slowest setting (${BG_MAX}s) on a ${TYPICAL_DIFF} difference falls below one ` +
+  `8-bit level — 8-bit WOULD stall (${worst.toExponential(2)} < ${ULP8.toExponential(2)})`,
   worst < ULP8,
   'if this no longer holds, 8-bit became viable and this check should say so.',
 );
 check(
-  `slowest setting clears float32 resolution with margin ` +
+  `the same step clears float32 resolution with margin ` +
   `(${worst.toExponential(2)} > ${ULP32.toExponential(2)})`,
   worst > ULP32 * 100,
 );
 
-// And the boundary itself: above this, an 8-bit background cannot move at all.
+// And the boundary itself: above this, an 8-bit background stops tracking a
+// realistic scene change.
 let wall = 0.01;
-while (adaptFor(wall) >= ULP8) wall += 0.01;
+while (adaptFor(wall) * TYPICAL_DIFF >= ULP8) wall += 0.01;
 check(
   `the 8-bit wall sits at ~${wall.toFixed(2)}s, well inside the 0-${BG_MAX}s range`,
   wall < BG_MAX,
