@@ -155,5 +155,65 @@ if (failures) {
   );
 }
 
+// ── The same lesson, second occurrence: 8-bit accumulators ──────────────────
+// This audit was written for a HALF-FLOAT slew, and the rule it was protecting
+// turned out to be narrower than the lesson. Motion Extraction repeated it in
+// an 8-BIT buffer, which is 8x coarser: `mix(bg, cur, adapt)` with a `Bg adapt`
+// of 4 s gives a per-frame step of 2.9e-3, below one 8-bit level (3.9e-3), so
+// the background froze on the frame it was primed with and never moved again.
+// Above ~2.95 s NOTHING could move it, for any difference at all.
+//
+// The rule, stated properly: an exponential accumulator needs a buffer whose
+// resolution is finer than its smallest per-frame step. Assert the storage,
+// and assert the arithmetic that decides what storage is sufficient.
+console.log('\nexponential accumulators are not stored in 8-bit');
+
+const motionSrc = readFileSync(resolve(root, 'src/inputs/MotionExtract.js'), 'utf8');
+
+check(
+  'MotionExtract allocates its accumulators as FloatType',
+  /accumulator\s*\?\s*THREE\.FloatType\s*:\s*THREE\.UnsignedByteType/.test(motionSrc),
+  'the background and trail integrate over time; UnsignedByteType freezes them.',
+);
+check(
+  'background and trail both request the accumulator precision',
+  /_bg\s*=\s*\[this\._makeTarget\(true\),\s*this\._makeTarget\(true\)\]/.test(motionSrc) &&
+  /_trail\s*=\s*\[this\._makeTarget\(true\),\s*this\._makeTarget\(true\)\]/.test(motionSrc),
+);
+check(
+  'float accumulators use NearestFilter',
+  /accumulator\s*\?\s*THREE\.NearestFilter/.test(motionSrc),
+  'RGBA32F is not filterable without OES_texture_float_linear and samples ' +
+  'black where it is missing; these are sampled 1:1 so nearest is correct.',
+);
+
+// The arithmetic that makes 8-bit insufficient, simulated rather than asserted
+// from a comment, so this still means something if the constants move.
+const DT = 1 / 60, ULP8 = 1 / 255, ULP32 = 6e-8;
+const adaptFor = (T) => 1 - Math.pow(0.5, DT / T);
+const BG_MAX = 10;                       // motion.bgtime max, seconds
+
+const worst = adaptFor(BG_MAX) * 1.0;    // full-scale difference, slowest setting
+check(
+  `slowest setting (${BG_MAX}s) is below one 8-bit level — 8-bit WOULD stall ` +
+  `(${worst.toExponential(2)} < ${ULP8.toExponential(2)})`,
+  worst < ULP8,
+  'if this no longer holds, 8-bit became viable and this check should say so.',
+);
+check(
+  `slowest setting clears float32 resolution with margin ` +
+  `(${worst.toExponential(2)} > ${ULP32.toExponential(2)})`,
+  worst > ULP32 * 100,
+);
+
+// And the boundary itself: above this, an 8-bit background cannot move at all.
+let wall = 0.01;
+while (adaptFor(wall) >= ULP8) wall += 0.01;
+check(
+  `the 8-bit wall sits at ~${wall.toFixed(2)}s, well inside the 0-${BG_MAX}s range`,
+  wall < BG_MAX,
+  'the range would have to end below the wall for 8-bit to be safe.',
+);
+
 console.log(failures ? `\n${failures} FAILURE(S)\n` : '\nAll half-float slew checks passed.\n');
 process.exit(failures ? 1 : 0);
