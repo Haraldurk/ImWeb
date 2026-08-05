@@ -272,7 +272,7 @@ The state grid holds 32 thumbnail tiles (2 rows × 16 columns). Tiles show auto-
 | Mode | How |
 |------|-----|
 | Main canvas | default |
-| Fullscreen | `Cmd+F` or double-click |
+| Fullscreen | `F` or double-click |
 | Second screen | ⊡ button → popup on any display |
 | Ghost mode | ◫ — dims main; second screen stays bright |
 | Output spy | ◧ / `Shift+V` — small 160×90 preview |

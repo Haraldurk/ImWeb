@@ -1882,7 +1882,7 @@ export const DUOTONE = /* glsl */ `
 export const LENS = /* glsl */ `
   uniform sampler2D uTexture;
   uniform float uDistort;  // <0 pincushion, 0 none, >0 barrel
-  uniform float uTwirl;    // turns at the rim, falling to 0 at the centre
+  uniform float uTwirl;    // turns at the centre, falling to 0 by half-radius
   uniform vec2  uCenter;
   uniform float uAspect;
   uniform int   uEdge;
@@ -1895,7 +1895,8 @@ ${FEEDBACK_EDGE_GLSL}
     float r = length(d);
 
     // Twirl first: rotate by an amount that falls off with radius, so the
-    // centre stays put and the rim shears round it.
+    // centre winds up and the rim stays put. The falloff reaches zero at
+    // r = 0.5, not at the frame edge, so the corners are never twisted.
     if (uTwirl != 0.0) {
       float a = uTwirl * 6.28318530718 * (1.0 - clamp(r * 2.0, 0.0, 1.0));
       float ca = cos(a), sa = sin(a);

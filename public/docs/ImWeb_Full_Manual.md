@@ -96,7 +96,7 @@ Open Chrome at `localhost:5173`. On first load:
 | ◫ | — | Ghost mode — shrink main output to a thumbnail |
 | ⌨ | — | Keyboard lock — block letter/number shortcuts so typing in fields works |
 | ◧ | Shift+V | Toggle output spy (small preview) |
-| ⛶ | Cmd+F | Fullscreen |
+| ⛶ | F | Fullscreen (or double-click the canvas) |
 | ⏺ | — | Start/stop WebM recording |
 | 📷 | — | Frame capture — pause render and export PNG frames |
 | 𝔸 | N | AI Narrator |
