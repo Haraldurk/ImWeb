@@ -783,9 +783,23 @@ ImWeb</textarea
                         <div class="section-header">Blend &amp; Feedback</div>
                         <div id="blend-params"></div>
                     </div>
+                    <!-- Effects: one section, subsections by KIND of effect.
+                         Same treatment as Metaballs and Rutt-Etra, and for the
+                         same reason — one panel, too many rows to read as a
+                         flat list. Container ids are what UI.js keys on; the
+                         labels and the order live here. -->
                     <div class="panel-section">
                         <div class="section-header">Effects</div>
-                        <div id="effect-params"></div>
+                        <div class="subsection-header">Geometry</div>
+                        <div id="effect-geo-params"></div>
+                        <div class="subsection-header">Optics</div>
+                        <div id="effect-optics-params"></div>
+                        <div class="subsection-header">Quantise</div>
+                        <div id="effect-quant-params"></div>
+                        <div class="subsection-header">Texture</div>
+                        <div id="effect-texture-params"></div>
+                        <div class="subsection-header">Time</div>
+                        <div id="effect-time-params"></div>
                     </div>
                     <div class="panel-section">
                         <div class="section-header">LUT / Colour Grade</div>
@@ -815,6 +829,14 @@ ImWeb</textarea
                             >
                         </div>
                         <div id="lut-params"></div>
+                        <!-- Levels and white balance are colour grade and now
+                             live under the heading that says so. They spent
+                             three releases in the Effects list while this
+                             section held one row. -->
+                        <div class="subsection-header">Levels</div>
+                        <div id="grade-levels-params"></div>
+                        <div class="subsection-header">White Balance</div>
+                        <div id="grade-wb-params"></div>
                     </div>
                     <!-- Live GLSL (merged from former GLSL tab; wrapper id kept for JS) -->
                         <div class="panel-section">
