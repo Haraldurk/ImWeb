@@ -4182,6 +4182,33 @@ export function registerCoreParameters(ps) {
   });
 
   // ── Effects ───────────────────────────────────────────────────────────────
+  // ── Master ────────────────────────────────────────────────────────────────
+  // Both are real parameters rather than panel buttons, so they can be MIDI
+  // mapped, driven by a controller and captured by a Display State like
+  // everything else. A bypass you cannot reach from a controller is not much
+  // use to anyone performing.
+  //
+  // Default 1 = effects on, which is what every existing patch already does.
+  // A state saved before this param existed simply has no value for it and
+  // lands on the default, so nothing switches itself off on load.
+  ps.register({
+    id: "effect.enable",
+    label: "All FX",
+    group: "effect",
+    type: PARAM_TYPE.TOGGLE,
+    value: 1,
+    feedbackVisible: true,
+  });
+  // Resets every effect parameter to its registered default. It does NOT touch
+  // the chain ORDER: the order is an arrangement you built on purpose, and
+  // losing it because you cleared some slider values would be a nasty surprise.
+  ps.register({
+    id: "effect.clearall",
+    label: "Clear All FX",
+    group: "effect",
+    type: PARAM_TYPE.TRIGGER,
+  });
+
   ps.register({
     id: "effect.pixelate",
     label: "Pixelate",

@@ -9,6 +9,15 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
 ## [Unreleased]
 
 ### Added
+- **All FX** — a master bypass for the whole post-FX chain. Not a mute: every
+  parameter keeps its value and the chain keeps its order, so switching back on
+  returns exactly the look you left. It skips the loop rather than each handler,
+  so a bypassed chain costs nothing. A real parameter, not a panel button, so it
+  is MIDI-mappable, controller-drivable and captured by Display States.
+- **Clear All FX** — resets every effect parameter to its default. It does *not*
+  touch the chain order (an arrangement you built on purpose) or the master
+  toggle (clearing the effects and leaving them bypassed would look like the
+  reset had failed).
 - **Five new effects.** All default to off.
   - **Polar** — maps the frame between rectangular and polar coordinates, in
     both directions. It turns every other effect in the chain into a different
@@ -57,6 +66,11 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
 - **Film grain crawled instead of scintillating** — the seed offset the same
   amount on both axes, sliding one fixed noise field diagonally rather than
   drawing a new one each frame.
+- **The signal-flow display claimed a LUT pass with no LUT loaded** — the node
+  appeared whenever LUT Amount was above zero, which is true out of the box,
+  while `_FX.lut` returns immediately without a `.cube`. It now asks the
+  pipeline. The flow also listed every effect while the chain was bypassed;
+  it shows a single `fx bypass` node instead.
 - **The Effects panel was 29 rows in registration order**, mixing geometry,
   colour, texture and timing. It is five subsections now — Geometry, Optics,
   Quantise, Texture, Time — and Levels / White Balance move to the **LUT /

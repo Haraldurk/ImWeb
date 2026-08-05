@@ -467,6 +467,19 @@ export class Pipeline {
     this._lutActive = true;
   }
 
+  /**
+   * Is a .cube actually loaded and armed?
+   *
+   * Public because the signal-flow display needs the same answer _FX.lut acts
+   * on. It used to draw a "lut" node whenever LUT Amount was above zero, which
+   * is true out of the box with no file loaded — so the flow claimed a pass
+   * that returns immediately. Exposing the state beats copying the private
+   * two-field check into the UI, where it would drift.
+   */
+  get lutLoaded() {
+    return !!(this._lutTex && this._lutActive);
+  }
+
   clearLUT() {
     this._lutTex?.dispose();
     this._lutTex    = null;
@@ -804,9 +817,17 @@ export class Pipeline {
     }
 
     // ── Post-FX chain (reorderable) ───────────────────────────────────────
+    // effect.enable is a master bypass, not a mute: every parameter keeps its
+    // value, the chain keeps its order, and switching back on returns exactly
+    // the look you left. It skips the LOOP rather than each handler, so a
+    // bypassed chain costs nothing at all — which is the point of having it on
+    // a controller. Scope is the post-FX chain only: Blend & Feedback and the
+    // colour shift are their own section and are not touched.
     let postOut = shifted;
-    for (const fx of this.fxOrder) {
-      postOut = _FX[fx]?.(this, postOut, p) ?? postOut;
+    if (p.get('effect.enable')?.value !== 0) {
+      for (const fx of this.fxOrder) {
+        postOut = _FX[fx]?.(this, postOut, p) ?? postOut;
+      }
     }
 
     // Interlace used to be a fixed pass here. It is _FX.interlace now, last in
