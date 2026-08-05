@@ -1099,7 +1099,7 @@ Background, then key the Foreground by Motion. Only the moving part shows.
 |-----------|-------|-------------|
 | `motion.source` | SELECT | What is watched for movement |
 | `motion.gain` | 1–20 | Sensitivity — a raw frame difference is only a few percent |
-| `motion.bgtime` | 0–10 s | Background adapt half-life. **0 = frame differencing** |
+| `motion.bgtime` | 0–10 s | Time for the background to absorb a change. **0 = frame differencing** |
 | `motion.trail` | 0–10 s | How long a trail survives after the movement passes |
 | `motion.blur` | 0–4 | Smoothness — blurs the source before comparing. 0 = off |
 
@@ -1109,6 +1109,11 @@ stable background, so a subject who stops moving *stays* in the matte — that i
 background subtraction. At 0 the background is simply the previous frame, which
 is frame differencing: only edges of change register, and anything that stops
 vanishes. The useful settings are usually in between.
+
+Both `Bg adapt` and `Trail` are **time until ~gone**, not half-lives — set
+`Bg adapt` to 4 and something that leaves the frame has faded from the
+background by about 4 seconds, not half-faded. The two dials use the same
+convention deliberately, so a number means the same kind of thing in both.
 
 **Smoothness** blurs the source *before* the comparison, and it is the control
 that cleans up a live camera. Sensor grain is high-frequency, and this is the
