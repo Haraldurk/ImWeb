@@ -6,11 +6,12 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
 
 ---
 
-## [Unreleased] — Soak instrumentation, two debts closed, and the LUT fixed
+## [0.16.0] — 2026-08-05 — The Motion Matte
 
-*The v0.12 dual-deck work shipped with two verification debts that needed real
-hardware. Both are now closed — and closing them turned up a measurement the
-protocol could not make, which is the more useful half of the result.*
+*Two new sources, and the discovery that the instrument already knew how to make
+things transparent — it just had nothing that produced a matte. Also two
+verification debts from v0.12 closed on real hardware, and a colour-grade panel
+that turned out never to have worked in WebGL2 at all.*
 
 ### Added
 - **Motion Extraction** (Sources ▸ Warp ▸ Motion Extraction, source index 32) —
