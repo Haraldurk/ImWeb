@@ -9,10 +9,24 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
 ## [Unreleased]
 
 ### Added
-- **Guided tour** (`⇧G`, or Project ▸ AI ▸ Documentation ▸ Guided Tour). Sixteen
-  steps through the instrument, as a panel rather than a modal — it points *at*
-  the control panel, so it must not cover it, and the instrument stays playable
-  with the tour open.
+- **Guided tour** (`⇧G`, the splash's Guided Tour button, or Project ▸ AI ▸
+  Documentation). Twenty-seven steps in three tracks, as a panel rather than a
+  modal — it points *at* the control panel, so it must not cover it, and the
+  instrument stays playable with the tour open.
+  - **Basics** (9) — the panel, the parameter row, what min/max actually mean,
+    assigning and editing a controller, response curves, states and morph, the
+    performance keys.
+  - **Principles** (6) — small patches, three or four moves each, one idea
+    apiece: a composite is two layers; any source can drive any other; any
+    parameter can be driven; the output is a source; time is an axis you point
+    at; then all five in one patch. The examples are deliberately built from
+    controls the Basics track has already covered.
+  - **Instruments** (12) — the machines, as before.
+  - Three tracks rather than one list because they are three different kinds of
+    not-knowing: someone who cannot work a parameter row is not helped by a tour
+    of the Rutt-Etra, and someone who has used the instrument for a year should
+    not have to page through drag directions to reach it. The splash button
+    opens Basics from the top; `⇧G` resumes where you left off.
   - **It points; it never sets.** Every step names its targets and gives you a
     chip per name that switches to the owning tab (opening a workspace if the
     target lives in one), expands the collapsed section, scrolls the row into
@@ -24,10 +38,10 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
     touching JavaScript. Steps are not duplicated into a JS array; that second
     copy is how six copies of the source list once drifted apart.
   - `tests/audit-guide-targets.mjs` fails the build if a step names a parameter
-    that does not exist, a selector that is not in `index.html`, or if the
-    served copy under `public/docs/` has drifted from the edited one. The
-    failure it exists to catch is quiet: the tour still opens and the step still
-    reads correctly, and only the chip does nothing.
+    that does not exist, a selector that is not in `index.html`, an unknown
+    track, or if the served copy under `public/docs/` has drifted from the
+    edited one. The failure it exists to catch is quiet: the tour still opens
+    and the step still reads correctly, and only the chip does nothing.
 
 ### Fixed
 - **The parameter search's ⌖ button did nothing on continuous rows** — every

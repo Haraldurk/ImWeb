@@ -2372,7 +2372,9 @@ async function main() {
     .getElementById("onboarding-guide")
     ?.addEventListener("click", () => {
       _dismissOnboarding();
-      openGuide(0); // from the top — this reader has not been here before
+      // Basics from the top: someone still on the splash has not used the
+      // instrument, and the Instruments track assumes they can work a row.
+      openGuide("basics");
     });
 
   // Keyboard lock toggle

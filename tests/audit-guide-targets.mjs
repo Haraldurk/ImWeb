@@ -23,7 +23,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 import { ParameterSystem, registerCoreParameters } from '../src/controls/ParameterSystem.js';
-import { parseGuide } from '../src/ui/Guide.js';
+import { parseGuide, TRACKS } from '../src/ui/Guide.js';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const md = readFileSync(resolve(root, 'docs/ImWeb-Guide.md'), 'utf8');
@@ -56,7 +56,29 @@ try {
   failures++;
 }
 
-console.log(`${steps.length} steps parsed`);
+// Every track needs steps. A typo in a `track:` value is silent in the app —
+// the step lands in the default track and the intended one is short — and an
+// empty track renders as a dead chip.
+const known = new Set(TRACKS.map(([k]) => k));
+const perTrack = new Map(TRACKS.map(([k]) => [k, 0]));
+for (const s of steps) {
+  if (!known.has(s.track)) {
+    console.error(`FAIL — step "${s.title}" has unknown track "${s.track}".`);
+    console.error(`       Known tracks: ${[...known].join(', ')}`);
+    failures++;
+  } else {
+    perTrack.set(s.track, perTrack.get(s.track) + 1);
+  }
+}
+for (const [k, n] of perTrack) {
+  if (!n) {
+    console.error(`FAIL — track "${k}" has no steps; its chip would open a blank panel.`);
+    failures++;
+  }
+}
+
+console.log(`${steps.length} steps parsed — ` +
+  [...perTrack].map(([k, n]) => `${k}: ${n}`).join(', '));
 
 const tabs = new Set([...html.matchAll(/data-tab="([\w-]+)"/g)].map(m => m[1]));
 

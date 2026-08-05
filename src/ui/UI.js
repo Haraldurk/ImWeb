@@ -90,6 +90,12 @@ export function buildLayerButtons(ps, contextMenu) {
         i => { ps.set(blendParam.id, i); },
         'blend-select'
       );
+      // The blend mode shares the layer's row rather than getting one of its
+      // own, so it has to claim its id here or it is unreachable by the `/`
+      // search's ⌖ and by the guided tour. Nested inside a row that carries a
+      // DIFFERENT param id, which is fine: reveal scrolls to whatever element
+      // it finds, and no `.param-row[data-param-id]` query can match a <select>.
+      bsel.dataset.paramId = blendParam.id;
       bsel.addEventListener('contextmenu', e => {
         e.preventDefault();
         contextMenu?.show(blendParam, e.clientX, e.clientY);

@@ -20,6 +20,7 @@
  *
  *     ## Rutt-Etra Scan Processor
  *     <!-- guide
+ *     track: instruments
  *     tab: sources
  *     point: rutt.active, rutt.zgain, rutt.lines
  *     show: #movie-a-section
@@ -27,9 +28,16 @@
  *     -->
  *     Body markdown…
  *
- * All four fields are optional. `point:` takes parameter ids, `show:` takes CSS
+ * All fields are optional. `point:` takes parameter ids, `show:` takes CSS
  * selectors for things that are not parameters (a whole section, a button),
  * `tab:` activates a tab on step entry, `keys:` renders keycaps for reference.
+ *
+ * `track:` sorts the step into one of three tracks, because the three are
+ * different kinds of not-knowing and mixing them serves neither: someone who
+ * cannot work a parameter row is not helped by a tour of the Rutt-Etra, and
+ * someone who has used the instrument for a year should not have to page
+ * through the drag directions to reach it. A step with no track falls into
+ * TRACKS[0] rather than vanishing.
  */
 
 import { marked } from 'marked';
@@ -37,8 +45,16 @@ import { marked } from 'marked';
 const STORE_KEY = 'imweb.guideStep';
 const FLASH_MS = 1600;
 
-let _steps = null;      // parsed steps, or null until first load
-let _idx = 0;
+/** Track key → chip label. Order here is the order in the panel. */
+export const TRACKS = [
+  ['basics',      'Basics'],
+  ['principles',  'Principles'],
+  ['instruments', 'Instruments'],
+];
+
+let _steps = null;      // ALL parsed steps, in file order
+let _track = TRACKS[0][0];
+let _idx = 0;           // index within the current track, not into _steps
 let _panel = null;
 let _ps = null;
 let _openWorkspace = null; // injected: workspace panes are not plain tabs
@@ -142,13 +158,13 @@ export function parseGuide(md) {
     const title = (nl === -1 ? part : part.slice(0, nl)).trim();
     let body = nl === -1 ? '' : part.slice(nl + 1);
 
-    const meta = { tab: null, point: [], show: [], keys: [] };
+    const meta = { track: TRACKS[0][0], tab: null, point: [], show: [], keys: [] };
     body = body.replace(/<!--\s*guide\b([\s\S]*?)-->/, (_, block) => {
       for (const line of block.split('\n')) {
-        const m = line.match(/^\s*(tab|point|show|keys)\s*:\s*(.+?)\s*$/);
+        const m = line.match(/^\s*(track|tab|point|show|keys)\s*:\s*(.+?)\s*$/);
         if (!m) continue;
         const [, k, v] = m;
-        if (k === 'tab') meta.tab = v.trim();
+        if (k === 'track' || k === 'tab') meta[k] = v.trim();
         else meta[k] = v.split(',').map(s => s.trim()).filter(Boolean);
       }
       return '';
@@ -183,6 +199,8 @@ function buildPanel() {
       <span id="guide-count"></span>
       <button id="guide-close" title="Close (Esc)">✕</button>
     </div>
+    <div id="guide-tracks">${TRACKS.map(([k, label]) =>
+      `<button class="guide-track" data-track="${k}">${label}</button>`).join('')}</div>
     <div id="guide-body"></div>
     <div id="guide-points"></div>
     <div id="guide-nav">
@@ -194,6 +212,10 @@ function buildPanel() {
   el.querySelector('#guide-close').addEventListener('click', closeGuide);
   el.querySelector('#guide-prev').addEventListener('click', () => go(_idx - 1));
   el.querySelector('#guide-next').addEventListener('click', () => go(_idx + 1));
+  el.querySelector('#guide-tracks').addEventListener('click', e => {
+    const btn = e.target.closest('.guide-track');
+    if (btn) goTrack(btn.dataset.track);
+  });
 
   // Arrow keys drive the tour while it is open. Deliberately NOT bound to the
   // single-key performance shortcuts (b/s/k/q/a/z…): those keys must keep
@@ -224,12 +246,20 @@ function showLabel(sel) {
   return hdr?.childNodes[0]?.textContent?.trim() || sel;
 }
 
+/** The steps of the current track, in file order. */
+function trackSteps() {
+  return _steps.filter(s => s.track === _track);
+}
+
 function render() {
-  const step = _steps[_idx];
+  const steps = trackSteps();
+  const step = steps[_idx];
   if (!step) return;
 
   _panel.querySelector('#guide-title').textContent = step.title;
-  _panel.querySelector('#guide-count').textContent = `${_idx + 1} / ${_steps.length}`;
+  _panel.querySelector('#guide-count').textContent = `${_idx + 1} / ${steps.length}`;
+  _panel.querySelectorAll('.guide-track').forEach(b =>
+    b.classList.toggle('active', b.dataset.track === _track));
   _panel.querySelector('#guide-body').innerHTML = marked.parse(step.body);
 
   const pts = _panel.querySelector('#guide-points');
@@ -254,7 +284,7 @@ function render() {
   pts.classList.toggle('hidden', targets.length === 0);
 
   _panel.querySelector('#guide-prev').disabled = _idx === 0;
-  _panel.querySelector('#guide-next').disabled = _idx === _steps.length - 1;
+  _panel.querySelector('#guide-next').disabled = _idx === steps.length - 1;
 
   // Land the panel on the right tab, then point at the first target. Both are
   // navigation, not authorship: nothing here changes a value.
@@ -272,10 +302,41 @@ function render() {
 }
 
 function go(i) {
-  if (!_steps || i < 0 || i >= _steps.length) return;
+  if (!_steps || i < 0 || i >= trackSteps().length) return;
   _idx = i;
-  try { localStorage.setItem(STORE_KEY, String(i)); } catch { /* private mode */ }
+  _save();
   render();
+}
+
+/** Switch track, landing on its first step. */
+function goTrack(key) {
+  if (!TRACKS.some(([k]) => k === key)) return;
+  _track = key;
+  _idx = 0;
+  _save();
+  render();
+}
+
+function _save() {
+  try {
+    localStorage.setItem(STORE_KEY, JSON.stringify({ track: _track, idx: _idx }));
+  } catch { /* private mode */ }
+}
+
+/**
+ * Restore {track, idx}, tolerating the bare step number this key held before
+ * tracks existed — a stale value must not strand someone on a blank panel.
+ */
+function _restore() {
+  let raw = null;
+  try { raw = localStorage.getItem(STORE_KEY); } catch { return; }
+  if (!raw) return;
+  let saved = null;
+  try { saved = JSON.parse(raw); } catch { return; } // legacy bare number parses fine
+  if (typeof saved !== 'object' || saved === null) return;
+  if (TRACKS.some(([k]) => k === saved.track)) _track = saved.track;
+  const n = trackSteps().length;
+  _idx = Number.isInteger(saved.idx) && saved.idx < n ? saved.idx : 0;
 }
 
 // ── Public API ───────────────────────────────────────────────────────────────
@@ -290,8 +351,12 @@ export function initGuide({ ps, openWorkspace } = {}) {
   _openWorkspace = openWorkspace ?? null;
 }
 
-/** Open the tour, resuming at the last step viewed on this origin. */
-export async function openGuide(startAt = null) {
+/**
+ * Open the tour, resuming where this origin left off. Pass a track key to start
+ * that track from the top instead (the onboarding splash does — a first-time
+ * reader has no progress worth resuming).
+ */
+export async function openGuide(track = null) {
   _panel ??= buildPanel();
   try {
     await loadSteps();
@@ -302,10 +367,12 @@ export async function openGuide(startAt = null) {
     return;
   }
   if (!_steps.length) return;
-  const saved = Number(localStorage.getItem(STORE_KEY));
-  const at = startAt ?? (Number.isInteger(saved) && saved < _steps.length ? saved : 0);
+  if (track && TRACKS.some(([k]) => k === track)) { _track = track; _idx = 0; }
+  else _restore();
+  // A track whose steps all vanished from the markdown would render blank.
+  if (!trackSteps().length) { _track = TRACKS[0][0]; _idx = 0; }
   _panel.classList.remove('hidden');
-  go(at);
+  go(_idx);
 }
 
 export function closeGuide() {
