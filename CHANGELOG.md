@@ -138,6 +138,15 @@ protocol could not make, which is the more useful half of the result.*
   "Project" renders as "Proj". All five are hit first time one-handed on device.
 
 ### Fixed
+- **`Bg adapt` now means what `Trail` means.** The background used a *half-life*
+  while the trail used *time until visually gone*, which put two different
+  meanings of "seconds" side by side in one panel. At `Bg adapt` 4 a ghost was
+  still 50% visible after 4 s and 12.5% after 12 — so the number read as simply
+  wrong rather than as a different convention. Both now use the same base:
+  after `T` seconds, 2% remains. `tests/audit-halffloat-slew.mjs` reads the
+  base out of the engine and asserts the two agree, and it reads it from source
+  rather than hardcoding it — the previous version kept passing while modelling
+  a curve the engine no longer used.
 - **Motion Extraction's background actually adapts now.** It was stored in an
   8-bit buffer, and `mix(bg, cur, adapt)` at `Bg adapt` 4 s gives a per-frame
   step of 2.9e-3 against an 8-bit level of 3.9e-3 — below one representable
