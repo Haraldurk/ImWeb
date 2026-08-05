@@ -6,6 +6,48 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
 
 ---
 
+## [Unreleased]
+
+### Added
+- **Guided tour** (`⇧G`, or Project ▸ AI ▸ Documentation ▸ Guided Tour). Sixteen
+  steps through the instrument, as a panel rather than a modal — it points *at*
+  the control panel, so it must not cover it, and the instrument stays playable
+  with the tour open.
+  - **It points; it never sets.** Every step names its targets and gives you a
+    chip per name that switches to the owning tab (opening a workspace if the
+    target lives in one), expands the collapsed section, scrolls the row into
+    view and flashes it. Your hand moves the control. A tour that set values
+    would wreck a patch someone was halfway through, and it teaches nothing,
+    because the hand that moved the control was not theirs.
+  - **The content is one markdown file**, `docs/ImWeb-Guide.md`, parsed at
+    runtime — readable on GitHub, sendable as an email, and editable without
+    touching JavaScript. Steps are not duplicated into a JS array; that second
+    copy is how six copies of the source list once drifted apart.
+  - `tests/audit-guide-targets.mjs` fails the build if a step names a parameter
+    that does not exist, a selector that is not in `index.html`, or if the
+    served copy under `public/docs/` has drifted from the edited one. The
+    failure it exists to catch is quiet: the tour still opens and the step still
+    reads correctly, and only the chip does nothing.
+
+### Fixed
+- **The parameter search's ⌖ button did nothing on continuous rows** — every
+  row with a slider, i.e. most of them. The row captures the pointer for its
+  value drag, which retargets the pointer stream away from any button inside it,
+  so the click never arrived. Buttons in a row now own their own gesture, the
+  same exemption `.param-slider` already had.
+- **⌖ also had nothing to find for four of the most-used controls.** Rows that
+  are hand-built rather than produced by `buildParamRow` — Foreground,
+  Background, DisplaceSrc, the Camera on/off row and the GLSL Preset row — never
+  claimed their `data-param-id`, so search listed them and jumping to them
+  silently failed.
+- **Jumping to a search result now actually reveals it.** The old path only
+  scrolled and drew an outline, so it did nothing whenever the target sat on
+  another tab or inside a collapsed section — and sections boot collapsed, so
+  that was most of them. It now shares one reveal with the guided tour: tab or
+  workspace, expand, scroll, flash.
+
+---
+
 ## [0.17.0] — 2026-08-05 — The Chain
 
 *Everything downstream of the layers, gone over end to end. The feedback loop
