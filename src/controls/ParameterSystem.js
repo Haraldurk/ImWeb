@@ -4467,6 +4467,195 @@ export function registerCoreParameters(ps) {
     value: 0,
   });
 
+  // ── New effects (v0.17) ───────────────────────────────────────────────────
+  // All default to off, so they cost nothing and change nothing until asked for.
+  // Each geometry effect carries its own centre and edge mode rather than
+  // borrowing the kaleidoscope's — they are independent nodes in a reorderable
+  // chain and can be used in any combination.
+  ps.register({
+    id: "effect.polar",
+    label: "Polar",
+    group: "effect",
+    min: 0,
+    max: 100,
+    value: 0,
+    unit: "%",
+  });
+  ps.register({
+    id: "effect.polarmode",
+    label: "Polar.Mode",
+    group: "effect",
+    type: PARAM_TYPE.SELECT,
+    options: ["Wrap", "Unroll"],
+    value: 0,
+  });
+  ps.register({
+    id: "effect.polarrot",
+    label: "Polar.Rot",
+    group: "effect",
+    min: 0,
+    max: 100,
+    value: 0,
+    unit: "% turn",
+  });
+  ps.register({
+    id: "effect.wavex",
+    label: "Wave.AmpX",
+    group: "effect",
+    min: 0,
+    max: 100,
+    value: 0,
+    unit: "‰",
+  });
+  ps.register({
+    id: "effect.wavey",
+    label: "Wave.AmpY",
+    group: "effect",
+    min: 0,
+    max: 100,
+    value: 0,
+    unit: "‰",
+  });
+  ps.register({
+    id: "effect.wavefx",
+    label: "Wave.FreqX",
+    group: "effect",
+    min: 0,
+    max: 60,
+    value: 12,
+    step: 0.1,
+  });
+  ps.register({
+    id: "effect.wavefy",
+    label: "Wave.FreqY",
+    group: "effect",
+    min: 0,
+    max: 60,
+    value: 12,
+    step: 0.1,
+  });
+  // The one to put an LFO on.
+  ps.register({
+    id: "effect.wavephase",
+    label: "Wave.Phase",
+    group: "effect",
+    min: 0,
+    max: 100,
+    value: 0,
+    unit: "% turn",
+  });
+  ps.register({
+    id: "effect.halftone",
+    label: "Halftone",
+    group: "effect",
+    min: 0,
+    max: 100,
+    value: 0,
+    unit: "%",
+  });
+  ps.register({
+    id: "effect.halfsize",
+    label: "Half.Size",
+    group: "effect",
+    min: 2,
+    max: 40,
+    value: 6,
+    step: 0.5,
+    unit: "px",
+  });
+  ps.register({
+    id: "effect.halfangle",
+    label: "Half.Angle",
+    group: "effect",
+    min: 0,
+    max: 90,
+    value: 15,
+    unit: "°",
+  });
+  ps.register({
+    id: "effect.halfmode",
+    label: "Half.Mode",
+    group: "effect",
+    type: PARAM_TYPE.SELECT,
+    options: ["Mono", "Colour"],
+    value: 0,
+  });
+  ps.register({
+    id: "effect.duotone",
+    label: "Duotone",
+    group: "effect",
+    min: 0,
+    max: 100,
+    value: 0,
+    unit: "%",
+  });
+  ps.register({
+    id: "effect.duohue1",
+    label: "Duo.Dark",
+    group: "effect",
+    min: 0,
+    max: 360,
+    value: 260,
+    unit: "°",
+  });
+  ps.register({
+    id: "effect.duohue2",
+    label: "Duo.Light",
+    group: "effect",
+    min: 0,
+    max: 360,
+    value: 45,
+    unit: "°",
+  });
+  // Signed: negative pincushion, positive barrel, 0 flat.
+  ps.register({
+    id: "effect.lens",
+    label: "Lens",
+    group: "effect",
+    min: -100,
+    max: 100,
+    value: 0,
+    unit: "%",
+  });
+  ps.register({
+    id: "effect.twirl",
+    label: "Twirl",
+    group: "effect",
+    min: -100,
+    max: 100,
+    value: 0,
+    unit: "% turn",
+  });
+  // One centre and one edge mode shared by Polar, Wave and Lens — they are the
+  // three effects that sample outside the frame, and a per-effect centre for
+  // each would be six more rows for a distinction nobody performs.
+  ps.register({
+    id: "effect.warpcx",
+    label: "Warp.CenterX",
+    group: "effect",
+    min: 0,
+    max: 100,
+    value: 50,
+    unit: "%",
+  });
+  ps.register({
+    id: "effect.warpcy",
+    label: "Warp.CenterY",
+    group: "effect",
+    min: 0,
+    max: 100,
+    value: 50,
+    unit: "%",
+  });
+  ps.register({
+    id: "effect.warpedge",
+    label: "Warp.Edge",
+    group: "effect",
+    type: PARAM_TYPE.SELECT,
+    options: ["Clamp", "Mirror", "Wrap", "Black"],
+    value: 1, // Mirror — seamless, and the least like a mistake at the corners
+  });
+
   // ── Levels ────────────────────────────────────────────────────────────────
   ps.register({
     id: "effect.lvblack",

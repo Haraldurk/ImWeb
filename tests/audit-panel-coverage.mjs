@@ -70,4 +70,26 @@ for (const [prefix, keys] of placed) {
   }
 }
 
+// ── Post-FX chain coverage ───────────────────────────────────────────────────
+// Same failure shape, different list. An id in DEFAULT_FX_ORDER with no
+// _FX_NODE_INFO entry renders and can be automated, but is INVISIBLE in the
+// signal-flow diagram — and because the diagram is also the reorder UI, it can
+// never be moved in the chain either. Nothing errors; the effect just cannot be
+// seen or dragged, which reads as "the flow display is missing an effect"
+// rather than as a missing table entry.
+console.log('\npost-FX chain:');
+const { DEFAULT_FX_ORDER } = await import('../src/core/Pipeline.js');
+const nodeBlock = ui.slice(ui.indexOf('const _FX_NODE_INFO = {'), ui.indexOf('export class SignalPath'));
+const nodeIds = new Set([...nodeBlock.matchAll(/^\s{2}(\w+):\s*\{\s*label:/gm)].map(m => m[1]));
+const noNode = DEFAULT_FX_ORDER.filter(id => !nodeIds.has(id));
+console.log(`  ${DEFAULT_FX_ORDER.length} effects in DEFAULT_FX_ORDER, ${nodeIds.size} with flow nodes`);
+if (noNode.length) {
+  console.error(`  FAIL — in the chain but with no _FX_NODE_INFO entry: ${noNode.join(', ')}`);
+  console.error('         Add a { label, isActive } entry in UI.js, or the effect');
+  console.error('         cannot be seen or reordered in the signal-flow display.');
+  failures++;
+} else {
+  console.log('  ok — every effect in the chain has a flow node');
+}
+
 process.exit(failures ? 1 : 0);
