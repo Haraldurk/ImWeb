@@ -602,6 +602,60 @@ export const CAPTURE_SOURCES = [...SOURCES, ...CAPTURE_INDIRECT];
 /** First indirect index — anything >= this is a layer reference, not a source. */
 export const CAPTURE_INDIRECT_BASE = SOURCES.length;
 
+/**
+ * particle.masksrc option index → CAPTURE_SOURCES index (null = "None").
+ *
+ * The luma mask carried an eleven-entry hand-written menu (None, Camera, Movie,
+ * Buffer, Output, Draw, FG/BG/DS Src, Noise, Vectorscope) while every other
+ * selector grew to the full source list — so masking particles with SDF, Motion,
+ * a mix bus or Movie B was simply not expressible.
+ *
+ * Indices 0..10 are FROZEN in their v0.11 order: they persist as integers in
+ * every saved state, bank and .imweb file, and in MIDI mappings. Everything new
+ * is APPENDED, in SOURCE_DISPLAY_ORDER sequence so the menu reads like the
+ * Sources tab. Labels come from CAPTURE_SOURCES, so the two legacy labels move
+ * to the canonical ones ("Movie" → "Movie A", "Vectorscope" → "Scope") — labels
+ * may change freely, indices may not.
+ *
+ * Particles itself is deliberately absent: it is the consumer, so the entry
+ * could only ever resolve to null through _notSelf(). Reach it through
+ * FG/BG/DS Src if you ever want that.
+ */
+export const PARTICLE_MASK_SRC = [
+  // ── frozen v0.11 head ──
+  null,                        //  0  None
+  0,                           //  1  Camera
+  1,                           //  2  Movie   → Movie A
+  2,                           //  3  Buffer
+  8,                           //  4  Output
+  7,                           //  5  Draw
+  CAPTURE_INDIRECT_BASE + 0,   //  6  FG Src
+  CAPTURE_INDIRECT_BASE + 1,   //  7  BG Src
+  CAPTURE_INDIRECT_BASE + 2,   //  8  DS Src
+  5,                           //  9  Noise
+  14,                          // 10  Vectorscope → Scope
+  // ── appended, SOURCE_DISPLAY_ORDER sequence ──
+  12, 25, 9, 10, 3, 4, 21, 30, 11, 6, 20, 23, 29,
+  13, 31, 32, 24, 15, 17, 18, 19, 22, 26, 27, 28,
+];
+
+// Same shape as the SOURCE_DISPLAY_ORDER assertion: fail at load rather than
+// silently offering the same texture twice or pointing past the list.
+{
+  const real = PARTICLE_MASK_SRC.filter((v) => v != null);
+  if (
+    new Set(real).size !== real.length ||
+    real.some((v) => v < 0 || v >= CAPTURE_SOURCES.length)
+  ) {
+    throw new Error("PARTICLE_MASK_SRC must hold unique, in-range capture indices");
+  }
+}
+
+/** particle.masksrc SELECT options, index-aligned to PARTICLE_MASK_SRC. */
+export const PARTICLE_MASK_LABELS = PARTICLE_MASK_SRC.map((v) =>
+  v == null ? "None" : CAPTURE_SOURCES[v],
+);
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Capture-base migration (Phase 26 Step 0)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -4527,19 +4581,7 @@ export function registerCoreParameters(ps) {
     group: "particle",
     type: PARAM_TYPE.SELECT,
     value: 0,
-    options: [
-      "None",
-      "Camera",
-      "Movie",
-      "Buffer",
-      "Output",
-      "Draw",
-      "FG Src",
-      "BG Src",
-      "DS Src",
-      "Noise",
-      "Vectorscope",
-    ],
+    options: PARTICLE_MASK_LABELS,
   });
   ps.register({
     id: "particle.emitter",
