@@ -39,6 +39,7 @@ import {
   SOURCE_DISPLAY_ORDER,
   CAPTURE_INDIRECT_BASE,
   MIXBUS_IDX,
+  PARTICLE_MASK_SRC,
 } from "./controls/ParameterSystem.js";
 
 /**
@@ -349,6 +350,9 @@ async function main() {
   // resolves to a real texture, so the failure reads as an effect bug rather
   // than a routing one.
   const MOTION_IDX = SOURCE_KEYS.indexOf("motion");
+  // Same rule, same reason: the particle system is both a source and (through
+  // its luma mask) a consumer, so the fixpoint needs its index by key.
+  const PARTICLES_IDX = SOURCE_KEYS.indexOf("particles");
   // Ring depth and working resolution, both reallocating (history is discarded
   // either way, so they share VideoDelayLine._realloc). Resolution is the lever
   // that makes a long echo affordable — 30 frames at Native costs 237 MB for
@@ -7044,6 +7048,15 @@ void main() {
     // matte. That is circular by nature — motion is used ⇒ its source is used —
     // so it resolves through the same fixpoint rather than beside it.
     const _cMotion = _captureIdx(ps.get("motion.source").value);
+    // The particle luma mask is a consumer of whatever it points at, and only
+    // while something needs the particles — circular in the same way Motion is,
+    // so it resolves in the same little fixpoint below rather than in _direct().
+    // Before the menu grew to the full source list this could only name sources
+    // that something else already kept alive (Camera, Movie, Buffer, Output,
+    // Draw, Noise, Scope, or a layer); now it can name SDF or Rutt-Etra, which
+    // tick only when they are needed.
+    const _pmCap = PARTICLE_MASK_SRC[ps.get("particle.masksrc").value] ?? null;
+    const _pmIdx = _pmCap == null ? -1 : _captureIdx(_pmCap);
 
     const _direct = (i) =>
       _cFg === i || _cBg === i || _cDs === i || _cTd === i || _cTdMap === i ||
@@ -7093,10 +7106,20 @@ void main() {
     // the thing the matte watches is needed too. Seeded from _usedBase rather
     // than from _srcUsed so that a Motion watching Motion terminates instead of
     // recursing — in that case the flag is already true and adds nothing.
-    const _motionNeeded = _usedBase(MOTION_IDX);
+    // Two mutually-recursive pullers now: Motion pulls the source it watches,
+    // and the particle system pulls the source its luma mask reads. Each can
+    // name the other, so both are seeded from _usedBase and then closed by hand
+    // — two nodes, two terms, no loop needed. Self-reference terminates because
+    // the flag is already true and the extra term adds nothing.
+    const _motionBase = _usedBase(MOTION_IDX);
+    const _particlesNeeded =
+      _usedBase(PARTICLES_IDX) || (_motionBase && _cMotion === PARTICLES_IDX);
+    const _motionNeeded = _motionBase || (_particlesNeeded && _pmIdx === MOTION_IDX);
 
     const _srcUsed = (i) =>
-      _usedBase(i) || (_motionNeeded && i === _cMotion);
+      _usedBase(i) ||
+      (_motionNeeded && i === _cMotion) ||
+      (_particlesNeeded && i === _pmIdx);
 
     // ── Idle-deck upload gating (v0.12 Step 5) ──────────────────────────────
     // Skip the texImage2D upload for a deck that cannot contribute to this
@@ -7348,28 +7371,24 @@ void main() {
     // _cTdMap — see the comment there. The old _tdModeNoise flag is gone: it
     // could only ever express "Noise", and the map source is now free.
 
-    // Tick particle system — resolve luma mask source (only pre-ticked textures are safe)
-    const _pmSrcMap = [
-      null, // 0 None
-      camera3d.active ? camera3d.currentTexture : null, // 1 Camera
-      movieInput.active ? movieInput.currentTexture : null, // 2 Movie
-      stillsBuffer.texture, // 3 Buffer
-      pipeline.prev.texture, // 4 Output (prev frame)
-      drawLayer.texture, // 5 Draw
-      _resolveLayerTex(ps.get("layer.fg").value), // 6 FG Src
-      _resolveLayerTex(ps.get("layer.bg").value), // 7 BG Src
-      _resolveLayerTex(ps.get("layer.ds")?.value ?? 0), // 8 DS Src
-      noiseTexture, // 9 Noise
-      vectorscope.texture, // 10 Vectorscope
-    ];
-    const PARTICLE_IDX = 16;
-    const _particlesUsed = _srcUsed(PARTICLE_IDX);
+    // Tick particle system — the luma mask now resolves through the same
+    // _resolveLayerTex() every other selector uses, instead of the eleven-entry
+    // hand-built texture table it had. PARTICLE_MASK_SRC maps the menu index to
+    // a CAPTURE_SOURCES index (frozen head, appended tail); _pmIdx below is the
+    // real source index the fixpoint already gated on.
+    //
+    // This call site sits BEFORE the SDF (:7390), Rutt-Etra, Analog, Noise, 3D
+    // and Motion ticks, so masking on one of those samples it one frame late —
+    // the same deliberate trade the slitscan tick documents above. A source that
+    // has not been ticked yet resolves to null or to last frame's target, never
+    // to an unrelated picture.
+    const _particlesUsed = _srcUsed(PARTICLES_IDX);
     if (_particlesUsed) {
       // Same self-reference guard as the SDF: masksrc = "FG Src" with
       // layer.fg = Particles would hand the system its own output.
       particles.tick(
         ps, dt,
-        _notSelf(_pmSrcMap[ps.get("particle.masksrc").value] ?? null, particles.texture),
+        _notSelf(_pmIdx < 0 ? null : _resolveLayerTex(_pmIdx), particles.texture),
       );
     }
     const _sdfTexIdx = ps.get("sdf.texSrc").value;
