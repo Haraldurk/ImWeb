@@ -4226,9 +4226,15 @@ export function registerCoreParameters(ps) {
     value: 0,
     unit: "°",
   });
+  // These two are OFF at their maximum, which is the opposite of every other
+  // row in the panel — 32 levels is no posterisation, and a threshold of 100 %
+  // is nothing to invert. The mappings cannot change without moving every saved
+  // patch, so the LABELS say what the number is instead: a level count and a
+  // threshold, not an effect amount. (Renaming a label is safe: ids, values and
+  // MIDI mappings are untouched.)
   ps.register({
     id: "effect.posterize",
-    label: "Posterize",
+    label: "Post.Levels",
     group: "effect",
     min: 2,
     max: 32,
@@ -4237,7 +4243,7 @@ export function registerCoreParameters(ps) {
   });
   ps.register({
     id: "effect.solarize",
-    label: "Solarize",
+    label: "Sol.Thresh",
     group: "effect",
     min: 0,
     max: 100,
@@ -4297,6 +4303,117 @@ export function registerCoreParameters(ps) {
     max: 100,
     value: 70,
     unit: "%",
+  });
+  // Tap SPACING, not tap count — the 9-tap Gaussian is unchanged, so a wide
+  // bloom costs the same as a narrow one. Past ~4 the taps undersample into
+  // visible rings, which is where the range stops.
+  ps.register({
+    id: "effect.bloomradius",
+    label: "BloomRadius",
+    group: "effect",
+    min: 0.25,
+    max: 4,
+    value: 1, // the original fixed kernel spacing
+    step: 0.05,
+    unit: "×",
+  });
+
+  // ── Geometry-effect placement ─────────────────────────────────────────────
+  // Kaleidoscope and Vignette were both pinned to the middle of the frame and
+  // both measured distance in raw UV. A centre is the single biggest thing
+  // either one was missing — the same gap FBZoom/FBRotate had before v0.17.
+  ps.register({
+    id: "effect.kalecx",
+    label: "Kale.CenterX",
+    group: "effect",
+    min: 0,
+    max: 100,
+    value: 50,
+    unit: "%",
+  });
+  ps.register({
+    id: "effect.kalecy",
+    label: "Kale.CenterY",
+    group: "effect",
+    min: 0,
+    max: 100,
+    value: 50,
+    unit: "%",
+  });
+  // What the mirror finds outside the frame. Was hardcoded fract() — a wrap,
+  // and the one option nobody would have chosen for the area beyond the disc.
+  ps.register({
+    id: "effect.kaleedge",
+    label: "Kale.Edge",
+    group: "effect",
+    type: PARAM_TYPE.SELECT,
+    options: ["Clamp", "Mirror", "Wrap", "Black"],
+    value: 1, // Mirror — the seamless one; Wrap reproduces the old fract()
+  });
+  ps.register({
+    id: "effect.vigcx",
+    label: "Vign.CenterX",
+    group: "effect",
+    min: 0,
+    max: 100,
+    value: 50,
+    unit: "%",
+  });
+  ps.register({
+    id: "effect.vigcy",
+    label: "Vign.CenterY",
+    group: "effect",
+    min: 0,
+    max: 100,
+    value: 50,
+    unit: "%",
+  });
+  // Vignette tint. Hue alone would be meaningless at zero saturation, so the
+  // pair is hue + how far from black to take it; Tint 0 is the classic
+  // darkening and leaves every existing patch untouched.
+  ps.register({
+    id: "effect.vighue",
+    label: "Vign.Hue",
+    group: "effect",
+    min: 0,
+    max: 360,
+    value: 0,
+    unit: "°",
+  });
+  ps.register({
+    id: "effect.vigtint",
+    label: "Vign.Tint",
+    group: "effect",
+    min: 0,
+    max: 100,
+    value: 0,
+    unit: "%",
+  });
+  ps.register({
+    id: "effect.edge_color",
+    label: "EdgeColor",
+    group: "effect",
+    type: PARAM_TYPE.TOGGLE,
+    value: 0, // grey edges, as before
+  });
+  // Roll-off width around the threshold. 0 is the original hard switch.
+  ps.register({
+    id: "effect.solarsoft",
+    label: "Sol.Soft",
+    group: "effect",
+    min: 0,
+    max: 50,
+    value: 0,
+    unit: "%",
+  });
+  ps.register({
+    id: "effect.scancount",
+    label: "Scan.Count",
+    group: "effect",
+    min: 20,
+    max: 1200,
+    value: 400, // the number that was hardcoded in the shader
+    step: 1,
   });
 
   // ── Levels ────────────────────────────────────────────────────────────────

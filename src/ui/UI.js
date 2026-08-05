@@ -160,7 +160,30 @@ export function buildMappingPanels(ps, contextMenu) {
     'text-params':     ps.getGroup('text'),
     'fg-params':       ps.getGroup('fg'),
     'bg-params':       ps.getGroup('bg'),
-    'effect-params':   ps.getGroup('effect'),
+    // Effects — one group across five SUBsections of a single panel section,
+    // the same treatment Metaballs and Rutt-Etra get. 29 rows in registration
+    // order mixed geometry, colour, texture and timing in one flat list; the
+    // sections are what make it readable, and the reading order inside each is
+    // deliberate (the effect, then the controls that shape it).
+    //
+    // These are pick() lists, so tests/audit-panel-coverage.mjs fails the build
+    // if an effect.* param lands in no section, in two, or under a dead name —
+    // which is the whole reason it is safe to slice a group this way.
+    'effect-geo-params':     pick('effect', ['pixelate', 'kaleidoscope', 'kalerot',
+                                             'kalecx', 'kalecy', 'kaleedge', 'quadmirror']),
+    'effect-optics-params':  pick('effect', ['edge', 'edge_inv', 'edge_color',
+                                             'rgbshift', 'rgbangle',
+                                             'bloom', 'bloomthresh', 'bloomradius',
+                                             'vignette', 'vigradius', 'vigcx', 'vigcy',
+                                             'vighue', 'vigtint']),
+    'effect-quant-params':   pick('effect', ['posterize', 'solarize', 'solarsoft']),
+    'effect-texture-params': pick('effect', ['grain', 'scanlines', 'scancount',
+                                             'pixelsort', 'psortlen', 'psortthresh',
+                                             'psortdir', 'psortmode']),
+    'effect-time-params':    pick('effect', ['strobe', 'stroberate', 'strobeduty']),
+    // Colour grade — moved out of the Effects list into the section named for it.
+    'grade-levels-params':   pick('effect', ['lvblack', 'lvwhite', 'lvgamma']),
+    'grade-wb-params':       pick('effect', ['wbtemp', 'wbtint']),
     // glsl.preset is global-group only to escape state capture — its row
     // (badge + dropdown) lives in the GLSL panel, built in main.js
     // Excluded: params that are group 'global' only to dodge Display State

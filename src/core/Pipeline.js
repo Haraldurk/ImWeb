@@ -50,6 +50,7 @@ const _FX = {
     return pipe._pass(pipe.m.edge, {
       uTexture: tex, uAmount: amt,
       uInvert: p.get('effect.edge_inv').value,
+      uColor:  p.get('effect.edge_color')?.value ?? 0,
     });
   },
   // DEPRECATED — vasulka (VASULKA_WARP shader effect) is hidden from DEFAULT_FX_ORDER.
@@ -80,9 +81,18 @@ const _FX = {
   kaleidoscope: (pipe, tex, p) => {
     const segs = p.get('effect.kaleidoscope').value;
     if (segs < 2) return tex;
+    pipe.m.kaleidoscope.uniforms.uCenter.value.set(
+      (p.get('effect.kalecx')?.value ?? 50) / 100,
+      (p.get('effect.kalecy')?.value ?? 50) / 100,
+    );
     return pipe._pass(pipe.m.kaleidoscope, {
       uTexture: tex, uSegments: segs,
       uRotation: p.get('effect.kalerot').value / 100,
+      // Real aspect, so the wedges are wedges. This DOES change how an existing
+      // kaleidoscope patch renders on a non-square output — the old raw-UV
+      // version sheared them — and that is the fix, not a side effect.
+      uAspect: pipe.width / Math.max(1, pipe.height),
+      uEdge:   p.get('effect.kaleedge')?.value ?? 1,
     });
   },
   quadmirror: (pipe, tex, p) => {
@@ -98,11 +108,23 @@ const _FX = {
   solarize: (pipe, tex, p) => {
     const thresh = p.get('effect.solarize').value / 100;
     if (thresh >= 1) return tex;
-    return pipe._pass(pipe.m.solarize, { uTexture: tex, uThreshold: thresh });
+    return pipe._pass(pipe.m.solarize, {
+      uTexture: tex, uThreshold: thresh,
+      uSoftness: (p.get('effect.solarsoft')?.value ?? 0) / 100,
+    });
   },
   vignette: (pipe, tex, p) => {
     const amt = p.get('effect.vignette').value / 100;
     if (amt <= 0) return tex;
+    pipe.m.vignette.uniforms.uCenter.value.set(
+      (p.get('effect.vigcx')?.value ?? 50) / 100,
+      (p.get('effect.vigcy')?.value ?? 50) / 100,
+    );
+    // Tint 0 leaves the target colour black, which is exactly the old multiply.
+    const tint = (p.get('effect.vigtint')?.value ?? 0) / 100;
+    const hue  = (p.get('effect.vighue')?.value ?? 0) / 360;
+    const c = pipe.m.vignette.uniforms.uColor.value;
+    c.setHSL(hue, 1, 0.5).multiplyScalar(tint);
     return pipe._pass(pipe.m.vignette, {
       uTexture: tex, uAmount: amt,
       uRadius: p.get('effect.vigradius').value / 100,
@@ -117,6 +139,10 @@ const _FX = {
 
     // 1. Extract bright pixels at full resolution (uses ping-pong: 1 flip)
     const bright = pipe._pass(pipe.m.bloomExtract, { uTexture: tex, uThreshold: thresh });
+
+    const radius = p.get('effect.bloomradius')?.value ?? 1;
+    pipe.m.bloomBlurH.uniforms.uRadius.value = radius;
+    pipe.m.bloomBlurV.uniforms.uRadius.value = radius;
 
     // 2. BlurH at half-res → dedicated target (no ping-pong flip).
     //    Resolution uniform uses full dimensions so the Gaussian kernel step
@@ -181,6 +207,7 @@ const _FX = {
     if (grainAmt <= 0 && scanAmt <= 0) return tex;
     return pipe._pass(pipe.m.filmgrain, {
       uTexture: tex, uGrain: grainAmt, uScanlines: scanAmt, uTime: pipe._noiseTime,
+      uCount: p.get('effect.scancount')?.value ?? 400,
     });
   },
 };
@@ -330,9 +357,33 @@ export class Pipeline {
     this._lutActive = false;
   }
 
-  /** Set the post-FX execution order. Unknown IDs are silently dropped. */
+  /**
+   * Set the post-FX execution order.
+   *
+   * Unknown ids are dropped — but effects the saved order has never HEARD of are
+   * appended, in their DEFAULT_FX_ORDER position, instead of being left out.
+   *
+   * The order is captured by Display States and written into .imweb files, so
+   * without the append every state saved before an effect existed would recall
+   * with that effect silently absent from the chain: the row is in the panel,
+   * the slider moves, the readout updates, and nothing renders. That is not a
+   * theoretical migration — it happens to every state on disk the moment a new
+   * effect ships, and it looks like the new effect is broken.
+   *
+   * 'vasulka' is deliberately NOT appended: it is deprecated and hidden from
+   * DEFAULT_FX_ORDER, so it only runs for an order that names it explicitly.
+   */
   setFxOrder(order) {
-    this.fxOrder = order.filter(id => id in _FX);
+    const known = order.filter(id => id in _FX);
+    const missing = DEFAULT_FX_ORDER.filter(id => !known.includes(id));
+    // Splice each missing id back at its default neighbour rather than at the
+    // end, so a new effect lands where it was designed to sit in the chain.
+    for (const id of missing) {
+      const at = DEFAULT_FX_ORDER.indexOf(id);
+      const after = DEFAULT_FX_ORDER.slice(0, at).reverse().find(x => known.includes(x));
+      known.splice(after ? known.indexOf(after) + 1 : 0, 0, id);
+    }
+    this.fxOrder = known;
   }
 
   // ── Public: render one frame ──────────────────────────────────────────────
@@ -1177,12 +1228,12 @@ export class Pipeline {
         uAmount: { value: 1 }, uResolution: { value: new THREE.Vector2(1280, 720) },
       }),
       edge:      this._mat(EDGE, {
-        uAmount: { value: 0 }, uInvert: { value: 0 },
+        uAmount: { value: 0 }, uInvert: { value: 0 }, uColor: { value: 0 },
         uResolution: { value: new THREE.Vector2(1280, 720) },
       }),
       rgbshift:  this._mat(RGBSHIFT, { uAmount: { value: 0 }, uAngle: { value: 0 } }),
       posterize: this._mat(POSTERIZE, { uLevels: { value: 32 } }),
-      solarize:  this._mat(SOLARIZE,  { uThreshold: { value: 1 } }),
+      solarize:  this._mat(SOLARIZE,  { uThreshold: { value: 1 }, uSoftness: { value: 0 } }),
       colorcorrect: this._mat(COLOR_CORRECT, {
         uHue:    { value: 0 },
         uSat:    { value: 1 },
@@ -1198,19 +1249,26 @@ export class Pipeline {
       kaleidoscope: this._mat(KALEIDOSCOPE, {
         uSegments: { value: 4 },
         uRotation: { value: 0 },
+        uCenter:   { value: new THREE.Vector2(0.5, 0.5) },
+        uAspect:   { value: 1 },
+        uEdge:     { value: 1 },
       }),
       vignette: this._mat(VIGNETTE, {
         uAmount: { value: 0 },
         uRadius: { value: 0.65 },
+        uCenter: { value: new THREE.Vector2(0.5, 0.5) },
+        uColor:  { value: new THREE.Color(0, 0, 0) },
       }),
       bloomExtract: this._mat(BLOOM_EXTRACT, { uThreshold: { value: 0.7 } }),
       bloomBlurH: this._mat(BLOOM_BLUR, {
         uDirection:  { value: new THREE.Vector2(1, 0) },
         uResolution: { value: new THREE.Vector2(1280, 720) },
+        uRadius:     { value: 1 },
       }),
       bloomBlurV: this._mat(BLOOM_BLUR, {
         uDirection:  { value: new THREE.Vector2(0, 1) },
         uResolution: { value: new THREE.Vector2(1280, 720) },
+        uRadius:     { value: 1 },
       }),
       bloomComposite: this._mat(BLOOM_COMPOSITE, {
         uBloom:    { value: null },
