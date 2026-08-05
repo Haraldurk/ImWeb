@@ -8,7 +8,7 @@
 // content hash for the bundle each time — so a stale cached index.html points
 // at an asset that no longer exists on disk. That fails as a BLANK APP, not as
 // "my change didn't show up" (see docs/LEARNED.md, 2026-07-31).
-const CACHE = 'imweb-v0.12'; // bumped: v0.16.0 — sources 31/32, motion engine
+const CACHE = 'imweb-v0.13'; // bumped: v0.17.0 — effects chain, feedback loop shaping
 
 const APP_SHELL = [
   '/',
