@@ -1115,6 +1115,19 @@ Both `Bg adapt` and `Trail` are **time until ~gone**, not half-lives — set
 background by about 4 seconds, not half-faded. The two dials use the same
 convention deliberately, so a number means the same kind of thing in both.
 
+**Moving the camera is a gesture, not a malfunction.** The background model
+assumes a fixed camera: it is a picture of the scene, and only things that move
+against it register. Pan, tilt or handhold and every pixel is suddenly looking
+at a different part of the world than the background holds, so the matte opens
+across the whole frame rather than isolating a subject. At `Bg adapt` 0 this
+reads as an edge-detector on the whole image and recovers the instant you stop;
+at longer settings it floods, and takes the adapt time to settle afterwards.
+
+That is worth playing with rather than avoiding — whip the camera and the frame
+ignites, hold still and it resolves back to bodies. What it is *not* is a way to
+key a clean silhouette while the camera moves; nothing in this engine tracks the
+camera, so if you need a stable subject matte, lock the camera off.
+
 **Smoothness** blurs the source *before* the comparison, and it is the control
 that cleans up a live camera. Sensor grain is high-frequency, and this is the
 only place it can be removed cheaply: downstream it has already been multiplied
