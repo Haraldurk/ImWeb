@@ -1088,6 +1088,57 @@ oldest available frame rather than dropping to black.
 
 Minimum is 1, not 0, because age 0 and age 1 are the same frame.
 
+#### Motion Extraction (source 32)
+
+Produces a **matte**, not a picture: white where the source is moving, black
+where it is not. Its destination is the keyer's **Key src**, not a layer —
+select the thing you want to reveal as Foreground, the thing behind it as
+Background, then key the Foreground by Motion. Only the moving part shows.
+
+| Parameter | Range | Description |
+|-----------|-------|-------------|
+| `motion.source` | SELECT | What is watched for movement |
+| `motion.gain` | 1–20 | Sensitivity — a raw frame difference is only a few percent |
+| `motion.bgtime` | 0–10 s | Background adapt half-life. **0 = frame differencing** |
+| `motion.trail` | 0–10 s | How long a trail survives after the movement passes |
+| `motion.blur` | 0–4 | Smoothness — blurs the source before comparing. 0 = off |
+
+**`Bg adapt` is the important control, and it spans two classical methods.**
+The background is a running average of the source. A long adapt time gives a
+stable background, so a subject who stops moving *stays* in the matte — that is
+background subtraction. At 0 the background is simply the previous frame, which
+is frame differencing: only edges of change register, and anything that stops
+vanishes. The useful settings are usually in between.
+
+**Smoothness** blurs the source *before* the comparison, and it is the control
+that cleans up a live camera. Sensor grain is high-frequency, and this is the
+only place it can be removed cheaply: downstream it has already been multiplied
+by Sensitivity and accumulated into the trail, and neither is reversible. It
+also fills interiors — a blurred moving object differs from the blurred
+background across its whole area rather than only at its edges, so silhouettes
+come out solid instead of hollow. 1–2 is the useful range on a camera; 0 is off
+and costs nothing.
+
+> There is deliberately no brightness or contrast here. Brightness shifts the
+> live frame and the background by the same amount — the background *is* an
+> average of past frames — so it cancels in the difference and would do nothing
+> at any setting. Contrast scales both, which gives exactly what Sensitivity
+> already gives; the two would multiply.
+
+**Trail** rides on the matte, so the streak reveals whatever the Foreground
+shows *now* along that path, rather than a frozen copy of what passed through.
+It uses instant attack and exponential release, and cannot blow out where two
+moving things cross.
+
+> **Setting up the key:** the keyer passes a *band* between KeyLevelBlack and
+> KeyLevelWhite, so it rejects the very bright as well as the very dark. At the
+> default KeyLevelWhite of 80% a fully lit matte is keyed **out** — which looks
+> like the strongest motion being the one thing that fails to show. Set
+> **KeyLevelWhite to 100%** and let KeyLevelBlack do the cutting.
+>
+> For glowing trails, turn **Alpha Emissive** on: a fading trail is light
+> *added*, not an object occluding. Leave it off for a hard cutout of a person.
+
 ---
 
 ### 5.11 LUT (3D Lookup Table)

@@ -212,6 +212,7 @@ export function buildMappingPanels(ps, contextMenu) {
     'rutt-phosphor-params': pick('rutt', ['hue', 'sat', 'colorAmt', 'decay', 'bleed']),
     'delay-params':        ps.getGroup('delay'),
     'rgbdelay-params':     ps.getGroup('rgbdelay'),
+    'motion-params':       ps.getGroup('motion'),
     'tdisp-params':        ps.getGroup('td'),
     // VasulkaWarp — hidden, experimental, architecture unresolved. See dev notes.
     // 'vasulka-params':   ps.getGroup('vasulka'),
