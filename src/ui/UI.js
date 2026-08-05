@@ -135,7 +135,12 @@ export function buildMappingPanels(ps, contextMenu) {
         p.id.startsWith('displace.warp') && p.id !== 'displace.warp' && p.id !== 'displace.warpamt'),
       ps.get('displace.warpSlot'),
     ].filter(Boolean),
-    'blend-params':    ps.getGroup('blend'),
+    // output.interlace is excluded by ID, not by rule: it is group 'blend' for
+    // persistence, but it is now _FX.interlace — a node in the reorderable
+    // chain — so its row belongs with the other effects. Same shape as the
+    // displace.warpSlot exception below: a stated exception, appended by id to
+    // the section it actually belongs to, not a return to hand-listing.
+    'blend-params':    ps.getGroup('blend').filter(p => p.id !== 'output.interlace'),
     'color-params':    ps.getGroup('color'),
     // noise-params-top and noise-params are built by buildNoisePanel()
     'output-params':   ps.getGroup('output').filter(p => p.id !== 'output.resolution' && p.id !== 'output.interp'),
@@ -170,16 +175,21 @@ export function buildMappingPanels(ps, contextMenu) {
     // if an effect.* param lands in no section, in two, or under a dead name —
     // which is the whole reason it is safe to slice a group this way.
     'effect-geo-params':     pick('effect', ['pixelate', 'kaleidoscope', 'kalerot',
-                                             'kalecx', 'kalecy', 'kaleedge', 'quadmirror']),
+                                             'kalecx', 'kalecy', 'kaleedge',
+                                             'quadmirror', 'flip']),
     'effect-optics-params':  pick('effect', ['edge', 'edge_inv', 'edge_color',
                                              'rgbshift', 'rgbangle',
+                                             'sharpen',
                                              'bloom', 'bloomthresh', 'bloomradius',
                                              'vignette', 'vigradius', 'vigcx', 'vigcy',
                                              'vighue', 'vigtint']),
-    'effect-quant-params':   pick('effect', ['posterize', 'solarize', 'solarsoft']),
-    'effect-texture-params': pick('effect', ['grain', 'scanlines', 'scancount',
-                                             'pixelsort', 'psortlen', 'psortthresh',
-                                             'psortdir', 'psortmode']),
+    'effect-quant-params':   pick('effect', ['posterize', 'solarize', 'solarsoft',
+                                             'outhue', 'outsat', 'outbright']),
+    'effect-texture-params': [
+      ...pick('effect', ['grain', 'scanlines', 'scancount']),
+      ps.get('output.interlace'),
+      ...pick('effect', ['pixelsort', 'psortlen', 'psortthresh', 'psortdir', 'psortmode']),
+    ].filter(Boolean),
     'effect-time-params':    pick('effect', ['strobe', 'stroberate', 'strobeduty']),
     // Colour grade — moved out of the Effects list into the section named for it.
     'grade-levels-params':   pick('effect', ['lvblack', 'lvwhite', 'lvgamma']),

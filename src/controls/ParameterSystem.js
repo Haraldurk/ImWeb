@@ -4416,6 +4416,57 @@ export function registerCoreParameters(ps) {
     step: 1,
   });
 
+  // ── Effects that already existed, wired to something else ─────────────────
+  // No new shader code behind any of these four: SHARPEN drove only the noise
+  // generator, COLOR_CORRECT only the per-layer tint, MIRROR only the per-layer
+  // flip, and INTERLACE ran outside the reorderable chain.
+  ps.register({
+    id: "effect.sharpen",
+    label: "Sharpen",
+    group: "effect",
+    min: 0,
+    max: 100,
+    value: 0,
+    unit: "%",
+  });
+  // Whole-output HSV. The per-layer FG/BG rows could already do this to each
+  // layer separately; there was no way to turn the composite.
+  ps.register({
+    id: "effect.outhue",
+    label: "Out.Hue",
+    group: "effect",
+    min: -180,
+    max: 180,
+    value: 0,
+    unit: "°",
+  });
+  ps.register({
+    id: "effect.outsat",
+    label: "Out.Sat",
+    group: "effect",
+    min: 0,
+    max: 200,
+    value: 100,
+    unit: "%",
+  });
+  ps.register({
+    id: "effect.outbright",
+    label: "Out.Bright",
+    group: "effect",
+    min: 0,
+    max: 200,
+    value: 100,
+    unit: "%",
+  });
+  ps.register({
+    id: "effect.flip",
+    label: "Flip",
+    group: "effect",
+    type: PARAM_TYPE.SELECT,
+    options: ["Off", "H", "V", "Both"],
+    value: 0,
+  });
+
   // ── Levels ────────────────────────────────────────────────────────────────
   ps.register({
     id: "effect.lvblack",
