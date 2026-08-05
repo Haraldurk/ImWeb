@@ -81,6 +81,7 @@ const EAGER_RACK_LOAD = MAX_CLIPS;
 import { StillsBuffer } from "./inputs/StillsBuffer.js";
 import { SequenceBuffer } from "./inputs/SequenceBuffer.js";
 import { VideoDelayLine } from "./inputs/VideoDelayLine.js";
+import { RGBDelay } from "./inputs/RGBDelay.js";
 import { TimeDisplaceEngine } from "./inputs/TimeDisplaceEngine.js";
 import { VectorscopeInput } from "./inputs/VectorscopeInput.js";
 import { SlitScanBuffer } from "./inputs/SlitScanBuffer.js";
@@ -312,6 +313,9 @@ async function main() {
   const seq2 = new SequenceBuffer(renderer, W, H, 60, "seq2");
   const seq3 = new SequenceBuffer(renderer, W, H, 60, "seq3");
   const videoDelay = new VideoDelayLine(renderer, W, H, 30);
+  // Per-channel view of the SAME ring — no history of its own, so it costs one
+  // target and one pass rather than a second buffer. See src/inputs/RGBDelay.js.
+  const rgbDelay = new RGBDelay(renderer, W, H);
   // Ring depth and working resolution, both reallocating (history is discarded
   // either way, so they share VideoDelayLine._realloc). Resolution is the lever
   // that makes a long echo affordable — 30 frames at Native costs 237 MB for
@@ -325,6 +329,8 @@ async function main() {
   ps.get("delay.bufferResolution").onChange((v) => {
     const r = _delayRes(v);
     videoDelay.setBufferResolution(r ? r[0] : W, r ? r[1] : H);
+    // RGB Delay follows this automatically — it sizes itself from the ring
+    // texture it composites, so there is nothing to keep in step here.
   });
   // Time-Displace buffer resolution (decoupled from display). Index → [w,h];
   // null = Native (live display size). Mirrors RENDER_RESOLUTIONS.
@@ -3793,6 +3799,7 @@ async function main() {
     // that pass when this source is actually consumed, so the first frame of
     // a fresh route falls through to Output rather than binding nothing.
     if (key === "sdfdepth") return sdfGen.depthTexture ?? pipeline.prev.texture;
+    if (key === "rgbdelay") return rgbDelay.texture;
     if (key === "seq1") return seq1.texture;
     if (key === "seq2") return seq2.texture;
     if (key === "seq3") return seq3.texture;
@@ -7469,6 +7476,7 @@ void main() {
       draw: drawLayer.texture,
       text: textLayer.texture,
       delay: videoDelay.getTexture(ps.get("delay.frames").value),
+      rgbdelay: rgbDelay.texture,
       scope: vectorscope.texture,
       slitscan: slitScan.texture,
       vwarp: vasulkaWarp.outputRT.texture,
@@ -7550,6 +7558,19 @@ void main() {
     // capture() already guards a null texture, so an inactive source holds the
     // ring rather than filling it with black.
     videoDelay.capture(_resolveCaptureTex(ps.get("delay.source").value));
+
+    // RGB Channel Delay — three reads of the ring just captured, packed one
+    // channel each. Runs AFTER capture() so channel 0 means this frame, and
+    // only when something can see it: the ring is filled regardless, so
+    // skipping the composite costs nothing but the pass.
+    if (_srcUsed(31)) {
+      rgbDelay.render(
+        videoDelay,
+        ps.get("rgbdelay.r").value,
+        ps.get("rgbdelay.g").value,
+        ps.get("rgbdelay.b").value,
+      );
+    }
 
     // Time-Displacement Engine — ring WRITE. captureSource indexes the
     // canonical SOURCE_KEYS list. Most sources resolve via `inputs` (already
