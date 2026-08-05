@@ -40,6 +40,7 @@ import {
   CAPTURE_INDIRECT_BASE,
   MIXBUS_IDX,
   PARTICLE_MASK_SRC,
+  PARAM_TYPE,
 } from "./controls/ParameterSystem.js";
 
 /**
@@ -3948,6 +3949,19 @@ async function main() {
   }
 
   // Trigger bindings (MIDI-mappable)
+  // Clear All FX — every effect parameter back to its registered default.
+  // Deliberately NOT the chain order: the order is an arrangement built on
+  // purpose and losing it because some slider values were cleared would be a
+  // nasty surprise. Deliberately not the master toggle either — clearing the
+  // effects and leaving them bypassed would look like the reset failed.
+  // output.interlace is included by id: it is group 'blend' for persistence but
+  // it is an effect, and it sits in the Effects panel.
+  ps.get("effect.clearall").onTrigger(() => {
+    ps.getGroup("effect").forEach((p) => {
+      if (p.type !== PARAM_TYPE.TRIGGER && p.id !== "effect.enable") p.reset();
+    });
+    ps.get("output.interlace")?.reset();
+  });
   ps.get("buffer.capture").onTrigger(captureFromSource);
   ps.get("buffer.cap_screen").onTrigger(() => captureSource("screen"));
   ps.get("buffer.cap_video").onTrigger(() => captureSource("camera"));

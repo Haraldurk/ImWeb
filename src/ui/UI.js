@@ -174,6 +174,9 @@ export function buildMappingPanels(ps, contextMenu) {
     // These are pick() lists, so tests/audit-panel-coverage.mjs fails the build
     // if an effect.* param lands in no section, in two, or under a dead name —
     // which is the whole reason it is safe to slice a group this way.
+    // Master row first — the bypass and the reset belong above the thing they
+    // act on, not buried in whichever subsection would otherwise claim them.
+    'effect-master-params':  pick('effect', ['enable', 'clearall']),
     'effect-geo-params':     pick('effect', ['pixelate', 'kaleidoscope', 'kalerot',
                                              'kalecx', 'kalecy', 'kaleedge',
                                              'quadmirror', 'flip',
@@ -1209,7 +1212,11 @@ const _FX_NODE_INFO = {
   vignette:    { label: 'vign',    isActive: p => p.get('effect.vignette').value > 0 },
   bloom:       { label: 'bloom',   isActive: p => p.get('effect.bloom').value > 0 },
   levels:      { label: 'levels',  isActive: p => p.get('effect.lvblack').value > 0 || p.get('effect.lvwhite').value < 100 || p.get('effect.lvgamma').value !== 100 },
-  lut:         { label: 'lut',     isActive: p => (p.get('effect.lutamount')?.value ?? 0) > 0 },
+  // The only entry that needs more than the params: LUT Amount defaults above
+  // zero, so this drew a node for a pass that returns immediately whenever no
+  // .cube was loaded. isActive gets the pipeline as a second argument for
+  // exactly this — the flow should claim what _FX.lut actually does.
+  lut:         { label: 'lut',     isActive: (p, pipe) => (p.get('effect.lutamount')?.value ?? 0) > 0 && (pipe?.lutLoaded ?? false) },
   whitebal:    { label: 'wbal',    isActive: p => (p.get('effect.wbtemp')?.value ?? 0) !== 0 || (p.get('effect.wbtint')?.value ?? 0) !== 0 },
   pixelsort:   { label: 'psort',   isActive: p => p.get('effect.pixelsort').value > 0 },
   grain:       { label: 'grain',   isActive: p => p.get('effect.grain').value > 0 || p.get('effect.scanlines').value > 0 },
@@ -1253,6 +1260,7 @@ export class SignalPath {
       'feedback.decay','feedback.blur','feedback.hue','feedback.mirror',
       'output.colorshift','output.fade',
       'effect.pixelate','effect.edge','effect.rgbshift','effect.kaleidoscope','effect.posterize','effect.solarize',
+      'effect.enable',
       'effect.sharpen','effect.flip','effect.outhue','effect.outsat','effect.outbright','output.interlace',
       'effect.polar','effect.wavex','effect.wavey','effect.lens','effect.twirl',
       'effect.halftone','effect.duotone',
@@ -1323,12 +1331,17 @@ export class SignalPath {
       ...(csOn   ? [{ label: 'cshift',  type: 'active' }] : []),
     ].filter(Boolean);
 
-    // Build post-FX nodes in current order (only active ones rendered, but fxId stored for drag)
-    const fxNodes = this._fxOrder
+    // Master bypass: the chain does not run, so the flow must not claim it does.
+    // Showing the nodes greyed would be worse than showing none — they are still
+    // draggable, and a drag that reorders a chain nobody is running invites
+    // exactly the confusion this node exists to prevent. One 'fx bypass' node
+    // says what is happening and why the picture is plain.
+    const fxEnabled = p.get('effect.enable')?.value !== 0;
+    const fxNodes = !fxEnabled ? [{ label: 'fx bypass', type: 'node' }] : this._fxOrder
       .map(fxId => {
         const info = _FX_NODE_INFO[fxId];
         if (!info) return null;
-        const active = info.isActive(p);
+        const active = info.isActive(p, this.pipeline);
         if (!active) return null;
         return { label: info.label, type: 'active', fxId, draggable: true };
       })
