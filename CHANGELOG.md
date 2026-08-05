@@ -55,6 +55,21 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
   - Every default is the identity — decay 100 %, centre 50/50, Clamp, blur 0,
     hue 0, mirror Off — so existing patches render unchanged.
 
+### Changed
+- **Particle luma mask (PMaskSrc) now offers every source.** It had carried an
+  eleven-entry hand-written menu since v0.11 — Camera, Movie, Buffer, Output,
+  Draw, FG/BG/DS Src, Noise, Vectorscope — while every other selector grew to
+  the full list, so masking particles with SDF, Motion, Rutt-Etra, a mix bus or
+  Movie B was not expressible. The menu is now derived from `CAPTURE_SOURCES`
+  (`PARTICLE_MASK_SRC` in ParameterSystem.js) and the texture resolves through
+  the same `_resolveLayerTex()` every other selector uses.
+  - Indices 0–10 are **frozen** in their original order, so saved states, banks,
+    `.imweb` files and MIDI mappings keep pointing at the same thing. Two labels
+    move to the canonical ones: *Movie* → **Movie A**, *Vectorscope* → **Scope**.
+  - The mask is now part of the consumption fixpoint: picking a conditionally
+    ticked generator (SDF, Rutt-Etra, Noise, 3D) keeps it running instead of
+    handing the particles a target nobody updates.
+
 ---
 
 ## [0.16.0] — 2026-08-05 — The Motion Matte
