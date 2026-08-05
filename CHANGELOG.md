@@ -6,6 +6,57 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
 
 ---
 
+## [Unreleased]
+
+### Fixed
+- **Transforming the feedback could delete the live picture.** The prev-frame
+  rotate/zoom and offset/scale passes ping-ponged through the same two render
+  targets that held the composited live frame, so whether the second transform
+  overwrote it came down to how many passes the keyer/chroma/warp chain had run
+  earlier that frame — parity, not intent. When it landed wrong, the blend got
+  the transformed prev frame as *both* inputs and the live image vanished from
+  the output. The feedback transforms now render to dedicated targets, allocated
+  lazily so a project that never transforms its feedback pays no VRAM. The
+  identity guard in `_pass()` could not have caught this: nothing is aliased at
+  the moment of the write — the clobbered texture is read by a later pass.
+- **BlendAmount was dead in XOR, OR and AND.** The bitwise branch of the
+  transfer-mode shader returned before the mix, so three of the twenty-one modes
+  ignored their own strength control, in the feedback blend and in the FG/BG
+  layer blend alike. Copy (mode 0) still returns untouched — it is the identity
+  pass, not a blend.
+- **The BG self-blend ran at whatever strength another pass set last.** Its
+  `uBlendAmount` was never passed, and the material is shared with the FG blend
+  and the feedback blend.
+- **The signal-flow diagram under-reported feedback** — it asked only about
+  offset and scale, so a rig driven by FBZoom or FBRotate alone drew as "no
+  feedback", and the Feedback toggle was not consulted at all.
+- **Two units were lying.** FBRotate was labelled `°` but is percent of a turn
+  (50 = 180°, not 50°), and the offsets were labelled `px` but are ‰ of the
+  frame and fully resolution-independent. Labels only — no stored value or
+  mapping changed, so every saved state renders exactly as before.
+
+### Added
+- **Feedback loop shaping** — seven parameters acting on the *recirculated*
+  frame alone. `output.fade` and `output.colorshift` already sat inside the loop
+  and could damp or tint a trail, but only by damping or tinting the live
+  picture with it.
+  - **FBDecay** — the missing knob. Nothing attenuated the recirculating image,
+    so Add/Screen/Dodge blew out to white within a few frames and Multiply/Burn
+    crushed to black; decay is what makes those modes playable.
+  - **FBCenterX / FBCenterY** — FBZoom and FBRotate were pinned to the middle of
+    the frame. The difference between one tunnel and a steerable one.
+  - **FBEdge** (Clamp / Mirror / Wrap / Black) — what the loop finds outside the
+    frame once it is shifted. Clamp is the smear it has always produced.
+  - **FBBlur** — softens the trail per generation: the classic glow tunnel, and
+    it suppresses the pixel-grid aliasing that builds up over long chains.
+  - **FBHue** — hue rotation per generation, compounding around the loop, so a
+    trail can walk through the spectrum as it decays.
+  - **FBMirror** (Off / H / V / Both) — kaleidoscopic feedback.
+  - Every default is the identity — decay 100 %, centre 50/50, Clamp, blur 0,
+    hue 0, mirror Off — so existing patches render unchanged.
+
+---
+
 ## [0.16.0] — 2026-08-05 — The Motion Matte
 
 *Two new sources, and the discovery that the instrument already knew how to make

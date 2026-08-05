@@ -1239,6 +1239,13 @@ export function registerCoreParameters(ps) {
     unit: "%",
     feedbackVisible: true,
   });
+  // The two offsets are marked ‰ because that is exactly what they are: the
+  // pass applies `value / 100 * 0.1` in UV, so one unit is 0.001 of the frame
+  // and the full ±100 travel is ±10%. They were labelled "px" for years and are
+  // not pixels at all — nothing resolution-dependent enters the shader, so the
+  // same value gives the same shift at any output size. Only the LABEL changed;
+  // the stored numbers and the mapping are untouched, so every saved state,
+  // bank and MIDI mapping renders exactly as before.
   ps.register({
     id: "feedback.hor",
     label: "HorFBOffset",
@@ -1246,7 +1253,7 @@ export function registerCoreParameters(ps) {
     min: -100,
     max: 100,
     value: 0,
-    unit: "px",
+    unit: "‰",
   });
   ps.register({
     id: "feedback.ver",
@@ -1255,7 +1262,7 @@ export function registerCoreParameters(ps) {
     min: -100,
     max: 100,
     value: 0,
-    unit: "px",
+    unit: "‰",
   });
   ps.register({
     id: "feedback.scale",
@@ -1265,6 +1272,10 @@ export function registerCoreParameters(ps) {
     max: 50,
     value: 0,
   });
+  // Percent of a full turn, not degrees: the pass divides by 100 and the shader
+  // multiplies by 2π, so 50 is a half turn (180°) and the ±100 travel is a full
+  // turn each way. The old "°" label made 50 read as 50 degrees — a factor of
+  // 3.6 out. Label only; the mapping is unchanged.
   ps.register({
     id: "feedback.rotate",
     label: "FBRotate",
@@ -1272,7 +1283,7 @@ export function registerCoreParameters(ps) {
     min: -100,
     max: 100,
     value: 0,
-    unit: "°",
+    unit: "% turn",
   });
   ps.register({
     id: "feedback.zoom",
@@ -1323,6 +1334,88 @@ export function registerCoreParameters(ps) {
     value: 0,
     feedbackVisible: true,
   });
+
+  // ── Feedback loop shaping ─────────────────────────────────────────────────
+  // Everything below acts on the RECIRCULATED frame only, before it is blended
+  // with the live one. That distinction is the point: output.fade and
+  // output.colorshift already sit inside the loop (prev is captured after them),
+  // so they can damp or tint a trail — but only by damping or tinting the live
+  // picture too. These do it to the trail alone.
+  //
+  // EVERY default is the identity, and deliberately so: decay 100 % is ×1,
+  // centre 50/50 is the hardcoded centre these replace, Clamp is what both
+  // passes already did, blur 0 and hue 0 are no-ops and mirror is Off. Existing
+  // states, banks and .imweb files must render pixel-identically — see
+  // tests/audit-derived-defaults.mjs for why that rule is worth the care.
+  ps.register({
+    id: "feedback.decay",
+    label: "FBDecay",
+    group: "blend",
+    min: 0,
+    max: 100,
+    value: 100, // ×1 — no attenuation, exactly as before this param existed
+    unit: "%",
+  });
+  // Centre for FBRotate and FBZoom, which were pinned to the middle of frame.
+  // Only has an effect while one of those is non-zero — a centre on its own
+  // moves nothing, so no gate changes for it in the pipeline.
+  ps.register({
+    id: "feedback.centerx",
+    label: "FBCenterX",
+    group: "blend",
+    min: 0,
+    max: 100,
+    value: 50,
+    unit: "%",
+  });
+  ps.register({
+    id: "feedback.centery",
+    label: "FBCenterY",
+    group: "blend",
+    min: 0,
+    max: 100,
+    value: 50,
+    unit: "%",
+  });
+  // What the loop finds outside the frame once it is shifted, zoomed or turned.
+  // Clamp is the smear both passes have always produced; the other three are
+  // genuinely different feedback characters, not error handling.
+  ps.register({
+    id: "feedback.edge",
+    label: "FBEdge",
+    group: "blend",
+    type: PARAM_TYPE.SELECT,
+    options: ["Clamp", "Mirror", "Wrap", "Black"],
+    value: 0,
+  });
+  ps.register({
+    id: "feedback.blur",
+    label: "FBBlur",
+    group: "blend",
+    min: 0,
+    max: 100,
+    value: 0,
+  });
+  // Hue rotation per generation, compounding around the loop — a trail that
+  // walks through the spectrum as it decays. Signed so it can walk either way.
+  ps.register({
+    id: "feedback.hue",
+    label: "FBHue",
+    group: "blend",
+    min: -180,
+    max: 180,
+    value: 0,
+    unit: "°",
+  });
+  ps.register({
+    id: "feedback.mirror",
+    label: "FBMirror",
+    group: "blend",
+    type: PARAM_TYPE.SELECT,
+    options: ["Off", "H", "V", "Both"],
+    value: 0,
+  });
+
   ps.register({
     id: "output.interlace",
     label: "Interlace",

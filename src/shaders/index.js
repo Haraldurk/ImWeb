@@ -230,17 +230,61 @@ export const BLEND = /* glsl */ `
 
 // ── Feedback ──────────────────────────────────────────────────────────────────
 
+// Edge behaviour for the feedback passes, shared so the offset pass and the
+// rotate/zoom pass cannot drift apart. Clamp is the historical behaviour (the
+// smear you get from ClampToEdge); the rest are chosen looks.
+//   0 Clamp   1 Mirror   2 Wrap   3 Black
+export const FEEDBACK_EDGE_GLSL = /* glsl */ `
+  vec4 fbSample(sampler2D tex, vec2 uv, int mode) {
+    if (mode == 1) {
+      // Triangle wave with period 2 — ...0,1,0,1... so the frame reflects.
+      vec2 t = abs(fract(uv * 0.5) * 2.0 - 1.0);
+      return texture2D(tex, t);
+    }
+    if (mode == 2) return texture2D(tex, fract(uv));
+    if (mode == 3) {
+      // Opaque black, NOT vec4(0.0): the blend that consumes this frame carries
+      // fg.a through to the output, so a transparent "black" edge punched a
+      // fully transparent hole in the composite — which reads on screen as the
+      // live picture disappearing on that side, not as a black border.
+      if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) return vec4(0.0, 0.0, 0.0, 1.0);
+      return texture2D(tex, uv);
+    }
+    return texture2D(tex, clamp(uv, 0.0, 1.0));
+  }
+`;
+
 export const FEEDBACK = /* glsl */ `
   uniform sampler2D uOutput;
   uniform float uHorOffset;
   uniform float uVerOffset;
   uniform float uScale;
   uniform vec2  uResolution;
+  uniform float uDecay;    // 0..1 multiplier on the recirculated frame
+  uniform float uBlur;     // 0..1, radius in texels via uResolution
+  uniform float uHue;      // radians
+  uniform int   uMirror;   // 0 off, 1 H, 2 V, 3 both
+  uniform int   uEdge;
 
   varying vec2 vUv;
 
+${FEEDBACK_EDGE_GLSL}
+
+  // Hue rotation about the luma axis. Matrix form rather than an RGB→HSV round
+  // trip: no branches, no atan, and it leaves greys exactly grey, which matters
+  // when the result is fed back into itself a few hundred times.
+  vec3 hueRotate(vec3 c, float a) {
+    const vec3 k = vec3(0.57735026919);  // normalize(vec3(1.0))
+    float ca = cos(a);
+    return c * ca + cross(k, c) * sin(a) + k * dot(k, c) * (1.0 - ca);
+  }
+
   void main() {
     vec2 uv = vUv;
+
+    if (uMirror == 1 || uMirror == 3) uv.x = 1.0 - uv.x;
+    if (uMirror == 2 || uMirror == 3) uv.y = 1.0 - uv.y;
+
     if (uScale != 0.0) {
       vec2 center = vec2(0.5);
       float s = 1.0 + uScale * 0.1;
@@ -248,7 +292,29 @@ export const FEEDBACK = /* glsl */ `
     }
     uv.x += uHorOffset * 0.1;
     uv.y += uVerOffset * 0.1;
-    gl_FragColor = texture2D(uOutput, clamp(uv, 0.0, 1.0));
+
+    vec4 col;
+    if (uBlur > 0.0) {
+      // 3×3 tent, one pass. Separable would be cheaper in the abstract, but a
+      // second render target for a blur this small costs more than it saves —
+      // and the radius is in texels, which is what uResolution is finally for.
+      vec2 r = uBlur * 4.0 / max(uResolution, vec2(1.0));
+      col  = fbSample(uOutput, uv, uEdge) * 4.0;
+      col += fbSample(uOutput, uv + vec2( r.x, 0.0), uEdge) * 2.0;
+      col += fbSample(uOutput, uv + vec2(-r.x, 0.0), uEdge) * 2.0;
+      col += fbSample(uOutput, uv + vec2( 0.0, r.y), uEdge) * 2.0;
+      col += fbSample(uOutput, uv + vec2( 0.0,-r.y), uEdge) * 2.0;
+      col += fbSample(uOutput, uv + vec2( r.x, r.y), uEdge);
+      col += fbSample(uOutput, uv + vec2( r.x,-r.y), uEdge);
+      col += fbSample(uOutput, uv + vec2(-r.x, r.y), uEdge);
+      col += fbSample(uOutput, uv + vec2(-r.x,-r.y), uEdge);
+      col /= 16.0;
+    } else {
+      col = fbSample(uOutput, uv, uEdge);
+    }
+
+    if (uHue != 0.0) col.rgb = clamp(hueRotate(col.rgb, uHue), 0.0, 1.0);
+    gl_FragColor = vec4(col.rgb * uDecay, col.a);
   }
 `;
 
@@ -385,7 +451,12 @@ export const TRANSFERMODE = /* glsl */ `
       if      (uMode == 1) ir = ia ^ ib;
       else if (uMode == 2) ir = ia | ib;
       else                 ir = ia & ib;
-      gl_FragColor = vec4(int8ToFloat(ir), fg.a);
+      // Mix toward b exactly as the photographic branch does. This used to
+      // return here, so BlendAmount was live in the UI and dead in XOR, OR and
+      // AND — three of twenty-one modes silently ignoring their own strength
+      // control. uMode 0 (Copy) still returns fg untouched: it is the identity
+      // pass, not a blend, and mixing it would turn Copy into a dissolve.
+      gl_FragColor = vec4(mix(b, int8ToFloat(ir), uBlendAmount), fg.a);
       return;
     }
 
@@ -1646,17 +1717,21 @@ export const FEEDBACK_ROTATE = /* glsl */ `
   uniform sampler2D uTexture;
   uniform float uAngle;  // turns
   uniform float uZoom;
+  uniform vec2  uCenter; // pivot for both, 0.5,0.5 = the old hardcoded middle
+  uniform int   uEdge;
   varying vec2 vUv;
+
+${FEEDBACK_EDGE_GLSL}
 
   void main() {
     float a   = uAngle * 6.28318530718;
     float ca  = cos(a);
     float sa  = sin(a);
-    vec2  uv  = vUv - 0.5;
+    vec2  uv  = vUv - uCenter;
     uv = vec2(ca * uv.x - sa * uv.y, sa * uv.x + ca * uv.y);
     float z   = max(0.001, uZoom);
-    uv  = uv / z + 0.5;
-    gl_FragColor = texture2D(uTexture, uv);
+    uv  = uv / z + uCenter;
+    gl_FragColor = fbSample(uTexture, uv, uEdge);
   }
 `;
 

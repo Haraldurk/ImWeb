@@ -1194,7 +1194,9 @@ export class SignalPath {
       'layer.fg','layer.bg','layer.ds',
       'keyer.active','keyer.extkey',
       'displace.amount','displace.warp',
-      'blend.active','feedback.hor','feedback.ver','feedback.scale',
+      'blend.active','feedback.active','feedback.mode',
+      'feedback.hor','feedback.ver','feedback.scale','feedback.rotate','feedback.zoom',
+      'feedback.decay','feedback.blur','feedback.hue','feedback.mirror',
       'output.colorshift','output.fade',
       'effect.pixelate','effect.edge','effect.rgbshift','effect.kaleidoscope','effect.posterize','effect.solarize',
       'effect.vignette','effect.bloom','effect.pixelsort','effect.grain','effect.scanlines','effect.strobe',
@@ -1218,11 +1220,24 @@ export class SignalPath {
     const displOn  = p.get('displace.amount').value > 0;
     const warpOn   = p.get('displace.warp').value > 0;
     const blendOn  = p.get('blend.active').value;
-    const fbOn     = blendOn && (
-      p.get('feedback.hor').value !== 0 ||
-      p.get('feedback.ver').value !== 0 ||
-      p.get('feedback.scale').value !== 0
-    );
+    // Every gate the pipeline actually applies, and every knob that reaches the
+    // prev frame. This used to ask about hor/ver/scale only, so a rig driven by
+    // FBZoom or FBRotate alone drew as "no feedback" in the flow — and the
+    // Feedback toggle itself, which can switch the whole branch off, was not
+    // consulted at all.
+    const fbOn     = blendOn &&
+      p.get('feedback.active').value &&
+      p.get('feedback.mode').value > 0 && (
+        p.get('feedback.hor').value !== 0 ||
+        p.get('feedback.ver').value !== 0 ||
+        p.get('feedback.scale').value !== 0 ||
+        p.get('feedback.rotate').value !== 0 ||
+        p.get('feedback.zoom').value !== 0 ||
+        p.get('feedback.decay').value !== 100 ||
+        p.get('feedback.blur').value > 0 ||
+        p.get('feedback.hue').value !== 0 ||
+        p.get('feedback.mirror').value !== 0
+      );
     const csOn      = p.get('output.colorshift').value > 0;
     const fadeOn    = p.get('output.fade').value > 0;
     const fgCCon    = p.get('fg.hue').value !== 0 || p.get('fg.sat').value !== 100 || p.get('fg.bright').value !== 100;
