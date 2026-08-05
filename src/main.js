@@ -251,9 +251,32 @@ async function main() {
 
   renderer.autoClear = false;
 
-  // Initial size
-  let W = canvas.parentElement.clientWidth;
-  let H = canvas.parentElement.clientHeight;
+  // Initial size.
+  //
+  // `clientWidth` is 0 whenever the page runs before layout has produced a box
+  // — a tab that boots in the background, a `display:none` container, an
+  // embedded frame that has not been shown yet. Most of the instrument
+  // survives that, because `applyResolution()` runs later and resizes the
+  // renderer and every buffer that follows the canvas.
+  //
+  // Two buffers do NOT follow the canvas, on purpose: `VideoDelayLine` and
+  // `TimeDisplaceEngine` both make `resize()` a deliberate no-op, so a display
+  // change cannot wipe their history. They take their working size ONCE, here,
+  // and only ever reallocate from a `bufferResolution` change — which fires on
+  // CHANGE, so it never fires at startup. A zero here therefore allocates their
+  // rings at 0x0 and nothing recovers them for the rest of the session: capture
+  // and read both keep working, silently, against zero-sized targets, and the
+  // Delay source just renders nothing until someone happens to touch Buffer res.
+  //
+  // Fall back rather than heal later. A heal would have to run in the render
+  // loop and reallocate once the canvas became real, which means a guard that
+  // is false on every normal boot and a realloc that throws away history — for
+  // a size that was never going to be more than an approximation anyway, since
+  // "Native" already clamps and the buffers are decoupled from the canvas by
+  // design. A plausible size costs nothing and cannot be degenerate.
+  const _bootSize = (px, fallback) => (Number.isFinite(px) && px > 0 ? px : fallback);
+  let W = _bootSize(canvas.parentElement?.clientWidth,  _bootSize(window.innerWidth,  1280));
+  let H = _bootSize(canvas.parentElement?.clientHeight, _bootSize(window.innerHeight,  720));
   renderer.setSize(W, H);
 
   // ── 2. Parameter system ───────────────────────────────────────────────────
