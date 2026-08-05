@@ -1,6 +1,6 @@
 # ImWeb — Full Operation Manual
 
-> **Version:** 0.8.5
+> **Version:** 0.17.0
 > **Platform:** Browser (Chrome 113+ recommended)
 > **Original concept:** Image/ine — Tom Demeyer, STEIM Amsterdam 1997/2008
 > **ImWeb:** H. Karlsson
@@ -56,7 +56,7 @@ Open Chrome at `localhost:5173`. On first load:
 ### First steps
 
 1. The output canvas fills the centre of the screen
-2. Open the **Mapping** tab to see all parameters
+2. Open the **Mix** tab to see layer routing and the main compositing parameters
 3. Right-click any parameter row to assign a controller
 4. Press `?` for the keyboard shortcut overlay
 5. Press `/` to search for any parameter by name
@@ -82,24 +82,32 @@ Open Chrome at `localhost:5173`. On first load:
 
 | Button | Key | Function |
 |--------|-----|----------|
-| ↺ | — | Reset all parameters to defaults |
+| ↺ | Shift+Esc | Reset all parameters to defaults — the panic button |
 | ⊟ / ⊞ | — | Collapse / expand all sections |
 | ┄ | — | Show / hide the signal path display (hidden by default; `Shift+P` floats it) |
+| ⇌ | — | Active controller assignments (the X-Map overview) |
 | ◎ | I | Parameter OSD on/off |
 | ▤ | U | State bar show/hide |
-| FIT | — | Fit canvas to window (responsive) |
-| FAST | — | 960×540 rendering |
-| MED | — | 1280×720 rendering |
-| MAX | — | 1920×1080 rendering |
-| LOW | — | Half-resolution (performance) |
-| ⊡ | — | Open second monitor popup |
-| ◫ | — | Ghost mode (dim main canvas) |
+| Movie | M | Movie playback on/off (Deck A) |
+| Camera | V | Camera on/off |
+| ⇄ | — | Flip camera (front / back) |
+| ⊡ | — | Send output to a second monitor / new window |
+| ⬡ | — | Projection mapping — drag corner handles to reshape the output |
+| ◫ | — | Ghost mode — shrink main output to a thumbnail |
+| ⌨ | — | Keyboard lock — block letter/number shortcuts so typing in fields works |
 | ◧ | Shift+V | Toggle output spy (small preview) |
-| ⛶ | Cmd+F | Fullscreen |
+| ⛶ | F | Fullscreen (or double-click the canvas) |
 | ⏺ | — | Start/stop WebM recording |
+| 📷 | — | Frame capture — pause render and export PNG frames |
 | 𝔸 | N | AI Narrator |
 | ⬡ | P | AI Coach (30s suggestions) |
 | ⚙ | — | AI API key settings |
+
+> ⬡ appears twice — projection mapping sits in the left cluster of the toolbar,
+> the AI Coach in the group at the far right beside 𝔸 and ⚙.
+
+Output resolution is no longer a row of toolbar buttons. It is the
+`output.resolution` parameter in the Output tab — see §8.
 
 ### Tabs
 
@@ -110,13 +118,15 @@ alongside.
 | Tab | Contents |
 |-----|----------|
 | **Sources** | Live In (camera, sound, I/O), Media (Movie Library, Movie A, Movie B, Clip Library, stills, BG1/BG2), Generators, and taps From the Signal |
-| **Mix** | Layer routing, per-layer colour, the three mix buses, keyer, displacement |
-| **Effects** | Post-FX chain and its ordering |
+| **Mix** | Layer routing, per-layer colour, the three mix buses, keyer, displacement, warp map editor |
+| **Effects** | Blend & Feedback, the post-FX chain and its ordering |
 | **Output** | Output modes, LUT, interlace, recording |
-| **3D** | 3D scene, geometry, import, material, camera, Hypercube |
-| **Analog** | Analog signal simulator and CRT formatting |
-| **Draw** | Freehand canvas, brush controls, stroke looper |
 | **Project** | Project save/load, AI generator, Banks, States, Step Sequencer, response curves, live GLSL |
+
+There are **five** tabs. Phase 24 retired the separate 3D, Analog and Draw tabs:
+those three are large source editors, and they are now opened as workspaces from
+their own rows inside **Sources**, next to the source they belong to. Their
+panels are unchanged — only the way you reach them moved.
 
 Any panel can be **detached** into a floating, resizable window with the ⊞ button
 in its section header — useful for the Movie Library, which then shows as many rows
@@ -297,7 +307,29 @@ Target bitrate: **4–10 Mbps** for smooth scrubbing and seek. Above 15 Mbps, Ch
 
 ---
 
-### 4.3 Stills Buffer
+### 4.3 Clip Library (live recorder)
+
+Records short clips out of ImWeb's own signal and plays them back — a sampler
+for the instrument's output, not a media importer. It sits in **Sources ▸ Media**,
+below the Movie Library, and the two are easy to confuse: the Movie Library holds
+files you brought in, the Clip Library holds material you *made*.
+
+| Parameter | Range | Description |
+|-----------|-------|-------------|
+| `clip.recordSrc` | SELECT | **RecordSrc** — Out / Cam / Mov / FG / BG / S1 / S2 / S3 |
+| `clip.duration` | 1–30 s | Length of the next recording |
+| `clip.bank` | SELECT | Bank 0–7 |
+| `clip.slot` | SELECT | Slot 0–15 within the bank |
+| `clip.record` | TRIGGER | Record into the current bank/slot |
+| `clip.recall` | TRIGGER | Play the current bank/slot |
+
+Eight banks of sixteen slots. Because `clip.bank`, `clip.slot`, `clip.record`
+and `clip.recall` are all ordinary parameters, the whole recorder is playable
+from MIDI: map slot to a knob and Record/Recall to two pads.
+
+---
+
+### 4.4 Stills Buffer
 
 Capture and hold still frames for compositing, arranged as a grid of up to
 8×8 = 64 slots (default 4×4 = 16).
@@ -321,13 +353,29 @@ Capture and hold still frames for compositing, arranged as a grid of up to
 | `buffer.auto` | TOGGLE | Auto-capture on interval |
 | `buffer.rate` | 0.5–60 fps | Auto-capture rate |
 | `buffer.capture` | TRIGGER | Capture to next slot |
+| `buffer.scatter` | 0–32 | Randomises which slot the scan reads, for a shuffled buffer |
+| `buffer.grainrate` | 0.5–30 Hz | Rate at which Scatter re-rolls |
 
-Slots can be individually **protected** (lock icon in Buffer tab) to prevent
-auto-overwrite. Total slot count is `rows × cols`, capped at 64 (8×8).
+**Dedicated capture triggers** — each grabs from a specific place rather than
+from `buffer.source`, so they can be mapped to separate pads:
+
+| Parameter | Description |
+|-----------|-------------|
+| `buffer.cap_screen` | **Screen→Buffer** — capture the current output |
+| `buffer.cap_video` | **Video→Buffer** — capture the camera |
+| `buffer.cap_movie` | **Movie→Buffer** — capture the playing movie |
+| `screen.bg1` | **Freeze BG1** — hold the current frame as the BG1 source |
+| `screen.bg2` | **Freeze BG2** — same, for BG2 |
+
+`screen.bg1` / `screen.bg2` are what make the **BG1** and **BG2** sources useful:
+they freeze a plate you can then key or mix against while the live picture moves.
+
+Slots can be individually **protected** (lock icon in the Stills Buffer panel) to
+prevent auto-overwrite. Total slot count is `rows × cols`, capped at 64 (8×8).
 
 ---
 
-### 4.4 Color Source
+### 4.5 Color Source
 
 Solid colour or gradient texture.
 
@@ -344,7 +392,7 @@ Click the colour swatch in the UI to open a quick colour picker.
 
 ---
 
-### 4.5 Noise (BFG Fractal Noise)
+### 4.6 Noise (BFG Fractal Noise)
 
 Resolution-independent GPU noise field, regenerated each frame.
 
@@ -361,12 +409,13 @@ Resolution-independent GPU noise field, regenerated each frame.
 | `noise.invert` | TOGGLE | Invert black/white |
 | `noise.seed` | 0–100 | Pattern seed |
 | `noise.color` | TOGGLE | RGB vs grayscale output |
+| `noise.sharpen` | 0–100% | Hardens the gradient between light and dark, taking the field from cloud toward cell structure |
 
 Rendered to a 512×512 GPU texture. Smooth animation when speed ≠ 0.
 
 ---
 
-### 4.6 3D Scene
+### 4.7 3D Scene
 
 Full Three.js 3D scene rendered to a WebGL render target.
 
@@ -376,7 +425,13 @@ Sphere, Cube, Torus, Icosahedron, Cone, Pyramid, Plane, Ring, Octahedron, Dodeca
 
 #### Importing models
 
-Drop `.glb / .gltf / .obj / .stl / .dae` onto the canvas, or use the **3D tab** import button. Models auto-fit to a 2×2×2 bounding box on load.
+Drop `.glb / .gltf / .obj / .stl / .dae` onto the canvas, or use the import
+button in the 3D workspace (opened from its row in **Sources**). Models auto-fit
+to a 2×2×2 bounding box on load.
+
+| Parameter | Range | Description |
+|-----------|-------|-------------|
+| `scene3d.norm` | 0.1–10 | **Normalization** — multiplies the auto-fit scale. **Imported models only** — it has no effect on built-in geometry, which uses `scene3d.scale` alone. Raise it if a model comes in too small to see |
 
 #### Parameters — Transform
 
@@ -386,7 +441,8 @@ Drop `.glb / .gltf / .obj / .stl / .dae` onto the canvas, or use the **3D tab** 
 | `scene3d.geo` | SELECT | Built-in geometry |
 | `scene3d.rot.x/y/z` | 0–360° | Static rotation |
 | `scene3d.spin.x/y/z` | 0–360°/sec | Auto-rotation speed |
-| `scene3d.pos.x/y/z` | −10 – 10 | Position offset |
+| `scene3d.pos.x/y/z` | −5 – 5 | Position offset |
+| `scene3d.pos.screenspace` | TOGGLE | **Screen XY** — reinterpret X/Y as normalised screen coordinates, ±1 being the edge of frame. Position converts through the camera FOV and distance, so the object lands where you point it regardless of how the camera is set |
 | `scene3d.scale` | 0.1–10 | Scale |
 | `scene3d.wireframe` | TOGGLE | Wireframe render |
 
@@ -399,17 +455,113 @@ Drop `.glb / .gltf / .obj / .stl / .dae` onto the canvas, or use the **3D tab** 
 
 #### Parameters — Material
 
+`scene3d.mat.type` (**Material Shader**) chooses the lighting model, and it
+governs which of the parameters below do anything:
+
+| Shader | Character | Reads |
+|--------|-----------|-------|
+| **Standard** | PBR default | roughness, metalness |
+| **Physical** | Standard plus glass and coatings | + clearcoat, transmit, IOR |
+| **Toon** | Banded cel shading | toonSteps |
+| **Normal** | Surface normals as RGB — unlit | nothing else |
+| **Matcap** | Baked-lighting look; ignores scene lights | base colour |
+| **Lambert** | Cheap diffuse | — |
+| **Phong** | Classic specular | — |
+
 | Parameter | Range | Description |
 |-----------|-------|-------------|
+| `scene3d.mat.type` | SELECT | Material shader — see above |
 | `scene3d.mat.hue` | 0–360° | Base colour hue |
 | `scene3d.mat.sat` | 0–100% | Saturation (0 = white) |
 | `scene3d.mat.roughness` | 0–1 | Surface roughness |
 | `scene3d.mat.metalness` | 0–1 | Metallic quality |
-| `scene3d.mat.emissive` | 0–1 | Self-illumination |
 | `scene3d.mat.opacity` | 0–1 | Transparency |
-| `scene3d.mat.texsrc` | SELECT | Live texture source (None / Camera / Movie / Screen / Draw / Buffer / Noise) |
+| `scene3d.mat.clearcoat` | 0–1 | **Physical only** — a lacquer layer over the base |
+| `scene3d.mat.transmit` | 0–1 | **Physical only** — light transmission. This is what makes glass |
+| `scene3d.mat.ior` | 1–3 | **Physical only** — index of refraction (1.5 ≈ glass, 2.4 ≈ diamond) |
+| `scene3d.mat.toonSteps` | 2–10 | **Toon only** — number of shading bands |
 
-Default material is **white** (hue=0, sat=0). Cranking up saturation enables coloured materials.
+**Glow and rim**
+
+| Parameter | Range | Description |
+|-----------|-------|-------------|
+| `scene3d.mat.emissive` | 0–1 | Self-illumination |
+| `scene3d.mat.emissiveHue` | 0–360° | **Glow Hue** |
+| `scene3d.mat.emissiveSat` | 0–100% | **Glow Sat** — 0 gives a white glow |
+| `scene3d.mat.rim` | 0–1 | **Rim Intensity** — brightens grazing angles, separating the silhouette from the background |
+| `scene3d.mat.rimHue` | 0–360° | **Rim Hue** (default 180°) |
+| `scene3d.mat.envIntensity` | 0–2 | **EnvInt** — how strongly the environment is reflected |
+
+Default material is **white** (hue=0, sat=0). Cranking up saturation enables
+coloured materials. Rim is the cheapest way to keep a dark object readable over a
+dark composite — reach for it before adding lights.
+
+**Texturing and UV motion**
+
+| Parameter | Range | Description |
+|-----------|-------|-------------|
+| `scene3d.mat.texsrc` | SELECT | Live texture source (None / Camera / Movie / Screen / Draw / Buffer / Noise) |
+| `scene3d.mat.uvSpeedX` | −2 – 2 | **UVSpeedX** — scrolls the texture across the surface |
+| `scene3d.mat.uvSpeedY` | −2 – 2 | **UVSpeedY** |
+
+**Geometry displacement** — pushes vertices, so it changes the silhouette rather
+than just the shading. Two independent sources, which sum:
+
+| Parameter | Range | Description |
+|-----------|-------|-------------|
+| `scene3d.mat.displace` | 0–2 | **Math Displace** — procedural noise displacement |
+| `scene3d.mat.dispScale` | 0.1–10 | **DispScale** — spatial frequency of that noise |
+| `scene3d.mat.dispSpeed` | −5 – 5 | **Disp. Speed** — how fast it evolves |
+| `scene3d.mat.tDisplace` | 0–2 | **T-Displace** — displacement driven by the *texture* instead, so the live picture becomes relief |
+| `scene3d.mat.dispTexScale` | 0.1–10 | **Disp. Tex Scale** |
+| `scene3d.mat.dispTexProj` | SELECT | **Disp. Projection** — *UV (Skin)* wraps with the model, *Screen (Projector)* stays fixed in frame while the object turns under it |
+
+Displacement needs vertices to move: a low-poly geometry will show faceting
+rather than a smooth deformation.
+
+#### Parameters — Cloner
+
+Repeats the object into an array. `scene3d.clone.mode` **Off** disables the
+whole system, so none of the rest costs anything until you turn it on.
+
+| Parameter | Range | Description |
+|-----------|-------|-------------|
+| `scene3d.clone.mode` | SELECT | **Cloner** — Off / Grid / Ring / Line |
+| `scene3d.clone.count` | 2–200 | **CloneN** — number of copies |
+| `scene3d.clone.spread` | 0–10 | **Spread** — spacing between them |
+| `scene3d.clone.scale` | 0.1–10 | **CloneScale** — uniform scale of the clones |
+| `scene3d.clone.scalestep` | −2 – 2 | **ScaleStep** — progressive scaling along the array, for a taper |
+| `scene3d.clone.twist` | −360–360° | **Twist** — progressive rotation along the array |
+| `scene3d.clone.scatter` | 0–10 u | **Scatter** — random displacement per clone |
+
+**Wave** — a travelling offset through the array, which is what makes a cloner
+read as motion rather than as a static pattern:
+
+| Parameter | Range | Description |
+|-----------|-------|-------------|
+| `scene3d.clone.wave` | −5 – 5 Hz | **Wave** — travel speed. 0 holds the wave still |
+| `scene3d.clone.waveshape` | SELECT | Sine / Square / Triangle / Sawtooth |
+| `scene3d.clone.waveamp` | 0–10 u | **WaveAmp** — displacement depth |
+| `scene3d.clone.wavefreq` | 0.1–10 | **WaveFreq** — how many wavelengths span the array |
+
+#### Parameters — Metaballs
+
+| Parameter | Range | Description |
+|-----------|-------|-------------|
+| `scene3d.blob.amount` | 0–5 u | **Metaball Amount** — 0 is off |
+| `scene3d.blob.scale` | 0.1–10 | **Metaball Scale** |
+| `scene3d.blob.speed` | −5 – 5 Hz | **Metaball Speed** |
+
+#### Parameters — Animation (imported models)
+
+| Parameter | Range | Description |
+|-----------|-------|-------------|
+| `scene3d.anim.active` | TOGGLE | **Anim On** |
+| `scene3d.anim.select` | SELECT | **Animation** — clips found in the loaded file. Reads *None* until a model with animation is imported |
+| `scene3d.anim.speed` | −2 – 2 | **Anim Speed**. Negative runs the clip backwards |
+
+Dropping a `.glb` with animation switches the scene and its animation on
+automatically.
 
 #### Parameters — Depth Pass
 
@@ -420,21 +572,31 @@ Default material is **white** (hue=0, sat=0). Cranking up saturation enables col
 
 #### Parameters — Lighting
 
+Three lights: ambient, one directional, one point.
+
 | Parameter | Range | Description |
 |-----------|-------|-------------|
-| `scene3d.light.intensity` | 0–2 | Directional light strength |
+| `scene3d.light.ambient` | 0–2 | **Ambient** — fills the shadows. Default 0.4 |
+| `scene3d.light.intensity` | 0–2 | **Light Int.** — directional strength |
+| `scene3d.light.dirX` | −10 – 10 | **Light X** — direction of the key light |
+| `scene3d.light.dirY` | −10 – 10 | **Light Y** |
+| `scene3d.light.dirZ` | −10 – 10 | **Light Z** |
+| `scene3d.light.point` | 0–5 | **Point Int.** — blue-tinted point light. Default 0.6 |
 
-Scene has three lights: ambient (0.4 intensity), directional (white, 1.0), point (blue-tinted, 0.6).
+The light direction params are worth assigning controllers to: an LFO on
+`dirX` swings the key light across the object, which reads as far more motion
+than rotating the object itself.
 
 ---
 
-### 4.7 Slit Scan Buffer
+### 4.8 Slit Scan Buffer
 
 Classic slit-scan effect: reads a thin strip of pixels each frame and accumulates over time.
 
 | Parameter | Range | Description |
 |-----------|-------|-------------|
 | `slitscan.active` | TOGGLE | Enable |
+| `slitscan.source` | SELECT | **Slit src** — source the strip is read from |
 | `slitscan.pos` | 0–100% | Slit position in source |
 | `slitscan.speed` | 0.5–60 fps | Advance rate |
 | `slitscan.axis` | SELECT | Vertical / Horizontal / Centre-V / Centre-H |
@@ -443,7 +605,7 @@ Classic slit-scan effect: reads a thin strip of pixels each frame and accumulate
 
 ---
 
-### 4.8 Draw Layer
+### 4.9 Draw Layer
 
 Freehand canvas drawing that becomes a live texture.
 
@@ -456,12 +618,37 @@ Freehand canvas drawing that becomes a live texture.
 | `draw.opacity` | 0–100% | Brush opacity |
 | `draw.fade` | 0–100% | Canvas fade-out over time |
 | `draw.clear` | TRIGGER | Clear canvas |
+| `draw.inkSource` | SELECT | **InkSource** — Color / Camera / Movie / MovieB / Noise / Output. The brush paints *with a live source* instead of a flat colour, so a stroke reveals video through its own shape |
+| `draw.pressure.size` | 0–100% | **PressSize** — how much stylus pressure drives brush size. Default 100% |
+| `draw.pressure.opacity` | 0–100% | **PressOpacity** — pressure to opacity. Default 0 |
+| `draw.toParticles` | TOGGLE | **StrokeEmit** — strokes emit particles as you draw |
 
-Canvas is 1024×1024 and persists across frames. Map `draw.x` and `draw.y` to mouse for interactive drawing.
+Canvas is 1024×1024 and persists across frames. Map `draw.x` and `draw.y` to
+mouse for interactive drawing.
+
+`draw.inkSource` is the one worth trying first: set it to Camera and the drawing
+is not a mark on top of the picture, it *is* the picture, appearing only where
+you have drawn.
+
+Pressure needs a stylus that reports it — the pressure params do nothing under a
+mouse or a plain finger.
+
+#### Stroke loopers (×3)
+
+Record a gesture and let it replay itself, so a drawn mark becomes an animation.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `drawloop1.rec` | TRIGGER | **Loop1Rec** — start/stop recording strokes |
+| `drawloop1.play` | TOGGLE | **Loop1Play** — replay the recorded gesture |
+| `drawloop1.speed` | — | **Loop1Speed** — replay rate |
+| `drawloop1.clear` | TRIGGER | **Loop1Clear** |
+
+Three independent loopers (`drawloop1`, `drawloop2`, `drawloop3`).
 
 ---
 
-### 4.9 Text Layer
+### 4.10 Text Layer
 
 Renders live text to a 512×512 canvas texture.
 
@@ -476,13 +663,52 @@ Renders live text to a 512×512 canvas texture.
 | `text.spacing` | 0.5–3 | Line height |
 | `text.mode` | SELECT | All / Char / Word / Line |
 | `text.bg` | TOGGLE | Black background |
+| `text.bgOpacity` | 0–100% | Background opacity |
+| `text.letterspacing` | −20–50 | **LetterSpc** — tracking |
+| `text.rotation` | −180–180° | **TextRot** |
+| `text.outlineHue` | 0–360° | Outline colour |
+| `text.outlineSat` | 0–100% | Outline saturation |
+| `text.shadowX` | −50–50 | Drop shadow offset |
+| `text.shadowY` | −50–50 | Drop shadow offset |
+| `text.shadowBlur` | 0–40 px | Drop shadow blur |
 | `text.advance` | TRIGGER | Step to next character / word / line |
 
-Enter text content in the Text tab textarea. Assign `text.advance` to a key or MIDI note for live text performance.
+Enter text content in the Text panel's textarea. Assign `text.advance` to a key
+or MIDI note for live text performance.
+
+#### Advancing and content slots
+
+| Parameter | Range | Description |
+|-----------|-------|-------------|
+| `text.autoplay` | TOGGLE | **AutoPlay** — advance on a clock instead of by trigger |
+| `text.rate` | 0–20 Hz | **AdvRate** — that clock's speed |
+| `text.contentIdx` | 0–63 | **ContentIdx** — which stored text block is showing |
+| `text.auto` | 0–10 Hz | **AutoHz** — auto-cycle through content slots |
+| `text.progress` | 0–100% | Position through the current text, as a scrubbable value |
+
+`text.contentIdx` is the performance control: store up to 64 blocks of text and
+drive the index from a controller, a MIDI note or the step sequencer.
+
+#### Animation
+
+Two independent layers of motion — a continuous one and a per-advance transition.
+
+| Parameter | Range | Description |
+|-----------|-------|-------------|
+| `text.animMode` | SELECT | **AnimMode** — None / Bounce / Wave / Fade / Typewriter. Runs continuously |
+| `text.animSpeed` | 0–10 | **AnimSpeed** |
+| `text.animAmt` | 0–100 | **AnimAmt** — depth of the effect |
+| `text.anim.in` | SELECT | **AnimIn** — None / Fade / FadeUp / FadeDown / Scale / Blur / TypeOn |
+| `text.anim.out` | SELECT | **AnimOut** — None / Fade / FadeDown / FadeUp / Scale / Blur / Vanish |
+| `text.anim.dur` | 0.05–2 s | **AnimDur** — transition length |
+| `text.anim.ease` | SELECT | **AnimEase** — Linear / EaseIn / EaseOut / EaseInOut / Bounce / Spring |
+
+`animMode` is an idle behaviour; `anim.in` / `anim.out` fire on each advance.
+They compose — a Wave that types on and fades out.
 
 ---
 
-### 4.10 Particle System
+### 4.11 Particle System
 
 GPU particle field rendered to a 512×512 texture.
 
@@ -495,27 +721,35 @@ GPU particle field rendered to a 512×512 texture.
 | `particle.wind` | −5 – 5 | Horizontal drift |
 | `particle.size` | 1–50 px | Particle point size |
 | `particle.color` | 0–360° | Hue |
+| `particle.spread` | 0–100% | **PSpread** — angular spread of initial velocity |
+| `particle.emitter` | SELECT | **PEmitter** — Box / Ring / LineH / LineV / Point |
+| `particle.emitx` | 0–100% | **PEmitX** — emitter position |
+| `particle.emity` | 0–100% | **PEmitY** |
+| `particle.masksrc` | SELECT | **PMaskSrc** — a source whose brightness masks where particles may live |
 
-Particles respawn at random positions when life expires.
+`particle.masksrc` offers the **full source list**, not a short hardwired set —
+mask the field with the camera, a mix bus, Motion Extraction or a depth
+companion. Particles respawn at a position drawn from the emitter shape when
+their life expires.
 
 ---
 
-### 4.11 Sequencer Buffers (×3)
+### 4.12 Sequencer Buffers (×3)
 
 Record any source to a rolling frame buffer and loop it.
 
 | Parameter | Range | Description |
 |-----------|-------|-------------|
-| `seq1.active` | TOGGLE | Record / play |
-| `seq1.frames` | SELECT | 4 / 8 / 16 / 32 / 64 / 120 / 240 / 480 frames |
+| `seq1.active` | TOGGLE | **Seq1 Rec** — record / play |
 | `seq1.source` | SELECT | Source to record |
-| `seq1.rate` | 1–60 fps | Record/playback rate |
+| `seq1.size` | 4–480 frames | **Seq1 Frames** — loop length |
+| `seq1.speed` | −300–300% | **Seq1 Speed** — playback rate. Negative plays the loop backwards |
 
 Three independent sequencers (seq1, seq2, seq3). Each frame is a full-resolution render target; large frame counts consume significant VRAM.
 
 ---
 
-### 4.12 Vectorscope (Audio Visualiser)
+### 4.13 Vectorscope (Audio Visualiser)
 
 Real-time audio visualisation as a source texture.
 
@@ -525,25 +759,43 @@ Real-time audio visualisation as a source texture.
 | `vectorscope.gain` | 0.1–5 | Amplitude scaling |
 | `vectorscope.decay` | 0–1 sec | Trail decay |
 | `vectorscope.color` | 0–360° | Display hue |
+| `vectorscope.linewidth` | 0.5–15 px | **VScope Width** — trace thickness |
+| `vectorscope.glow` | 0–50 px | **VScope Glow** — bloom around the trace |
 
 ---
 
-### 4.13 Analog TV
+### 4.14 Analog TV
 
 Self-contained 720x480 analog signal simulator.
 
 | Parameter | Type | Range | Description |
 |-----------|------|-------|-------------|
-| `analog.sourceType` | SELECT | — | Base input source for the analog pipeline. |
-| `analog.crop43` | TOGGLE | — | Applies hard 4:3 letterboxing to the signal. |
+| `analog.sourceType` | SELECT | — | Base input to the analog pipeline — see below. |
+| `analog.crop43` | TOGGLE | — | Applies hard 4:3 letterboxing to the signal. Defaults on |
 | `analog.brightness` | SLIDER | -100–100% | Base signal brightness lift. |
 | `analog.contrast` | SLIDER | 0–200% | Signal contrast multiplier. |
 | `analog.saturation` | SLIDER | 0–200% | Color burst saturation. |
 | `analog.hueOffset` | SLIDER | -180–180° | Signal phase/hue shift. |
 
+#### Signal types (`analog.sourceType`)
+
+Live pictures — **Camera**, **Movie**, **Buffer**, **Noise**, **3D Scene**,
+**Draw**, **Output** — feed a real source through the analog pipeline.
+
+Generated test signals — **Snow**, **SMPTE 75%**, **SMPTE 100%**, **Rainbow**,
+**Gray Steps**, **Multiburst**, **Crosshatch** — synthesise the classic bars and
+patterns.
+
+**Teletext** is the last entry. It is a *signal type of this source*, not a
+routable source in its own right: selecting it reveals the **Teletext ▸ page
+navigation** panel and forces `analog.crop43` off. Pages are drawn from the
+built-in page set, with cursor, sub-page and item-open triggers exposed as
+parameters so a page can be navigated from MIDI or the step sequencer. In reader
+mode the arrow keys page through and Escape exits.
+
 ---
 
-### 4.14 SDF (Signed Distance Field Raymarcher)
+### 4.15 SDF (Signed Distance Field Raymarcher)
 
 A raymarched 3D field rendered as a source. Shapes are described mathematically
 rather than as meshes, so they combine, repeat and deform continuously.
@@ -638,7 +890,7 @@ rather than as meshes, so they combine, repeat and deform continuously.
 
 ---
 
-### 4.15 Rutt-Etra Scan Processor
+### 4.16 Rutt-Etra Scan Processor
 
 A modern reading of the Rutt/Etra scan processor: each scanline of the source is
 displaced in Z by its brightness and drawn as a beam in 3D.
@@ -673,7 +925,7 @@ displaced in Z by its brightness and drawn as a beam in 3D.
 
 ---
 
-### 4.16 Warp Tape
+### 4.17 Warp Tape
 
 A rolling buffer that records the source over time and lets you scrub or smear
 across the recorded axis — a tape head over a time-image.
@@ -692,9 +944,33 @@ across the recorded axis — a tape head over a time-image.
 | `vwarp.span` | 0.01–1 | Width of the read window |
 | `vwarp.clear` | TRIGGER | Zero the tape |
 
+**It is not a slit-scan**, despite the historical name. A slit-scan takes one
+fixed source column and spreads it across every output column — that is the Slit
+Scan Buffer (§4.8), which remaps *space*. The Warp Tape writes one column of
+video per frame at a moving head and reads the whole tape as a frame, so output
+column X shows source column X as it was *(writeIdx − X)* frames ago. Static
+content passes through untouched; moving content shears.
+
+**Why it coexists with Time Displace (§4.18).** They overlap, and neither should
+absorb the other. The Warp Tape stores one *column* per time step, so ~8 MB buys
+1920 time steps at full resolution. Time Displace stores a whole *frame* per step
+because its delay map is arbitrary per-pixel, so 120 frames at 640×480 costs
+~147 MB. For an axis-aligned monotonic gradient the tape is ~18× cheaper and
+sharper; for a radial or noise-driven map it cannot express the map at all. The
+tape is the fast path, the ring is the general case.
+
+> **The retired `vasulka.*` parameters.** An older, unrelated shader effect used
+> the `vasulka.` namespace (`vasulka.active`, `freqh`, `freqv`, `amph`, `ampv`,
+> `phase`, `freq2`, `amp2`, `color`). It is **deprecated and not reachable**: it
+> is commented out of `DEFAULT_FX_ORDER` and has no panel, so the parameters
+> exist but nothing in the running app sets them or renders them. The handler is
+> kept only so a saved preset that references it does not crash on load. Its job
+> — temporal slit-scan — is done by the Warp Tape and by Time Displace. Do not
+> map controllers to `vasulka.*`; the namespace to use is `vwarp.*` above.
+
 ---
 
-### 4.17 Time Displace
+### 4.18 Time Displace
 
 Listed in source menus as **TimeDisp**. Displaces each pixel *in time* rather than in space: a map image selects how far
 back into a captured frame buffer each pixel reads.
@@ -722,7 +998,7 @@ back into a captured frame buffer each pixel reads.
 
 ---
 
-### 4.18 Mix Buses (×3)
+### 4.19 Mix Buses (×3)
 
 Three independent mixers, available as sources **Mix 1**, **Mix 2** and **Mix 3**.
 Each takes two freely chosen sources and combines them. A bus is a real node in
@@ -752,7 +1028,7 @@ costs no VRAM.
 
 ---
 
-### 4.19 Depth Companions
+### 4.20 Depth Companions
 
 Two sources expose depth rather than colour, for routing into displacement,
 keying or the mix buses:
@@ -812,6 +1088,18 @@ Three routing layers feed the pipeline:
 
 Source options for each layer: Camera / Movie / Screen / Draw / Noise / Color / Buffer / 3D / SlitScan / Particles / Sequencer 1–3 / Text / Vectorscope / Analog
 
+#### Mirroring
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `mirror.fg` | TOGGLE | **Mirror FG** — horizontally flip the Foreground layer |
+| `mirror.bg` | TOGGLE | **Mirror BG** — same for Background |
+
+Mirroring per *layer* means it applies to whatever that layer is routed to. The
+older per-source toggles — `mirror.camera`, `mirror.movie`, `mirror.buffer` — are
+labelled **(legacy)** in the panel and kept only so pre-existing states keep
+rendering as they did. Use the layer toggles for new work.
+
 ### 5.3 Per-Layer Colour Correction
 
 Applied to FG and BG independently before compositing.
@@ -827,14 +1115,32 @@ Applied to FG and BG independently before compositing.
 
 ### 5.4 TransferMode
 
-Composite FG and BG using math operations.
+Composite FG over BG using a blend mode.
 
-| Mode | Description |
-|------|-------------|
-| Copy | FG replaces BG directly |
-| XOR | Bitwise XOR of RGB channels |
-| OR | Bitwise OR |
-| AND | Bitwise AND |
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `layer.fg.blend` | SELECT | **FG Blend** — how FG combines with BG |
+| `layer.fg.blendAmount` | 0–1 | **FG Blend Amt** — how much of the blended result to use |
+| `layer.bg.blend` | SELECT | **Self-process mode** — blends BG against *itself*, not against FG |
+| `layer.bg.blendAmount` | 0–1 | **BG Blend Amt** |
+
+All four take the same 22 modes:
+
+**Copy** · **XOR** · **OR** · **AND** — the bit-level operations, and the ones
+that give the instrument its Image/ine character.
+
+**Multiply** · **Screen** · **Add** · **Subtract** · **Difference** ·
+**Exclude** · **Divide** — arithmetic.
+
+**Overlay** · **Hardlight** · **Softlight** · **Dodge** · **Burn** ·
+**PinLight** · **VividLight** — contrast blends.
+
+**Hue** · **Saturation** · **Color** · **Luminosity** — component blends, which
+take one attribute from FG and the rest from BG.
+
+`layer.bg.blend` is worth singling out: it is a *self-process*, so it operates on
+the Background layer alone. It is how you get a layer to chew on itself without
+spending the FG slot on a copy of it.
 
 ---
 
@@ -917,10 +1223,20 @@ Alpha generation from image luminance or colour.
 | `keyer.white` | 0–100% | Upper brightness threshold |
 | `keyer.black` | 0–100% | Lower brightness threshold |
 | `keyer.softness` | 0–100% | Alpha feathering |
-| `keyer.extkey` | TOGGLE | Use DS layer as key instead of FG brightness |
+| `keyer.extkey` | TOGGLE | Key from an external source instead of FG brightness |
+| `keyer.keysrc` | SELECT | **Which** source supplies that external key. Defaults to `DS Src`, which is the old `extkey` behaviour; any source in the list can be chosen instead |
+| `keyer.rawkey` | TOGGLE | Key the raw FG, before per-layer colour correction |
 | `keyer.alpha` | 0–1 | Alpha multiplier |
 | `keyer.alpha_inv` | TOGGLE | Invert alpha |
+| `keyer.alpha_emissive` | TOGGLE | Treat alpha as emissive — keyed-out areas add light rather than cutting a hole |
 | `keyer.and_displace` | TOGGLE | Key after displacement pass |
+
+**The keyer is where transparency comes from.** Layers in ImWeb do not composite
+by alpha — `BLEND` is `mix(curr, prev, amount)` — so the keyer is the only stage
+that can make part of a picture disappear. `keyer.keysrc` is what makes that
+useful: point it at **Motion Extraction** (§5.10) and only the moving part of a
+layer survives; point it at Noise, a mix bus, or a depth companion for anything
+else.
 
 #### Chroma Keyer
 
@@ -937,19 +1253,50 @@ Click the colour swatch in the Keyer section to pick the chroma hue visually.
 
 ### 5.8 Blend (Motion Persistence & Feedback)
 
-Mix current frame with previous frames, with transform offset before blending.
+Mix the current frame with previous frames, with a transform applied to the
+recirculated frame before blending. Lives in the **Effects** tab, in the
+**Blend & Feedback** section.
+
+#### Blend and loop transform
 
 | Parameter | Range | Description |
 |-----------|-------|-------------|
 | `blend.active` | TOGGLE | Enable |
 | `blend.amount` | 0–100% | Mix with previous frame |
+| `feedback.active` | TOGGLE | Enable the loop transform |
 | `feedback.hor` | 0–100% | Horizontal pan of previous frame |
 | `feedback.ver` | 0–100% | Vertical pan |
 | `feedback.scale` | 0–100% | Scale change (100% = 1.5×) |
 | `feedback.rotate` | −180–180° | Rotation of previous frame |
 | `feedback.zoom` | 0–100% | Zoom (for infinite zoom effects) |
+| `feedback.centerx` | 0–100% | **FBCenterX** — origin the zoom/rotate turn about |
+| `feedback.centery` | 0–100% | **FBCenterY** — same, vertically |
 
-At 100% blend with `feedback.zoom` > 0 and `feedback.rotate` > 0 you get infinite tunnel / spiral effects.
+At 100% blend with `feedback.zoom` > 0 and `feedback.rotate` > 0 you get
+infinite tunnel / spiral effects. Moving the centre off 50/50 makes the tunnel
+run into a corner instead of the middle of frame.
+
+#### Loop shaping
+
+Everything below acts on the **recirculated frame only**, before it is blended
+with the live one. That distinction is the whole point: `output.fade` and
+`output.colorshift` already sit inside the loop, so they can damp or tint a
+trail — but only by damping or tinting the live picture along with it. These
+do it to the trail alone.
+
+| Parameter | Range | Description |
+|-----------|-------|-------------|
+| `feedback.decay` | 0–100% | **FBDecay** — attenuation per pass. 100% is ×1, no attenuation. Below 100% the trail dies out on its own instead of accumulating until it eats the picture |
+| `feedback.blur` | 0–100% | **FBBlur** — softens the trail each pass, so it diffuses as it ages |
+| `feedback.hue` | −180–180° | **FBHue** — rotates the trail's hue per pass, giving rainbow decay |
+| `feedback.edge` | SELECT | **FBEdge** — Clamp / Mirror / Wrap / Black. What the transform samples when it reaches off-frame |
+| `feedback.mirror` | SELECT | **FBMirror** — Off / H / V / Both, applied to the recirculated frame |
+| `feedback.mode` | SELECT | **Feedback Mode** — how the trail combines with the live frame: Off, XOR, OR, AND, Multiply, Screen, Add, Difference, Exclude, Overlay, Hardlight, Softlight, Dodge, Burn, Subtract, Divide, PinLight, VividLight, Hue, Saturation, Color, Luminosity |
+
+**`feedback.decay` is the control to reach for first** when feedback runs away.
+Every default in this group is the identity — decay 100%, centre 50/50, Clamp,
+blur 0, hue 0, mirror Off — so old states, banks and `.imweb` files render
+pixel-identically to before these existed.
 
 ---
 
@@ -965,12 +1312,32 @@ At 100% blend with `feedback.zoom` > 0 and `feedback.rotate` > 0 you get infinit
 
 The following effects run in sequence after the main composite. Their order can be changed by dragging nodes in the Signal Path display.
 
+#### Chain-wide controls
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `effect.enable` | TOGGLE | **All FX** — master bypass for the whole chain. Default on |
+| `effect.clearall` | TRIGGER | **Clear All FX** — reset every effect parameter to its default |
+
+**All FX is a bypass, not a mute.** Every parameter keeps its value and the chain
+keeps its order, so switching it back on returns exactly the look you left. It
+skips the loop rather than each handler, so a bypassed chain costs nothing. It is
+a real parameter, not a panel button — MIDI-mappable, controller-drivable, and
+captured by Display States.
+
+**Clear All FX** deliberately does *not* touch the chain order (an arrangement you
+built on purpose) or the master toggle — clearing the effects and leaving them
+bypassed would look like the reset had failed.
+
 #### Kaleidoscope
 
 | Parameter | Range | Description |
 |-----------|-------|-------------|
 | `effect.kaleidoscope` | 0–1 | Intensity |
 | `effect.kalerot` | 0–360° | Pattern rotation |
+| `effect.kalecx` | 0–100% | **Kale.CenterX** — mirror origin |
+| `effect.kalecy` | 0–100% | **Kale.CenterY** |
+| `effect.kaleedge` | SELECT | **Kale.Edge** — Clamp / Mirror / Wrap / Black. Defaults to Mirror (seamless); Wrap reproduces the old behaviour |
 
 #### Levels
 
@@ -998,6 +1365,7 @@ The following effects run in sequence after the main composite. Their order can 
 |-----------|-------|-------------|
 | `effect.edge` | 0–1 | Strength |
 | `effect.edge_inv` | TOGGLE | Invert (dark edges on light background) |
+| `effect.edge_color` | TOGGLE | **EdgeColor** — keep the source colour in the edges instead of grey |
 
 #### RGB Shift (Chromatic Aberration)
 
@@ -1017,6 +1385,7 @@ The following effects run in sequence after the main composite. Their order can 
 | Parameter | Range | Description |
 |-----------|-------|-------------|
 | `effect.solarize` | 0–1 | Tone inversion strength |
+| `effect.solarsoft` | 0–50% | **Sol.Soft** — softens the inversion knee |
 
 #### Film Grain & Scanlines
 
@@ -1024,6 +1393,7 @@ The following effects run in sequence after the main composite. Their order can 
 |-----------|-------|-------------|
 | `effect.grain` | 0–1 | Noise intensity |
 | `effect.scanlines` | 0–1 | Horizontal line intensity |
+| `effect.scancount` | 20–1200 | **Scan.Count** — number of scanlines across the frame (400 was the old hardcoded value) |
 
 #### Bloom (Glow)
 
@@ -1031,6 +1401,7 @@ The following effects run in sequence after the main composite. Their order can 
 |-----------|-------|-------------|
 | `effect.bloom` | 0–1 | Bloom strength |
 | `effect.bloomthresh` | 0–1 | Brightness threshold |
+| `effect.bloomradius` | 0.25–4× | **BloomRadius** — kernel spacing. 1× is the original fixed kernel |
 
 #### Vignette
 
@@ -1038,6 +1409,10 @@ The following effects run in sequence after the main composite. Their order can 
 |-----------|-------|-------------|
 | `effect.vignette` | 0–1 | Strength |
 | `effect.vigradius` | 0.1–2 | Radius of vignette circle |
+| `effect.vigcx` | 0–100% | **Vign.CenterX** — off-centre vignettes |
+| `effect.vigcy` | 0–100% | **Vign.CenterY** |
+| `effect.vighue` | 0–360° | **Vign.Hue** — hue of the vignette itself |
+| `effect.vigtint` | 0–100% | **Vign.Tint** — how much of that hue to apply, instead of plain black |
 
 #### White Balance
 
@@ -1056,11 +1431,111 @@ The following effects run in sequence after the main composite. Their order can 
 | `effect.psortdir` | SELECT | Horizontal / Vertical |
 | `effect.psortmode` | SELECT | Sort by Brightness / Hue / Saturation |
 
-#### Video Delay Line
+#### Polar
+
+Maps the frame between rectangular and polar coordinates, in both directions.
 
 | Parameter | Range | Description |
 |-----------|-------|-------------|
-| `delay.frames` | 1–30 | Temporal delay in frames |
+| `effect.polar` | 0–100% | Amount |
+| `effect.polarmode` | SELECT | **Wrap** (rectangular → polar) or **Unroll** (polar → rectangular) |
+| `effect.polarrot` | 0–100% turn | Rotation of the mapping |
+
+Polar turns every other effect in the chain into a different one: put it before
+Scanlines and the lines become rings; before a horizontal wipe and the wipe
+becomes a sweep. Its position in the chain order matters more than its amount.
+
+#### Wave
+
+Sine displacement per axis.
+
+| Parameter | Range | Description |
+|-----------|-------|-------------|
+| `effect.wavex` | 0–100‰ | **Wave.AmpX** — horizontal amplitude |
+| `effect.wavey` | 0–100‰ | **Wave.AmpY** — vertical amplitude |
+| `effect.wavefx` | 0–60 | **Wave.FreqX** |
+| `effect.wavefy` | 0–60 | **Wave.FreqY** |
+| `effect.wavephase` | 0–100% turn | **Wave.Phase** — made to be driven by an LFO |
+
+Each axis is displaced by the *other* axis's coordinate, which is what makes
+this a wave rather than a smear. Assign an LFO to `effect.wavephase` to set it
+travelling.
+
+#### Halftone
+
+Ordered dot screen.
+
+| Parameter | Range | Description |
+|-----------|-------|-------------|
+| `effect.halftone` | 0–100% | Amount |
+| `effect.halfsize` | 2–40 px | **Half.Size** — dot pitch |
+| `effect.halfangle` | 0–90° | **Half.Angle** — screen angle |
+| `effect.halfmode` | SELECT | **Mono** or **Colour** |
+
+In Colour mode each channel gets its own screen angle, so the three grids
+rosette instead of beating into moiré.
+
+#### Duotone
+
+| Parameter | Range | Description |
+|-----------|-------|-------------|
+| `effect.duotone` | 0–100% | Amount |
+| `effect.duohue1` | 0–360° | **Duo.Dark** — hue the shadows map to |
+| `effect.duohue2` | 0–360° | **Duo.Light** — hue the highlights map to |
+
+Remaps luminance through a two-colour ramp.
+
+#### Lens & Twirl
+
+Two geometric warps sharing a centre and an edge mode.
+
+| Parameter | Range | Description |
+|-----------|-------|-------------|
+| `effect.lens` | −100–100% | **Lens** — barrel (positive) / pincushion (negative) distortion |
+| `effect.twirl` | −100–100% turn | **Twirl** — rotation strongest at the centre, falling to zero by half-radius, so the middle winds up and the rim stays put |
+| `effect.warpcx` | 0–100% | **Warp.CenterX** |
+| `effect.warpcy` | 0–100% | **Warp.CenterY** |
+| `effect.warpedge` | SELECT | **Warp.Edge** — Clamp / Mirror / Wrap / Black. Defaults to Mirror, which is seamless and the least like a mistake at the corners |
+
+#### Strobe
+
+| Parameter | Range | Description |
+|-----------|-------|-------------|
+| `effect.strobe` | TOGGLE | Enable |
+| `effect.stroberate` | 0.5–60 Hz | **StrobeRate** |
+| `effect.strobeduty` | 1–99% | **StrobeDuty** — proportion of each cycle that is lit |
+
+> Photosensitivity: flash rates of roughly 3–30 Hz carry the highest seizure
+> risk, which is most of this control's range. Worth a warning before pointing
+> it at an audience.
+
+#### Sharpen, Flip & Output Grade
+
+The tail of the chain — small global adjustments rather than looks.
+
+| Parameter | Range | Description |
+|-----------|-------|-------------|
+| `effect.sharpen` | 0–100% | Unsharp mask |
+| `effect.flip` | SELECT | Off / H / V / Both |
+| `effect.outhue` | −180–180° | **Out.Hue** |
+| `effect.outsat` | 0–200% | **Out.Sat** (100% = unchanged) |
+| `effect.outbright` | 0–200% | **Out.Bright** (100% = unchanged) |
+
+#### Video Delay Line
+
+Replays a source some number of frames late, out of a ring buffer.
+
+| Parameter | Range | Description |
+|-----------|-------|-------------|
+| `delay.source` | SELECT | **Delay src** — what is recorded into the ring. Defaults to Output |
+| `delay.frames` | 1–480 fr | **Delay** — how far back to read |
+| `delay.size` | SELECT | **Ring depth** — 30 (0.5s) / 60 (1s) / 120 (2s) / 240 (4s) / 480 (8s) |
+| `delay.bufferResolution` | SELECT | **Buffer res** — Native / 640×480 / 640×360 / 320×240. The main VRAM control |
+
+The ceiling on `delay.frames` is a request, not a promise: the achievable depth
+is lower whenever the ring is shorter or VRAM clamped it, and asking for more
+frames than have been captured holds at the oldest available frame rather than
+dropping to black.
 
 #### RGB Channel Delay (source 31)
 
@@ -1503,8 +1978,33 @@ When morphspeed > 0, recalling a State starts a morph animation that interpolate
 |-----------|-------|-------------|
 | `global.bpm` | 20–300 bpm | Global tempo |
 | `global.beatdetect` | TOGGLE | Auto-detect BPM from audio onsets |
+| `global.tap` | TRIGGER | **Tap Tempo** (`T`) |
+| `global.morph` | — | State morph time |
 
-**Tap Tempo:** Click the BPM indicator in the status bar 2–5 times. The tap interval derives BPM. All BPM-synced LFOs retrigger.
+**Tap Tempo:** Click the BPM indicator in the status bar 2–5 times, or press `T`.
+The tap interval derives BPM. All BPM-synced LFOs retrigger.
+
+#### Clock sync
+
+| Parameter | Range | Description |
+|-----------|-------|-------------|
+| `global.midisync` | TOGGLE | **MidiSync** — follow incoming MIDI clock instead of the internal BPM |
+| `global.midisyncres` | 1–120 | **MidiSyncRes** — clock divisions per beat |
+| `global.autosync` | 1–1000 | **AutoSync** — realign BPM-synced controllers every N beats, correcting drift |
+| `global.framedone` | TOGGLE | **FrameDonePulse** — emit a pulse on each completed frame, for external sync |
+
+#### Interface toggles
+
+| Parameter | Range | Description |
+|-----------|-------|-------------|
+| `global.osd` | TOGGLE | **Param OSD** (`I`) — parameter feedback text over the canvas. Default on |
+| `global.keylock` | TOGGLE | **KeyLock** (⌨) — block letter/number shortcuts so typing in fields works |
+| `global.showwarpgrid` | TOGGLE | **WarpGrid** — overlay the warp map's grid on the canvas while editing |
+| `global.debug` | TOGGLE | **Debug** (`D`) — diagnostic overlay |
+| `global.tableSlot` | SELECT | **Table Slot** — the global response table, selectable per parameter as `'global'` |
+
+`global.keylock` is the one to reach for before typing into a text field during
+a show: without it, letters land as shortcuts. The ⌨ toolbar button toggles it.
 
 ---
 
@@ -1515,10 +2015,11 @@ When morphspeed > 0, recalling a State starts a morph animation that interpolate
 | Mode | How | Description |
 |------|-----|-------------|
 | Main canvas | Default | In-app WebGL canvas |
-| Fullscreen | Cmd+F or double-click | Hides UI, maximises to screen |
+| Fullscreen | `F` or double-click the canvas | Hides UI, maximises to screen |
 | Second monitor | ⊡ button | Opens popup on any display, auto-letterbox |
-| Ghost mode | ◫ button | Dims main canvas to 0.18 opacity |
+| Ghost mode | ◫ button | Shrinks main output to a thumbnail |
 | Output spy | ◧ or Shift+V | Small 160×90 preview |
+| Projection mapping | ⬡ button | Corner-pin the output onto an off-axis surface |
 
 **Second monitor:** The popup reads the same canvas via `window.opener` (same-origin). It auto-letterboxes to fill the display while preserving aspect ratio.
 
@@ -1526,15 +2027,37 @@ When morphspeed > 0, recalling a State starts a morph animation that interpolate
 
 ---
 
+### Projection Mapping
+
+Corner-pin the output so a projector hitting a surface off-axis still lands
+square on it. Press **⬡** to show the corner handles and drag them; click a
+handle and use the arrow keys to nudge it a pixel at a time.
+
+| Parameter | Range | Description |
+|-----------|-------|-------------|
+| `projmap.active` | TOGGLE | **ProjMap On** |
+| `projmap.tl_x` / `tl_y` | 0–1 | Top-left corner |
+| `projmap.tr_x` / `tr_y` | 0–1 | Top-right corner |
+| `projmap.bl_x` / `bl_y` | 0–1 | Bottom-left corner |
+| `projmap.br_x` / `br_y` | 0–1 | Bottom-right corner |
+
+The corners are ordinary parameters, so a mapping is saved with the project and
+can be recalled per State — useful when one show plays to two surfaces.
+
+---
+
 ### Resolution
 
-| Button | Resolution | Use case |
-|--------|------------|----------|
-| FIT | Window size | Responsive default |
-| FAST | 960×540 | Low GPU load |
-| MED | 1280×720 | Balanced |
-| MAX | 1920×1080 | Full HD |
-| LOW | ½ scale | Very slow systems |
+Resolution is the `output.resolution` parameter, not a toolbar button.
+
+| Parameter | Options | Description |
+|-----------|---------|-------------|
+| `output.resolution` | Display / 720p / 1080p / 540p / Quarter | Render resolution. **Display** follows the window |
+| `output.interp` | none / linear / bicubic | Upscaling filter when rendering below display resolution |
+| `output.solo` | TOGGLE | **Solo** (`S`) — bypass effects and show the raw composite |
+
+Dropping to 540p or Quarter is the first thing to try when frame rate suffers;
+`output.interp` set to bicubic keeps a low render resolution from looking blocky.
 
 ---
 
@@ -1601,6 +2124,24 @@ Live-code fragment shaders in a CodeMirror editor (syntax highlighting, line num
 
 Write GLSL ES 1.00 (`texture2D()`, `gl_FragColor`). Pasted ShaderToy-style declarations with precision qualifiers are detected and not double-injected. The **Audio React** built-in preset demonstrates bass zoom, beat flash, FFT bars, and tPrev trails.
 
+**Parameters**
+
+| Parameter | Range | Description |
+|-----------|-------|-------------|
+| `glsl.target` | SELECT | Master / Foreground / Background / Displace |
+| `glsl.preset` | SELECT | Mirrors the preset dropdown — built-ins plus your `user:` shaders |
+| `glsl.param1`…`4` | 0–1 | The `uParam1..4` performance knobs |
+
+> **`glsl.preset` is deliberately not captured by Display States.** Its value is
+> an index into a list you can edit, so a saved state would drift the moment you
+> added or deleted a user preset — and user presets are stored per browser
+> origin, so the same index means different things on `:5173` and `:4173`. It is
+> in group `global` for exactly that reason. Recalling it from a *controller*
+> always compiles; the **Auto** checkbox only gates the manual dropdown path.
+>
+> If your saved shaders seem to have vanished, check the port before assuming
+> data loss — "lost presets" is almost always "different origin".
+
 ---
 
 ### AI Narrator (𝔸)
@@ -1657,9 +2198,10 @@ Click the ⊞ button in any section header to detach it as a floating panel. Dra
 | `Shift+P` | Float / dock signal path (floating always shows it) |
 | `I` | Parameter OSD on/off (feedback text over the canvas) |
 | `U` | State bar show/hide (canvas reclaims the strip) |
-| `G` | Cycle canvas interaction mode (Camera / Pad / Locked) |
-| `Cmd+F` | Fullscreen |
+| `G` | Cycle canvas interaction mode (Camera / Pad / Locked / Draw / Warp) |
+| `F` | Fullscreen (double-clicking the canvas does the same) |
 | `Shift+V` | Output spy toggle |
+| `D` | Debug overlay |
 
 ### Sources & Playback
 
@@ -1686,6 +2228,7 @@ internal index order, so the keyboard and the menu always agree.
 | `B` | Toggle blend (motion persistence) |
 | `S` | Solo (bypass all effects) |
 | `X` | Toggle external key |
+| `Shift+Esc` | Reset all parameters to defaults — the panic button |
 
 ### Memory
 
@@ -1869,7 +2412,17 @@ Plain `npm run dev` stays http for desktop work.
 ### Canvas touch grammar
 
 Touch behaviour on the output canvas is governed by **Touch Mode**
-(GLOBAL section: Camera / Pad / Locked):
+(`touch.mode`, GLOBAL section). It has five settings, and `G` cycles all of them:
+
+| Mode | Canvas does |
+|------|-------------|
+| **Camera** | Orbits, pans and zooms the 3D scene |
+| **Pad** | Drives every mouse-X/Y-mapped parameter |
+| **Locked** | Nothing — the safe setting mid-performance |
+| **Draw** | Draws into the Draw Layer (§4.9) |
+| **Warp** | Draws into the warp map (§5.6) |
+
+The gesture table below describes the first three:
 
 | Gesture | Camera mode | Pad mode | Locked |
 |---------|-------------|----------|--------|
@@ -1925,8 +2478,8 @@ The same grammar reaches the desktop, gated on the same Touch Mode
 |-------|--------|
 | Left-drag on canvas | Orbit the 3D scene — release with speed and it coasts with the same momentum as a touch flick |
 | Right-drag on canvas | Pan (`scene3d.pos.x/y`) |
-| Wheel / trackpad pinch | Zoom (`scene3d.scale`) — eased so notches feel continuous; **Wheel Zoom** toggle and **Zoom Sens** live in the GLOBAL section |
-| `G` key | Cycle Camera / Pad / Locked (trackpads never see 3-finger taps — macOS consumes them) |
+| Wheel / trackpad pinch | Zoom (`scene3d.scale`) — eased so notches feel continuous. `canvas.wheelZoom` (**Wheel Zoom**, default on) disables it; `canvas.wheelSens` (**Zoom Sens**, 0.1–3) scales it. Both in the GLOBAL section |
+| `G` key | Cycle Touch Mode — all five (trackpads never see 3-finger taps, macOS consumes them) |
 
 ### Camera on mobile
 
