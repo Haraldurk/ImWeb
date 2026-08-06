@@ -2770,6 +2770,25 @@ body.sp-floating #signal-path-docked-space {
     color: var(--accent);
     border-color: var(--accent-dim);
 }
+#onboarding-support {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--text-1);
+    background: transparent;
+    border: 1px solid var(--border-hi);
+    border-radius: 4px;
+    padding: 7px 16px;
+    cursor: pointer;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+}
+#onboarding-support:hover {
+    color: var(--accent);
+    border-color: var(--accent-dim);
+}
 
 /* ── PROJECTION MAPPING ──────────────────────────────────────────────────── */
 
