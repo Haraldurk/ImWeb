@@ -26,15 +26,15 @@ No changes to `index.html`, `UI.js`, `ParameterSystem.js`, or any shader/pipelin
 ### Task 1: Gitignore + Python mock server
 
 **Files:**
-- Modify: `/Users/haraldurkarlsson/Documents/GitHub/ImWeb/.gitignore`
-- Create: `/Users/haraldurkarlsson/Documents/GitHub/ImWeb/monty-bridge.py`
+- Modify: `.gitignore`
+- Create: `monty-bridge.py`
 
 - [ ] **Step 1.1: Add monty-bridge.py to .gitignore**
 
 Find the section in `.gitignore` that already lists `dev-catcher.js`:
 
 ```bash
-grep -n "dev-catcher" /Users/haraldurkarlsson/Documents/GitHub/ImWeb/.gitignore
+grep -n "dev-catcher" .gitignore
 ```
 
 Add `monty-bridge.py` on the next line after `dev-catcher.js`:
@@ -164,7 +164,7 @@ if __name__ == "__main__":
 - [ ] **Step 1.3: Verify Python script starts correctly**
 
 ```bash
-cd /Users/haraldurkarlsson/Documents/GitHub/ImWeb
+cd <repo-root>
 pip install websockets 2>&1 | tail -3
 python monty-bridge.py --hz 5 &
 sleep 1
@@ -195,7 +195,7 @@ Expected: prints `Phase 2: --live not implemented.` and `Exit code: 1`.
 - [ ] **Step 1.5: Commit**
 
 ```bash
-cd /Users/haraldurkarlsson/Documents/GitHub/ImWeb
+cd <repo-root>
 git add .gitignore monty-bridge.py
 git commit -m "feat(monty): add monty-bridge.py mock WS server"
 ```
@@ -205,12 +205,12 @@ git commit -m "feat(monty): add monty-bridge.py mock WS server"
 ### Task 2: MontyBridge.js
 
 **Files:**
-- Create: `/Users/haraldurkarlsson/Documents/GitHub/ImWeb/src/io/MontyBridge.js`
+- Create: `src/io/MontyBridge.js`
 
 - [ ] **Step 2.1: Verify the trigger API exists in ParameterSystem**
 
 ```bash
-grep -n "trigger(" /Users/haraldurkarlsson/Documents/GitHub/ImWeb/src/io/OSCBridge.js | head -5
+grep -n "trigger(" src/io/OSCBridge.js | head -5
 ```
 
 Expected: `this.ps.trigger(id)` — confirming `ps.trigger(paramId)` is the correct call.
@@ -338,7 +338,7 @@ export class MontyBridge {
 - [ ] **Step 2.3: Verify the file was created**
 
 ```bash
-grep -n "export class MontyBridge" /Users/haraldurkarlsson/Documents/GitHub/ImWeb/src/io/MontyBridge.js
+grep -n "export class MontyBridge" src/io/MontyBridge.js
 ```
 
 Expected: line 1 (or close), `export class MontyBridge {`.
@@ -346,7 +346,7 @@ Expected: line 1 (or close), `export class MontyBridge {`.
 - [ ] **Step 2.4: Commit**
 
 ```bash
-cd /Users/haraldurkarlsson/Documents/GitHub/ImWeb
+cd <repo-root>
 git add src/io/MontyBridge.js
 git commit -m "feat(monty): add MontyBridge.js WS client"
 ```
@@ -356,12 +356,12 @@ git commit -m "feat(monty): add MontyBridge.js WS client"
 ### Task 3: Wire MontyBridge in main.js
 
 **Files:**
-- Modify: `/Users/haraldurkarlsson/Documents/GitHub/ImWeb/src/main.js`
+- Modify: `src/main.js`
 
 - [ ] **Step 3.1: Find the OSCBridge import line**
 
 ```bash
-grep -n "OSCBridge\|import.*io/" /Users/haraldurkarlsson/Documents/GitHub/ImWeb/src/main.js | head -10
+grep -n "OSCBridge\|import.*io/" src/main.js | head -10
 ```
 
 Expected: something like `import { OSCBridge } from "./io/OSCBridge.js";` at around line 61.
@@ -382,7 +382,7 @@ import { MontyBridge } from "./io/MontyBridge.js";
 - [ ] **Step 3.3: Find the OSCBridge instantiation line**
 
 ```bash
-grep -n "new OSCBridge\|const oscBridge" /Users/haraldurkarlsson/Documents/GitHub/ImWeb/src/main.js
+grep -n "new OSCBridge\|const oscBridge" src/main.js
 ```
 
 Expected: `const oscBridge = new OSCBridge(ps, presetMgr);` at around line 1763.
@@ -401,12 +401,12 @@ New:
 ```
 
 > **Note:** `stillsBuffer` is already in scope at this point — confirm with:
-> `grep -n "const stillsBuffer\|stillsBuffer =" /Users/haraldurkarlsson/Documents/GitHub/ImWeb/src/main.js | head -5`
+> `grep -n "const stillsBuffer\|stillsBuffer =" src/main.js | head -5`
 
 - [ ] **Step 3.5: Find the OSCBridge click-handler block**
 
 ```bash
-grep -n "status-osc\|oscBridge.active\|oscBridge.connect\|oscBridge.disconnect" /Users/haraldurkarlsson/Documents/GitHub/ImWeb/src/main.js | head -10
+grep -n "status-osc\|oscBridge.active\|oscBridge.connect\|oscBridge.disconnect" src/main.js | head -10
 ```
 
 Expected: the `document.getElementById("status-osc")?.addEventListener` block around line 1791.
@@ -460,7 +460,7 @@ New (insert the MONTY UI block before that comment):
 - [ ] **Step 3.7: Build check**
 
 ```bash
-cd /Users/haraldurkarlsson/Documents/GitHub/ImWeb && npx vite build --mode development 2>&1 | tail -10
+cd <repo-root> && npx vite build --mode development 2>&1 | tail -10
 ```
 
 Expected: `✓ built in` with no errors. Warnings about chunk size are pre-existing and OK.
@@ -468,7 +468,7 @@ Expected: `✓ built in` with no errors. Warnings about chunk size are pre-exist
 - [ ] **Step 3.8: Commit**
 
 ```bash
-cd /Users/haraldurkarlsson/Documents/GitHub/ImWeb
+cd <repo-root>
 git add src/main.js
 git commit -m "feat(monty): wire MontyBridge in main.js with Buffer panel status row"
 ```
@@ -483,7 +483,7 @@ No automated tests are available for WebGL/WebSocket browser features. Use the v
 
 ```bash
 # Terminal 1 — ImWeb dev server
-cd /Users/haraldurkarlsson/Documents/GitHub/ImWeb && npm run dev
+cd <repo-root> && npm run dev
 
 # Terminal 2 — Monty bridge
 python monty-bridge.py
@@ -531,7 +531,7 @@ In the Buffer tab, change `buffer.rows` or `buffer.cols` (resizing the grid) whi
 - [ ] **Step 4.9: Final commit**
 
 ```bash
-cd /Users/haraldurkarlsson/Documents/GitHub/ImWeb && git push
+cd <repo-root> && git push
 ```
 
 ---
