@@ -282,7 +282,7 @@ New (insert the scatter overlay block before that comment):
 
 ```bash
 node --input-type=module < /dev/null 2>&1 || true
-cd /Users/haraldurkarlsson/Documents/GitHub/ImWeb && npx vite build --mode development 2>&1 | tail -20
+cd <repo-root> && npx vite build --mode development 2>&1 | tail -20
 ```
 
 If Vite build errors appear, fix them before continuing.
