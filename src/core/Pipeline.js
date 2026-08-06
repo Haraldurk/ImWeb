@@ -629,8 +629,14 @@ export class Pipeline {
     // strength another pass set last frame. Harmless-looking while the bitwise
     // modes ignored uBlendAmount entirely; now that they honour it, a stale
     // value would be visible in BG XOR/OR/AND.
+    // uBlendAmount comes from layer.bg.blendAmount, NOT a literal 1. It was
+    // hardcoded here while the param was registered, documented, captured by
+    // Display States and MIDI-mappable — a control that moved nothing. Its
+    // default is 1, so every existing patch renders exactly as before; the
+    // slider now mixes between the self-processed BG and the untouched one.
     if (bgBlend > 0 && !BG_DEGENERATE) bgTexFinal  = this._pass(this.m.transfermode, {
-      uFG: bgTexFinal, uBG: bgTexFinal, uMode: bgBlend, uBlendAmount: 1,
+      uFG: bgTexFinal, uBG: bgTexFinal, uMode: bgBlend,
+      uBlendAmount: (p.get('layer.bg.blendAmount')?.value ?? 1),
     });
     if (fgBlend > 0) workingFG   = this._pass(this.m.transfermode, {
       uFG: workingFG, uBG: bgTexFinal, uMode: fgBlend,

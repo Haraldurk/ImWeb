@@ -912,7 +912,11 @@ export function registerCoreParameters(ps) {
   });
   ps.register({
     id: "layer.bg.blend",
-    label: "Self-process mode", // self-process: blends BG against itself (not against FG)
+    // Self-process: Pipeline passes the BG as BOTH uFG and uBG, so this is a
+    // tone treatment of one picture, not a composite of two. Labelled to say so
+    // — it is rendered beside FG Blend, which IS a composite, and the two were
+    // indistinguishable while this read as a blend mode.
+    label: "BG Self-process",
     group: "layers",
     type: PARAM_TYPE.SELECT,
     options: BLEND_MODES,
@@ -928,7 +932,7 @@ export function registerCoreParameters(ps) {
   });
   ps.register({
     id: "layer.bg.blendAmount",
-    label: "BG Blend Amt",
+    label: "BG Self-proc Amt", // depth of layer.bg.blend, not a composite amount
     group: "bg",
     min: 0,
     max: 1,

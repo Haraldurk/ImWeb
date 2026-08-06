@@ -247,7 +247,7 @@ You are looking at the composite: a Foreground over a Background. **FG Blend**
 chooses how they meet — add, multiply, difference, screen — and **FG Blend Amt**
 how much.
 
-Drag FG Blend Amt from 0 to 100 slowly and watch one picture become the other.
+Drag FG Blend Amt from 0 to 1 slowly and watch one picture become the other.
 That crossfade is the bottom of the instrument; everything else in this track
 is a variation on what you can put in those two slots.
 

@@ -1121,8 +1121,8 @@ Composite FG over BG using a blend mode.
 |-----------|------|-------------|
 | `layer.fg.blend` | SELECT | **FG Blend** — how FG combines with BG |
 | `layer.fg.blendAmount` | 0–1 | **FG Blend Amt** — how much of the blended result to use |
-| `layer.bg.blend` | SELECT | **Self-process mode** — blends BG against *itself*, not against FG |
-| `layer.bg.blendAmount` | 0–1 | **BG Blend Amt** |
+| `layer.bg.blend` | SELECT | **BG Self-process** — blends BG against *itself*, not against FG |
+| `layer.bg.blendAmount` | 0–1 | **BG Self-proc Amt** — depth of the self-process |
 
 All four take the same 22 modes:
 

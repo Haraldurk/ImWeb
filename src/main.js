@@ -151,6 +151,7 @@ import {
   ENTRY_MIME,
   buildPaletteSection,
   buildAnalogPresetBar,
+  initHelpMenu,
 } from "./ui/UI.js";
 import { openCtrlPopover } from "./ui/components/CtrlPopover.js";
 import {
@@ -1047,6 +1048,7 @@ async function main() {
   // ── 7. UI ─────────────────────────────────────────────────────────────────
 
   initTabs();
+  initHelpMenu();
   const contextMenu = new ContextMenu(ps, ctrl, presetMgr, tableManager);
   buildLayerButtons(ps, contextMenu);
   buildMappingPanels(ps, contextMenu);
