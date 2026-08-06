@@ -634,13 +634,14 @@ export class Pipeline {
     // Display States and MIDI-mappable — a control that moved nothing. Its
     // default is 1, so every existing patch renders exactly as before; the
     // slider now mixes between the self-processed BG and the untouched one.
+    // Both amounts are PERCENT params (0–100) and the shader wants 0–1.
     if (bgBlend > 0 && !BG_DEGENERATE) bgTexFinal  = this._pass(this.m.transfermode, {
       uFG: bgTexFinal, uBG: bgTexFinal, uMode: bgBlend,
-      uBlendAmount: (p.get('layer.bg.blendAmount')?.value ?? 1),
+      uBlendAmount: (p.get('layer.bg.blendAmount')?.value ?? 100) / 100,
     });
     if (fgBlend > 0) workingFG   = this._pass(this.m.transfermode, {
       uFG: workingFG, uBG: bgTexFinal, uMode: fgBlend,
-      uBlendAmount: (p.get('layer.fg.blendAmount')?.value ?? 1),
+      uBlendAmount: (p.get('layer.fg.blendAmount')?.value ?? 100) / 100,
     });
 
     // Solo mode — bypass all effects

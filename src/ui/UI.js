@@ -44,6 +44,23 @@ export function buildLayerButtons(ps, contextMenu) {
   if (!el) return;
   el.innerHTML = '';
 
+  // Column captions. The two selects on a layer row are different kinds of
+  // thing and used to sit unlabelled side by side, which read as "Background
+  // also has a blend mode" — it does not; layer.bg.blend is a SELF-process
+  // (Pipeline passes the BG as both uFG and uBG), a tone treatment of one
+  // picture rather than a meeting of two. A caption row costs one line for both
+  // layers, where a label per select cost a whole row each.
+  const head = document.createElement('div');
+  head.className = 'param-row layer-col-head';
+  // Distinct classes, not :nth-of-type — that counts every <span> in the row,
+  // so .param-label is the first one and the captions land a column too far
+  // right (they rendered as a single "SOURCEBLEND" over the blend column).
+  head.innerHTML =
+    '<span class="param-label"></span>' +
+    '<span class="layer-col layer-col-source">SOURCE</span>' +
+    '<span class="layer-col layer-col-blend">BLEND</span>';
+  el.appendChild(head);
+
   [
     { param: ps.get('layer.fg'), label: 'Foreground', blendParam: ps.get('layer.fg.blend'),
       amtParam: ps.get('layer.fg.blendAmount') },
@@ -84,44 +101,32 @@ export function buildLayerButtons(ps, contextMenu) {
     param.onChange(v => { sel.value = Math.round(v); });
     row.appendChild(sel);
 
-    el.appendChild(row);
-
-    // The mode select gets its own LABELLED row rather than riding along
-    // unlabelled beside the source. The two layers' selects look identical and
-    // are not the same kind of control: FG Blend composites the foreground over
-    // the background, while layer.bg.blend is a SELF-process — Pipeline passes
-    // the BG as both uFG and uBG, so it is a tone treatment of one picture, not
-    // a meeting of two. Shown side by side with no captions, the only available
-    // reading was "Background also has a blend mode", which is wrong.
+    // Blend mode rides the layer's own row, under the BLEND caption.
     if (blendParam) {
-      const brow = document.createElement('div');
-      brow.className = 'param-row';
-      brow.dataset.paramId = blendParam.id;
-
-      const blbl = document.createElement('span');
-      blbl.className = 'param-label';
-      blbl.textContent = blendParam.label;
-      blbl.addEventListener('contextmenu', e => {
-        e.preventDefault();
-        contextMenu?.show(blendParam, e.clientX, e.clientY);
-      });
-      brow.appendChild(blbl);
-
       const bsel = _mkSelect(
         blendParam.options ?? [],
         Math.round(blendParam.value),
         i => { ps.set(blendParam.id, i); },
         'blend-select'
       );
+      // The caption says BLEND for both columns, which is exact for FG and
+      // shorthand for BG — the tooltip carries the distinction the column
+      // header cannot, and the amount row below spells it out (Self-proc Amt).
+      bsel.title = blendParam.label;
+      // Shares a row that carries a DIFFERENT param id, so it must claim its
+      // own or the `/` search's ⌖ and the guided tour cannot find it. Fine:
+      // reveal scrolls to whatever element it matches, and no
+      // `.param-row[data-param-id]` query can match this <div>.
+      bsel.dataset.paramId = blendParam.id;
       bsel.addEventListener('contextmenu', e => {
         e.preventDefault();
         contextMenu?.show(blendParam, e.clientX, e.clientY);
       });
       blendParam.onChange(v => { bsel.value = Math.round(v); });
-      brow.appendChild(bsel);
-
-      el.appendChild(brow);
+      row.appendChild(bsel);
     }
+
+    el.appendChild(row);
 
     // The blend mode and its amount are one idea — "how these two layers meet,
     // and how much" — so the amount follows its layer here rather than sitting

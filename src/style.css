@@ -2330,6 +2330,34 @@ body.sp-floating #signal-path-docked-space {
 
 /* ── DOCS VIEWER (in-app markdown modal) ──────────────────────────────────── */
 
+/* ── Layers column captions ────────────────────────────────────────────────── */
+/* Sits above the Foreground/Background rows and labels their two select
+   columns. Not interactive — pointer-events off so it can never eat a drag
+   aimed at the row beneath it. */
+.layer-col-head {
+    pointer-events: none;
+    padding-top: 2px;
+    padding-bottom: 0;
+    min-height: 0;
+}
+.layer-col-head .layer-col {
+    font-family: var(--mono);
+    font-size: 9px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--text-2);
+    opacity: 0.65;
+}
+/* Placed on the SAME grid tracks the selects use, not by guessed widths —
+   .source-select spans 2/4 and .blend-select auto-places into 4, so the
+   captions follow them if the row template is ever retuned. */
+.layer-col-head .layer-col-source {
+    grid-column: 2 / 4;
+}
+.layer-col-head .layer-col-blend {
+    grid-column: 4;
+}
+
 /* ── Help menu (status-bar ? button) ───────────────────────────────────────── */
 /* z-index sits above the docs viewer's 3100 so the menu is never trapped behind
    a modal it just opened. position:fixed and left/top are set in JS from the

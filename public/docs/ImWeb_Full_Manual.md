@@ -1119,10 +1119,10 @@ Composite FG over BG using a blend mode.
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `layer.fg.blend` | SELECT | **FG Blend** — how FG combines with BG |
-| `layer.fg.blendAmount` | 0–1 | **FG Blend Amt** — how much of the blended result to use |
+| `layer.fg.blend` | SELECT | **FG Blend** — how FG combines with BG. `Copy` bypasses the blend entirely (FG replaces BG) and ignores Blend Amt |
+| `layer.fg.blendAmount` | 0–100 % | **Blend Amt** — layer opacity: 0 % = BG alone, 100 % = the full blended result. Not a crossfade to FG |
 | `layer.bg.blend` | SELECT | **BG Self-process** — blends BG against *itself*, not against FG |
-| `layer.bg.blendAmount` | 0–1 | **BG Self-proc Amt** — depth of the self-process |
+| `layer.bg.blendAmount` | 0–100 % | **Self-proc Amt** — depth of the self-process |
 
 All four take the same 22 modes:
 
