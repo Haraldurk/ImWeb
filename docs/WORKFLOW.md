@@ -157,7 +157,7 @@ and reformulating it first.
 
 ### Chat session open
 1. Verify the `imweb-filesystem` MCP is live:
-   `list /Users/haraldurkarlsson/Documents/GitHub/ImWeb/src`
+   `list src`
    If this fails, stop — reconnect before drafting any prompts.
 2. Claude Chat reads KNOWN-ISSUES.md, docs/WORKFLOW.md, and relevant src/
    files directly via MCP — no copy-paste. Run `imweb-session-open` in any
