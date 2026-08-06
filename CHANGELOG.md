@@ -6,6 +6,62 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
 
 ---
 
+## [Unreleased]
+
+### Added
+- **Guided tour** (`⇧G`, the splash's Guided Tour button, or Project ▸ AI ▸
+  Documentation). Twenty-seven steps in three tracks, as a panel rather than a
+  modal — it points *at* the control panel, so it must not cover it, and the
+  instrument stays playable with the tour open.
+  - **Basics** (9) — the panel, the parameter row, what min/max actually mean,
+    assigning and editing a controller, response curves, states and morph, the
+    performance keys.
+  - **Principles** (6) — small patches, three or four moves each, one idea
+    apiece: a composite is two layers; any source can drive any other; any
+    parameter can be driven; the output is a source; time is an axis you point
+    at; then all five in one patch. The examples are deliberately built from
+    controls the Basics track has already covered.
+  - **Instruments** (12) — the machines, as before.
+  - Three tracks rather than one list because they are three different kinds of
+    not-knowing: someone who cannot work a parameter row is not helped by a tour
+    of the Rutt-Etra, and someone who has used the instrument for a year should
+    not have to page through drag directions to reach it. The splash button
+    opens Basics from the top; `⇧G` resumes where you left off.
+  - **It points; it never sets.** Every step names its targets and gives you a
+    chip per name that switches to the owning tab (opening a workspace if the
+    target lives in one), expands the collapsed section, scrolls the row into
+    view and flashes it. Your hand moves the control. A tour that set values
+    would wreck a patch someone was halfway through, and it teaches nothing,
+    because the hand that moved the control was not theirs.
+  - **The content is one markdown file**, `docs/ImWeb-Guide.md`, parsed at
+    runtime — readable on GitHub, sendable as an email, and editable without
+    touching JavaScript. Steps are not duplicated into a JS array; that second
+    copy is how six copies of the source list once drifted apart.
+  - `tests/audit-guide-targets.mjs` fails the build if a step names a parameter
+    that does not exist, a selector that is not in `index.html`, an unknown
+    track, or if the served copy under `public/docs/` has drifted from the
+    edited one. The failure it exists to catch is quiet: the tour still opens
+    and the step still reads correctly, and only the chip does nothing.
+
+### Fixed
+- **The parameter search's ⌖ button did nothing on continuous rows** — every
+  row with a slider, i.e. most of them. The row captures the pointer for its
+  value drag, which retargets the pointer stream away from any button inside it,
+  so the click never arrived. Buttons in a row now own their own gesture, the
+  same exemption `.param-slider` already had.
+- **⌖ also had nothing to find for four of the most-used controls.** Rows that
+  are hand-built rather than produced by `buildParamRow` — Foreground,
+  Background, DisplaceSrc, the Camera on/off row and the GLSL Preset row — never
+  claimed their `data-param-id`, so search listed them and jumping to them
+  silently failed.
+- **Jumping to a search result now actually reveals it.** The old path only
+  scrolled and drew an outline, so it did nothing whenever the target sat on
+  another tab or inside a collapsed section — and sections boot collapsed, so
+  that was most of them. It now shares one reveal with the guided tour: tab or
+  workspace, expand, scroll, flash.
+
+---
+
 ## [0.17.0] — 2026-08-05 — The Chain
 
 *Everything downstream of the layers, gone over end to end. The feedback loop

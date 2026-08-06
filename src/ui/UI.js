@@ -12,6 +12,7 @@ import { ColorPicker } from './ColorPicker.js';
 import { mkSelect as _mkSelect } from './components/Select.js';
 import { openCtrlPopover as _openCtrlPopover } from './components/CtrlPopover.js';
 import { buildParamRow } from './components/ParamRow.js';
+import { openGuide } from './Guide.js';
 const DEFAULT_FX_ORDER_SP = DEFAULT_FX_ORDER;
 
 // ── Tab switching ──────────────────────────────────────────────────────────────
@@ -50,6 +51,10 @@ export function buildLayerButtons(ps, contextMenu) {
   ].forEach(({ param, label, blendParam }) => {
     const row = document.createElement('div');
     row.className = 'param-row';
+    // Hand-built row: claim the param id the way buildParamRow does, or the `/`
+    // search's ⌖ and the guided tour both fail to find the three most-used
+    // rows in the instrument.
+    row.dataset.paramId = param.id;
 
     const lbl = document.createElement('span');
     lbl.className = 'param-label';
@@ -85,6 +90,12 @@ export function buildLayerButtons(ps, contextMenu) {
         i => { ps.set(blendParam.id, i); },
         'blend-select'
       );
+      // The blend mode shares the layer's row rather than getting one of its
+      // own, so it has to claim its id here or it is unreachable by the `/`
+      // search's ⌖ and by the guided tour. Nested inside a row that carries a
+      // DIFFERENT param id, which is fine: reveal scrolls to whatever element
+      // it finds, and no `.param-row[data-param-id]` query can match a <select>.
+      bsel.dataset.paramId = blendParam.id;
       bsel.addEventListener('contextmenu', e => {
         e.preventDefault();
         contextMenu?.show(blendParam, e.clientX, e.clientY);
@@ -3431,6 +3442,18 @@ export function buildAISettingsPanel(ai, panelEl) {
     });
     panelEl.appendChild(a);
   });
+
+  // The tour opens a panel rather than the docs modal: it points AT the control
+  // panel, so it must not cover it.
+  const guideLink = document.createElement('a');
+  guideLink.className = 'ai-prov-link';
+  guideLink.href = '#';
+  guideLink.textContent = 'Guided Tour (⇧G) →';
+  guideLink.addEventListener('click', (e) => {
+    e.preventDefault();
+    openGuide();
+  });
+  panelEl.appendChild(guideLink);
 
   const shortcutsLink = document.createElement('a');
   shortcutsLink.className = 'ai-prov-link';

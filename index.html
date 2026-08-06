@@ -1416,6 +1416,9 @@ ImWeb</textarea
                         <div class="kb-row">
                             <kbd>⇧V</kbd><span>Output spy</span>
                         </div>
+                        <div class="kb-row">
+                            <kbd>⇧G</kbd><span>Guided tour</span>
+                        </div>
                         <div class="kb-section">Global</div>
                         <div class="kb-row">
                             <kbd>⌘S</kbd><span>Save project (.imweb)</span>
@@ -1496,7 +1499,14 @@ ImWeb</textarea
                         </div>
                     </div>
                 </div>
-                <button id="onboarding-dismiss">Start</button>
+                <div id="onboarding-actions">
+                    <button id="onboarding-dismiss">Start</button>
+                    <!-- The splash is where a first-time reader already is, so
+                         it is the one place the tour is worth offering rather
+                         than hiding behind ⇧G. Dismisses the splash first: the
+                         tour points AT the panel the splash is covering. -->
+                    <button id="onboarding-guide">Guided tour</button>
+                </div>
             </div>
         </div>
 
