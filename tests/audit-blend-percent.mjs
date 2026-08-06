@@ -43,17 +43,33 @@ for (const id of ['layer.fg.blendAmount', 'layer.bg.blendAmount']) {
   ok(`${id} exists`, !!p);
   ok(`${id} runs 0–100`, p.min === 0 && p.max === 100);
   ok(`${id} is a percent`, p.unit === '%');
-  ok(`${id} defaults to full`, p.value === 100);
 }
+// The two defaults differ ON PURPOSE and the difference is the whole feature:
+// FG is a three-stop curve whose CENTRE is the blend, BG is a plain two-stop
+// depth. A "make them consistent" edit here would silently drop every new
+// patch's foreground blend to half strength.
+ok('FG defaults to the centre detent (the blend)', ps.get('layer.fg.blendAmount').value === 50);
+ok('BG self-process defaults to full', ps.get('layer.bg.blendAmount').value === 100);
 
 // ── 2. Conversion ────────────────────────────────────────────────────────────
+// FG scales by 50 and BG by 100, because the old two-stop `mix(BG, blended, v)`
+// is exactly the first HALF of the new FG curve. Getting this wrong does not
+// throw — it just quietly replaces every saved blend with the raw Foreground.
 console.log('\nconversion (legacy → percent)');
 {
   const v = { 'layer.fg.blendAmount': 1, 'layer.bg.blendAmount': 0.35, 'displace.amount': 0.5 };
   migrateBlendPercent(v, null, 1);
-  ok('a full legacy blend becomes 100', v['layer.fg.blendAmount'] === 100);
-  ok('a partial legacy blend scales', Math.abs(v['layer.bg.blendAmount'] - 35) < 1e-9);
+  ok('a full legacy FG blend lands on the blend detent, not 100',
+     v['layer.fg.blendAmount'] === 50);
+  ok('a partial legacy BG self-process scales by 100',
+     Math.abs(v['layer.bg.blendAmount'] - 35) < 1e-9);
   ok('an unrelated param is untouched', v['displace.amount'] === 0.5);
+}
+{
+  const v = { 'layer.fg.blendAmount': 0.5 };
+  migrateBlendPercent(v, null, 1);
+  ok('a half-strength legacy FG blend stays half-strength under the new curve',
+     v['layer.fg.blendAmount'] === 25);
 }
 {
   const v = { 'layer.fg.blendAmount': 0 };
@@ -85,7 +101,7 @@ console.log('\nstamp gating');
 {
   const v = { 'layer.fg.blendAmount': 0.5 };
   migrateBlendPercent(v, null, undefined);
-  ok('an UNSTAMPED file is read as legacy', v['layer.fg.blendAmount'] === 50);
+  ok('an UNSTAMPED file is read as legacy', v['layer.fg.blendAmount'] === 25);
 }
 {
   // Re-running with the file's own (legacy) stamp is what a second load does,
@@ -96,7 +112,7 @@ console.log('\nstamp gating');
   const once = v['layer.fg.blendAmount'];
   migrateBlendPercent(v, null, PARAM_SCHEMA);
   ok('a migrated map re-read at the new stamp does not compound',
-     v['layer.fg.blendAmount'] === once && once === 40);
+     v['layer.fg.blendAmount'] === once && once === 20);
 }
 {
   const v = { 'layer.fg.blendAmount': 5 };
@@ -117,9 +133,9 @@ console.log('\ncontroller records');
   };
   migrateBlendPercent(null, recs, 1);
   const r = recs['layer.fg.blendAmount'];
-  ok('the record value scales', Math.abs(r.value - 80) < 1e-9);
-  ok('ctrlMin scales', Math.abs(r.ctrlMin - 20) < 1e-9);
-  ok('ctrlMax scales', Math.abs(r.ctrlMax - 90) < 1e-9);
+  ok('the record value scales by the FG factor', Math.abs(r.value - 40) < 1e-9);
+  ok('ctrlMin scales', Math.abs(r.ctrlMin - 10) < 1e-9);
+  ok('ctrlMax scales', Math.abs(r.ctrlMax - 45) < 1e-9);
   ok('unrelated controller settings are carried', r.type === 'lfo' && r.hz === 0.1);
   ok('another param\'s record is untouched', recs['displace.amount'].ctrlMax === 1);
 }
@@ -134,7 +150,7 @@ console.log('\ndisplay states');
     { values: { 'layer.bg.blendAmount': 0.25 } },
   ];
   migrateStatesBlendPercent(states, 1);
-  ok('each state with values is migrated', states[0].values['layer.fg.blendAmount'] === 100);
+  ok('each state with values is migrated', states[0].values['layer.fg.blendAmount'] === 50);
   ok('its controller bag is migrated too', states[0].controllers['layer.bg.blendAmount'].ctrlMax === 50);
   ok('a later state is migrated', states[3].values['layer.bg.blendAmount'] === 25);
   ok('null and value-less slots are tolerated', true);
@@ -187,6 +203,52 @@ console.log('\npipeline scales percent back to unit');
   ok('both layer blend passes divide by 100', calls.length === 2);
   ok('neither passes a raw percent',
      !/uBlendAmount:\s*\(p\.get\('layer\.[a-z]+\.blendAmount'\)\?\.value\s*\?\?\s*\d+\),/.test(pipeline));
+}
+
+// ── 8. uCurve is set at EVERY transfermode pass ──────────────────────────────
+// The material is shared by three passes and _pass() writes only what it is
+// given, so a pass that omits uCurve inherits whatever the previous one set —
+// the exact stale-uniform bug the uBlendAmount comment in Pipeline warns about.
+// The damage is silent and intermittent: the feedback blend would flip curve
+// depending on whether a layer blend ran earlier in the same frame.
+console.log('\nuCurve is explicit at every shared-material pass');
+{
+  const pipeline = read('src/core/Pipeline.js');
+  const passes = [...pipeline.matchAll(/this\._pass\(this\.m\.transfermode,\s*\{([\s\S]*?)\}\s*\)/g)]
+    .map(m => m[1]);
+  ok('found all three transfermode passes', passes.length === 3);
+  ok('every one sets uCurve', passes.every(b => /uCurve:/.test(b)));
+  ok('every one sets uBlendAmount', passes.every(b => /uBlendAmount:/.test(b)));
+  ok('exactly one uses the three-stop curve (the FG layer)',
+     passes.filter(b => /uCurve:\s*1/.test(b)).length === 1);
+  ok('the material declares a uCurve default',
+     /transfermode:[^\n]*uCurve:\s*\{\s*value:/.test(pipeline));
+}
+
+// ── 9. The three-stop curve itself ───────────────────────────────────────────
+// Reimplemented from the shader so the endpoints are asserted, not assumed.
+console.log('\nblendMix curve');
+{
+  const shader = read('src/shaders/index.js');
+  ok('blendMix exists and branches on uCurve',
+     /vec3 blendMix\([\s\S]*?uCurve < 0\.5/.test(shader));
+  ok('both fragment writes go through it',
+     (shader.match(/gl_FragColor = vec4\(blendMix\(/g) || []).length === 2);
+
+  const mix = (a, b, t) => a + (b - a) * t;
+  const three = (bg, bl, fg, amt) =>
+    amt < 0.5 ? mix(bg, bl, amt * 2) : mix(bl, fg, (amt - 0.5) * 2);
+  const BG = 0.2, BLENDED = 0.7, FG = 1.0;
+  ok('0 % is the Background alone',        three(BG, BLENDED, FG, 0.0) === BG);
+  ok('50 % is the blend at full strength', three(BG, BLENDED, FG, 0.5) === BLENDED);
+  ok('100 % is the Foreground alone',      three(BG, BLENDED, FG, 1.0) === FG);
+  ok('the Background is gone by 100 %', three(0, BLENDED, FG, 1.0) === three(1, BLENDED, FG, 1.0));
+
+  // The legacy value that migration maps to must land where it used to.
+  const two = (bg, bl, v) => mix(bg, bl, v);
+  const legacy = 0.6;
+  ok('a migrated legacy value renders identically to the old two-stop pass',
+     Math.abs(three(BG, BLENDED, FG, (legacy * 50) / 100) - two(BG, BLENDED, legacy)) < 1e-12);
 }
 
 console.log(fail ? `\n${fail} blend-percent check(s) failed.` : '\nAll blend-percent checks passed.\n');

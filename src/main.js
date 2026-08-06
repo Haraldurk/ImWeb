@@ -6132,11 +6132,31 @@ void main() {
       }
     }
 
-    if (
-      (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA") &&
-      e.key !== "Escape"
-    )
-      return;
+    // A focused control should swallow only the keys it can actually consume.
+    // This used to bail on ANY <input>, which includes every param slider —
+    // `input type=range`. So touching one slider killed q/a/z/v/m and the rest
+    // of the performance keys for the whole session, until you happened to
+    // click somewhere that took focus off it. It read as "the keys do not work
+    // on this tab", because the tab you touch a slider on is the tab it breaks.
+    //
+    // A range/checkbox/button consumes arrows, space and Home/End natively and
+    // nothing else; only a text field consumes letters and digits.
+    if (e.key !== "Escape") {
+      const t = e.target;
+      const type = (t.type || "text").toLowerCase();
+      const isTextEntry =
+        t.tagName === "TEXTAREA" ||
+        (t.tagName === "INPUT" &&
+          !/^(range|checkbox|radio|button|submit|reset|color|file)$/.test(type));
+      if (isTextEntry) return;
+      // Still yield the keys a focused widget genuinely owns, so arrowing a
+      // slider does not also fire an app shortcut.
+      if (
+        t.tagName === "INPUT" &&
+        (/^(Arrow|Home|End|Page)/.test(e.key) || e.key === " ")
+      )
+        return;
+    }
     const isLocked = ps.get("global.keylock").value > 0.5;
     if (
       isLocked &&

@@ -325,8 +325,25 @@ export const TRANSFERMODE = /* glsl */ `
   uniform sampler2D uBG;
   uniform int       uMode;
   uniform float     uBlendAmount;
+  // 0 = two-stop opacity  (0 → BG, 1 → the blended result)
+  // 1 = three-stop layers (0 → BG, 0.5 → blended, 1 → FG)
+  //
+  // Only the FG layer blend uses the three-stop curve. The BG self-process
+  // passes the same texture as both uFG and uBG, so its "FG end" is just the
+  // Background again and the curve would fold back on itself; the feedback
+  // blend is a different instrument entirely and its saved amounts must keep
+  // meaning what they meant. Like uBlendAmount, this MUST be set at every call
+  // site — the material is shared, and _pass() only writes what it is given.
+  uniform float     uCurve;
 
   varying vec2 vUv;
+
+  vec3 blendMix(vec3 bgc, vec3 blended, vec3 fgc, float amt) {
+    if (uCurve < 0.5) return mix(bgc, blended, amt);
+    return amt < 0.5
+      ? mix(bgc, blended, amt * 2.0)
+      : mix(blended, fgc, (amt - 0.5) * 2.0);
+  }
 
   // ── bitwise helpers ──────────────────────────────────────────────────────────
   ivec3 floatToInt8(vec3 c) { return ivec3(clamp(c * 255.0, 0.0, 255.0)); }
@@ -456,7 +473,7 @@ export const TRANSFERMODE = /* glsl */ `
       // AND — three of twenty-one modes silently ignoring their own strength
       // control. uMode 0 (Copy) still returns fg untouched: it is the identity
       // pass, not a blend, and mixing it would turn Copy into a dissolve.
-      gl_FragColor = vec4(mix(b, int8ToFloat(ir), uBlendAmount), fg.a);
+      gl_FragColor = vec4(blendMix(b, int8ToFloat(ir), a, uBlendAmount), fg.a);
       return;
     }
 
@@ -482,7 +499,7 @@ export const TRANSFERMODE = /* glsl */ `
     else r = a;
 
     vec3 blended = clamp(r, 0.0, 1.0);
-    gl_FragColor = vec4(mix(b, blended, uBlendAmount), fg.a);
+    gl_FragColor = vec4(blendMix(b, blended, a, uBlendAmount), fg.a);
   }
 `;
 

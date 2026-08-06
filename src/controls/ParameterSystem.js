@@ -853,7 +853,23 @@ export function migrateStatesSdfParams(states) {
  */
 export const PARAM_SCHEMA = 2;
 
-const BLEND_PCT_IDS = ['layer.fg.blendAmount', 'layer.bg.blendAmount'];
+/**
+ * Per-id conversion factor, because the two params did NOT change the same way.
+ *
+ * layer.bg.blendAmount is still a two-stop opacity, so its old 0–1 is just the
+ * same number as a percent: ×100.
+ *
+ * layer.fg.blendAmount became a three-stop curve (0 % BG → 50 % blend → 100 %
+ * FG), and the old two-stop `mix(BG, blended, v)` is exactly the FIRST HALF of
+ * it. So old v lands at v/2 of the new range: ×50. That is what preserves the
+ * picture — old 1.0 (full blend) becomes 50 % (full blend), not 100 %, which
+ * under the new curve would be the raw Foreground with no blend at all.
+ */
+const BLEND_PCT_FACTOR = {
+  'layer.fg.blendAmount': 50,
+  'layer.bg.blendAmount': 100,
+};
+const BLEND_PCT_IDS = Object.keys(BLEND_PCT_FACTOR);
 
 /**
  * Why this one needs a STAMP when migrateSdfTile and migrateSdfCamera do not.
@@ -871,21 +887,24 @@ const BLEND_PCT_IDS = ['layer.fg.blendAmount', 'layer.bg.blendAmount'];
  */
 export function migrateBlendPercent(values, recs, savedSchema) {
   if ((savedSchema ?? 1) >= 2) return values;
-  const pct = v => Math.max(0, Math.min(100, (+v || 0) * 100));
+  const pct = (v, f) => Math.max(0, Math.min(100, (+v || 0) * f));
 
   if (values) {
-    for (const id of BLEND_PCT_IDS) if (id in values) values[id] = pct(values[id]);
+    for (const id of BLEND_PCT_IDS) {
+      if (id in values) values[id] = pct(values[id], BLEND_PCT_FACTOR[id]);
+    }
   }
   // Recall bounds ARE carried here, unlike the SDF axes: that migration reset
   // them because a box in world units is not a box in azimuth/elevation, while
-  // this is the same quantity in the same direction one factor of 100 apart.
+  // this is the same quantity in the same direction, one constant factor apart.
   if (recs) {
     for (const id of BLEND_PCT_IDS) {
       const rec = recs[id];
       if (!rec) continue;
-      if ('value'   in rec) rec.value   = pct(rec.value);
-      if ('ctrlMin' in rec) rec.ctrlMin = pct(rec.ctrlMin);
-      if ('ctrlMax' in rec) rec.ctrlMax = pct(rec.ctrlMax);
+      const f = BLEND_PCT_FACTOR[id];
+      if ('value'   in rec) rec.value   = pct(rec.value,   f);
+      if ('ctrlMin' in rec) rec.ctrlMin = pct(rec.ctrlMin, f);
+      if ('ctrlMax' in rec) rec.ctrlMax = pct(rec.ctrlMax, f);
     }
   }
   return values;
@@ -984,7 +1003,9 @@ export function registerCoreParameters(ps) {
     group: "fg",
     min: 0,
     max: 100,
-    value: 100,
+    // 50 is the centre detent: Background alone at 0, the blend mode at full
+    // strength at 50, Foreground alone at 100. See blendMix() in the shader.
+    value: 50,
     unit: "%",
   });
   ps.register({

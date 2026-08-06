@@ -257,14 +257,17 @@ how far to take it.
 replaces the Background and nothing is composited at all — Blend Amt has no
 effect until a real mode is chosen, which is the first thing to trip over here.
 
-Now drag **Blend Amt** from 0 % to 100 % slowly. At 0 % you see the Background
-alone; at 100 % the full Screen of the two. It is layer opacity, in the sense
-every compositing program means it — *not* a crossfade to the Foreground. At
-100 % with Screen you get the screened image, not the raw camera. If you want
-the Foreground by itself, that is what `Copy` is for.
+Now drag **Blend Amt** slowly across its whole range and watch one picture
+become the other. It has three stops:
 
-Those two controls are the bottom of the instrument; everything else in this
-track is a variation on what you can put in the two slots.
+- **0 %** — the Background alone.
+- **50 %** — the blend mode at full strength. This is the default, and the
+  detent the knob is built around.
+- **100 %** — the Foreground alone.
+
+So one control fades out either layer, with the blend in the middle. That
+crossfade is the bottom of the instrument; everything else in this track is a
+variation on what you can put in the two slots.
 
 ## Principle 2 — any source can drive any other
 <!-- guide
