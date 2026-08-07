@@ -6,7 +6,7 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
 
 ---
 
-## [Unreleased]
+## [0.18.0] — 2026-08-07 — The Way In
 
 ### Added
 - **Help menu** — a `?` button in the status bar holding Guided Tour, Keyboard
