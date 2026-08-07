@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "dev:https": "IMWEB_HTTPS=1 vite --host",
-    "sync-docs": "cp docs/ImWeb_Full_Manual.md docs/ImWeb_Quick_Reference.md docs/ImWeb-Guide.md public/docs/",
+    "sync-docs": "cp docs/ImWeb_Full_Manual.md docs/ImWeb_Quick_Reference.md docs/ImWeb_Quick_Start.md docs/ImWeb-Guide.md public/docs/",
     "build": "vite build",
     "preview": "vite preview",
     "prep-video": "node imweb-prep.js",

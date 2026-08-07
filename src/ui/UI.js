@@ -3397,12 +3397,28 @@ export async function openDocsViewer(url, title) {
   overlay.classList.remove('hidden');
 
   try {
-    const [res, { marked }] = await Promise.all([fetch(url), import('marked')]);
+    // Retry once bypassing any HTTP/service-worker cache. A bare "Failed to
+    // fetch" is a TypeError with no status behind it, and the most common
+    // causes here are transient — a dev server restarting under the page, or a
+    // service worker whose cache lookup failed. One clean retry turns a dead
+    // panel into a slight pause.
+    const { marked } = await import('marked');
+    let res;
+    try {
+      res = await fetch(url);
+    } catch {
+      res = await fetch(url, { cache: 'reload' });
+    }
     if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
     const text = await res.text();
     contentEl.innerHTML = marked.parse(text);
   } catch (err) {
-    contentEl.textContent = `Failed to load ${url}: ${err.message}`;
+    // Say what to do, not just what broke — this panel is the only route to the
+    // manual, so a dead end here has no fallback for the reader.
+    contentEl.textContent =
+      `Could not load ${url} — ${err.message}. ` +
+      `If the app is running from a local preview, check the server is still up, ` +
+      `then reload the page.`;
   }
 }
 

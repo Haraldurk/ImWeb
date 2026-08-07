@@ -9,8 +9,15 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
 ## [Unreleased]
 
 ### Added
-- **Guided tour** (`⇧G`, the splash's Guided Tour button, or Project ▸ AI ▸
-  Documentation). Twenty-seven steps in three tracks, as a panel rather than a
+- **Help menu** — a `?` button in the status bar holding Guided Tour, Keyboard
+  Shortcuts, the three manuals and About. It is now the only *persistent* route
+  into the documentation: the first-run splash offers the tour once and then
+  sets `imweb-onboarding-dismissed` forever, and the doc links previously lived
+  at the bottom of the AI provider settings panel, where nobody configuring an
+  API key is looking for a guided tour. Entries reuse the existing docs viewer
+  and the `?` shortcut overlay rather than adding new surfaces.
+- **Guided tour** (`⇧G`, the splash's Guided Tour button, or the `?` menu).
+  Twenty-seven steps in three tracks, as a panel rather than a
   modal — it points *at* the control panel, so it must not cover it, and the
   instrument stays playable with the tour open.
   - **Basics** (9) — the panel, the parameter row, what min/max actually mean,
@@ -43,7 +50,65 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
     edited one. The failure it exists to catch is quiet: the tour still opens
     and the step still reads correctly, and only the chip does nothing.
 
+### Changed
+- **`Blend Amt` is a three-stop crossfade**: `0 %` Background alone → `50 %` the
+  blend mode at full strength → `100 %` Foreground alone, defaulting to 50 %. It
+  was a plain layer opacity (0 → BG, 100 % → the blended result), which is what
+  every compositing program means by opacity but left no way to fade the
+  Background out at all — with `Screen` at 100 % the Background was still
+  plainly there. Only the FG layer takes the new curve, selected per-pass with
+  `uCurve`: the BG self-process passes the same texture as both inputs, so its
+  "Foreground end" would just be the Background again, and the feedback blend's
+  saved amounts have to keep meaning what they meant.
+- **Layer blend amounts are percent params** (`0–100 %`, schema 2). They were
+  `0–1` while `blend.amount` beside them in the OSD was `0–100 %`. Legacy values
+  migrate on every load path, scaling FG by **50** and BG by **100** — the old
+  two-stop `mix(BG, blended, v)` is exactly the first *half* of the new FG
+  curve, so an old `1.0` is 50 % (full blend), not 100 % (raw Foreground).
+  Verified across `MasterProject.imweb` and `FactoryBank.imbank`: every saved
+  value lands on the blend detent, so nothing changes appearance.
+  `tests/audit-blend-percent.mjs` covers the conversion, the stamp gating, both
+  path sets and the curve endpoints.
+- **Layers panel** — the blend select sits on its layer's own row under `SOURCE`
+  / `BLEND` column captions, and the amounts moved out of Layer Color to follow
+  the mode they scale. `layer.bg.blend` is labelled **BG Self-process**, because
+  it is one: Pipeline passes the Background as both `uFG` and `uBG`, making it a
+  tone treatment of one picture rather than a meeting of two.
+- **Documentation is served network-first** by the service worker. Cache-first
+  served whatever revision a reader opened once and never refreshed it, so an
+  edited manual could not reach anyone who had already read the old one. Falls
+  back to cache when offline, which is the case cache-first was for.
+
 ### Fixed
+- **`layer.bg.blendAmount` did nothing.** The BG self-blend hardcoded
+  `uBlendAmount: 1`, so a control that was registered, documented, captured by
+  Display States and MIDI-mappable moved nothing. It now drives the pass; its
+  default is unchanged, so no existing patch renders differently.
+- **A focused slider killed every single-key shortcut.** The keydown guard bailed
+  on any `<input>`, and every param slider is an `input type=range` — so touching
+  one slider disabled `q`/`a`/`z`/`v`/`m` for the rest of the session until focus
+  moved elsewhere. It read as "the keys don't work on this tab", the tab being
+  whichever one you touched a slider on. The guard now blocks only real text
+  entry, and still yields arrows/space/Home/End to a focused widget.
+- **The service worker could turn a storage hiccup into a phantom network
+  failure.** Neither `caches.match()` nor `caches.open()` was guarded, and a
+  rejection from either rejects the promise passed to `respondWith()` — which
+  reaches the page as a bare `Failed to fetch`, with no status behind it and
+  indistinguishable from the server being down. Every path is now wrapped, and
+  the docs viewer retries once past the cache before reporting an error.
+- **Service worker install failed on every built site.** `APP_SHELL` lists
+  dev-only paths (`/src/main.js`, `/src/style.css`); `addAll()` is
+  all-or-nothing, so one 404 rejected the install and the worker never
+  activated. The shell is now cached best-effort, entry by entry.
+- **`ImWeb_Quick_Start.md` was served but never synced.** It sat in
+  `public/docs/` outside the `sync-docs` list, so the copy readers saw drifted
+  from the edited one with nothing to flag it.
+- **Guided tour corrections.** Principle 1 claimed `Blend Amt` crossfaded one
+  picture into the other, which it did not; it also never mentioned that
+  `FG Blend` defaults to `Copy`, which Pipeline skips entirely — so following
+  the step exactly left the control inert. `g` was documented as cycling three
+  canvas modes when there are five, and the warp-drawing step asked for "Pad or
+  Locked" when warp drawing needs `Warp`.
 - **The parameter search's ⌖ button did nothing on continuous rows** — every
   row with a slider, i.e. most of them. The row captures the pointer for its
   value drag, which retargets the pointer stream away from any button inside it,

@@ -168,6 +168,8 @@ Right-click any parameter to assign:
 - Signal path display — hidden by default; ┄ toolbar toggle; float/dock via `Shift+P`
 - Live GLSL editor — CodeMirror 6 with GLSL syntax highlighting; built-in and saveable user presets, recallable from MIDI/LFO over a configurable index range; auto-injected VJ uniform contract (audio FFT, previous frame, BPM/beat, level/bass/mid/high); insert routing to Master Output, Foreground, Background or Displace; compile errors fall back to the last good shader instead of dropping the render loop
 - First-visit onboarding overlay
+- Help menu (status-bar `?`) — guided tour, keyboard shortcuts, the three manuals, About
+- Guided tour (`Shift+G`) — 27 steps in three tracks (Basics / Principles / Instruments); it points at controls, it never sets them
 - LFO visualiser in context menu
 - Vectorscope (Lissajous / waveform / FFT) as source
 - Parameter search overlay (`/`)
@@ -199,6 +201,7 @@ Right-click any parameter to assign:
 | `/` | Parameter search overlay |
 | `0–9` | Recall State 0–9 |
 | `Shift+0` | Neutral State |
+| `Shift+G` | Guided tour (resumes where you left off) |
 | `Shift+S` | Quick-save State to next empty slot |
 | `Shift+1–8` | Select clip 1–8 on Movie Deck A |
 | `Option+1–8` | Select clip 1–8 on Movie Deck B |
