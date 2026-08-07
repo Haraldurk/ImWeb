@@ -11,6 +11,9 @@ import {
   migrateStatesCaptureBase,
   migrateSdfParams,
   migrateStatesSdfParams,
+  PARAM_SCHEMA,
+  migrateBlendPercent,
+  migrateStatesBlendPercent,
 } from '../controls/ParameterSystem.js';
 
 export const MAX_STATES = 32;
@@ -128,13 +131,17 @@ export class Preset {
       thumbnail:   this.thumbnail,
       // Which capture-index base these states' values are expressed in.
       sourceCount: CAPTURE_INDIRECT_BASE,
+      // Which value-scale schema. Unlike sourceCount this cannot be inferred
+      // from the data — see migrateBlendPercent.
+      schema: PARAM_SCHEMA,
     };
   }
 
   exportBank(modelAsset = null) {
     const data = { __type: 'imbank', version: 1, name: this.name,
                    states: this.states, activeState: this.activeState,
-                   sourceCount: CAPTURE_INDIRECT_BASE, exported: Date.now() };
+                   sourceCount: CAPTURE_INDIRECT_BASE, schema: PARAM_SCHEMA,
+                   exported: Date.now() };
     if (modelAsset) data.modelAsset = modelAsset;
     return data;
   }
@@ -142,8 +149,10 @@ export class Preset {
   static importBank(data, targetIndex) {
     const p = new Preset(targetIndex);
     p.name        = data.name   || `Bank ${targetIndex + 1}`;
-    p.states      = migrateStatesSdfParams(
-                      migrateStatesCaptureBase(data.states || [], data.sourceCount));
+    p.states      = migrateStatesBlendPercent(
+                      migrateStatesSdfParams(
+                        migrateStatesCaptureBase(data.states || [], data.sourceCount)),
+                      data.schema);
     p.activeState = data.activeState ?? 0;
     return p;
   }
@@ -158,8 +167,10 @@ export class Preset {
     Object.assign(p, data);
     migrateStatesCaptureBase(p.states, data.sourceCount);
     migrateStatesSdfParams(p.states);
+    migrateStatesBlendPercent(p.states, data.schema);
     // The bank's own controller bag, separate from any state's.
     migrateSdfParams(null, p.controllers);
+    migrateBlendPercent(null, p.controllers, data.schema);
     return p;
   }
 
@@ -476,12 +487,14 @@ export class PresetManager extends EventTarget {
     const state = this.current?.getState(stateIndex);
     if (!state) return null;
     return { __type: 'imstate', version: 1, ...state,
-             sourceCount: CAPTURE_INDIRECT_BASE, exported: Date.now() };
+             sourceCount: CAPTURE_INDIRECT_BASE, schema: PARAM_SCHEMA,
+             exported: Date.now() };
   }
 
   importState(data, targetSlot = null) {
     migrateCaptureBase(data.values, data.sourceCount);
     migrateSdfParams(data.values, data.controllers);
+    migrateBlendPercent(data.values, data.controllers, data.schema);
     if ('output.transfer' in data.values) {
       data.values['feedback.mode'] = data.values['output.transfer'];
       delete data.values['output.transfer'];

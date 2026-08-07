@@ -1,7 +1,7 @@
 # ImWeb — Guided Tour
 
-The content of the in-app guided tour (**Shift+G**, the Guided Tour button on
-the splash, or Project ▸ AI ▸ Documentation ▸ Guided Tour). This file *is* the
+The content of the in-app guided tour (**Shift+G**, the **?** menu in the status
+bar, or the Guided tour button on the first-run splash). This file *is* the
 tour — the panel parses it at runtime, so editing the prose here changes what the
 app says. It is also meant to read straight through as a document.
 
@@ -211,7 +211,7 @@ tab. Projects are `.imweb` files; individual states are `.imstate`.
 <!-- guide
 track: basics
 point: global.keylock, global.tap, global.bpm
-keys: q, a, z, v, m, k, c, h, f, t, g
+keys: q, a, z, v, m, k, x, c, h, f, t, g
 -->
 
 Single keys, no modifier — the reason the instrument is playable without looking
@@ -219,14 +219,18 @@ at the panel. `?` shows all of them; these are the ones you will use in the
 first hour:
 
 - **`q` / `a` / `z`** — cycle the Foreground / Background / DisplaceSrc source.
-  This is how you audition 33 sources in a minute.
+  This is how you audition 33 sources in a minute. Every one of them is also in
+  the **Source** dropdown on the matching row in **Mix ▸ Layers** — the keys are
+  for auditioning in order, the dropdown for going straight to one you can name.
+  The rest of this tour says "press `a` until Background reads *X*"; picking *X*
+  from the dropdown is always the same thing, and quicker.
 - **`v` / `m`** — camera on/off, movie on/off.
 - **`k` / `x`** — keyer, external key.
 - **`c`** — capture the screen into the Stills Buffer.
 - **`h`** — hold / fade to black. The panic button.
 - **`f`** — fullscreen output. `Esc` exits.
 - **`t`** — tap tempo, for anything synced to BPM.
-- **`g`** — cycle what a canvas drag does: Camera → Pad → Locked.
+- **`g`** — cycle what a canvas drag does: Camera → Pad → Locked → Draw → Warp.
 - **`i` / `u` / `d`** — parameter OSD, state bar, debug overlay.
 
 **Keylock** (in the status bar) disables the single-key shortcuts. Turn it on
@@ -241,15 +245,29 @@ keys: v, q, a
 -->
 
 **Three moves.** Press `v` for the camera. Press `a` until **Background** reads
-`Camera`. Press `q` until **Foreground** reads `Noise`.
+`Camera`. Press `q` until **Foreground** reads `Noise`. (`q` / `a` / `z` cycle
+those three; you can also just pick from the **Source** dropdown on each row,
+which is faster once you know what you are after.)
 
-You are looking at the composite: a Foreground over a Background. **FG Blend**
-chooses how they meet — add, multiply, difference, screen — and **FG Blend Amt**
-how much.
+You are looking at the composite: a Foreground over a Background. **Blend**
+chooses how the two meet — add, multiply, difference, screen — and **Blend Amt**
+how far to take it.
 
-Drag FG Blend Amt from 0 to 100 slowly and watch one picture become the other.
-That crossfade is the bottom of the instrument; everything else in this track
-is a variation on what you can put in those two slots.
+**Set Blend to `Screen` first.** At the default `Copy` the Foreground simply
+replaces the Background and nothing is composited at all — Blend Amt has no
+effect until a real mode is chosen, which is the first thing to trip over here.
+
+Now drag **Blend Amt** slowly across its whole range and watch one picture
+become the other. It has three stops:
+
+- **0 %** — the Background alone.
+- **50 %** — the blend mode at full strength. This is the default, and the
+  detent the knob is built around.
+- **100 %** — the Foreground alone.
+
+So one control fades out either layer, with the blend in the middle. That
+crossfade is the bottom of the instrument; everything else in this track is a
+variation on what you can put in the two slots.
 
 ## Principle 2 — any source can drive any other
 <!-- guide
@@ -511,8 +529,9 @@ keys: g
 
 Draw the displacement map straight onto the output canvas.
 
-**First press `g`** until the mode OSD reads **Pad** or **Locked**. In Camera
-mode a drag on the canvas orbits the 3D camera instead of drawing — that is the
+**First press `g`** until the mode OSD reads **Warp**. The five modes cycle
+Camera → Pad → Locked → Draw → Warp, and only Warp smears the displacement map;
+in Camera mode a drag orbits the 3D camera, and in Draw it paints. That is the
 first thing to trip over here.
 
 Now drag on the main output canvas. The picture smears where you drag, in the

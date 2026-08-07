@@ -44,11 +44,30 @@ export function buildLayerButtons(ps, contextMenu) {
   if (!el) return;
   el.innerHTML = '';
 
+  // Column captions. The two selects on a layer row are different kinds of
+  // thing and used to sit unlabelled side by side, which read as "Background
+  // also has a blend mode" — it does not; layer.bg.blend is a SELF-process
+  // (Pipeline passes the BG as both uFG and uBG), a tone treatment of one
+  // picture rather than a meeting of two. A caption row costs one line for both
+  // layers, where a label per select cost a whole row each.
+  const head = document.createElement('div');
+  head.className = 'param-row layer-col-head';
+  // Distinct classes, not :nth-of-type — that counts every <span> in the row,
+  // so .param-label is the first one and the captions land a column too far
+  // right (they rendered as a single "SOURCEBLEND" over the blend column).
+  head.innerHTML =
+    '<span class="param-label"></span>' +
+    '<span class="layer-col layer-col-source">SOURCE</span>' +
+    '<span class="layer-col layer-col-blend">BLEND</span>';
+  el.appendChild(head);
+
   [
-    { param: ps.get('layer.fg'), label: 'Foreground', blendParam: ps.get('layer.fg.blend') },
-    { param: ps.get('layer.bg'), label: 'Background', blendParam: ps.get('layer.bg.blend') },
+    { param: ps.get('layer.fg'), label: 'Foreground', blendParam: ps.get('layer.fg.blend'),
+      amtParam: ps.get('layer.fg.blendAmount') },
+    { param: ps.get('layer.bg'), label: 'Background', blendParam: ps.get('layer.bg.blend'),
+      amtParam: ps.get('layer.bg.blendAmount') },
     { param: ps.get('layer.ds'), label: 'DisplaceSrc' },
-  ].forEach(({ param, label, blendParam }) => {
+  ].forEach(({ param, label, blendParam, amtParam }) => {
     const row = document.createElement('div');
     row.className = 'param-row';
     // Hand-built row: claim the param id the way buildParamRow does, or the `/`
@@ -82,7 +101,7 @@ export function buildLayerButtons(ps, contextMenu) {
     param.onChange(v => { sel.value = Math.round(v); });
     row.appendChild(sel);
 
-    // Blend mode select for this layer
+    // Blend mode rides the layer's own row, under the BLEND caption.
     if (blendParam) {
       const bsel = _mkSelect(
         blendParam.options ?? [],
@@ -90,11 +109,14 @@ export function buildLayerButtons(ps, contextMenu) {
         i => { ps.set(blendParam.id, i); },
         'blend-select'
       );
-      // The blend mode shares the layer's row rather than getting one of its
-      // own, so it has to claim its id here or it is unreachable by the `/`
-      // search's ⌖ and by the guided tour. Nested inside a row that carries a
-      // DIFFERENT param id, which is fine: reveal scrolls to whatever element
-      // it finds, and no `.param-row[data-param-id]` query can match a <select>.
+      // The caption says BLEND for both columns, which is exact for FG and
+      // shorthand for BG — the tooltip carries the distinction the column
+      // header cannot, and the amount row below spells it out (Self-proc Amt).
+      bsel.title = blendParam.label;
+      // Shares a row that carries a DIFFERENT param id, so it must claim its
+      // own or the `/` search's ⌖ and the guided tour cannot find it. Fine:
+      // reveal scrolls to whatever element it matches, and no
+      // `.param-row[data-param-id]` query can match this <div>.
       bsel.dataset.paramId = blendParam.id;
       bsel.addEventListener('contextmenu', e => {
         e.preventDefault();
@@ -105,6 +127,18 @@ export function buildLayerButtons(ps, contextMenu) {
     }
 
     el.appendChild(row);
+
+    // The blend mode and its amount are one idea — "how these two layers meet,
+    // and how much" — so the amount follows its layer here rather than sitting
+    // in Layer Color two sections away, where the guided tour's Principle 1
+    // pointed at a control that was not on screen. Its own row, not appended to
+    // the selector row: it is a slider and wants the full width.
+    //
+    // Group stays 'fg'/'bg'. The group is what Display States capture and what
+    // every saved .imweb/.imstate keys on, so it is deliberately NOT changed to
+    // 'layers' to match the new location — that would be a persistence change
+    // dressed up as a layout one.
+    if (amtParam) el.appendChild(buildParamRow(amtParam, contextMenu));
   });
 }
 
@@ -174,8 +208,14 @@ export function buildMappingPanels(ps, contextMenu) {
     'lights-params':   ps.getGroup('lights3d'),
     'draw-params':     ps.getGroup('draw'),
     'text-params':     ps.getGroup('text'),
-    'fg-params':       ps.getGroup('fg'),
-    'bg-params':       ps.getGroup('bg'),
+    // layer.*.blendAmount is excluded by ID, the same stated exception the
+    // output.interlace row above uses: it stays group 'fg'/'bg' for persistence
+    // but its row is built by buildLayerButtons() beside the blend mode it
+    // scales. Without this filter it renders in both places, and revealParam()
+    // takes the first match — so the guided tour would scroll to whichever copy
+    // happened to be earlier in the DOM.
+    'fg-params':       ps.getGroup('fg').filter(p => p.id !== 'layer.fg.blendAmount'),
+    'bg-params':       ps.getGroup('bg').filter(p => p.id !== 'layer.bg.blendAmount'),
     // Effects — one group across five SUBsections of a single panel section,
     // the same treatment Metaballs and Rutt-Etra get. 29 rows in registration
     // order mixed geometry, colour, texture and timing in one flat list; the
@@ -3225,6 +3265,103 @@ function relTime(ts) {
   return `${Math.floor(h / 24)}d ago`;
 }
 
+// ── Help menu ─────────────────────────────────────────────────────────────────
+
+/**
+ * Wire the status-bar ? button: a small dropdown holding every route into the
+ * documentation, plus About.
+ *
+ * This is the ONLY persistent help affordance in the app. The first-visit splash
+ * offers the tour once and then sets imweb-onboarding-dismissed forever, and the
+ * docs links previously lived at the bottom of the AI settings panel — so on a
+ * second visit the guide could only be found by already knowing ⇧G.
+ *
+ * Entries reuse what already exists rather than adding new surfaces: the three
+ * manuals go through openDocsViewer, Keyboard Shortcuts opens the same #kb-help
+ * overlay the `?` key toggles, and the tour opens the guide PANEL (not a modal —
+ * it points at the control panel, so it must not cover it).
+ */
+export function initHelpMenu() {
+  const btn = document.getElementById('btn-help');
+  if (!btn) return;
+
+  const menu = document.createElement('div');
+  menu.id = 'help-menu';
+  menu.className = 'hidden';
+  document.body.appendChild(menu);
+
+  const openAbout = () => {
+    const modal = document.getElementById('about-modal');
+    const ver = document.getElementById('about-version');
+    if (ver) ver.textContent = `v${__APP_VERSION__}`;
+    modal?.classList.remove('hidden');
+  };
+
+  const items = [
+    ['Guided Tour', '⇧G', () => openGuide()],
+    ['Keyboard Shortcuts', '?', () => document.getElementById('kb-help')?.classList.remove('hidden')],
+    ['—'],
+    ['Quick Start', '', () => openDocsViewer('docs/ImWeb_Quick_Start.md', 'Quick Start')],
+    ['Quick Reference', '', () => openDocsViewer('docs/ImWeb_Quick_Reference.md', 'Quick Reference')],
+    ['Full Manual', '', () => openDocsViewer('docs/ImWeb_Full_Manual.md', 'Full Manual')],
+    ['—'],
+    ['About ImWeb', '', openAbout],
+  ];
+
+  for (const [label, accel, run] of items) {
+    if (label === '—') {
+      const sep = document.createElement('div');
+      sep.className = 'help-menu-sep';
+      menu.appendChild(sep);
+      continue;
+    }
+    const item = document.createElement('button');
+    item.className = 'help-menu-item';
+    item.innerHTML = `<span>${label}</span><span class="help-menu-accel">${accel}</span>`;
+    item.addEventListener('click', () => { closeMenu(); run(); });
+    menu.appendChild(item);
+  }
+
+  function openMenu() {
+    // Anchored to the button each time it opens: the status bar is a wrapping
+    // flex row, so the button's x moves as items show and hide (the iPad-only
+    // KBD button, the camera flip). A position captured once goes stale.
+    const r = btn.getBoundingClientRect();
+    menu.classList.remove('hidden');
+    menu.style.top = `${r.bottom + 4}px`;
+    // Right-aligned to the button, then clamped: ? is the last item in the bar,
+    // so a left-aligned menu would hang off the window edge.
+    const w = menu.offsetWidth;
+    menu.style.left = `${Math.max(4, Math.min(r.right - w, window.innerWidth - w - 4))}px`;
+    btn.classList.add('active');
+  }
+  function closeMenu() {
+    menu.classList.add('hidden');
+    btn.classList.remove('active');
+  }
+
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (menu.classList.contains('hidden')) openMenu();
+    else closeMenu();
+  });
+  document.addEventListener('click', (e) => {
+    if (!menu.classList.contains('hidden') && !menu.contains(e.target)) closeMenu();
+  });
+
+  const about = document.getElementById('about-modal');
+  document.getElementById('about-close')?.addEventListener('click', () =>
+    about?.classList.add('hidden'));
+  about?.addEventListener('click', (e) => {
+    if (e.target === about) about.classList.add('hidden');
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return;
+    closeMenu();
+    about?.classList.add('hidden');
+  });
+}
+
 // ── In-app Markdown docs viewer ───────────────────────────────────────────────
 
 let _docsViewerWired = false;
@@ -3260,12 +3397,28 @@ export async function openDocsViewer(url, title) {
   overlay.classList.remove('hidden');
 
   try {
-    const [res, { marked }] = await Promise.all([fetch(url), import('marked')]);
+    // Retry once bypassing any HTTP/service-worker cache. A bare "Failed to
+    // fetch" is a TypeError with no status behind it, and the most common
+    // causes here are transient — a dev server restarting under the page, or a
+    // service worker whose cache lookup failed. One clean retry turns a dead
+    // panel into a slight pause.
+    const { marked } = await import('marked');
+    let res;
+    try {
+      res = await fetch(url);
+    } catch {
+      res = await fetch(url, { cache: 'reload' });
+    }
     if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
     const text = await res.text();
     contentEl.innerHTML = marked.parse(text);
   } catch (err) {
-    contentEl.textContent = `Failed to load ${url}: ${err.message}`;
+    // Say what to do, not just what broke — this panel is the only route to the
+    // manual, so a dead end here has no fallback for the reader.
+    contentEl.textContent =
+      `Could not load ${url} — ${err.message}. ` +
+      `If the app is running from a local preview, check the server is still up, ` +
+      `then reload the page.`;
   }
 }
 
@@ -3419,51 +3572,11 @@ export function buildAISettingsPanel(ai, panelEl) {
     v => ai.setCoachInterval(Number(v))
   )));
 
-  // ── Resources section ─────────────────────────────────────────────────────
-  const resHdr = document.createElement('div');
-  resHdr.className = 'ai-settings-hdr';
-  resHdr.style.marginTop = '10px';
-  resHdr.textContent = 'DOCUMENTATION';
-  panelEl.appendChild(resHdr);
-
-  const links = [
-    { label: 'Quick Start',     href: 'docs/ImWeb_Quick_Start.md' },
-    { label: 'Quick Reference', href: 'docs/ImWeb_Quick_Reference.md' },
-    { label: 'Full Manual',     href: 'docs/ImWeb_Full_Manual.md' },
-  ];
-  links.forEach(({ label, href }) => {
-    const a = document.createElement('a');
-    a.className = 'ai-prov-link';
-    a.href = '#';
-    a.textContent = label + ' →';
-    a.addEventListener('click', (e) => {
-      e.preventDefault();
-      openDocsViewer(href, label);
-    });
-    panelEl.appendChild(a);
-  });
-
-  // The tour opens a panel rather than the docs modal: it points AT the control
-  // panel, so it must not cover it.
-  const guideLink = document.createElement('a');
-  guideLink.className = 'ai-prov-link';
-  guideLink.href = '#';
-  guideLink.textContent = 'Guided Tour (⇧G) →';
-  guideLink.addEventListener('click', (e) => {
-    e.preventDefault();
-    openGuide();
-  });
-  panelEl.appendChild(guideLink);
-
-  const shortcutsLink = document.createElement('a');
-  shortcutsLink.className = 'ai-prov-link';
-  shortcutsLink.href = '#';
-  shortcutsLink.textContent = 'Keyboard Shortcuts →';
-  shortcutsLink.addEventListener('click', (e) => {
-    e.preventDefault();
-    document.getElementById('kb-help')?.classList.remove('hidden');
-  });
-  panelEl.appendChild(shortcutsLink);
+  // The DOCUMENTATION block that used to sit here moved to the Help menu
+  // (buildHelpMenu, below). It was the only persistent route to the manual and
+  // the tour, and it was inside the AI provider panel — nobody configuring an
+  // API key is looking for the guided tour, and nobody looking for the guided
+  // tour opens the AI settings.
 
   const prepHdr = document.createElement('div');
   prepHdr.className = 'ai-settings-hdr';

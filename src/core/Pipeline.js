@@ -629,12 +629,23 @@ export class Pipeline {
     // strength another pass set last frame. Harmless-looking while the bitwise
     // modes ignored uBlendAmount entirely; now that they honour it, a stale
     // value would be visible in BG XOR/OR/AND.
+    // uBlendAmount comes from layer.bg.blendAmount, NOT a literal 1. It was
+    // hardcoded here while the param was registered, documented, captured by
+    // Display States and MIDI-mappable — a control that moved nothing. Its
+    // default is 1, so every existing patch renders exactly as before; the
+    // slider now mixes between the self-processed BG and the untouched one.
+    // Both amounts are PERCENT params (0–100) and the shader wants 0–1.
+    // uCurve 0 for the self-process: its uFG and uBG are the same texture, so
+    // the three-stop curve's "FG end" would just be the Background again.
     if (bgBlend > 0 && !BG_DEGENERATE) bgTexFinal  = this._pass(this.m.transfermode, {
-      uFG: bgTexFinal, uBG: bgTexFinal, uMode: bgBlend, uBlendAmount: 1,
+      uFG: bgTexFinal, uBG: bgTexFinal, uMode: bgBlend, uCurve: 0,
+      uBlendAmount: (p.get('layer.bg.blendAmount')?.value ?? 100) / 100,
     });
+    // uCurve 1: 0 % = Background alone, 50 % = the blend at full strength,
+    // 100 % = Foreground alone. One knob fades out either layer.
     if (fgBlend > 0) workingFG   = this._pass(this.m.transfermode, {
-      uFG: workingFG, uBG: bgTexFinal, uMode: fgBlend,
-      uBlendAmount: (p.get('layer.fg.blendAmount')?.value ?? 1),
+      uFG: workingFG, uBG: bgTexFinal, uMode: fgBlend, uCurve: 1,
+      uBlendAmount: (p.get('layer.fg.blendAmount')?.value ?? 50) / 100,
     });
 
     // Solo mode — bypass all effects
@@ -785,6 +796,9 @@ export class Pipeline {
           uFG:          prevTex,
           uBG:          warped,
           uMode:        fbMode,
+          // Two-stop: feedback amounts in every saved patch predate the layer
+          // curve and must keep meaning what they meant.
+          uCurve:       0,
           uBlendAmount: p.get('blend.amount').value / 100,
         });
       }
@@ -1286,7 +1300,7 @@ export class Pipeline {
         uMirror:    { value: 0 },
         uEdge:      { value: 0 },
       }),
-      transfermode: this._mat(TRANSFERMODE, { uMode: { value: 0 }, uBlendAmount: { value: 1.0 } }),
+      transfermode: this._mat(TRANSFERMODE, { uMode: { value: 0 }, uBlendAmount: { value: 1.0 }, uCurve: { value: 0 } }),
       mixbus:       this._mat(MIXBUS, {
         uMode:    { value: 0 },
         uXfade:   { value: 0 },

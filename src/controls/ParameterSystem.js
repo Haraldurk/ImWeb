@@ -843,6 +843,81 @@ export function migrateStatesSdfParams(states) {
   return states;
 }
 
+// ── Blend amounts: 0–1 → 0–100 % (schema 2) ──────────────────────────────────
+
+/**
+ * Schema version for the `params`/`values` maps. Bump ONLY for a change that a
+ * saved file cannot describe itself, and stamp it on every write path.
+ *
+ * 2 — layer.fg/bg.blendAmount moved from 0–1 to 0–100 %.
+ */
+export const PARAM_SCHEMA = 2;
+
+/**
+ * Per-id conversion factor, because the two params did NOT change the same way.
+ *
+ * layer.bg.blendAmount is still a two-stop opacity, so its old 0–1 is just the
+ * same number as a percent: ×100.
+ *
+ * layer.fg.blendAmount became a three-stop curve (0 % BG → 50 % blend → 100 %
+ * FG), and the old two-stop `mix(BG, blended, v)` is exactly the FIRST HALF of
+ * it. So old v lands at v/2 of the new range: ×50. That is what preserves the
+ * picture — old 1.0 (full blend) becomes 50 % (full blend), not 100 %, which
+ * under the new curve would be the raw Foreground with no blend at all.
+ */
+const BLEND_PCT_FACTOR = {
+  'layer.fg.blendAmount': 50,
+  'layer.bg.blendAmount': 100,
+};
+const BLEND_PCT_IDS = Object.keys(BLEND_PCT_FACTOR);
+
+/**
+ * Why this one needs a STAMP when migrateSdfTile and migrateSdfCamera do not.
+ *
+ * Those renamed their keys, so the data answers "has this run?" by itself —
+ * the old key is either present or gone. Here the key is unchanged and only
+ * the SCALE moved, and 0.5 is a legal value in both schemes (half, and half a
+ * percent). Nothing in the map can distinguish them, so guessing by magnitude
+ * ("<= 1 must be old") would silently multiply a deliberate 0.5 % by 100 on
+ * every load. The stamp is the only honest answer, which is why every write
+ * path carries PARAM_SCHEMA exactly as it already carries sourceCount.
+ *
+ * Consequence worth stating: this migration is idempotent only via the stamp,
+ * NOT via the data. Call it once per load, with that file's own schema value.
+ */
+export function migrateBlendPercent(values, recs, savedSchema) {
+  if ((savedSchema ?? 1) >= 2) return values;
+  const pct = (v, f) => Math.max(0, Math.min(100, (+v || 0) * f));
+
+  if (values) {
+    for (const id of BLEND_PCT_IDS) {
+      if (id in values) values[id] = pct(values[id], BLEND_PCT_FACTOR[id]);
+    }
+  }
+  // Recall bounds ARE carried here, unlike the SDF axes: that migration reset
+  // them because a box in world units is not a box in azimuth/elevation, while
+  // this is the same quantity in the same direction, one constant factor apart.
+  if (recs) {
+    for (const id of BLEND_PCT_IDS) {
+      const rec = recs[id];
+      if (!rec) continue;
+      const f = BLEND_PCT_FACTOR[id];
+      if ('value'   in rec) rec.value   = pct(rec.value,   f);
+      if ('ctrlMin' in rec) rec.ctrlMin = pct(rec.ctrlMin, f);
+      if ('ctrlMax' in rec) rec.ctrlMax = pct(rec.ctrlMax, f);
+    }
+  }
+  return values;
+}
+
+/** migrateBlendPercent over a Display State array. Mutates and returns it. */
+export function migrateStatesBlendPercent(states, savedSchema) {
+  if (Array.isArray(states)) {
+    for (const s of states) if (s) migrateBlendPercent(s.values, s.controllers, savedSchema);
+  }
+  return states;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // registerCoreParameters  — defines all Phase 1 parameters
 // ─────────────────────────────────────────────────────────────────────────────
@@ -912,7 +987,11 @@ export function registerCoreParameters(ps) {
   });
   ps.register({
     id: "layer.bg.blend",
-    label: "Self-process mode", // self-process: blends BG against itself (not against FG)
+    // Self-process: Pipeline passes the BG as BOTH uFG and uBG, so this is a
+    // tone treatment of one picture, not a composite of two. Labelled to say so
+    // — it is rendered beside FG Blend, which IS a composite, and the two were
+    // indistinguishable while this read as a blend mode.
+    label: "BG Self-process",
     group: "layers",
     type: PARAM_TYPE.SELECT,
     options: BLEND_MODES,
@@ -920,19 +999,23 @@ export function registerCoreParameters(ps) {
   });
   ps.register({
     id: "layer.fg.blendAmount",
-    label: "FG Blend Amt",
+    label: "Blend Amt",
     group: "fg",
     min: 0,
-    max: 1,
-    value: 1,
+    max: 100,
+    // 50 is the centre detent: Background alone at 0, the blend mode at full
+    // strength at 50, Foreground alone at 100. See blendMix() in the shader.
+    value: 50,
+    unit: "%",
   });
   ps.register({
     id: "layer.bg.blendAmount",
-    label: "BG Blend Amt",
+    label: "Self-proc Amt", // depth of layer.bg.blend, not a composite amount
     group: "bg",
     min: 0,
-    max: 1,
-    value: 1,
+    max: 100,
+    value: 100,
+    unit: "%",
   });
 
   // ── Keyer ─────────────────────────────────────────────────────────────────

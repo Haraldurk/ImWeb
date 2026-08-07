@@ -18,7 +18,8 @@
  *   - 3D imported models
  */
 
-import { CAPTURE_INDIRECT_BASE, migrateCaptureBase, migrateSdfParams } from '../controls/ParameterSystem.js';
+import { CAPTURE_INDIRECT_BASE, migrateCaptureBase, migrateSdfParams,
+         PARAM_SCHEMA, migrateBlendPercent } from '../controls/ParameterSystem.js';
 
 const FORMAT_VERSION = 3;
 
@@ -124,6 +125,9 @@ export class ProjectFile {
       // Capture-index base for `params` below. The banks in `presets` carry
       // their own, stamped by Preset.serialize().
       _sourceCount: CAPTURE_INDIRECT_BASE,
+      // Value-scale schema for `params`. Not inferable from the data — see
+      // migrateBlendPercent. Banks in `presets` carry their own.
+      _schema:      PARAM_SCHEMA,
       activePreset: this.presets.currentIndex,
       params:       this.ps.captureState(),
       presets,
@@ -213,6 +217,7 @@ export class ProjectFile {
     if (data.params) {
       migrateCaptureBase(data.params, data._sourceCount);
       migrateSdfParams(data.params);
+      migrateBlendPercent(data.params, null, data._schema);
       this.ps.restoreState(data.params);
     }
 

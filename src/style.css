@@ -2330,6 +2330,149 @@ body.sp-floating #signal-path-docked-space {
 
 /* ── DOCS VIEWER (in-app markdown modal) ──────────────────────────────────── */
 
+/* ── Layers column captions ────────────────────────────────────────────────── */
+/* Sits above the Foreground/Background rows and labels their two select
+   columns. Not interactive — pointer-events off so it can never eat a drag
+   aimed at the row beneath it. */
+.layer-col-head {
+    pointer-events: none;
+    padding-top: 2px;
+    padding-bottom: 0;
+    min-height: 0;
+}
+.layer-col-head .layer-col {
+    font-family: var(--mono);
+    font-size: 9px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--text-2);
+    opacity: 0.65;
+}
+/* Placed on the SAME grid tracks the selects use, not by guessed widths —
+   .source-select spans 2/4 and .blend-select auto-places into 4, so the
+   captions follow them if the row template is ever retuned. */
+.layer-col-head .layer-col-source {
+    grid-column: 2 / 4;
+}
+.layer-col-head .layer-col-blend {
+    grid-column: 4;
+}
+
+/* ── Help menu (status-bar ? button) ───────────────────────────────────────── */
+/* z-index sits above the docs viewer's 3100 so the menu is never trapped behind
+   a modal it just opened. position:fixed and left/top are set in JS from the
+   button's rect — see initHelpMenu(). */
+#help-menu {
+    position: fixed;
+    z-index: 3200;
+    min-width: 210px;
+    padding: 4px;
+    background: var(--bg-2);
+    border: 1px solid var(--accent-dim);
+    border-radius: 6px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.8);
+}
+#help-menu.hidden {
+    display: none;
+}
+.help-menu-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    width: 100%;
+    padding: 6px 10px;
+    background: none;
+    border: none;
+    border-radius: 4px;
+    color: var(--text-1);
+    font-family: var(--mono);
+    font-size: 12px;
+    text-align: left;
+    cursor: pointer;
+}
+.help-menu-item:hover {
+    background: var(--bg-4);
+    color: var(--accent);
+}
+.help-menu-accel {
+    color: var(--text-2);
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
+}
+.help-menu-sep {
+    height: 1px;
+    margin: 4px 6px;
+    background: var(--bg-4);
+}
+
+/* ── About modal ───────────────────────────────────────────────────────────── */
+#about-modal {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.7);
+    z-index: 3300;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+#about-modal.hidden {
+    display: none;
+}
+#about-box {
+    background: var(--bg-2);
+    border: 1px solid var(--accent-dim);
+    border-radius: 8px;
+    box-shadow: 0 12px 48px rgba(0, 0, 0, 0.8);
+    width: 420px;
+    max-width: 90vw;
+}
+#about-titlebar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--bg-4);
+    font-family: var(--mono);
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--accent);
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+}
+#about-close {
+    background: none;
+    border: none;
+    color: var(--text-2);
+    font-size: 16px;
+    cursor: pointer;
+    line-height: 1;
+    padding: 2px 4px;
+}
+#about-close:hover {
+    color: var(--accent);
+}
+#about-content {
+    padding: 20px 24px 24px;
+    color: var(--text-1);
+    font-size: 13px;
+    line-height: 1.6;
+}
+#about-content p {
+    margin: 12px 0 0;
+    color: var(--text-2);
+}
+#about-name {
+    font-family: var(--mono);
+    font-size: 20px;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: var(--text-1);
+}
+#about-links {
+    margin-top: 18px;
+}
+
 #docs-viewer {
     position: fixed;
     inset: 0;
@@ -2767,6 +2910,25 @@ body.sp-floating #signal-path-docked-space {
     text-transform: uppercase;
 }
 #onboarding-guide:hover {
+    color: var(--accent);
+    border-color: var(--accent-dim);
+}
+#onboarding-support {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--text-1);
+    background: transparent;
+    border: 1px solid var(--border-hi);
+    border-radius: 4px;
+    padding: 7px 16px;
+    cursor: pointer;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+}
+#onboarding-support:hover {
     color: var(--accent);
     border-color: var(--accent-dim);
 }

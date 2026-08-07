@@ -3,7 +3,7 @@
 ![ImWeb Preview](assets/preview.png)
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
-[![Version](https://img.shields.io/badge/version-v0.17.0-brightgreen)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-v0.18.0-brightgreen)](CHANGELOG.md)
 [![Live Demo](https://img.shields.io/badge/demo-live-orange)](https://imweb.image-ine.org)
 
 **ImWeb is Image/ine — reimagined** — The legendary real-time video synthesis instrument created by Tom Demeyer and Steina Vasulka at STEIM Amsterdam, rebuilt for the modern browser and pointed toward what comes next. Free, open source, no installation required.
@@ -15,7 +15,7 @@
 
 ## Contents
 
-[What This Is](#what-this-is) · [Quick Start](#quick-start) · [Features](#features-v0170) · [Keyboard Reference](#keyboard-reference) · [Architecture](#architecture) · [Roadmap](#roadmap) · [Contributing](#contributing) · [Credits](#credits) · [License](#license) · [Support](#support)
+[What This Is](#what-this-is) · [Quick Start](#quick-start) · [Features](#features-v0180) · [Keyboard Reference](#keyboard-reference) · [Architecture](#architecture) · [Roadmap](#roadmap) · [Contributing](#contributing) · [Credits](#credits) · [License](#license) · [Support](#support)
 
 ---
 
@@ -61,7 +61,7 @@ Firefox and Safari supported in WebGL mode with minor limitations.
 
 ---
 
-## Features (v0.17.0)
+## Features (v0.18.0)
 
 ### Input Sources
 
@@ -168,6 +168,8 @@ Right-click any parameter to assign:
 - Signal path display — hidden by default; ┄ toolbar toggle; float/dock via `Shift+P`
 - Live GLSL editor — CodeMirror 6 with GLSL syntax highlighting; built-in and saveable user presets, recallable from MIDI/LFO over a configurable index range; auto-injected VJ uniform contract (audio FFT, previous frame, BPM/beat, level/bass/mid/high); insert routing to Master Output, Foreground, Background or Displace; compile errors fall back to the last good shader instead of dropping the render loop
 - First-visit onboarding overlay
+- Help menu (status-bar `?`) — guided tour, keyboard shortcuts, the three manuals, About
+- Guided tour (`Shift+G`) — 27 steps in three tracks (Basics / Principles / Instruments); it points at controls, it never sets them
 - LFO visualiser in context menu
 - Vectorscope (Lissajous / waveform / FFT) as source
 - Parameter search overlay (`/`)
@@ -199,6 +201,7 @@ Right-click any parameter to assign:
 | `/` | Parameter search overlay |
 | `0–9` | Recall State 0–9 |
 | `Shift+0` | Neutral State |
+| `Shift+G` | Guided tour (resumes where you left off) |
 | `Shift+S` | Quick-save State to next empty slot |
 | `Shift+1–8` | Select clip 1–8 on Movie Deck A |
 | `Option+1–8` | Select clip 1–8 on Movie Deck B |
@@ -267,7 +270,7 @@ ffmpeg -i old.mp4 -c copy -movflags +faststart new.mp4
 
 ## Roadmap
 
-Phases 1–26 complete, through v0.17.0. Recently shipped:
+Phases 1–26 complete, through v0.18.0. Recently shipped:
 
 - [x] Touch instrument — gesture arbitration, responsive layout, iPad-sized targets (v0.10–v0.11)
 - [x] Dual-deck video and mix buses (v0.12–v0.13)

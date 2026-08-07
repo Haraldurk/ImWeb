@@ -161,6 +161,15 @@
                     ⬡
                 </button>
                 <button id="btn-ai-settings" title="Settings">⚙</button>
+                <!-- The only persistent way into the docs and the tour. Before
+                     this they lived at the bottom of the AI settings panel, and
+                     the splash that offers the tour is shown once per origin and
+                     then never again — so after the first visit the guide was
+                     reachable only by knowing ⇧G. Menu contents are built in
+                     UI.js buildHelpMenu(). -->
+                <button id="btn-help" title="Help — guided tour, manual, shortcuts, about">
+                    ?
+                </button>
             </div>
         </div>
 
@@ -1464,6 +1473,32 @@ ImWeb</textarea
             </div>
         </div>
 
+        <!-- ABOUT — opened from the Help menu. Version text is filled in by
+             UI.js from __APP_VERSION__; do not hardcode it here, or it drifts
+             from package.json the way the splash version once did. -->
+        <div id="about-modal" class="hidden">
+            <div id="about-box">
+                <div id="about-titlebar">
+                    <span>About ImWeb</span>
+                    <button id="about-close" title="Close (Esc)">✕</button>
+                </div>
+                <div id="about-content">
+                    <div id="about-name">ImWeb</div>
+                    <div class="splash-version" id="about-version"></div>
+                    <p>Real-time video synthesis instrument for the browser.</p>
+                    <p>
+                        A reimagining of <em>Image/ine</em> by Tom Demeyer and
+                        Steina Vasulka (STEIM Amsterdam, 1997/2008). Not a port
+                        or a recreation — a new instrument in the same lineage.
+                    </p>
+                    <div id="about-links">
+                        <a href="https://opencollective.com/imweb"
+                           target="_blank" rel="noopener">💖 Support ImWeb</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <!-- FIRST-VISIT ONBOARDING OVERLAY -->
         <div id="onboarding" class="hidden">
             <div id="onboarding-box">
@@ -1506,6 +1541,8 @@ ImWeb</textarea
                          than hiding behind ⇧G. Dismisses the splash first: the
                          tour points AT the panel the splash is covering. -->
                     <button id="onboarding-guide">Guided tour</button>
+                    <a id="onboarding-support" href="https://opencollective.com/imweb"
+                       target="_blank" rel="noopener">💖 Support ImWeb</a>
                 </div>
             </div>
         </div>
