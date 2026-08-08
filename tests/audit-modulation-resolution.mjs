@@ -35,6 +35,7 @@ import {
   ParameterSystem, Parameter, PARAM_TYPE, SLEW_CURVES, SLEW_SHAPES,
 } from '../src/controls/ParameterSystem.js';
 import { LFO } from '../src/controls/LFO.js';
+import { xmapHz, XMAP_HZ_MIN, XMAP_HZ_MAX } from '../src/controls/ControllerManager.js';
 
 let failures = 0;
 const check = (label, cond, detail = '') => {
@@ -237,6 +238,50 @@ for (const shape of SLEW_SHAPES) {
   check(`${shape}: silent while idle`, fires === 0,
     `${fires} listener fires with nothing happening — that is a per-frame cost on every ` +
     'slewed param in the patch');
+}
+
+// ── 5e. X-map onto an LFO's rate sweeps logarithmically and never hits 0 ─────
+// A rate of exactly 0 Hz is not "very slow", it is STOPPED, and no amount of
+// nudging the fader off the bottom stop distinguishes the two while you are
+// playing. The old linear `norm * 20` produced it at norm 0 and additionally
+// buried everything below 0.5 Hz in the bottom 2.5% of travel.
+console.log('\nX-map → LFO rate is logarithmic and floored');
+{
+  check('norm 0 gives the floor, not silence',
+    xmapHz(0) === XMAP_HZ_MIN, `got ${xmapHz(0)}`);
+  check('norm 1 gives the ceiling exactly',
+    Math.abs(xmapHz(1) - XMAP_HZ_MAX) < 1e-9, `got ${xmapHz(1)}`);
+  check('out-of-range input is clamped, not extrapolated',
+    xmapHz(-5) === XMAP_HZ_MIN && Math.abs(xmapHz(5) - XMAP_HZ_MAX) < 1e-9,
+    `got ${xmapHz(-5)} and ${xmapHz(5)}`);
+  check('the sweep is monotonic',
+    Array.from({ length: 200 }, (_, i) => xmapHz(i / 199))
+      .every((v, i, a) => i === 0 || v > a[i - 1]));
+
+  // The point of the change: the slow half must be reachable by hand.
+  const halfTravel = xmapHz(0.5);
+  check('mid-travel lands in the slow region, not at 10 Hz',
+    halfTravel > 0.05 && halfTravel < 0.5,
+    `mid-travel = ${halfTravel.toFixed(4)} Hz — linear put it at 10 Hz`);
+  const normFor = (hz) => {
+    let lo = 0, hi = 1;
+    for (let i = 0; i < 60; i++) { const m = (lo + hi) / 2; if (xmapHz(m) < hz) lo = m; else hi = m; }
+    return (lo + hi) / 2;
+  };
+  check('0.5 Hz sits in the usable middle of the fader, not the bottom 2.5%',
+    normFor(0.5) > 0.2,
+    `0.5 Hz is at ${(normFor(0.5) * 100).toFixed(1)}% of travel — it was at 2.5% under linear`);
+
+  // Equal fader moves must give equal RATIOS — that is what "logarithmic" means.
+  const r = [0.2, 0.4, 0.6, 0.8].map((n) => xmapHz(n + 0.1) / xmapHz(n));
+  check('equal travel gives equal frequency ratios',
+    r.every((v) => Math.abs(v - r[0]) < 1e-9), `ratios ${r.map((v) => v.toFixed(4)).join(' ')}`);
+
+  // A custom range still behaves.
+  check('a custom min/max is honoured end to end',
+    Math.abs(xmapHz(0, 0.5, 4) - 0.5) < 1e-9 && Math.abs(xmapHz(1, 0.5, 4) - 4) < 1e-9);
+  check('an inverted range degrades to a constant rather than NaN',
+    Number.isFinite(xmapHz(0.5, 10, 1)), `got ${xmapHz(0.5, 10, 1)}`);
 }
 
 // ── 6. 'lag' is the default, so old saved states recall unchanged ────────────

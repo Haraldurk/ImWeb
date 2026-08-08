@@ -11,6 +11,38 @@
 import { LFOController } from './LFO.js';
 import { BeatDetector }  from './BeatDetector.js';
 
+/** Default sweep range for an X-map targeting an LFO's rate. */
+export const XMAP_HZ_MIN = 0.001;
+export const XMAP_HZ_MAX = 20;
+
+/**
+ * Map an X-map controller's 0–1 output to an LFO rate, LOGARITHMICALLY.
+ *
+ * Rate is perceived in octaves, not in Hz, so a linear map wastes almost all of
+ * the travel. Against the old `norm * 20`:
+ *
+ *     norm   linear      log (0.001–20 Hz)
+ *     0.00   0.000 Hz    0.001 Hz      ← linear STOPS the LFO dead at zero
+ *     0.25   5.000 Hz    0.012 Hz
+ *     0.50  10.000 Hz    0.141 Hz
+ *     0.75  15.000 Hz    1.680 Hz
+ *     1.00  20.000 Hz   20.000 Hz
+ *
+ * Everything from 0.001 to 0.5 Hz — the entire slow half of the instrument's
+ * useful range — used to live in the bottom 2.5% of a fader, which is not
+ * playable by hand. The floor also matters on its own: norm 0 gave exactly
+ * 0 Hz, which freezes the LFO rather than running it slowly, and there is no
+ * way back out by pushing the fader a little.
+ *
+ * Exported and pure so the mapping can be audited without a DOM.
+ */
+export function xmapHz(norm, minHz = XMAP_HZ_MIN, maxHz = XMAP_HZ_MAX) {
+  const lo = Math.max(1e-6, minHz);
+  const hi = Math.max(lo, maxHz);
+  const n  = Math.max(0, Math.min(1, norm));
+  return lo * Math.pow(hi / lo, n);
+}
+
 export class ControllerManager {
   constructor(ps) {
     this.ps      = ps;          // ParameterSystem
@@ -202,11 +234,11 @@ export class ControllerManager {
   _applyX(p, xc, norm) {
     const target = xc.target ?? 'value';
     if (target === 'hz') {
-      // Modulate primary LFO rate (0–20 Hz)
+      // Modulate primary LFO rate, logarithmically over minHz–maxHz. See xmapHz
+      // for why linear was unplayable and why the floor is not optional.
       const lfo = this.lfos.get(p.id);
       if (lfo && p.controller?.bpmDiv == null) {
-        const maxHz = xc.maxHz ?? 20;
-        lfo.lfo.hz = norm * maxHz;
+        lfo.lfo.hz = xmapHz(norm, xc.minHz ?? XMAP_HZ_MIN, xc.maxHz ?? XMAP_HZ_MAX);
         if (p.controller) p.controller.hz = lfo.lfo.hz;
       }
     } else if (target === 'value') {

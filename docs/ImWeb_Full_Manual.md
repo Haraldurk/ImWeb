@@ -1880,9 +1880,31 @@ One controller can modulate parameters of another controller.
 
 | X-Map Target | Description |
 |--------------|-------------|
-| hz | Modulate LFO frequency |
+| hz | Modulate LFO frequency, 0.001–20 Hz **logarithmically** |
 | amp | VCA-style amplitude scaling |
 | value | Direct override of controller output |
+
+**The `hz` target sweeps in octaves, not in Hz.** Rate is heard as a ratio, so
+an equal move anywhere on the controller's travel gives an equal *multiplication*
+of the rate. Where the useful rates sit:
+
+| Rate | Controller travel |
+|------|-------------------|
+| 0.001 Hz | 0% |
+| 0.01 Hz | 23% |
+| 0.1 Hz | 47% |
+| 0.5 Hz | 63% |
+| 1 Hz | 70% |
+| 5 Hz | 86% |
+| 20 Hz | 100% |
+
+The bottom of the travel is 0.001 Hz, never 0 — a stopped LFO is not a slow one,
+and there is no way to tell them apart while playing.
+
+> **Changed behaviour.** This mapping used to be linear (`travel × 20 Hz`), which
+> put everything below 0.5 Hz in the bottom 2.5% of the range and produced a dead
+> stop at zero. An X-map on `hz` saved before this change will play much slower:
+> mid-travel moves from 10 Hz to 0.14 Hz. Re-dial affected patches.
 
 | X-Map Source options | |
 |----------------------|-|

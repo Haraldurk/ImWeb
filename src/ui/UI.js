@@ -5,6 +5,7 @@
  */
 
 import { PARAM_TYPE, SOURCES, SOURCE_DISPLAY_ORDER, SLEW_SHAPES } from '../controls/ParameterSystem.js';
+import { XMAP_HZ_MIN, XMAP_HZ_MAX } from '../controls/ControllerManager.js';
 import { DEFAULT_FX_ORDER } from '../core/Pipeline.js';
 import { PROVIDERS } from '../ai/AIFeatures.js';
 import { ResponseCurve } from '../state/TableManager.js';
@@ -1747,7 +1748,10 @@ export class ContextMenu {
           const prev = this._currentParam.controller;
           const prevDefault = prev?.beatSync
             ? `${prev.beatDiv ?? 1}b`
-            : (prev?.hz?.toFixed(3) ?? '0.5');
+            // `+x.toFixed(4)` drops trailing zeros: 0.001 stays "0.001" where
+            // toFixed(2) would prefill "0.00", and 0.5 stays "0.5" rather than
+            // "0.500". Pressing OK unchanged must never alter the rate.
+            : (prev?.hz != null ? String(+prev.hz.toFixed(4)) : '0.5');
           const hzStr = prompt(
             'LFO rate:\n' +
             '  Hz (free): "0.5"  or  "1.5"  (down to 0.001 = one cycle / ~17 min)\n' +
@@ -1875,7 +1879,11 @@ export class ContextMenu {
             '  lfo-sine 0.5   lfo-triangle 2   lfo-sawtooth\n' +
             '  lfo-square 1   lfo-sh 0.25\n' +
             '  sound  sound-bass  sound-mid  sound-high\n' +
-            '  mouse-x  mouse-y  random 4',
+            '  mouse-x  mouse-y  random 4' +
+            (target === 'hz'
+              ? `\n\nSweeps the target LFO ${XMAP_HZ_MIN}–${XMAP_HZ_MAX} Hz, logarithmically\n` +
+                '(mid-travel ≈ 0.14 Hz). The Hz above is this mapper\'s own rate.'
+              : ''),
             'lfo-sine 0.5'
           );
           if (typeStr === null) { this.hide(); return; }
