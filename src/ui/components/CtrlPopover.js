@@ -97,6 +97,45 @@ export function openCtrlPopover(param, anchorEl, ctrl, tables) {
       v  => { param.slew = Math.max(0, v); },
       { decimals: 3, fineStep: 0.01, coarseStep: 0.1 }
     )));
+
+    // Slew curve, in two families — the grouping is not decoration, it is the
+    // difference between a filter that chases a live target and a timed segment
+    // that has to know how far through a move it is. Only a segment can
+    // overshoot or bounce; only a filter smooths a continuously sweeping
+    // source. See SLEW_CURVES in ParameterSystem.js.
+    const shapeSel = document.createElement('select');
+    shapeSel.style.cssText = 'font-size:10px;font-family:var(--mono);background:var(--bg-4);border:1px solid var(--border);color:var(--text-1);padding:1px 2px;border-radius:2px;';
+    const SLEW_GROUPS = [
+      ['Any source', [
+        ['lag',     'Lag (snap out)'],
+        ['ease',    'Ease in/out'],
+      ]],
+      ['Stepped sources', [
+        ['ease2',   'Super Ease in/out'],
+        ['expo',    'Exponential'],
+        ['elastic', 'Elastic'],
+        ['bounce',  'Bounce'],
+        ['back',    'Back (overshoot)'],
+      ]],
+    ];
+    SLEW_GROUPS.forEach(([groupLabel, entries]) => {
+      const g = document.createElement('optgroup');
+      g.label = groupLabel;
+      entries.forEach(([v, label]) => {
+        const opt = document.createElement('option');
+        opt.value = v; opt.textContent = label;
+        if ((param.slewShape ?? 'lag') === v) opt.selected = true;
+        g.appendChild(opt);
+      });
+      shapeSel.appendChild(g);
+    });
+    shapeSel.title =
+      'Any source: filters that chase a live target — smooth on S+H AND on a sweeping LFO.\n' +
+      'Stepped sources: timed curves that can overshoot and bounce. Built for S+H,\n' +
+      'Random, Square and MIDI notes; on a continuously sweeping source they add\n' +
+      'ripple instead of smoothing.';
+    shapeSel.addEventListener('change', () => { param.slewShape = shapeSel.value; });
+    popover.appendChild(makeRow('Slew curve', shapeSel));
   };
 
   /** Table select row (shared by random and lfo). */
@@ -127,7 +166,8 @@ export function openCtrlPopover(param, anchorEl, ctrl, tables) {
     const rndState = ctrl?.randoms?.get(param.id);
     popover.appendChild(makeRow('Rate (Hz)', makeDragNum(
       () => c.hz ?? 1,
-      v  => { v = Math.max(0.01, v); c.hz = v; if (rndState) rndState.hz = v; }
+      v  => { v = Math.max(0.001, v); c.hz = v; if (rndState) rndState.hz = v; },
+      { decimals: 3, fineStep: 0.005, coarseStep: 0.25 }
     )));
 
   } else if (t.startsWith('lfo-')) {
@@ -153,9 +193,13 @@ export function openCtrlPopover(param, anchorEl, ctrl, tables) {
     popover.appendChild(makeRow('Shape', shapeSel));
 
     const freqLabel = c.beatSync ? `Beat ÷${1 / (c.beatDiv ?? 1)}` : 'Freq (Hz)';
+    // 3 decimals, not 2: the field already accepted 0.001 Hz but displayed it
+    // as "0.00", so the slowest rates were invisible and looked like a no-op.
+    // Drag steps are sized for the slow end; double-click to type an exact Hz.
     popover.appendChild(makeRow(freqLabel, makeDragNum(
       () => lfo?.hz ?? c.hz ?? 0.5,
-      v  => { v = Math.max(0.001, v); if (lfo) lfo.hz = v; c.hz = v; }
+      v  => { v = Math.max(0.001, v); if (lfo) lfo.hz = v; c.hz = v; },
+      { decimals: 3, fineStep: 0.005, coarseStep: 0.25 }
     )));
 
     popover.appendChild(makeRow('Phase', makeDragNum(

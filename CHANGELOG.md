@@ -6,6 +6,87 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
 
 ---
 
+## [Unreleased]
+
+### Added
+- **Slew curves.** Slew gains a response curve, set in the badge popover
+  (*Slew curve*) or by appending a word to Set Slew: `0.4 bounce`. The menu is
+  in two groups because the split is structural, not cosmetic.
+
+  ***Any source*** — filters, with no clock and no fixed endpoint. They chase
+  whatever the target currently is, so they behave the same on a stepped source
+  and a sweeping one.
+  - **Lag** (`lag`) — unchanged, still the default. One-pole exponential:
+    fastest at the instant the target moves, crawling the last of the way in.
+    That opening lunge is what made a change of direction from S+H, Random or
+    Square read as a snap.
+  - **Ease in/out** (`ease`) — critically damped spring. Carries velocity across
+    frames, so movement leaves at zero speed, gathers, and sets down without
+    overshoot.
+
+  ***Stepped sources*** — timed curves running a clock from a captured start to
+  the target over exactly the slew time. That clock is the only way to overshoot,
+  ring or bounce, and it is also the limitation: on a continuously sweeping
+  source these add ripple instead of smoothing it (roughly 25–50× the
+  frame-to-frame jerk of Lag or Ease against a 0.5 Hz sine). Built for S&H,
+  Random, Square and MIDI notes.
+  - **Super Ease in/out** (`ease2`) — quintic; a much longer loiter at each end.
+  - **Exponential** (`expo`) — barely moves, then rushes through the middle.
+  - **Elastic** (`elastic`) — overshoots hard and rings into place.
+  - **Bounce** (`bounce`) — arrives, then settles in four decreasing hops.
+  - **Back** (`back`) — pulls backwards first, then overshoots and eases back.
+
+  The timed curves land *exactly* on the target and in exactly the slew time,
+  where the filters are asymptotic and arrive a hair short. Elastic and Back
+  need headroom: at the ends of a parameter's range the `min`/`max` clamp
+  flattens their overshoot.
+
+  `slewShape` serializes with the parameter and defaults to `lag` on both
+  construction and deserialize, so every existing state, bank and `.imweb` file
+  recalls exactly as before; an unrecognised name also falls back to `lag`
+  rather than breaking the tick.
+
+### Changed
+- **LFO and Random rate floor is now 0.001 Hz** (one cycle per ~17 minutes),
+  down from a documented 0.01. The LFO field already accepted 0.001 but
+  displayed it as `0.00`, so the slowest rates were invisible and read as a
+  no-op; rate fields and the badge overlay now show 3 decimals. The free-Hz
+  prompt path also gained the 0.001 floor it was missing — it previously
+  accepted 0 or a negative rate, which stalled the LFO or ran its phase
+  backwards.
+
+- **X-Map onto an LFO's rate is now logarithmic**, over 0.001–20 Hz, and floored.
+  Rate is heard as a ratio, so the old linear `travel × 20 Hz` wasted the
+  control: everything below 0.5 Hz lived in the bottom 2.5% of the travel, which
+  is not playable by hand. Equal moves now give equal frequency ratios — 0.01 Hz
+  sits at 23% of travel, 0.1 Hz at 47%, 1 Hz at 70%. The floor matters
+  independently: the bottom of the range used to be exactly 0 Hz, which *stops*
+  the LFO rather than running it slowly, and nothing about the control tells you
+  which of the two you have. Per-mapping `minHz`/`maxHz` override the defaults.
+
+  **This changes existing patches.** An X-map targeting `hz` will play much
+  slower than before — mid-travel moves from 10 Hz to 0.14 Hz. Re-dial affected
+  patches.
+
+### Fixed
+- **The LFO rate prompt could silently stop the LFO.** Its default was built with
+  `toFixed(2)`, so opening it on a rate below 0.005 Hz pre-filled `0.00`; pressing
+  OK unchanged then parsed to 0. The default now round-trips exactly at any legal
+  rate, and the parse floors at 0.001 Hz.
+- **Slow modulation no longer stutters.** `step` was doing double duty as both
+  the UI drag increment and a hard quantization of the stored value, so a
+  controller driving a `step: 0.01` parameter over a 0–1 range had only 100
+  places to land. Measured over 10 s at 60 fps, a sine LFO changed the value on
+  560/600 frames at 1 Hz but only 30/600 at 0.01 Hz and 4/600 at 0.001 Hz —
+  roughly three visible jumps a second while the fps counter read a healthy 60,
+  which is why this never looked like a rendering problem. Controller-driven
+  writes now run at full float resolution. Integer steps are unaffected and
+  still snap: `noise.octaves`, `sdf.count`, `rutt.lines` and friends *are*
+  integers, and a controller sweeping them should step.
+  Locked in by `tests/audit-modulation-resolution.mjs`.
+
+---
+
 ## [0.18.0] — 2026-08-07 — The Way In
 
 ### Added

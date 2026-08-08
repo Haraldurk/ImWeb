@@ -1731,7 +1731,7 @@ MIDI Clock Sync: Right-click the BPM indicator in the status bar to toggle. Deri
 | Parameter | Range | Description |
 |-----------|-------|-------------|
 | Shape | Sine / Triangle / Sawtooth / Sawtooth↓ / Square / S&H | Waveform |
-| Frequency | 0.01–20 Hz | Free-running rate |
+| Frequency | 0.001–20 Hz | Free-running rate (0.001 Hz = one cycle per ~17 minutes) |
 | Phase | 0–1 | Phase offset |
 | Pulse width | 0–1 | Duty cycle (square wave) |
 | Mode | norm / shot / xmap | Free / one-shot / externally triggered |
@@ -1748,7 +1748,7 @@ Generates a uniformly random value at a specified rate.
 
 | Parameter | Range | Description |
 |-----------|-------|-------------|
-| Frequency | 0.1–20 Hz | How often a new random value is picked |
+| Frequency | 0.001–20 Hz | How often a new random value is picked |
 
 ---
 
@@ -1823,9 +1823,54 @@ After assigning, right-click the parameter again to access options:
 | **Feedback** | Show live value overlay on output canvas |
 | **Lock** | Disable controller input (freeze the value) |
 | **Assign Table** | Apply a response curve (see Tables tab) |
-| **Set Slew** | Add exponential lag (enter time in seconds) |
+| **Set Slew** | Add lag (enter time in seconds, optionally `ease` or `lag`) |
 
 **Slew** adds smooth easing to a controller's output. For example, 0.5 sec slew on Sound makes audio reactivity feel organic rather than jittery.
+
+**Slew curve** — the badge popover has a *Slew curve* selector, and the Set Slew
+prompt accepts a curve word after the time (`0.4 bounce`). The menu is in two
+groups, and the split is real rather than cosmetic.
+
+***Any source*** — filters. No clock, no fixed endpoint: they simply chase
+whatever the target is right now, so they behave the same whether the source
+steps or sweeps.
+
+| Curve | Word | Motion | Use for |
+|-------|------|--------|---------|
+| **Lag** (default) | `lag` | One-pole exponential. Fastest at the instant the target moves, then crawls the last of the way in. | Taming jitter — Sound, tilt, MIDI faders. |
+| **Ease in/out** | `ease` | Critically damped spring. Leaves and arrives at zero velocity, so movement gathers speed and then sets down. | Almost anything. The safe default when Lag snaps too hard. |
+
+***Stepped sources*** — timed curves. These run a clock from a captured start
+value to the target over exactly the slew time, which is the only way to
+overshoot, ring or bounce. Built for **S&H, Random, Square and MIDI notes**.
+
+| Curve | Word | Motion |
+|-------|------|--------|
+| **Super Ease in/out** | `ease2` | Quintic. Ease's shape with a much flatter start and finish — a long loiter at each end. |
+| **Exponential** | `expo` | Barely moves, then rushes through the middle and pins. The most dramatic non-overshooting curve. |
+| **Elastic** | `elastic` | Overshoots hard and rings into place. Launches at full speed — the snap *is* the character here. |
+| **Bounce** | `bounce` | Arrives, then settles in four decreasing hops. |
+| **Back (overshoot)** | `back` | Pulls *backwards* first (anticipation), then overshoots past the target and eases back. |
+
+Three things worth knowing about the stepped group:
+
+- **On a continuously sweeping source they add ripple rather than smoothing it.**
+  Measured against a 0.5 Hz sine at 0.3 s slew, Lag and Ease smooth it to a
+  clean trail; the timed curves pass the full swing through with roughly 25–50×
+  the frame-to-frame jerk. They are not broken there, they are simply the wrong
+  tool — use Lag or Ease for LFO sweeps.
+- **They land exactly on the target**, and in exactly the slew time. The filters
+  are asymptotic and arrive a hair short, which you can see if you drive four
+  quick S&H steps: Lag reaches 0.209 when asked for 0.2, `bounce` reaches 0.200.
+- **Overshoot needs headroom.** Elastic and Back travel outside the move, so at
+  the very top or bottom of a parameter's range the `min`/`max` clamp flattens
+  the overshoot and they look like ordinary eases. Give the controller a
+  min/max sub-range if you want the overshoot visible everywhere.
+
+Note that a **response table is not a slew curve**. Tables reshape *what value*
+a controller produces (amplitude); slew shapes *how the value travels in time*.
+Putting an S-curve table on an S&H changes which random values come out, not how
+abruptly the picture arrives at them — that is what the Slew curve is for.
 
 ---
 
@@ -1835,9 +1880,31 @@ One controller can modulate parameters of another controller.
 
 | X-Map Target | Description |
 |--------------|-------------|
-| hz | Modulate LFO frequency |
+| hz | Modulate LFO frequency, 0.001–20 Hz **logarithmically** |
 | amp | VCA-style amplitude scaling |
 | value | Direct override of controller output |
+
+**The `hz` target sweeps in octaves, not in Hz.** Rate is heard as a ratio, so
+an equal move anywhere on the controller's travel gives an equal *multiplication*
+of the rate. Where the useful rates sit:
+
+| Rate | Controller travel |
+|------|-------------------|
+| 0.001 Hz | 0% |
+| 0.01 Hz | 23% |
+| 0.1 Hz | 47% |
+| 0.5 Hz | 63% |
+| 1 Hz | 70% |
+| 5 Hz | 86% |
+| 20 Hz | 100% |
+
+The bottom of the travel is 0.001 Hz, never 0 — a stopped LFO is not a slow one,
+and there is no way to tell them apart while playing.
+
+> **Changed behaviour.** This mapping used to be linear (`travel × 20 Hz`), which
+> put everything below 0.5 Hz in the bottom 2.5% of the range and produced a dead
+> stop at zero. An X-map on `hz` saved before this change will play much slower:
+> mid-travel moves from 10 Hz to 0.14 Hz. Re-dial affected patches.
 
 | X-Map Source options | |
 |----------------------|-|
