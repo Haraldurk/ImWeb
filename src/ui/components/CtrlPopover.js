@@ -109,11 +109,11 @@ export function openCtrlPopover(param, anchorEl, ctrl, tables) {
       ['Any source', [
         ['lag',     'Lag (snap out)'],
         ['ease',    'Ease in/out'],
+        ['elastic', 'Elastic (springs)'],
       ]],
       ['Stepped sources', [
         ['ease2',   'Super Ease in/out'],
         ['expo',    'Exponential'],
-        ['elastic', 'Elastic'],
         ['bounce',  'Bounce'],
         ['back',    'Back (overshoot)'],
       ]],

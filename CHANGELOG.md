@@ -23,6 +23,14 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
   - **Ease in/out** (`ease`) — critically damped spring. Carries velocity across
     frames, so movement leaves at zero speed, gathers, and sets down without
     overshoot.
+  - **Elastic** (`elastic`) — the same spring underdamped. Sets off from rest,
+    overshoots by ~19% of the move and rings into place. Implemented as a spring
+    rather than the textbook `easeOutElastic`, which covered **39% of the whole
+    move in its first frame** at 60 fps — a snap with a wobble after it, and the
+    one curve in the set that did not ease in at all. The spring also halves the
+    overshoot (37% → 19%), most of which used to go into the `min`/`max` clamp
+    rather than into the picture, and being a filter it now works on swept
+    sources as well as stepped ones.
 
   ***Stepped sources*** — timed curves running a clock from a captured start to
   the target over exactly the slew time. That clock is the only way to overshoot,
@@ -32,14 +40,18 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
   Random, Square and MIDI notes.
   - **Super Ease in/out** (`ease2`) — quintic; a much longer loiter at each end.
   - **Exponential** (`expo`) — barely moves, then rushes through the middle.
-  - **Elastic** (`elastic`) — overshoots hard and rings into place.
   - **Bounce** (`bounce`) — arrives, then settles in four decreasing hops.
   - **Back** (`back`) — pulls backwards first, then overshoots and eases back.
 
   The timed curves land *exactly* on the target and in exactly the slew time,
-  where the filters are asymptotic and arrive a hair short. Elastic and Back
-  need headroom: at the ends of a parameter's range the `min`/`max` clamp
-  flattens their overshoot.
+  where the filters are asymptotic and arrive a hair short.
+
+  **Overshoot needs headroom.** Elastic and Back travel past the target, and a
+  parameter cannot, so when the target sits at `min` or `max` the outward half
+  of the excursion is clipped. The inward half still shows — Elastic driven into
+  the ceiling holds there briefly and then dips visibly back before settling.
+  Give the controller a min/max sub-range for the full character. A shorter slew
+  time does not help: the overshoot is a fraction of the move, not of the time.
 
   `slewShape` serializes with the parameter and defaults to `lag` on both
   construction and deserialize, so every existing state, bank and `.imweb` file

@@ -240,6 +240,80 @@ for (const shape of SLEW_SHAPES) {
     'slewed param in the patch');
 }
 
+// ── 5d-bis. Elastic is a spring, and its state survives the clamp ────────────
+// Two separate regressions are guarded here, both of which LOOK fine on a
+// mid-range move and only misbehave at the edges of the parameter.
+//
+// 1. Elastic must EASE IN. The textbook easeOutElastic covered 39% of the whole
+//    move in its first frame — a snap with a wobble after it, which is the
+//    opposite of what a slew curve is for.
+// 2. The integrator must keep its own unclamped position. If it reads the
+//    published value back, then at the top of the range it is told it is at max
+//    while carrying the velocity it had at 1.19, so it keeps pushing outward,
+//    is clipped again, and the ring never returns — 78 frames flat against the
+//    limit, worse than the curve it replaced.
+console.log('\nelastic is an underdamped spring, not a timed curve');
+{
+  const firstFrame = (shape) => {
+    const p = mk();
+    p.slew = 0.5;
+    p.slewShape = shape;
+    p.value = 0.2;
+    p.setNormalized(0.8);
+    p.tickSlew(DT);
+    return (p.value - 0.2) / 0.6;
+  };
+  check('elastic eases in — well under a tenth of the move in frame 1',
+    firstFrame('elastic') < 0.1,
+    `covered ${(firstFrame('elastic') * 100).toFixed(1)}% — easeOutElastic covered 39%`);
+  check('elastic opens no faster than the plain lag it should feel gentler than',
+    firstFrame('elastic') <= firstFrame('lag') + 1e-9,
+    `elastic ${(firstFrame('elastic') * 100).toFixed(2)}% vs lag ${(firstFrame('lag') * 100).toFixed(2)}%`);
+
+  // The ring must survive being clipped at the range limit.
+  const p = mk();
+  p.slew = 0.5;
+  p.slewShape = 'elastic';
+  p.value = 0.4;
+  p.setNormalized(1.0);            // target IS the ceiling: overshoot is unshowable
+  const v = [];
+  for (let i = 0; i < 90; i++) { p.tickSlew(DT); v.push(p.value); }
+  let longestPin = 0, runLen = 0;
+  for (const x of v) { if (x >= 1) { runLen++; longestPin = Math.max(longestPin, runLen); } else runLen = 0; }
+  check('a target at the ceiling still shows the ring as a dip below it',
+    v.some((x) => x < 0.999),
+    'the value never left the limit — the spring is reading its position back ' +
+    'from the CLAMPED value instead of keeping its own');
+  check('and does not sit pinned at the limit for most of the move',
+    longestPin < 40, `pinned for ${longestPin} consecutive frames`);
+
+  // A fresh step arriving mid-clip must not stall behind the stored overshoot.
+  const q = mk();
+  q.slew = 0.5;
+  q.slewShape = 'elastic';
+  q.value = 0.4;
+  q.setNormalized(1.0);
+  for (let i = 0; i < 12; i++) q.tickSlew(DT);
+  const held = q.value;
+  q.setNormalized(0.2);
+  const w = [];
+  for (let i = 0; i < 60; i++) { q.tickSlew(DT); w.push(q.value); }
+  const reactedAfter = w.findIndex((x) => x < held - 1e-6);
+  check('a new step during a clipped overshoot is answered promptly',
+    reactedAfter >= 0 && reactedAfter < 8,
+    `took ${reactedAfter} frames to start moving`);
+
+  // _slewX must not leak past the park, or the next move starts off-target.
+  const r = mk();
+  r.slew = 0.3;
+  r.slewShape = 'elastic';
+  r.value = 0;
+  r.setNormalized(1);
+  for (let i = 0; i < 1200; i++) r.tickSlew(DT);
+  check('the spring position is reset when it parks',
+    r._slewX === r._target, `_slewX ${r._slewX} vs target ${r._target}`);
+}
+
 // ── 5e. X-map onto an LFO's rate sweeps logarithmically and never hits 0 ─────
 // A rate of exactly 0 Hz is not "very slow", it is STOPPED, and no amount of
 // nudging the fader off the bottom stop distinguishes the two while you are

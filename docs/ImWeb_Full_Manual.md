@@ -1839,6 +1839,7 @@ steps or sweeps.
 |-------|------|--------|---------|
 | **Lag** (default) | `lag` | One-pole exponential. Fastest at the instant the target moves, then crawls the last of the way in. | Taming jitter — Sound, tilt, MIDI faders. |
 | **Ease in/out** | `ease` | Critically damped spring. Leaves and arrives at zero velocity, so movement gathers speed and then sets down. | Almost anything. The safe default when Lag snaps too hard. |
+| **Elastic (springs)** | `elastic` | The same spring *underdamped*. Sets off from rest, overshoots by about a fifth of the move, and rings into place over roughly one and a half times the slew time. | Anywhere you want the movement to feel sprung rather than driven. |
 
 ***Stepped sources*** — timed curves. These run a clock from a captured start
 value to the target over exactly the slew time, which is the only way to
@@ -1848,7 +1849,6 @@ overshoot, ring or bounce. Built for **S&H, Random, Square and MIDI notes**.
 |-------|------|--------|
 | **Super Ease in/out** | `ease2` | Quintic. Ease's shape with a much flatter start and finish — a long loiter at each end. |
 | **Exponential** | `expo` | Barely moves, then rushes through the middle and pins. The most dramatic non-overshooting curve. |
-| **Elastic** | `elastic` | Overshoots hard and rings into place. Launches at full speed — the snap *is* the character here. |
 | **Bounce** | `bounce` | Arrives, then settles in four decreasing hops. |
 | **Back (overshoot)** | `back` | Pulls *backwards* first (anticipation), then overshoots past the target and eases back. |
 
@@ -1862,10 +1862,33 @@ Three things worth knowing about the stepped group:
 - **They land exactly on the target**, and in exactly the slew time. The filters
   are asymptotic and arrive a hair short, which you can see if you drive four
   quick S&H steps: Lag reaches 0.209 when asked for 0.2, `bounce` reaches 0.200.
-- **Overshoot needs headroom.** Elastic and Back travel outside the move, so at
-  the very top or bottom of a parameter's range the `min`/`max` clamp flattens
-  the overshoot and they look like ordinary eases. Give the controller a
-  min/max sub-range if you want the overshoot visible everywhere.
+- **Back needs headroom.** It travels outside the move at both ends, so near the
+  top or bottom of a parameter's range the `min`/`max` clamp flattens the
+  anticipation or the overshoot and it looks like an ordinary ease.
+
+### What overshoot does at the ends of the scale
+
+Elastic and Back deliberately travel past the target. A parameter cannot, so
+when the target sits at (or near) `min` or `max` the excursion has nowhere to
+go and is clipped.
+
+This is not a defect — a spring pressed against a stop behaves the same way —
+but it is worth knowing what you will see. Driving Elastic from 0.4 to a target
+of exactly 1.0 on a 0–1 parameter, the value rises smoothly, sits at 1.000 for
+about a third of a second while the unshowable part of the first swing goes by,
+then **dips to about 0.978 and comes back** — the second half of the ring, which
+points inwards, is fully visible. Only the outward half is lost. The same move
+in the middle of the range shows the whole thing:
+
+```
+target 1.0 (the ceiling):  0.417 0.537 0.709 0.875 1.000 1.000 1.000 … 0.983 0.978 0.985 0.997 1.000
+target 0.8 (mid-range)  :  0.217 0.337 0.509 0.675 0.804 0.882 0.913 … 0.783 0.778 0.785 0.797 0.801
+```
+
+If you want the full character everywhere, give the controller a **min/max
+sub-range** on the parameter row so there is headroom on both sides. Reducing
+the slew time does not help — the overshoot is a fraction of the move, not of
+the time.
 
 Note that a **response table is not a slew curve**. Tables reshape *what value*
 a controller produces (amplitude); slew shapes *how the value travels in time*.

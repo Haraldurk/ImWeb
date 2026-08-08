@@ -1852,8 +1852,8 @@ export class ContextMenu {
           const raw = prompt(
             'Slew time (seconds, 0=instant):\n0.01=very fast, 0.1=smooth, 0.5=slow, 1=very slow\n\n' +
             'Append a curve, e.g. "0.4 bounce":\n' +
-            '  any source      lag (default) · ease\n' +
-            '  stepped sources ease2 · expo · elastic · bounce · back\n' +
+            '  any source      lag (default) · ease · elastic\n' +
+            '  stepped sources ease2 · expo · bounce · back\n' +
             '(the stepped curves can overshoot; on a sweeping LFO they ripple)',
             cur
           );
