@@ -98,18 +98,42 @@ export function openCtrlPopover(param, anchorEl, ctrl, tables) {
       { decimals: 3, fineStep: 0.01, coarseStep: 0.1 }
     )));
 
-    // Slew curve. Lag is the historical one-pole: it lunges at the new value
-    // and crawls the last of the way, which is what makes an S+H change of
-    // direction read as a snap. Ease is critically damped — it leaves and
-    // arrives at zero velocity, so the movement gathers speed and sets down.
+    // Slew curve, in two families — the grouping is not decoration, it is the
+    // difference between a filter that chases a live target and a timed segment
+    // that has to know how far through a move it is. Only a segment can
+    // overshoot or bounce; only a filter smooths a continuously sweeping
+    // source. See SLEW_CURVES in ParameterSystem.js.
     const shapeSel = document.createElement('select');
     shapeSel.style.cssText = 'font-size:10px;font-family:var(--mono);background:var(--bg-4);border:1px solid var(--border);color:var(--text-1);padding:1px 2px;border-radius:2px;';
-    [['lag', 'Lag (snap out)'], ['ease', 'Ease in/out']].forEach(([v, label]) => {
-      const opt = document.createElement('option');
-      opt.value = v; opt.textContent = label;
-      if ((param.slewShape ?? 'lag') === v) opt.selected = true;
-      shapeSel.appendChild(opt);
+    const SLEW_GROUPS = [
+      ['Any source', [
+        ['lag',     'Lag (snap out)'],
+        ['ease',    'Ease in/out'],
+      ]],
+      ['Stepped sources', [
+        ['ease2',   'Super Ease in/out'],
+        ['expo',    'Exponential'],
+        ['elastic', 'Elastic'],
+        ['bounce',  'Bounce'],
+        ['back',    'Back (overshoot)'],
+      ]],
+    ];
+    SLEW_GROUPS.forEach(([groupLabel, entries]) => {
+      const g = document.createElement('optgroup');
+      g.label = groupLabel;
+      entries.forEach(([v, label]) => {
+        const opt = document.createElement('option');
+        opt.value = v; opt.textContent = label;
+        if ((param.slewShape ?? 'lag') === v) opt.selected = true;
+        g.appendChild(opt);
+      });
+      shapeSel.appendChild(g);
     });
+    shapeSel.title =
+      'Any source: filters that chase a live target — smooth on S+H AND on a sweeping LFO.\n' +
+      'Stepped sources: timed curves that can overshoot and bounce. Built for S+H,\n' +
+      'Random, Square and MIDI notes; on a continuously sweeping source they add\n' +
+      'ripple instead of smoothing.';
     shapeSel.addEventListener('change', () => { param.slewShape = shapeSel.value; });
     popover.appendChild(makeRow('Slew curve', shapeSel));
   };

@@ -48,6 +48,72 @@ export const PARAM_TYPE = {
   SELECT: "select", // integer index into options[]
 };
 
+// ── Slew curves ──────────────────────────────────────────────────────────────
+//
+// TWO FAMILIES, and the difference is structural rather than cosmetic.
+//
+//   FILTERS ('lag', 'ease') have no clock and no endpoint. They chase whatever
+//   the target currently is, so they behave identically whether the source
+//   steps or sweeps. They are handled inline in tickSlew, not from this table.
+//
+//   SEGMENT CURVES (everything below) are functions of normalized time k∈[0,1]
+//   between a captured start value and the target. A curve that overshoots,
+//   rings or bounces CANNOT be expressed as a filter — it has to know how far
+//   through the move it is. That clock is the whole reason these are a separate
+//   family, and it is also their limitation: see _slewK in tickSlew for how a
+//   segment is re-aimed rather than restarted when the target moves in flight.
+//
+// f(0) must be 0 and f(1) must be 1 for every entry, or the value will not land
+// on the target. Values in between may leave [0,1] — that IS the overshoot —
+// and the [min,max] clamp in tickSlew is what keeps that safe.
+
+/** Robert Penner's bounce-out: four decreasing parabolic arcs. */
+function _bounceOut(k) {
+  const n = 7.5625, d = 2.75;
+  if (k < 1 / d) return n * k * k;
+  if (k < 2 / d) return n * (k -= 1.5 / d) * k + 0.75;
+  if (k < 2.5 / d) return n * (k -= 2.25 / d) * k + 0.9375;
+  return n * (k -= 2.625 / d) * k + 0.984375;
+}
+
+export const SLEW_CURVES = {
+  // Quintic smootherstep. Same shape as 'ease' in spirit but with a flatter
+  // start and finish — the "super" is a longer loiter at each end.
+  ease2: (k) => k * k * k * (k * (k * 6 - 15) + 10),
+
+  // Exponential in/out. Very slow off the mark, then a hard rush through the
+  // middle. The most dramatic of the non-overshooting curves.
+  expo: (k) =>
+    k <= 0 ? 0
+      : k >= 1 ? 1
+      : k < 0.5
+        ? Math.pow(2, 20 * k - 10) / 2
+        : (2 - Math.pow(2, -20 * k + 10)) / 2,
+
+  // Elastic out: overshoots hard, then rings into place. Launches at full
+  // speed by design — the snap IS the character here, unlike 'ease'.
+  elastic: (k) =>
+    k <= 0 ? 0
+      : k >= 1 ? 1
+      : Math.pow(2, -10 * k) * Math.sin((k * 10 - 0.75) * ((2 * Math.PI) / 3)) + 1,
+
+  // Bounce out: arrives, then settles in four decreasing hops.
+  bounce: _bounceOut,
+
+  // Back in/out: pulls BACKWARDS before setting off (anticipation), then
+  // overshoots past the target and eases back. The only curve here that leaves
+  // the [0,1] band at both ends.
+  back: (k) => {
+    const c = 1.70158 * 1.525;
+    return k < 0.5
+      ? (Math.pow(2 * k, 2) * ((c + 1) * 2 * k - c)) / 2
+      : (Math.pow(2 * k - 2, 2) * ((c + 1) * (2 * k - 2) + c) + 2) / 2;
+  },
+};
+
+/** Every legal slewShape, in menu order. 'lag' and 'ease' are the filters. */
+export const SLEW_SHAPES = ["lag", "ease", ...Object.keys(SLEW_CURVES)];
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Parameter
 // ─────────────────────────────────────────────────────────────────────────────
@@ -85,6 +151,8 @@ export class Parameter {
     // accelerates into each move and decelerates out of it.
     this.slewShape = "lag";
     this._slewVel = 0; // spring velocity, 'ease' shape only
+    this._slewFrom = this._value; // segment start value, SLEW_CURVES shapes only
+    this._slewK = 1; // segment progress 0–1; 1 = settled, no segment in flight
     this.ctrlMin = null; // controller output range override (null = param.min)
     this.ctrlMax = null; // controller output range override (null = param.max)
     this.feedbackVisible = config.feedbackVisible ?? false;
@@ -124,7 +192,11 @@ export class Parameter {
     // Keep _target in sync so slew doesn't fight manual UI / direct .value writes
     if (this.type === PARAM_TYPE.CONTINUOUS) {
       this._target = clamped;
-      this._slewVel = 0; // a manual write is a teleport, not a glide
+      // A manual write is a teleport, not a glide: kill the spring and retire
+      // any segment in flight so the next controller move starts from here.
+      this._slewVel = 0;
+      this._slewFrom = clamped;
+      this._slewK = 1;
     }
 
     if (changed || this.type === PARAM_TYPE.TRIGGER) {
@@ -172,6 +244,8 @@ export class Parameter {
     if (q) clamped = Math.round(clamped / q) * q;
     this._target = clamped;
     this._slewVel = 0;
+    this._slewFrom = clamped;
+    this._slewK = 1;
     if (clamped === this._value) return;
     this._value = clamped;
     this._listeners.forEach((fn) => fn(clamped, this));
@@ -208,6 +282,17 @@ export class Parameter {
       const hi = this.ctrlMax ?? this.max;
       const target = lo + applied * (hi - lo);
       if (this.slew > 0) {
+        // Arm a new segment ONLY when the previous one has landed. While a
+        // segment is in flight the target may move freely — tickSlew re-aims at
+        // it without touching the clock. Restarting the clock on every target
+        // change instead is the trap documented in
+        // tests/audit-modulation-resolution.mjs: a sine retargets every frame,
+        // so the segment would restart every frame and the value would freeze
+        // at k=0 forever.
+        if (this._slewK >= 1 && target !== this._target) {
+          this._slewFrom = this._value;
+          this._slewK = 0;
+        }
         this._target = target; // defer to tickSlew
       } else {
         this._setModulated(target);
@@ -218,11 +303,20 @@ export class Parameter {
   /** Called each frame with dt in seconds. Advances slewed params. */
   tickSlew(dt) {
     if (this.slew <= 0 || this.type !== PARAM_TYPE.CONTINUOUS) return;
-    if (this._target === this._value && this._slewVel === 0) return;
+    // _slewK < 1 keeps a segment alive even when value momentarily equals the
+    // target — which happens mid-flight on every curve that overshoots.
+    if (this._target === this._value && this._slewVel === 0 && this._slewK >= 1) return;
 
     // Bypass the value setter so _target is preserved during the glide.
     let next;
-    if (this.slewShape === "ease") {
+    const curve = SLEW_CURVES[this.slewShape];
+    if (curve) {
+      // Segment curve: advance the clock, then interpolate from the captured
+      // start to the LIVE target. Re-aiming rather than restarting is what lets
+      // a bounce survive a target that drifts while the bounce is happening.
+      this._slewK = Math.min(1, this._slewK + dt / Math.max(0.001, this.slew));
+      next = this._slewFrom + (this._target - this._slewFrom) * curve(this._slewK);
+    } else if (this.slewShape === "ease") {
       // Critically damped spring. Carrying VELOCITY across frames is what buys
       // the ease-in: at the instant a stepped source jumps, velocity is still
       // zero, so the move starts slowly, builds, then settles without
@@ -401,8 +495,11 @@ export class Parameter {
     if (data.cycle !== undefined) this.cycle = data.cycle;
     if (data.slew !== undefined) this.slew = data.slew;
     // Files written before eased slew existed have no slewShape — 'lag' is the
-    // historical curve, so an old state recalls exactly as it did.
-    this.slewShape = data.slewShape === "ease" ? "ease" : "lag";
+    // historical curve, so an old state recalls exactly as it did. An unknown
+    // name (a state from a newer build) also falls back rather than throwing.
+    this.slewShape = SLEW_SHAPES.includes(data.slewShape)
+      ? data.slewShape
+      : "lag";
     if (data.feedbackVisible !== undefined)
       this.feedbackVisible = data.feedbackVisible;
     if (data.feedbackPos !== undefined) this.feedbackPos = data.feedbackPos;

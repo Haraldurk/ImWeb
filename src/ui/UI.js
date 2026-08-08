@@ -4,7 +4,7 @@
  * Vanilla JS — no framework. Direct DOM manipulation for sub-ms response.
  */
 
-import { PARAM_TYPE, SOURCES, SOURCE_DISPLAY_ORDER } from '../controls/ParameterSystem.js';
+import { PARAM_TYPE, SOURCES, SOURCE_DISPLAY_ORDER, SLEW_SHAPES } from '../controls/ParameterSystem.js';
 import { DEFAULT_FX_ORDER } from '../core/Pipeline.js';
 import { PROVIDERS } from '../ai/AIFeatures.js';
 import { ResponseCurve } from '../state/TableManager.js';
@@ -1847,8 +1847,10 @@ export class ContextMenu {
           const cur = `${p.slew?.toFixed(3) ?? '0'}${p.slewShape === 'ease' ? ' ease' : ''}`;
           const raw = prompt(
             'Slew time (seconds, 0=instant):\n0.01=very fast, 0.1=smooth, 0.5=slow, 1=very slow\n\n' +
-            'Append a curve:  "0.4 ease"  eases in and out (S+H, Random, Square)\n' +
-            '                 "0.4 lag"   the default — quick off the mark, slow to settle',
+            'Append a curve, e.g. "0.4 bounce":\n' +
+            '  any source      lag (default) · ease\n' +
+            '  stepped sources ease2 · expo · elastic · bounce · back\n' +
+            '(the stepped curves can overshoot; on a sweeping LFO they ripple)',
             cur
           );
           if (raw !== null) {
@@ -1856,7 +1858,10 @@ export class ContextMenu {
             const v = parseFloat(parts[0]);
             if (!isNaN(v)) {
               p.slew = Math.max(0, v);
-              if (parts[1]) p.slewShape = /^e/i.test(parts[1]) ? 'ease' : 'lag';
+              // Unknown word → leave the curve alone rather than silently
+              // resetting it to lag, which is what a typo used to do.
+              const word = (parts[1] ?? '').toLowerCase();
+              if (SLEW_SHAPES.includes(word)) p.slewShape = word;
               this.hide();
             }
           }

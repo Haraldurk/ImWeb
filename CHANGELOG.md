@@ -9,16 +9,42 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
 ## [Unreleased]
 
 ### Added
-- **Slew curve — Ease in/out.** A second slew response beside the existing one.
-  *Lag* (unchanged, still the default) is a one-pole exponential: it is fastest
-  at the instant the target moves and crawls the last of the way in, which is
-  what made a change of direction from S+H, Random or Square read as a snap.
-  *Ease* is a critically damped spring — it carries velocity across frames, so
-  movement leaves at zero speed, gathers, and sets down without overshoot. It
-  also trails a continuously moving source (a sine LFO) smoothly, so it is not a
-  stepped-source-only mode. Set it in the badge popover (*Slew curve*) or by
-  appending a word to Set Slew: `0.4 ease`. Serialized with the parameter; a
-  state file written before this recalls as Lag.
+- **Slew curves.** Slew gains a response curve, set in the badge popover
+  (*Slew curve*) or by appending a word to Set Slew: `0.4 bounce`. The menu is
+  in two groups because the split is structural, not cosmetic.
+
+  ***Any source*** — filters, with no clock and no fixed endpoint. They chase
+  whatever the target currently is, so they behave the same on a stepped source
+  and a sweeping one.
+  - **Lag** (`lag`) — unchanged, still the default. One-pole exponential:
+    fastest at the instant the target moves, crawling the last of the way in.
+    That opening lunge is what made a change of direction from S+H, Random or
+    Square read as a snap.
+  - **Ease in/out** (`ease`) — critically damped spring. Carries velocity across
+    frames, so movement leaves at zero speed, gathers, and sets down without
+    overshoot.
+
+  ***Stepped sources*** — timed curves running a clock from a captured start to
+  the target over exactly the slew time. That clock is the only way to overshoot,
+  ring or bounce, and it is also the limitation: on a continuously sweeping
+  source these add ripple instead of smoothing it (roughly 25–50× the
+  frame-to-frame jerk of Lag or Ease against a 0.5 Hz sine). Built for S&H,
+  Random, Square and MIDI notes.
+  - **Super Ease in/out** (`ease2`) — quintic; a much longer loiter at each end.
+  - **Exponential** (`expo`) — barely moves, then rushes through the middle.
+  - **Elastic** (`elastic`) — overshoots hard and rings into place.
+  - **Bounce** (`bounce`) — arrives, then settles in four decreasing hops.
+  - **Back** (`back`) — pulls backwards first, then overshoots and eases back.
+
+  The timed curves land *exactly* on the target and in exactly the slew time,
+  where the filters are asymptotic and arrive a hair short. Elastic and Back
+  need headroom: at the ends of a parameter's range the `min`/`max` clamp
+  flattens their overshoot.
+
+  `slewShape` serializes with the parameter and defaults to `lag` on both
+  construction and deserialize, so every existing state, bank and `.imweb` file
+  recalls exactly as before; an unrecognised name also falls back to `lag`
+  rather than breaking the tick.
 
 ### Changed
 - **LFO and Random rate floor is now 0.001 Hz** (one cycle per ~17 minutes),

@@ -32,7 +32,7 @@
  */
 
 import {
-  ParameterSystem, Parameter, PARAM_TYPE,
+  ParameterSystem, Parameter, PARAM_TYPE, SLEW_CURVES, SLEW_SHAPES,
 } from '../src/controls/ParameterSystem.js';
 import { LFO } from '../src/controls/LFO.js';
 
@@ -126,11 +126,11 @@ check('ease eases OUT too — it decelerates into the target',
 // ── 4. ease still TRACKS a moving target ─────────────────────────────────────
 // The regression guard. A fixed-duration eased segment restarted on every
 // target change would park here, because a sine changes target every frame.
-console.log('\nease tracks a continuously moving source');
-{
+console.log('\nno curve freezes on a continuously moving source');
+for (const shape of SLEW_SHAPES) {
   const p = mk();
   p.slew = 0.3;
-  p.slewShape = 'ease';
+  p.slewShape = shape;
   const lfo = new LFO({ shape: 'sine', hz: 0.5 });
   let lo = Infinity, hi = -Infinity;
   for (let i = 0; i < 600; i++) {
@@ -138,10 +138,10 @@ console.log('\nease tracks a continuously moving source');
     p.tickSlew(DT);
     if (i > 120) { lo = Math.min(lo, p.value); hi = Math.max(hi, p.value); }
   }
-  check('a 0.5 Hz sine still swings most of the range under ease',
+  check(`${shape}: a 0.5 Hz sine still swings most of the range`,
     hi - lo > 0.7,
-    `swing ${lo.toFixed(3)}..${hi.toFixed(3)} — a near-zero swing means the ` +
-    'ease was implemented as a restarting segment and froze on a moving target');
+    `swing ${lo.toFixed(3)}..${hi.toFixed(3)} — a near-zero swing means the segment ` +
+    'clock is being RESTARTED on every target change instead of re-aimed, which pins k at 0');
 }
 
 // ── 5. ease settles; it does not jitter forever ──────────────────────────────
@@ -163,6 +163,82 @@ console.log('\nease settles');
   check('and parks exactly on it', p.value === 1, `parked at ${p.value}`);
 }
 
+// ── 5b. Every segment curve lands exactly on its target ─────────────────────
+// f(1) must be exactly 1. A curve that ends at 0.999 leaves the parameter
+// permanently short of where the controller asked for, and because the early-
+// out in tickSlew never fires it also fires listeners forever.
+console.log('\nsegment curves land, and land exactly');
+for (const [name, f] of Object.entries(SLEW_CURVES)) {
+  check(`${name}: f(0) === 0 and f(1) === 1`,
+    f(0) === 0 && f(1) === 1, `f(0)=${f(0)} f(1)=${f(1)}`);
+}
+for (const shape of SLEW_SHAPES) {
+  const p = mk();
+  p.slew = 0.15;
+  p.slewShape = shape;
+  const asked = [0.2, 0.9, 0.1, 0.7];
+  const got = [];
+  for (const t of asked) {
+    p.setNormalized(t);
+    for (let i = 0; i < 30; i++) p.tickSlew(DT);  // 0.5 s, well past the 0.15 s slew
+    got.push(p.value);
+  }
+  // The filters are asymptotic and legitimately arrive a hair short; the
+  // segment curves have a defined end and must be exact.
+  const tol = SLEW_CURVES[shape] ? 1e-9 : 0.03;
+  check(`${shape}: settles on each of four consecutive targets`,
+    got.every((v, i) => Math.abs(v - asked[i]) <= tol),
+    `asked ${asked.join(' ')} → got ${got.map((v) => v.toFixed(3)).join(' ')}`);
+}
+
+// ── 5c. The overshooting curves actually overshoot ───────────────────────────
+// With headroom on both sides — at the ends of the range the [min,max] clamp
+// legitimately flattens the overshoot, which is why this probes mid-range.
+console.log('\novershoot is real (and only where it should be)');
+{
+  const travel = (shape) => {
+    const p = mk();
+    p.slew = 0.5;
+    p.slewShape = shape;
+    p.value = 0.4;
+    p.setNormalized(0.6);
+    let lo = Infinity, hi = -Infinity;
+    for (let i = 0; i < 90; i++) { p.tickSlew(DT); lo = Math.min(lo, p.value); hi = Math.max(hi, p.value); }
+    return { lo, hi };
+  };
+  for (const shape of ['elastic', 'back']) {
+    const { hi } = travel(shape);
+    check(`${shape} passes beyond the target`, hi > 0.6 + 1e-6,
+      `peaked at ${hi.toFixed(4)}, target 0.6 — no overshoot means the curve is not the one named`);
+  }
+  const back = travel('back');
+  check('back anticipates — it moves AWAY from the target first',
+    back.lo < 0.4 - 1e-6, `dipped to ${back.lo.toFixed(4)} from a 0.4 start`);
+  for (const shape of ['lag', 'ease', 'ease2', 'expo', 'bounce']) {
+    const { lo, hi } = travel(shape);
+    check(`${shape} stays within the move (no overshoot)`,
+      hi <= 0.6 + 1e-6 && lo >= 0.4 - 1e-6,
+      `travelled ${lo.toFixed(4)}..${hi.toFixed(4)}`);
+  }
+}
+
+// ── 5d. Nothing burns listeners once settled ────────────────────────────────
+console.log('\nevery curve goes quiet when it has arrived');
+for (const shape of SLEW_SHAPES) {
+  const p = mk();
+  p.slew = 0.2;
+  p.slewShape = shape;
+  p.value = 0;
+  p.setNormalized(1);
+  for (let i = 0; i < 600; i++) p.tickSlew(DT);   // 10 s — long settled
+  let fires = 0;
+  p.onChange(() => fires++);
+  for (let i = 0; i < 1000; i++) p.tickSlew(DT);
+  check(`${shape}: silent while idle`, fires === 0,
+    `${fires} listener fires with nothing happening — that is a per-frame cost on every ` +
+    'slewed param in the patch');
+}
+
 // ── 6. 'lag' is the default, so old saved states recall unchanged ────────────
 console.log('\nbackward compatibility');
 {
@@ -173,13 +249,19 @@ console.log('\nbackward compatibility');
   old.deserialize({ slew: 0.4 });   // a file written before ease existed
   check('a state file with no slewShape deserializes to lag',
     old.slewShape === 'lag', `got ${old.slewShape}`);
-  const roundTrip = mk();
-  roundTrip.slewShape = 'ease';
-  roundTrip.slew = 0.4;
-  const clone = mk();
-  clone.deserialize(roundTrip.serialize());
-  check('ease survives a serialize/deserialize round trip',
-    clone.slewShape === 'ease', `got ${clone.slewShape}`);
+  for (const shape of SLEW_SHAPES) {
+    const roundTrip = mk();
+    roundTrip.slewShape = shape;
+    roundTrip.slew = 0.4;
+    const clone = mk();
+    clone.deserialize(roundTrip.serialize());
+    check(`${shape} survives a serialize/deserialize round trip`,
+      clone.slewShape === shape, `got ${clone.slewShape}`);
+  }
+  const bogus = mk();
+  bogus.deserialize({ slew: 0.4, slewShape: 'wobble' });
+  check('an unknown curve name falls back to lag rather than breaking tickSlew',
+    bogus.slewShape === 'lag', `got ${bogus.slewShape}`);
 }
 
 if (failures) {
