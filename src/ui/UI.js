@@ -1647,7 +1647,9 @@ export class ContextMenu {
 
     // Hz label
     const bpmDiv = this._currentParam?.controller?.bpmDiv;
-    const label  = bpmDiv != null ? `÷${1 / bpmDiv}` : `${lfo.hz.toFixed(2)}Hz`;
+    // Sub-0.01 Hz rates are legal, so 2 decimals would print them all as "0.00".
+    const label  = bpmDiv != null ? `÷${1 / bpmDiv}`
+                                  : `${lfo.hz.toFixed(lfo.hz < 0.1 ? 3 : 2)}Hz`;
     ctx.fillStyle = '#9090a8';
     ctx.font      = '9px monospace';
     ctx.fillText(label, 4, H - 4);
@@ -1745,10 +1747,10 @@ export class ContextMenu {
           const prev = this._currentParam.controller;
           const prevDefault = prev?.beatSync
             ? `${prev.beatDiv ?? 1}b`
-            : (prev?.hz?.toFixed(2) ?? '0.5');
+            : (prev?.hz?.toFixed(3) ?? '0.5');
           const hzStr = prompt(
             'LFO rate:\n' +
-            '  Hz (free): "0.5"  or  "1.5"\n' +
+            '  Hz (free): "0.5"  or  "1.5"  (down to 0.001 = one cycle / ~17 min)\n' +
             '  Beat-sync (locks to BPM): "1b" = 1 beat, "2b" = 2 beats, "0.5b" = half beat\n' +
             '  Append phase (0-1) and width (0-1 for square/sh):\n' +
             '  e.g.  "2b 0.25"  or  "0.5 0 0.3"',
@@ -1776,7 +1778,9 @@ export class ContextMenu {
             const hz = parseFloat(parts[0]);
             this.ctrl.assign(this._currentParam.id, {
               type,
-              hz:    isNaN(hz) ? 0.5 : hz,
+              // Same 0.001 floor the badge popover enforces; 0 or negative
+              // would stall or run the phase backwards.
+              hz:    isNaN(hz) ? 0.5 : Math.max(0.001, hz),
               phase: isNaN(phase) ? 0 : Math.max(0, Math.min(1, phase)),
               width: isNaN(width) ? 0.5 : Math.max(0, Math.min(1, width)),
               beatSync: false,
@@ -1839,13 +1843,22 @@ export class ContextMenu {
           this.ctrl.startMIDILearn(paramId);
         }
         if (action === 'slew') {
-          const v = parseFloat(prompt(
-            'Slew time (seconds, 0=instant):\n0.01=very fast, 0.1=smooth, 0.5=slow, 1=very slow',
-            this._currentParam.slew?.toFixed(3) ?? '0'
-          ));
-          if (!isNaN(v)) {
-            this._currentParam.slew = Math.max(0, v);
-            this.hide();
+          const p   = this._currentParam;
+          const cur = `${p.slew?.toFixed(3) ?? '0'}${p.slewShape === 'ease' ? ' ease' : ''}`;
+          const raw = prompt(
+            'Slew time (seconds, 0=instant):\n0.01=very fast, 0.1=smooth, 0.5=slow, 1=very slow\n\n' +
+            'Append a curve:  "0.4 ease"  eases in and out (S+H, Random, Square)\n' +
+            '                 "0.4 lag"   the default — quick off the mark, slow to settle',
+            cur
+          );
+          if (raw !== null) {
+            const parts = raw.trim().split(/\s+/);
+            const v = parseFloat(parts[0]);
+            if (!isNaN(v)) {
+              p.slew = Math.max(0, v);
+              if (parts[1]) p.slewShape = /^e/i.test(parts[1]) ? 'ease' : 'lag';
+              this.hide();
+            }
           }
         }
         if (action === 'xmap-hz' || action === 'xmap-amp' || action === 'xmap-value') {

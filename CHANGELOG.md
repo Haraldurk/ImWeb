@@ -6,6 +6,44 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
 
 ---
 
+## [Unreleased]
+
+### Added
+- **Slew curve — Ease in/out.** A second slew response beside the existing one.
+  *Lag* (unchanged, still the default) is a one-pole exponential: it is fastest
+  at the instant the target moves and crawls the last of the way in, which is
+  what made a change of direction from S+H, Random or Square read as a snap.
+  *Ease* is a critically damped spring — it carries velocity across frames, so
+  movement leaves at zero speed, gathers, and sets down without overshoot. It
+  also trails a continuously moving source (a sine LFO) smoothly, so it is not a
+  stepped-source-only mode. Set it in the badge popover (*Slew curve*) or by
+  appending a word to Set Slew: `0.4 ease`. Serialized with the parameter; a
+  state file written before this recalls as Lag.
+
+### Changed
+- **LFO and Random rate floor is now 0.001 Hz** (one cycle per ~17 minutes),
+  down from a documented 0.01. The LFO field already accepted 0.001 but
+  displayed it as `0.00`, so the slowest rates were invisible and read as a
+  no-op; rate fields and the badge overlay now show 3 decimals. The free-Hz
+  prompt path also gained the 0.001 floor it was missing — it previously
+  accepted 0 or a negative rate, which stalled the LFO or ran its phase
+  backwards.
+
+### Fixed
+- **Slow modulation no longer stutters.** `step` was doing double duty as both
+  the UI drag increment and a hard quantization of the stored value, so a
+  controller driving a `step: 0.01` parameter over a 0–1 range had only 100
+  places to land. Measured over 10 s at 60 fps, a sine LFO changed the value on
+  560/600 frames at 1 Hz but only 30/600 at 0.01 Hz and 4/600 at 0.001 Hz —
+  roughly three visible jumps a second while the fps counter read a healthy 60,
+  which is why this never looked like a rendering problem. Controller-driven
+  writes now run at full float resolution. Integer steps are unaffected and
+  still snap: `noise.octaves`, `sdf.count`, `rutt.lines` and friends *are*
+  integers, and a controller sweeping them should step.
+  Locked in by `tests/audit-modulation-resolution.mjs`.
+
+---
+
 ## [0.18.0] — 2026-08-07 — The Way In
 
 ### Added

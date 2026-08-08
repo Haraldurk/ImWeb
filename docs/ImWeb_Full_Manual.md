@@ -1731,7 +1731,7 @@ MIDI Clock Sync: Right-click the BPM indicator in the status bar to toggle. Deri
 | Parameter | Range | Description |
 |-----------|-------|-------------|
 | Shape | Sine / Triangle / Sawtooth / Sawtooth↓ / Square / S&H | Waveform |
-| Frequency | 0.01–20 Hz | Free-running rate |
+| Frequency | 0.001–20 Hz | Free-running rate (0.001 Hz = one cycle per ~17 minutes) |
 | Phase | 0–1 | Phase offset |
 | Pulse width | 0–1 | Duty cycle (square wave) |
 | Mode | norm / shot / xmap | Free / one-shot / externally triggered |
@@ -1748,7 +1748,7 @@ Generates a uniformly random value at a specified rate.
 
 | Parameter | Range | Description |
 |-----------|-------|-------------|
-| Frequency | 0.1–20 Hz | How often a new random value is picked |
+| Frequency | 0.001–20 Hz | How often a new random value is picked |
 
 ---
 
@@ -1823,9 +1823,25 @@ After assigning, right-click the parameter again to access options:
 | **Feedback** | Show live value overlay on output canvas |
 | **Lock** | Disable controller input (freeze the value) |
 | **Assign Table** | Apply a response curve (see Tables tab) |
-| **Set Slew** | Add exponential lag (enter time in seconds) |
+| **Set Slew** | Add lag (enter time in seconds, optionally `ease` or `lag`) |
 
 **Slew** adds smooth easing to a controller's output. For example, 0.5 sec slew on Sound makes audio reactivity feel organic rather than jittery.
+
+**Slew curve** — the badge popover has a *Slew curve* selector, and the Set Slew
+prompt accepts a curve word after the time (`0.4 ease`):
+
+| Curve | Motion | Use for |
+|-------|--------|---------|
+| **Lag** (default) | One-pole exponential. Fastest at the instant the target moves, then crawls the last of the way in. | Taming jitter — Sound, tilt, MIDI faders. |
+| **Ease in/out** | Critically damped spring. Leaves and arrives at zero velocity, so movement gathers speed and then sets down. | Stepped sources — S&H, Random, Square — where Lag reads as a snap. |
+
+Ease is not a stepped-source-only mode: it also trails a continuously moving
+source (a sine LFO) smoothly, just with a little more delay than Lag.
+
+Note that a **response table is not a slew curve**. Tables reshape *what value*
+a controller produces (amplitude); slew shapes *how the value travels in time*.
+Putting an S-curve table on an S&H changes which random values come out, not how
+abruptly the picture arrives at them — that is what the Slew curve is for.
 
 ---
 
