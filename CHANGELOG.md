@@ -23,6 +23,14 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
   - **Ease in/out** (`ease`) — critically damped spring. Carries velocity across
     frames, so movement leaves at zero speed, gathers, and sets down without
     overshoot.
+  - **Elastic** (`elastic`) — the same spring underdamped. Sets off from rest,
+    overshoots by ~19% of the move and rings into place. Implemented as a spring
+    rather than the textbook `easeOutElastic`, which covered **39% of the whole
+    move in its first frame** at 60 fps — a snap with a wobble after it, and the
+    one curve in the set that did not ease in at all. The spring also halves the
+    overshoot (37% → 19%), most of which used to go into the `min`/`max` clamp
+    rather than into the picture, and being a filter it now works on swept
+    sources as well as stepped ones.
 
   ***Stepped sources*** — timed curves running a clock from a captured start to
   the target over exactly the slew time. That clock is the only way to overshoot,
@@ -32,14 +40,55 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
   Random, Square and MIDI notes.
   - **Super Ease in/out** (`ease2`) — quintic; a much longer loiter at each end.
   - **Exponential** (`expo`) — barely moves, then rushes through the middle.
-  - **Elastic** (`elastic`) — overshoots hard and rings into place.
   - **Bounce** (`bounce`) — arrives, then settles in four decreasing hops.
   - **Back** (`back`) — pulls backwards first, then overshoots and eases back.
 
   The timed curves land *exactly* on the target and in exactly the slew time,
-  where the filters are asymptotic and arrive a hair short. Elastic and Back
-  need headroom: at the ends of a parameter's range the `min`/`max` clamp
-  flattens their overshoot.
+  where the filters are asymptotic and arrive a hair short.
+
+- **Back gains Strength** (0–3, default 1), scaling the single constant that
+  governs both of its lobes, so its anticipation and overshoot grow together:
+  ±3.1% of the move at 0.5, ±10.0% at 1, ±27.0% at 2, ±45.3% at 3, and no
+  excursion at all at 0 (a plain in/out ease). It gets **no Damp** by design —
+  damping describes how a *ring* decays and Back has no ring, making one
+  excursion at each end and stopping. The excursion measurements that drive the
+  rail fit are keyed by Strength and memoised, since they are markedly
+  non-linear in it and a table computed once would mis-fit every non-default
+  setting.
+
+- **Elastic gains Strength and Damp**, the two constants of a spring, shown in
+  the badge popover when Elastic is selected (and settable from Set Slew as
+  `0.4 elastic 1.5 0.3`). **Strength** (0.25–4, default 1) is stiffness: higher
+  is tighter and faster, more rings inside the same slew time. **Damp**
+  (0.05–1, default 0.45) is damping: lower throws further past the target and
+  rings longer, and at 1.00 the overshoot disappears entirely, which is Ease.
+  The two are independent — Damp owns how far, Strength owns how fast.
+
+- **Elastic now bounces off `min` and `max`** instead of pressing flat against
+  them. Overshoot is a fraction of the *move*, so a large move landing near a
+  rail throws well past it; clipping that silently meant the value parked on the
+  limit for around a third of a second and the character disappeared exactly
+  where S&H puts it most often. The spring now collides with the rail, reversing
+  and keeping part of its speed, so the excursion that cannot be shown outwards
+  is shown inwards as a rebound — 21 consecutive frames on the limit becomes 1.
+  Restitution follows Damp, so a springier spring rebounds further and a fully
+  damped one does not bounce at all. A move that had headroom is unaffected.
+
+### Fixed
+- **Back no longer stalls when a move starts on a rail.** Back dips below its
+  start before setting off; beginning a move at `min` makes that impossible, and
+  letting the clamp absorb it froze the value for **ten frames at 60 fps** — a
+  sixth of a second of nothing at the head of every move starting from the
+  bottom of the range. Each lobe is now fitted to the room in front of it, and
+  the opening dip is scaled in *time* as well, so travel begins on the first
+  frame. The fit is gradual (a move from 0.02 gets a small dip, one from 0.20
+  the full one) and a move with room at both ends is bit-identical to before.
+
+  Back has no velocity to reverse, so it cannot bounce the way Elastic now does.
+  A move that *ends* on a rail still cannot overshoot — nothing can travel past
+  a maximum. Use a min/max sub-range if you want that overshoot everywhere; a
+  shorter slew does not help, the overshoot being a fraction of the move rather
+  than of the time.
 
   `slewShape` serializes with the parameter and defaults to `lag` on both
   construction and deserialize, so every existing state, bank and `.imweb` file
@@ -55,7 +104,7 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
   accepted 0 or a negative rate, which stalled the LFO or ran its phase
   backwards.
 
-- **X-Map onto an LFO's rate is now logarithmic**, over 0.001–20 Hz, and floored.
+- **X-Map onto an LFO's rate is now logarithmic**, over 0.05–20 Hz, and floored.
   Rate is heard as a ratio, so the old linear `travel × 20 Hz` wasted the
   control: everything below 0.5 Hz lived in the bottom 2.5% of the travel, which
   is not playable by hand. Equal moves now give equal frequency ratios — 0.01 Hz
@@ -65,10 +114,17 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
   which of the two you have. Per-mapping `minHz`/`maxHz` override the defaults.
 
   **This changes existing patches.** An X-map targeting `hz` will play much
-  slower than before — mid-travel moves from 10 Hz to 0.14 Hz. Re-dial affected
+  slower than before — mid-travel moves from 10 Hz to 1 Hz. Re-dial affected
   patches.
 
 ### Fixed
+- **The Phase control did nothing on a free-running LFO.** `phase` is read at
+  construction and on retrigger only — a free-running LFO advances its own
+  accumulator and never looks at the field again — so dragging Phase moved a
+  number nothing consulted until the next Display State recall. It now shifts
+  the running waveform immediately, by the delta rather than absolutely, so the
+  knob slides the wave under the playhead instead of restarting the cycle.
+  Beat-synced LFOs always read it live and are unchanged.
 - **The LFO rate prompt could silently stop the LFO.** Its default was built with
   `toFixed(2)`, so opening it on a rate below 0.005 Hz pre-filled `0.00`; pressing
   OK unchanged then parsed to 0. The default now round-trips exactly at any legal

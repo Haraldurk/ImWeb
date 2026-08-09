@@ -32,7 +32,7 @@
  */
 
 import {
-  ParameterSystem, Parameter, PARAM_TYPE, SLEW_CURVES, SLEW_SHAPES,
+  ParameterSystem, Parameter, PARAM_TYPE, SLEW_CURVES, SLEW_SHAPES, slewExcursion,
 } from '../src/controls/ParameterSystem.js';
 import { LFO } from '../src/controls/LFO.js';
 import { xmapHz, XMAP_HZ_MIN, XMAP_HZ_MAX } from '../src/controls/ControllerManager.js';
@@ -240,6 +240,289 @@ for (const shape of SLEW_SHAPES) {
     'slewed param in the patch');
 }
 
+// ── 5d-bis. Elastic is a spring, and its state survives the clamp ────────────
+// Two separate regressions are guarded here, both of which LOOK fine on a
+// mid-range move and only misbehave at the edges of the parameter.
+//
+// 1. Elastic must EASE IN. The textbook easeOutElastic covered 39% of the whole
+//    move in its first frame — a snap with a wobble after it, which is the
+//    opposite of what a slew curve is for.
+// 2. The integrator must keep its own unclamped position. If it reads the
+//    published value back, then at the top of the range it is told it is at max
+//    while carrying the velocity it had at 1.19, so it keeps pushing outward,
+//    is clipped again, and the ring never returns — 78 frames flat against the
+//    limit, worse than the curve it replaced.
+console.log('\nelastic is an underdamped spring, not a timed curve');
+{
+  const firstFrame = (shape) => {
+    const p = mk();
+    p.slew = 0.5;
+    p.slewShape = shape;
+    p.value = 0.2;
+    p.setNormalized(0.8);
+    p.tickSlew(DT);
+    return (p.value - 0.2) / 0.6;
+  };
+  check('elastic eases in — well under a tenth of the move in frame 1',
+    firstFrame('elastic') < 0.1,
+    `covered ${(firstFrame('elastic') * 100).toFixed(1)}% — easeOutElastic covered 39%`);
+  check('elastic opens no faster than the plain lag it should feel gentler than',
+    firstFrame('elastic') <= firstFrame('lag') + 1e-9,
+    `elastic ${(firstFrame('elastic') * 100).toFixed(2)}% vs lag ${(firstFrame('lag') * 100).toFixed(2)}%`);
+
+  // The ring must survive being clipped at the range limit.
+  const p = mk();
+  p.slew = 0.5;
+  p.slewShape = 'elastic';
+  p.value = 0.4;
+  p.setNormalized(1.0);            // target IS the ceiling: overshoot is unshowable
+  const v = [];
+  for (let i = 0; i < 90; i++) { p.tickSlew(DT); v.push(p.value); }
+  let longestPin = 0, runLen = 0;
+  for (const x of v) { if (x >= 1) { runLen++; longestPin = Math.max(longestPin, runLen); } else runLen = 0; }
+  check('a target at the ceiling still shows the ring as a dip below it',
+    v.some((x) => x < 0.999),
+    'the value never left the limit — the spring is reading its position back ' +
+    'from the CLAMPED value instead of keeping its own');
+  check('and does not sit pinned at the limit for most of the move',
+    longestPin < 40, `pinned for ${longestPin} consecutive frames`);
+
+  // A fresh step arriving mid-clip must not stall behind the stored overshoot.
+  const q = mk();
+  q.slew = 0.5;
+  q.slewShape = 'elastic';
+  q.value = 0.4;
+  q.setNormalized(1.0);
+  for (let i = 0; i < 12; i++) q.tickSlew(DT);
+  const held = q.value;
+  q.setNormalized(0.2);
+  const w = [];
+  for (let i = 0; i < 60; i++) { q.tickSlew(DT); w.push(q.value); }
+  const reactedAfter = w.findIndex((x) => x < held - 1e-6);
+  check('a new step during a clipped overshoot is answered promptly',
+    reactedAfter >= 0 && reactedAfter < 8,
+    `took ${reactedAfter} frames to start moving`);
+
+  // _slewX must not leak past the park, or the next move starts off-target.
+  const r = mk();
+  r.slew = 0.3;
+  r.slewShape = 'elastic';
+  r.value = 0;
+  r.setNormalized(1);
+  for (let i = 0; i < 1200; i++) r.tickSlew(DT);
+  check('the spring position is reset when it parks',
+    r._slewX === r._target, `_slewX ${r._slewX} vs target ${r._target}`);
+}
+
+// ── 5d-ter. The spring bounces off min/max, and Strength/Damp do their jobs ──
+// Overshoot is a fraction of the MOVE, so any large move landing near a rail
+// throws well past it. Clipping that silently is what "elastic does nothing at
+// the extremes" means in practice. The spring collides with the rail instead.
+console.log('\nelastic bounces off the rails rather than parking on them');
+{
+  const spring = ({ from, to, n = 90, st = 1, dp = 0.45, slew = 0.5 }) => {
+    const p = mk();
+    p.slew = slew;
+    p.slewShape = 'elastic';
+    p.slewStrength = st;
+    p.slewDamp = dp;
+    p.value = from;
+    p.setNormalized(to);
+    const v = [];
+    for (let i = 0; i < n; i++) { p.tickSlew(DT); v.push(p.value); }
+    return v;
+  };
+  const longestPin = (v) => {
+    let m = 0, r = 0;
+    for (const x of v) { if (x >= 1 - 1e-9 || x <= 1e-9) { r++; m = Math.max(m, r); } else r = 0; }
+    return m;
+  };
+
+  const top = spring({ from: 0.05, to: 1.0 });
+  check('a full-range move onto the ceiling does not park on it',
+    longestPin(top) <= 4,
+    `pinned ${longestPin(top)} consecutive frames — clipping instead of bouncing`);
+  check('and visibly rebounds off it',
+    Math.min(...top.slice(0, 40)) < 0.97,
+    `never came back below 0.97 — the rail collision is not reversing velocity`);
+
+  const bot = spring({ from: 0.95, to: 0.0 });
+  check('the floor behaves the same way',
+    longestPin(bot) <= 4 && Math.max(...bot.slice(0, 40)) > 0.03,
+    `pin ${longestPin(bot)}, rebound peak ${Math.max(...bot.slice(0, 40)).toFixed(3)}`);
+
+  // A bounce must not disturb a move that had room to begin with.
+  const mid = spring({ from: 0.2, to: 0.8 });
+  check('a move with headroom is untouched by the rail logic',
+    Math.max(...mid) < 1 && Math.max(...mid) > 0.85,
+    `peaked at ${Math.max(...mid).toFixed(4)}`);
+
+  // Damp: the overshoot control. At 1 it must vanish entirely — that is the
+  // continuum back to 'ease', and a non-zero overshoot there means the damping
+  // ratio is not reaching the caller.
+  const over = (dp) => (Math.max(...spring({ from: 0.2, to: 0.8, dp, n: 200 })) - 0.8) / 0.6;
+  check('Damp 1.0 removes the overshoot completely (elastic becomes ease)',
+    over(1) < 1e-4, `overshoot ${(over(1) * 100).toFixed(3)}%`);
+  check('lowering Damp increases the overshoot',
+    over(0.7) < over(0.45) && over(0.45) > 0.1,
+    `damp0.70 ${(over(0.7) * 100).toFixed(1)}%  damp0.45 ${(over(0.45) * 100).toFixed(1)}%`);
+
+  // Strength: the speed/tightness control, orthogonal to Damp.
+  const settle = (st) => {
+    const v = spring({ from: 0.2, to: 0.8, st, n: 600 });
+    return v.findIndex((_, i) => v.slice(i).every((y) => Math.abs(y - 0.8) < 0.012));
+  };
+  check('raising Strength settles the spring sooner',
+    settle(4) < settle(1) && settle(1) < settle(0.25),
+    `st4 ${settle(4)}, st1 ${settle(1)}, st0.25 ${settle(0.25)} frames`);
+  check('Strength barely moves the overshoot — it is Damp that owns that',
+    Math.abs(over(0.45) - (Math.max(...spring({ from: 0.2, to: 0.8, st: 2, n: 200 })) - 0.8) / 0.6) < 0.05,
+    'the two knobs are supposed to be independent');
+
+  // Out-of-range settings must be clamped, not trusted.
+  const wild = spring({ from: 0.2, to: 0.8, st: 1e6, dp: -5, n: 200 });
+  check('absurd Strength/Damp values cannot produce NaN or a runaway',
+    wild.every((x) => Number.isFinite(x) && x >= 0 && x <= 1),
+    'the spring constants are not being clamped at use time');
+
+  // Persistence.
+  const a = mk();
+  a.slewShape = 'elastic';
+  a.slewStrength = 2.5;
+  a.slewDamp = 0.2;
+  const b = mk();
+  b.deserialize(a.serialize());
+  check('Strength and Damp survive a serialize/deserialize round trip',
+    b.slewStrength === 2.5 && b.slewDamp === 0.2,
+    `got strength ${b.slewStrength}, damp ${b.slewDamp}`);
+  const old = mk();
+  old.deserialize({ slew: 0.4, slewShape: 'elastic' });   // written before the knobs existed
+  check('a file without them keeps the original spring feel',
+    old.slewStrength === 1 && Math.abs(old.slewDamp - 0.45) < 1e-9,
+    `got strength ${old.slewStrength}, damp ${old.slewDamp}`);
+}
+
+// ── 5d-quater. A segment curve must never STALL against a rail ──────────────
+// Back dips below its start before setting off. Starting a move at min made
+// that dip impossible, and letting the clamp absorb it froze the value for ten
+// frames at 60fps before anything moved — a sixth of a second of nothing at the
+// top of every move that begins at the bottom. The lobe is now scaled to the
+// room in front of it AND squeezed in time, so travel begins immediately.
+console.log('\nsegment curves never stall against a rail');
+{
+  const trace = (shape, from, to, n = 60) => {
+    const p = mk();
+    p.slew = 0.5;
+    p.slewShape = shape;
+    p.value = from;
+    p.setNormalized(to);
+    const v = [];
+    for (let i = 0; i < n; i++) { p.tickSlew(DT); v.push(p.value); }
+    return v;
+  };
+  const stalled = (v, from) => {
+    let n = 0;
+    for (const x of v) { if (Math.abs(x - from) < 1e-9) n++; else break; }
+    return n;
+  };
+
+  for (const [from, to] of [[0, 0.8], [1, 0.2], [0.02, 0.8], [0.98, 0.2]]) {
+    const s = stalled(trace('back', from, to), from);
+    check(`back ${from} → ${to}: moves on the first frame`, s === 0,
+      `frozen for ${s} frames — the anticipation lobe is being clamped instead of fitted`);
+  }
+
+  // Fitting must be gradual, not a cliff: more room ⇒ a deeper dip.
+  const dip = (from) => from - Math.min(...trace('back', from, 0.8));
+  check('the dip grows smoothly with the room available',
+    dip(0) <= dip(0.02) + 1e-9 && dip(0.02) < dip(0.05) && dip(0.05) < dip(0.2),
+    `dips ${[0, 0.02, 0.05, 0.2].map((f) => dip(f).toFixed(4)).join(' ')}`);
+
+  // And a move that had room must be untouched by any of this.
+  const mid = trace('back', 0.2, 0.8);
+  check('a mid-range move keeps the full anticipation and overshoot',
+    Math.abs((0.2 - Math.min(...mid)) - 0.0599) < 1e-3 &&
+    Math.abs((Math.max(...mid) - 0.8) - 0.0599) < 1e-3,
+    `dip ${(0.2 - Math.min(...mid)).toFixed(4)}, overshoot ${(Math.max(...mid) - 0.8).toFixed(4)}`);
+
+  // The time warp must not cost the exact landing.
+  for (const shape of Object.keys(SLEW_CURVES)) {
+    for (const [from, to] of [[0, 0.8], [0.2, 0.8], [1, 0]]) {
+      const v = trace(shape, from, to, 120);
+      check(`${shape} ${from} → ${to} still lands exactly`,
+        Math.abs(v[v.length - 1] - to) < 1e-9, `ended at ${v[v.length - 1]}`);
+    }
+  }
+}
+
+// ── 5d-quinquies. Strength reshapes Back, and the excursion table follows ────
+// The fit above needs to know how far the curve leaves [0,1]. Strength changes
+// that, and NOT linearly — 3.1% / 10.0% / 27.0% / 45.3% at 0.5 / 1 / 2 / 3, with
+// the k at which the opening dip closes moving too. A table computed once at
+// load would silently mis-fit every non-default Strength.
+console.log('\nBack responds to Strength, and the excursion table tracks it');
+{
+  const back = (from, to, st, n = 90) => {
+    const p = mk();
+    p.slew = 0.5;
+    p.slewShape = 'back';
+    p.slewStrength = st;
+    p.value = from;
+    p.setNormalized(to);
+    const v = [];
+    for (let i = 0; i < n; i++) { p.tickSlew(DT); v.push(p.value); }
+    return v;
+  };
+  const dip = (st) => 0.2 - Math.min(...back(0.2, 0.8, st));
+
+  check('Strength 0 leaves a plain ease — no anticipation, no overshoot',
+    dip(0) < 1e-3 && Math.max(...back(0.2, 0.8, 0)) - 0.8 < 1e-6,
+    `dip ${dip(0).toFixed(5)}`);
+  check('raising Strength deepens the excursion',
+    dip(0.5) < dip(1) && dip(1) < dip(2),
+    `dips ${[0.5, 1, 2].map((s) => dip(s).toFixed(4)).join(' ')}`);
+  check('the default Strength 1 reproduces the historical ±10% shape',
+    Math.abs(dip(1) - 0.0599) < 1e-3, `dip ${dip(1).toFixed(4)}`);
+
+  for (const st of [0, 0.5, 1, 2, 3]) {
+    check(`Strength ${st}: still lands exactly on the target`,
+      Math.abs(back(0.2, 0.8, st).at(-1) - 0.8) < 1e-9,
+      `ended at ${back(0.2, 0.8, st).at(-1)}`);
+  }
+
+  // The excursion table must move with Strength, or the rail fit mis-measures.
+  const e0 = slewExcursion('back', 0.5);
+  const e1 = slewExcursion('back', 1);
+  const e2 = slewExcursion('back', 2);
+  check('slewExcursion reports a different shape per Strength',
+    e0.under < e1.under && e1.under < e2.under && e0.k0 < e1.k0 && e1.k0 < e2.k0,
+    `under ${e0.under.toFixed(3)}/${e1.under.toFixed(3)}/${e2.under.toFixed(3)}, ` +
+    `k0 ${e0.k0.toFixed(3)}/${e1.k0.toFixed(3)}/${e2.k0.toFixed(3)}`);
+  check('a curve with no Strength input is unaffected by the argument',
+    slewExcursion('bounce', 3).over === slewExcursion('bounce', 1).over);
+
+  // The rail fit must keep working when Strength asks for more room than exists.
+  const railed = back(0.0, 0.8, 3);
+  let stalled = 0;
+  for (const x of railed) { if (Math.abs(x) < 1e-9) stalled++; else break; }
+  check('a high Strength starting on a rail still moves on the first frame',
+    stalled === 0, `frozen ${stalled} frames`);
+  check('…and still lands exactly',
+    Math.abs(railed.at(-1) - 0.8) < 1e-9, `ended at ${railed.at(-1)}`);
+
+  // Elastic must not have been disturbed by sharing the field.
+  const p = mk();
+  p.slew = 0.5;
+  p.slewShape = 'elastic';
+  p.value = 0.2;
+  p.setNormalized(0.8);
+  const v = [];
+  for (let i = 0; i < 90; i++) { p.tickSlew(DT); v.push(p.value); }
+  check('elastic still overshoots ~19% at its defaults',
+    Math.abs((Math.max(...v) - 0.8) / 0.6 - 0.19) < 0.02,
+    `${(((Math.max(...v) - 0.8) / 0.6) * 100).toFixed(1)}%`);
+}
+
 // ── 5e. X-map onto an LFO's rate sweeps logarithmically and never hits 0 ─────
 // A rate of exactly 0 Hz is not "very slow", it is STOPPED, and no amount of
 // nudging the fader off the bottom stop distinguishes the two while you are
@@ -258,11 +541,21 @@ console.log('\nX-map → LFO rate is logarithmic and floored');
     Array.from({ length: 200 }, (_, i) => xmapHz(i / 199))
       .every((v, i, a) => i === 0 || v > a[i - 1]));
 
-  // The point of the change: the slow half must be reachable by hand.
+  // Mid-travel must be a rate you can SEE moving. Linear put it at 10 Hz, which
+  // wasted the whole slow half; a 0.001 floor put it at 0.14 Hz, over seven
+  // seconds a cycle, which reads as the mapping doing nothing at all.
   const halfTravel = xmapHz(0.5);
-  check('mid-travel lands in the slow region, not at 10 Hz',
-    halfTravel > 0.05 && halfTravel < 0.5,
-    `mid-travel = ${halfTravel.toFixed(4)} Hz — linear put it at 10 Hz`);
+  check('mid-travel is a visibly moving rate, neither 10 Hz nor near-stopped',
+    halfTravel > 0.3 && halfTravel < 3,
+    `mid-travel = ${halfTravel.toFixed(4)} Hz — linear gave 10 Hz, a 0.001 floor gave 0.14 Hz`);
+  check('an X-map sine spends most of its cycle at a visible rate',
+    (() => {
+      const s = new LFO({ shape: 'sine', hz: 0.5 });
+      let slow = 0;
+      for (let i = 0; i < 120; i++) if (xmapHz(s.tick(DT)) < 0.1) slow++;
+      return slow / 120 < 0.3;
+    })(),
+    'more than 30% of the cycle below 0.1 Hz — the modulated LFO looks frozen');
   const normFor = (hz) => {
     let lo = 0, hi = 1;
     for (let i = 0; i < 60; i++) { const m = (lo + hi) / 2; if (xmapHz(m) < hz) lo = m; else hi = m; }
@@ -282,6 +575,52 @@ console.log('\nX-map → LFO rate is logarithmic and floored');
     Math.abs(xmapHz(0, 0.5, 4) - 0.5) < 1e-9 && Math.abs(xmapHz(1, 0.5, 4) - 4) < 1e-9);
   check('an inverted range degrades to a constant rather than NaN',
     Number.isFinite(xmapHz(0.5, 10, 1)), `got ${xmapHz(0.5, 10, 1)}`);
+}
+
+// ── 5f. The Phase control must move a running LFO ────────────────────────────
+// `phase` is read at construction and on retrigger only; a free-running LFO
+// advances its own accumulator. Assigning lfo.phase therefore wrote a number
+// nothing looked at, and the Phase field in the badge popover did visibly
+// nothing on any un-synced LFO — which is most of them.
+console.log('\nPhase moves a running LFO, not just a stored number');
+{
+  const sample = (mutate) => {
+    const l = new LFO({ shape: 'sine', hz: 1, phase: 0 });
+    for (let i = 0; i < 15; i++) l.tick(DT);   // let it get somewhere
+    const before = l.tick(DT);
+    mutate(l);
+    return { before, after: l.tick(DT), lfo: l };
+  };
+  const direct = sample((l) => { l.phase = 0.5; });
+  check('the old direct assignment is indeed inert (test is not vacuous)',
+    Math.abs(direct.after - direct.before) < 0.05,
+    'a bare `lfo.phase = v` appears to work, so this guard proves nothing');
+
+  const viaSetter = sample((l) => l.setPhase(0.5));
+  check('setPhase shifts the output immediately',
+    Math.abs(viaSetter.after - viaSetter.before) > 0.3,
+    `moved only ${Math.abs(viaSetter.after - viaSetter.before).toFixed(4)}`);
+
+  // Relative, not absolute: it slides the wave, it does not restart the cycle.
+  const l = new LFO({ shape: 'sine', hz: 1, phase: 0 });
+  for (let i = 0; i < 20; i++) l.tick(DT);
+  const t0 = l._t;
+  l.setPhase(0.25);
+  check('the shift is relative to where the wave already was',
+    Math.abs(l._t - (((t0 + 0.25) % 1))) < 1e-9,
+    `_t ${l._t.toFixed(4)} from ${t0.toFixed(4)}`);
+  l.setPhase(0);
+  check('and returning to 0 restores the original position',
+    Math.abs(l._t - t0) < 1e-9, `_t ${l._t.toFixed(4)} vs ${t0.toFixed(4)}`);
+  check('phase stays normalised into [0,1)',
+    (l.setPhase(1.25), l.phase === 0.25) && (l.setPhase(-0.25), Math.abs(l.phase - 0.75) < 1e-9),
+    `phase ${l.phase}`);
+
+  // Beat-synced LFOs always read `phase` live — that path must still work.
+  const bs = new LFO({ shape: 'sine', hz: 1, phase: 0, beatSync: true, beatDiv: 1 });
+  const b0 = bs.tickBeat(0.25);
+  bs.setPhase(0.5);
+  check('beat-synced LFOs still respond to Phase', bs.tickBeat(0.25) !== b0);
 }
 
 // ── 6. 'lag' is the default, so old saved states recall unchanged ────────────

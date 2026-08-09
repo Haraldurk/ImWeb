@@ -109,11 +109,11 @@ export function openCtrlPopover(param, anchorEl, ctrl, tables) {
       ['Any source', [
         ['lag',     'Lag (snap out)'],
         ['ease',    'Ease in/out'],
+        ['elastic', 'Elastic (springs)'],
       ]],
       ['Stepped sources', [
         ['ease2',   'Super Ease in/out'],
         ['expo',    'Exponential'],
-        ['elastic', 'Elastic'],
         ['bounce',  'Bounce'],
         ['back',    'Back (overshoot)'],
       ]],
@@ -134,8 +134,49 @@ export function openCtrlPopover(param, anchorEl, ctrl, tables) {
       'Stepped sources: timed curves that can overshoot and bounce. Built for S+H,\n' +
       'Random, Square and MIDI notes; on a continuously sweeping source they add\n' +
       'ripple instead of smoothing.';
-    shapeSel.addEventListener('change', () => { param.slewShape = shapeSel.value; });
     popover.appendChild(makeRow('Slew curve', shapeSel));
+
+    // Spring constants. Only 'elastic' reads them, so they only appear for it —
+    // an always-visible pair of inert fields is worse than none.
+    // Strength means "stiffness" to the spring and "how far it throws" to Back,
+    // so the range differs: Back may go to 0 (no excursion at all, a plain
+    // in/out ease), the spring may not (a stiffness of 0 never arrives).
+    const strengthRow = makeRow('  ↳ Strength', makeDragNum(
+      () => param.slewStrength ?? 1,
+      v  => {
+        const lo = shapeSel.value === 'back' ? 0 : 0.25;
+        const hi = shapeSel.value === 'back' ? 3 : 4;
+        param.slewStrength = Math.max(lo, Math.min(hi, v));
+      },
+      { decimals: 2, fineStep: 0.05, coarseStep: 0.25 }
+    ));
+    const dampRow = makeRow('  ↳ Damp', makeDragNum(
+      () => param.slewDamp ?? 0.45,
+      v  => { param.slewDamp = Math.max(0.05, Math.min(1, v)); },
+      { decimals: 2, fineStep: 0.01, coarseStep: 0.1 }
+    ));
+    dampRow.title = 'Damping. Lower throws further past the target and rings longer.\n' +
+                    '1.00 removes the overshoot entirely, which is Ease in/out.';
+    popover.appendChild(strengthRow);
+    popover.appendChild(dampRow);
+
+    const syncSpringRows = () => {
+      const shape = shapeSel.value;
+      // Strength is meaningful to both overshooting curves; Damp describes the
+      // decay of a RING, which only the spring has.
+      const hasStrength = shape === 'elastic' || shape === 'back';
+      strengthRow.style.display = hasStrength ? '' : 'none';
+      dampRow.style.display     = shape === 'elastic' ? '' : 'none';
+      strengthRow.title = shape === 'back'
+        ? 'How far Back pulls back before setting off and overshoots on arrival.\n' +
+          '1.00 is ±10% of the move; 0 removes both and leaves a plain ease.'
+        : 'Stiffness. Higher is tighter and faster — more rings inside the same Slew time.';
+    };
+    syncSpringRows();
+    shapeSel.addEventListener('change', () => {
+      param.slewShape = shapeSel.value;
+      syncSpringRows();
+    });
   };
 
   /** Table select row (shared by random and lfo). */
@@ -204,7 +245,9 @@ export function openCtrlPopover(param, anchorEl, ctrl, tables) {
 
     popover.appendChild(makeRow('Phase', makeDragNum(
       () => lfo?.phase ?? c.phase ?? 0,
-      v  => { v = Math.max(0, Math.min(1, v)); if (lfo) lfo.phase = v; c.phase = v; },
+      // setPhase, not `lfo.phase = v` — a free-running LFO never re-reads the
+      // field, so a direct assignment moved the wave nowhere until a recall.
+      v  => { v = Math.max(0, Math.min(1, v)); if (lfo) lfo.setPhase(v); c.phase = v; },
       { decimals: 2, fineStep: 0.01, coarseStep: 0.1 }
     )));
 

@@ -90,29 +90,97 @@ export const SLEW_CURVES = {
         ? Math.pow(2, 20 * k - 10) / 2
         : (2 - Math.pow(2, -20 * k + 10)) / 2,
 
-  // Elastic out: overshoots hard, then rings into place. Launches at full
-  // speed by design — the snap IS the character here, unlike 'ease'.
-  elastic: (k) =>
-    k <= 0 ? 0
-      : k >= 1 ? 1
-      : Math.pow(2, -10 * k) * Math.sin((k * 10 - 0.75) * ((2 * Math.PI) / 3)) + 1,
-
   // Bounce out: arrives, then settles in four decreasing hops.
   bounce: _bounceOut,
 
   // Back in/out: pulls BACKWARDS before setting off (anticipation), then
   // overshoots past the target and eases back. The only curve here that leaves
   // the [0,1] band at both ends.
-  back: (k) => {
-    const c = 1.70158 * 1.525;
+  //
+  // `strength` scales the single constant that governs both lobes — 1 is the
+  // textbook shape (±10% of the move), 0 degenerates to a plain cubic in/out
+  // with no excursion at all, and the endpoints stay exact at every value.
+  back: (k, strength = 1) => {
+    const c = 1.70158 * 1.525 * strength;
     return k < 0.5
       ? (Math.pow(2 * k, 2) * ((c + 1) * 2 * k - c)) / 2
       : (Math.pow(2 * k - 2, 2) * ((c + 1) * (2 * k - 2) + c) + 2) / 2;
   },
 };
 
-/** Every legal slewShape, in menu order. 'lag' and 'ease' are the filters. */
-export const SLEW_SHAPES = ["lag", "ease", ...Object.keys(SLEW_CURVES)];
+/** Which segment curves read the Strength knob. */
+export const SLEW_CURVE_HAS_STRENGTH = { back: true };
+
+/**
+ * How far each segment curve leaves the [0,1] band, and when.
+ *
+ *   under — deepest dip below 0 (the anticipation lobe)
+ *   over  — highest rise above 1 (the overshoot lobe)
+ *   k0    — the k at which the initial dip returns to 0; 0 for curves that
+ *           never go negative
+ *
+ * Sampled once at load rather than hand-copied, so editing a curve cannot
+ * leave a stale constant behind.
+ */
+const _exCache = new Map();
+
+/**
+ * Measured, not hand-copied, so editing a curve cannot leave a stale constant
+ * behind. Strength reshapes Back, and NOT linearly — the excursion runs 3.1%,
+ * 10.0%, 27.0%, 45.3% at Strength 0.5, 1, 2, 3, and the k at which the opening
+ * dip returns to zero moves with it too. So this is keyed by strength and
+ * memoised rather than computed once: the sampling loop is far too expensive
+ * to run per frame, and the values are far too curved to scale by hand.
+ */
+export function slewExcursion(shape, strength = 1) {
+  const f = SLEW_CURVES[shape];
+  if (!f) return { under: 0, over: 0, k0: 0 };
+  // Quantise the key: a drag through Strength would otherwise mint an entry per
+  // frame. 0.01 is finer than the UI can express and the fit is insensitive
+  // to it — and the [min,max] clamp is still there as the backstop.
+  const s = SLEW_CURVE_HAS_STRENGTH[shape] ? Math.round(strength * 100) / 100 : 1;
+  const key = `${shape}:${s}`;
+  let e = _exCache.get(key);
+  if (e) return e;
+  const N = 4000;
+  let lo = 0, hi = 1, k0 = 0;
+  for (let i = 0; i <= N; i++) {
+    const y = f(i / N, s);
+    if (y < lo) lo = y;
+    if (y > hi) hi = y;
+    if (y < 0) k0 = (i + 1) / N; // last k still inside the opening dip
+  }
+  e = { under: -lo, over: hi - 1, k0: lo < 0 ? k0 : 0 };
+  if (_exCache.size > 512) _exCache.clear(); // bounded; it refills in one frame
+  _exCache.set(key, e);
+  return e;
+}
+
+/**
+ * Damping ratio and stiffness for the 'elastic' spring.
+ *
+ * zeta < 1 is underdamped: it overshoots and rings where 'ease' (critically
+ * damped) does not. 0.45 gives a ~19% first overshoot and two clearly visible
+ * rings. The textbook easeOutElastic this replaced overshot 37%, which on a
+ * bounded parameter mostly went to the clamp rather than to the picture.
+ *
+ * omega is 5/slew rather than 'ease's 2/slew because a ringing spring needs the
+ * rings inside the time the user asked for. It settles in roughly 1.5x slew —
+ * for a curve whose whole point is to keep moving after it arrives, slew is a
+ * characteristic time, not a deadline.
+ */
+export const ELASTIC_ZETA  = 0.45;  // default Damp
+export const ELASTIC_OMEGA = 5;     // stiffness at Strength 1
+export const ELASTIC_DAMP_MIN = 0.05;
+export const ELASTIC_DAMP_MAX = 1;
+export const ELASTIC_STRENGTH_MIN = 0.25;
+export const ELASTIC_STRENGTH_MAX = 4;
+
+/** Shapes driven by a stateful filter rather than a timed segment. */
+export const SLEW_FILTERS = ["lag", "ease", "elastic"];
+
+/** Every legal slewShape, in menu order. */
+export const SLEW_SHAPES = [...SLEW_FILTERS, ...Object.keys(SLEW_CURVES)];
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Parameter
@@ -153,6 +221,19 @@ export class Parameter {
     this._slewVel = 0; // spring velocity, 'ease' shape only
     this._slewFrom = this._value; // segment start value, SLEW_CURVES shapes only
     this._slewK = 1; // segment progress 0–1; 1 = settled, no segment in flight
+    // TRUE spring position, which may sit outside [min,max] while an overshoot
+    // is being clipped. Reading the published (clamped) value back into the
+    // integrator instead feeds it a position it never reached: at the top of
+    // the range the spring is told it is at max with the velocity it had at
+    // 1.19, so it keeps pushing outward, is clipped again, and the ring never
+    // comes back — measured as 78 frames pinned flat against the limit.
+    this._slewX = this._value;
+    // 'elastic' spring shape. Stiffness and damping ratio are THE two constants
+    // of a spring and they are orthogonal: Damp alone sets how far it throws
+    // past the target and how many times it rings, Strength alone sets how
+    // tight and fast that ringing is inside the time `slew` asks for.
+    this.slewStrength = 1;
+    this.slewDamp = ELASTIC_ZETA;
     this.ctrlMin = null; // controller output range override (null = param.min)
     this.ctrlMax = null; // controller output range override (null = param.max)
     this.feedbackVisible = config.feedbackVisible ?? false;
@@ -196,6 +277,7 @@ export class Parameter {
       // any segment in flight so the next controller move starts from here.
       this._slewVel = 0;
       this._slewFrom = clamped;
+      this._slewX = clamped;
       this._slewK = 1;
     }
 
@@ -245,6 +327,7 @@ export class Parameter {
     this._target = clamped;
     this._slewVel = 0;
     this._slewFrom = clamped;
+    this._slewX = clamped;
     this._slewK = 1;
     if (clamped === this._value) return;
     this._value = clamped;
@@ -289,7 +372,9 @@ export class Parameter {
         // tests/audit-modulation-resolution.mjs: a sine retargets every frame,
         // so the segment would restart every frame and the value would freeze
         // at k=0 forever.
-        if (this._slewK >= 1 && target !== this._target) {
+        // Filters have no segment to arm — leaving _slewK at 0 for them would
+        // block the early-out in tickSlew and fire listeners forever.
+        if (SLEW_CURVES[this.slewShape] && this._slewK >= 1 && target !== this._target) {
           this._slewFrom = this._value;
           this._slewK = 0;
         }
@@ -315,7 +400,108 @@ export class Parameter {
       // start to the LIVE target. Re-aiming rather than restarting is what lets
       // a bounce survive a target that drifts while the bounce is happening.
       this._slewK = Math.min(1, this._slewK + dt / Math.max(0.001, this.slew));
-      next = this._slewFrom + (this._target - this._slewFrom) * curve(this._slewK);
+
+      // Fit the excursions to the headroom that actually exists.
+      //
+      // Back dips below its start before setting off and rises past its target
+      // on arrival, each by about a tenth of the move. Neither is possible when
+      // the move begins or ends on a rail, and simply letting the [min,max]
+      // clamp eat it costs more than the shape: a move starting at min sat
+      // FROZEN for ten frames at 60fps while the curve tried to travel below
+      // zero. "Nothing happens for a sixth of a second" is not a subtler
+      // anticipation, it is a stall.
+      //
+      // So each lobe is scaled to the room in front of it, and the opening dip
+      // is scaled in TIME as well — squeezed into proportionally less of the
+      // segment, vanishing entirely when there is no room at all. The value
+      // then leaves immediately instead of waiting out a dip it cannot make.
+      // The time warp is piecewise linear and pinned at both ends, so k=0 still
+      // maps to the start value and k=1 still lands exactly on the target.
+      const curveStrength = SLEW_CURVE_HAS_STRENGTH[this.slewShape]
+        ? Math.max(0, Math.min(3, this.slewStrength ?? 1))
+        : 1;
+      const ex = slewExcursion(this.slewShape, curveStrength);
+      const d = this._target - this._slewFrom;
+      const mag = Math.abs(d);
+      let k = this._slewK;
+      let sUnder = 1;
+
+      if (ex.under > 0 && mag > 0) {
+        // Room on the far side of the start, i.e. against the direction of travel.
+        const room = d > 0 ? this._slewFrom - this.min : this.max - this._slewFrom;
+        sUnder = Math.min(1, Math.max(0, room) / (mag * ex.under));
+        const kA = ex.k0 * sUnder;
+        k = k < kA
+          ? (k / kA) * ex.k0                              // dip, compressed in time
+          : ex.k0 + ((k - kA) / (1 - kA)) * (1 - ex.k0);  // the rest, stretched back out
+      }
+
+      let f = curve(k, curveStrength);
+      if (f < 0) {
+        f *= sUnder;
+      } else if (f > 1 && ex.over > 0 && mag > 0) {
+        // Room beyond the target, in the direction of travel.
+        const room = d > 0 ? this.max - this._target : this._target - this.min;
+        const sOver = Math.min(1, Math.max(0, room) / (mag * ex.over));
+        f = 1 + (f - 1) * sOver;
+      }
+      next = this._slewFrom + d * f;
+    } else if (this.slewShape === "elastic") {
+      // UNDERDAMPED spring — the same physics as 'ease' with the damping ratio
+      // taken below 1, so it overshoots and rings instead of settling straight
+      // in. Being a spring rather than a timed curve is the point:
+      //
+      //   * it starts from REST. The textbook easeOutElastic this replaced
+      //     covered 39% of the whole move in its first frame at 60fps, against
+      //     under 1% for every other curve here. It was a snap with a wobble
+      //     after it, which is the opposite of what a slew curve is for.
+      //   * ~19% first overshoot instead of 37%. On a bounded parameter the old
+      //     figure mostly went into the min/max clamp rather than the picture.
+      //   * it tracks a moving target, so it belongs with the filters and works
+      //     on a swept LFO, not only on stepped sources.
+      //
+      // Semi-implicit Euler, substepped so stiffness cannot outrun the frame:
+      // the closed form used for 'ease' is a critically-damped-only identity
+      // and does not generalise to zeta < 1.
+      const zeta = Math.max(ELASTIC_DAMP_MIN,
+        Math.min(ELASTIC_DAMP_MAX, this.slewDamp ?? ELASTIC_ZETA));
+      const strength = Math.max(ELASTIC_STRENGTH_MIN,
+        Math.min(ELASTIC_STRENGTH_MAX, this.slewStrength ?? 1));
+      const dtc = Math.min(dt, 0.05);
+      const omega = (ELASTIC_OMEGA * strength) / Math.max(0.001, this.slew);
+      const sub = Math.max(1, Math.ceil((dtc * omega) / 0.3));
+      const h = dtc / sub;
+      // The spring COLLIDES with min/max rather than being quietly clipped
+      // against them. Overshoot is a fraction of the MOVE, so a big move
+      // landing near a rail throws far past it — measured 21 straight frames
+      // parked flat on the limit, which is where "elastic does nothing at the
+      // extremes" comes from. A collision that reverses the velocity and keeps
+      // some of it turns that into a visible bounce off the end stop: 1 frame.
+      // Restitution follows Damp, so a springier spring bounces more springily
+      // and a fully damped one (Damp 1) does not bounce at all.
+      const rest = Math.max(0, 1 - zeta);
+      const lo = this.min;
+      const hi = this.max;
+      let x = this._slewX;
+      let v = this._slewVel;
+      for (let i = 0; i < sub; i++) {
+        v += (-2 * zeta * omega * v - omega * omega * (x - this._target)) * h;
+        x += v * h;
+        if (x > hi) { x = hi; if (v > 0) v = -v * rest; }
+        else if (x < lo) { x = lo; if (v < 0) v = -v * rest; }
+      }
+      this._slewVel = v;
+      this._slewX = x;
+      next = x; // the caller clamps for display; the spring keeps the truth
+      // Park it, same as 'ease', so the early-out can fire and the ring does
+      // not idle forever a hair off the target.
+      const span = this.max - this.min;
+      if (Math.abs(next - this._target) < span * 1e-5 &&
+          Math.abs(this._slewVel) < span * 1e-3) {
+        next = this._target;
+        this._slewVel = 0;
+        this._slewX = this._target;
+      }
     } else if (this.slewShape === "ease") {
       // Critically damped spring. Carrying VELOCITY across frames is what buys
       // the ease-in: at the instant a stepped source jumps, velocity is still
@@ -475,6 +661,8 @@ export class Parameter {
       cycle: this.cycle,
       slew: this.slew,
       slewShape: this.slewShape,
+      slewStrength: this.slewStrength,
+      slewDamp: this.slewDamp,
       feedbackVisible: this.feedbackVisible,
       feedbackPos: { ...this.feedbackPos },
     };
@@ -497,6 +685,10 @@ export class Parameter {
     // Files written before eased slew existed have no slewShape — 'lag' is the
     // historical curve, so an old state recalls exactly as it did. An unknown
     // name (a state from a newer build) also falls back rather than throwing.
+    // Absent in files written before the spring was adjustable — the defaults
+    // reproduce exactly what those files sounded like.
+    if (Number.isFinite(data.slewStrength)) this.slewStrength = data.slewStrength;
+    if (Number.isFinite(data.slewDamp)) this.slewDamp = data.slewDamp;
     this.slewShape = SLEW_SHAPES.includes(data.slewShape)
       ? data.slewShape
       : "lag";

@@ -1839,6 +1839,7 @@ steps or sweeps.
 |-------|------|--------|---------|
 | **Lag** (default) | `lag` | One-pole exponential. Fastest at the instant the target moves, then crawls the last of the way in. | Taming jitter — Sound, tilt, MIDI faders. |
 | **Ease in/out** | `ease` | Critically damped spring. Leaves and arrives at zero velocity, so movement gathers speed and then sets down. | Almost anything. The safe default when Lag snaps too hard. |
+| **Elastic (springs)** | `elastic` | The same spring *underdamped*. Sets off from rest, overshoots by about a fifth of the move, and rings into place over roughly one and a half times the slew time. | Anywhere you want the movement to feel sprung rather than driven. |
 
 ***Stepped sources*** — timed curves. These run a clock from a captured start
 value to the target over exactly the slew time, which is the only way to
@@ -1848,7 +1849,6 @@ overshoot, ring or bounce. Built for **S&H, Random, Square and MIDI notes**.
 |-------|------|--------|
 | **Super Ease in/out** | `ease2` | Quintic. Ease's shape with a much flatter start and finish — a long loiter at each end. |
 | **Exponential** | `expo` | Barely moves, then rushes through the middle and pins. The most dramatic non-overshooting curve. |
-| **Elastic** | `elastic` | Overshoots hard and rings into place. Launches at full speed — the snap *is* the character here. |
 | **Bounce** | `bounce` | Arrives, then settles in four decreasing hops. |
 | **Back (overshoot)** | `back` | Pulls *backwards* first (anticipation), then overshoots past the target and eases back. |
 
@@ -1862,10 +1862,87 @@ Three things worth knowing about the stepped group:
 - **They land exactly on the target**, and in exactly the slew time. The filters
   are asymptotic and arrive a hair short, which you can see if you drive four
   quick S&H steps: Lag reaches 0.209 when asked for 0.2, `bounce` reaches 0.200.
-- **Overshoot needs headroom.** Elastic and Back travel outside the move, so at
-  the very top or bottom of a parameter's range the `min`/`max` clamp flattens
-  the overshoot and they look like ordinary eases. Give the controller a
-  min/max sub-range if you want the overshoot visible everywhere.
+- **Back needs headroom.** It travels outside the move at both ends, so near the
+  top or bottom of a parameter's range the `min`/`max` clamp flattens the
+  anticipation or the overshoot and it looks like an ordinary ease.
+
+### Strength and Damp
+
+The two curves that travel past their target get extra rows in the popover.
+
+**Elastic** gets both. They are the two constants of a spring and they are
+independent of each other:
+
+| Field | Range | What it does |
+|-------|-------|--------------|
+| **Strength** | 0.25–4, default 1 | Stiffness. Higher is tighter and faster: more rings packed into the same Slew time, and a quicker settle. |
+| **Damp** | 0.05–1, default 0.45 | Damping. Lower throws further past the target and rings longer. **At 1.00 the overshoot disappears entirely** — Elastic becomes Ease in/out. |
+
+Slew still sets the overall time base. Damp owns how *far* it throws, Strength
+owns how *fast* it gets there.
+
+**Back** gets **Strength** only, 0–3, default 1. It scales the single constant
+governing both of Back's lobes, so the anticipation and the overshoot grow and
+shrink together:
+
+| Strength | Anticipation / overshoot |
+|----------|--------------------------|
+| 0 | none at all — a plain in/out ease |
+| 0.5 | ±3.1% of the move |
+| 1 (default) | ±10.0% |
+| 2 | ±27.0% |
+| 3 | ±45.3% |
+
+Back has **no Damp**, and that is deliberate rather than an omission: damping
+describes how a *ring* decays, and Back has no ring. It makes one excursion at
+each end and stops.
+
+### What overshoot does at the ends of the scale
+
+Elastic and Back deliberately travel past the target. A parameter cannot.
+
+**Elastic bounces off `min` and `max` rather than pressing against them.** The
+overshoot is a fraction of the *move*, so a large move landing near a rail
+throws well past it — with nothing done about that, the value simply parks flat
+on the limit for a third of a second and the character vanishes exactly where
+S&H puts it most often. Instead the spring collides with the rail, reversing and
+keeping part of its speed, so the excursion that cannot be shown outwards is
+shown inwards as a rebound:
+
+```
+0.05 → 1.0 (into the ceiling):  0.076 0.354 0.719 1.000 0.918 0.903 0.929 0.966 0.997 0.993 …
+0.95 → 0.0 (into the floor)  :  0.924 0.646 0.281 0.000 0.082 0.097 0.071 0.034 0.003 0.007 …
+```
+
+One frame on the limit, then a clear rebound. How lively that bounce is follows
+**Damp** — a springier spring rebounds further, and at Damp 1.00 it does not
+bounce at all, which is correct because at that setting it never overshoots.
+
+A move that had headroom to begin with is completely unaffected; the rail
+logic only engages on contact.
+
+**Back** is a timed curve rather than a spring, so it has no velocity to
+reverse and cannot bounce. Instead each of its two lobes is **fitted to the room
+in front of it**:
+
+- A move that **starts** on a rail cannot dip backwards first. The dip is scaled
+  to whatever room exists — and squeezed in *time* as well, so the value leaves
+  immediately rather than waiting out a dip it cannot make. Without that it sat
+  frozen for about a sixth of a second at the top of every move beginning at the
+  bottom of the range.
+- A move that **ends** on a rail cannot overshoot. The overshoot is scaled to the
+  room beyond the target, shrinking to nothing when the target is the rail
+  itself.
+
+The fit is gradual, so a move starting at 0.02 gets a small dip and one starting
+at 0.20 gets the full one. A move with room at both ends is completely
+unaffected.
+
+There is no way around the second case: if a controller drives a parameter to
+exactly its maximum, nothing can travel past it. Give the controller a
+**min/max sub-range** on the parameter row if you want Back's overshoot
+everywhere. Reducing the slew time does not help — the overshoot is a fraction
+of the move, not of the time.
 
 Note that a **response table is not a slew curve**. Tables reshape *what value*
 a controller produces (amplitude); slew shapes *how the value travels in time*.
@@ -1880,7 +1957,7 @@ One controller can modulate parameters of another controller.
 
 | X-Map Target | Description |
 |--------------|-------------|
-| hz | Modulate LFO frequency, 0.001–20 Hz **logarithmically** |
+| hz | Modulate LFO frequency, 0.05–20 Hz **logarithmically** |
 | amp | VCA-style amplitude scaling |
 | value | Direct override of controller output |
 
@@ -1890,21 +1967,25 @@ of the rate. Where the useful rates sit:
 
 | Rate | Controller travel |
 |------|-------------------|
-| 0.001 Hz | 0% |
-| 0.01 Hz | 23% |
-| 0.1 Hz | 47% |
-| 0.5 Hz | 63% |
-| 1 Hz | 70% |
-| 5 Hz | 86% |
+| 0.05 Hz | 0% |
+| 0.1 Hz | 12% |
+| 0.5 Hz | 38% |
+| 1 Hz | 50% |
+| 5 Hz | 77% |
 | 20 Hz | 100% |
 
-The bottom of the travel is 0.001 Hz, never 0 — a stopped LFO is not a slow one,
+This is the range an X-map **sweeps**, not the instrument's slowest rate — an
+LFO's own Freq field still reaches 0.001 Hz. The sweep sits higher because the
+source is usually another LFO covering the whole travel, so it spends half its
+time in the bottom half.
+
+The bottom of the travel is 0.05 Hz, never 0 — a stopped LFO is not a slow one,
 and there is no way to tell them apart while playing.
 
 > **Changed behaviour.** This mapping used to be linear (`travel × 20 Hz`), which
 > put everything below 0.5 Hz in the bottom 2.5% of the range and produced a dead
 > stop at zero. An X-map on `hz` saved before this change will play much slower:
-> mid-travel moves from 10 Hz to 0.14 Hz. Re-dial affected patches.
+> mid-travel moves from 10 Hz to 1 Hz. Re-dial affected patches.
 
 | X-Map Source options | |
 |----------------------|-|
