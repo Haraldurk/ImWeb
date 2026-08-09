@@ -8767,10 +8767,26 @@ if (window.matchMedia("(pointer: coarse)").matches) {
 // dev reloads before any click are unaffected. iOS Safari/WebKit ignores
 // beforeunload entirely — there the CSS overscroll-behavior lockdown is the
 // only in-page defense against gesture navigation.
-window.addEventListener("beforeunload", (e) => {
+const _unloadGuard = (e) => {
   e.preventDefault();
   e.returnValue = ""; // legacy Chrome requires returnValue to show the prompt
-});
+};
+window.addEventListener("beforeunload", _unloadGuard);
+
+// ...but not for a reload the dev server itself asked for. The comment above is
+// right that the guard cannot fire before any click — and wrong about what that
+// buys, because a development session is nothing but clicks. After the first
+// one, every source edit becomes a "Reload site?" dialog to dismiss by hand:
+// Vite full-reloads on save, the guard fires, and the count over an afternoon
+// runs to dozens. Drop the guard for that one reload only. A genuine Cmd+W,
+// swipe-back or address-bar reload still gets it, in dev exactly as in
+// production, and `import.meta.hot` is undefined in a build so this whole block
+// is stripped from the shipped bundle.
+if (import.meta.hot) {
+  import.meta.hot.on("vite:beforeFullReload", () =>
+    window.removeEventListener("beforeunload", _unloadGuard),
+  );
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Boot
