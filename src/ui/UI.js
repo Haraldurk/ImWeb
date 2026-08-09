@@ -1657,8 +1657,19 @@ export class ContextMenu {
   }
 
   _wire() {
-    // Close on outside click
-    document.addEventListener('click', e => {
+    // Close on the next outside gesture — pointerdown, NOT click. The menu is
+    // opened from a `contextmenu` event, and macOS fires that on mousedown for
+    // Ctrl+click, then still delivers a `click` on release. Closing on click
+    // therefore shut the menu the instant the button came back up, so anyone
+    // without a right mouse button (trackpad, Ctrl+click) could never reach an
+    // item. The opening gesture's own pointerdown has already been dispatched
+    // by the time show() runs, so pointerdown can only mean a NEW gesture.
+    // The table picker is a body-appended child of this menu, and its buttons
+    // read this._currentParam at CLICK time — hiding on its pointerdown would
+    // null the param out from under them and make every table assignment a
+    // silent no-op.
+    document.addEventListener('pointerdown', e => {
+      if (this._tablePopup?.contains(e.target)) return;
       if (!this.el.contains(e.target)) this.hide();
     });
 

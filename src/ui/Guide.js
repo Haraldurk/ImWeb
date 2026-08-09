@@ -43,7 +43,9 @@
 import { marked } from 'marked';
 
 const STORE_KEY = 'imweb.guideStep';
-const FLASH_MS = 1600;
+// Must match the .guide-flash animation duration in style.css. Testers reported
+// missing the flash at 1.6s and one pulse; it is three pulses over 2.6s now.
+const FLASH_MS = 2600;
 
 /** Track key → chip label. Order here is the order in the panel. */
 export const TRACKS = [

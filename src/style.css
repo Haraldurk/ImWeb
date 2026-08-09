@@ -487,6 +487,12 @@ button {
 .panel-subsection.collapsed > *:not(.subsection-header) {
     display: none !important;
 }
+/* Subsections with no .panel-subsection wrapper (Effects, LUT, …): the
+   accordion in main.js tags the run of siblings under the heading, because no
+   selector can express "until the next heading". */
+.subsection-hidden {
+    display: none !important;
+}
 /* No rule above the first heading in a section — it would double the
    .panel-section border immediately above it. */
 .panel-subsection:first-of-type > .subsection-header {
@@ -2229,6 +2235,17 @@ body.sp-floating #signal-path-docked-space {
     max-height: 60vh;
     overflow-y: auto;
 }
+/* Shown in place of the result list when a filter matches nothing, so an empty
+   Active chip reads as "you have not assigned a controller yet" instead of as a
+   dead panel. */
+.psearch-empty {
+    padding: 14px 12px;
+    font-family: var(--sans);
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--text-2);
+    text-align: center;
+}
 /* Search results reuse .param-row for inline editing — compact overrides
    plus a trailing "locate in panel" button. */
 .psearch-item.param-row {
@@ -2751,22 +2768,34 @@ body.sp-floating #signal-path-docked-space {
 
 /* The pointing gesture itself. Used by the tour AND by the / search's ⌖
    button — one flash, one definition. */
+/* Blue, not --accent. Yellow is the instrument's "this row has a controller"
+   colour, so flashing a row yellow both said the wrong thing and vanished into
+   the rows that are legitimately yellow — beta testers reported missing the
+   flash entirely. --blue is the info token and is never a row state, and three
+   pulses over 2.6s survive a glance away from the screen. Keep this in step
+   with FLASH_MS in src/ui/Guide.js. */
 .guide-flash {
-    animation: guide-flash 1.6s ease-out;
+    animation: guide-flash 2.6s ease-out;
 }
 @keyframes guide-flash {
     0%,
     100% {
-        outline: 1px solid transparent;
+        outline: 2px solid transparent;
         background: transparent;
+        box-shadow: none;
     }
-    12% {
-        outline: 1px solid var(--accent);
-        background: rgba(232, 200, 64, 0.16);
+    8%,
+    42%,
+    76% {
+        outline: 2px solid var(--blue);
+        background: rgba(64, 128, 232, 0.3);
+        box-shadow: 0 0 10px rgba(64, 128, 232, 0.55);
     }
-    60% {
-        outline: 1px solid var(--accent);
-        background: rgba(232, 200, 64, 0.06);
+    25%,
+    59% {
+        outline: 2px solid rgba(64, 128, 232, 0.35);
+        background: rgba(64, 128, 232, 0.08);
+        box-shadow: none;
     }
 }
 

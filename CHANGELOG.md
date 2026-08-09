@@ -9,6 +9,14 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
 ## [Unreleased]
 
 ### Added
+- **`⌘K` / `Ctrl+K` opens parameter search on any keyboard layout.** `/` is
+  unreachable on Nordic layouts — there it is `Shift`+`7`, which clip select
+  claims first — and the `þ` alias is something only an Icelandic user would
+  ever discover. Matched on the physical key, so it works whatever the keycap
+  says. `/` and `þ` are unchanged.
+- **The LUT panel heading explains itself** on hover: a look-up table is a
+  colour recipe in a `.cube` file that remaps the whole picture at once.
+
 - **Slew curves.** Slew gains a response curve, set in the badge popover
   (*Slew curve*) or by appending a word to Set Slew: `0.4 bounce`. The menu is
   in two groups because the split is structural, not cosmetic.
@@ -75,6 +83,27 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
   damped one does not bounce at all. A move that had headroom is unaffected.
 
 ### Fixed
+- **Ctrl+click can reach the controller menus again.** macOS fires `contextmenu`
+  on *mousedown* for Ctrl+click and then still sends a `click` on release, so
+  the close-on-outside-click handler shut both the row's assignment menu and the
+  badge's settings popover the instant the button came back up. Anyone whose
+  pointer has no secondary button — every trackpad at its default settings —
+  could see the menu appear and never reach an item in it, which left the whole
+  controller-assignment grammar unusable. Both now close on the next
+  *pointerdown*, which can only be a new gesture. Reported by a beta tester on an
+  M1 MacBook Air.
+- **Sub-headings in Effects (and LUT, and others) actually collapse now.** The
+  arrow flipped ▾→▸ and the rows stayed exactly where they were, because the
+  handler styled from a `.panel-subsection` ancestor that those sections do not
+  have. A moving arrow that does nothing reads as broken rather than as
+  unsupported, so the run of rows under a bare heading is now folded directly.
+- **An empty parameter-search filter says why it is empty.** *Active* on a fresh
+  session showed a blank box; it now says that no parameter has a controller yet
+  and how to give one. Same for every other filter chip.
+- **The guided tour's highlight is visible.** The flash was one 1.6 s pulse of
+  the same yellow that means "this row has a controller", so it both said the
+  wrong thing and disappeared into the rows that are legitimately yellow. It is
+  now three pulses of blue over 2.6 s, with an outline and a glow.
 - **Back no longer stalls when a move starts on a rail.** Back dips below its
   start before setting off; beginning a move at `min` makes that impossible, and
   letting the clamp absorb it froze the value for **ten frames at 60 fps** — a

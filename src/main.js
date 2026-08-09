@@ -1445,8 +1445,27 @@ async function main() {
   document.querySelectorAll(".subsection-header").forEach((hdr) => {
     hdr.addEventListener("click", (e) => {
       if (e.target.tagName === "BUTTON") return;
-      hdr.closest(".panel-subsection")?.classList.toggle("collapsed");
+      const wrap = hdr.closest(".panel-subsection");
+      wrap?.classList.toggle("collapsed");
       hdr.classList.toggle("collapsed");
+      // Not every subsection has a .panel-subsection wrapper — Effects, LUT and
+      // several others are a bare header followed by sibling blocks. Those got
+      // the arrow (it is CSS on the header alone) and nothing else, so the
+      // heading flipped ▾→▸ while the rows stayed put, which reads as broken
+      // rather than as unsupported. Collapse the run of siblings up to the next
+      // heading instead. Guarded on `wrap` so wrapped subsections keep using
+      // the CSS rule and cannot be hidden twice by two mechanisms.
+      if (wrap) return;
+      const collapsed = hdr.classList.contains("collapsed");
+      let sib = hdr.nextElementSibling;
+      while (
+        sib &&
+        !sib.classList.contains("subsection-header") &&
+        !sib.classList.contains("section-header")
+      ) {
+        sib.classList.toggle("subsection-hidden", collapsed);
+        sib = sib.nextElementSibling;
+      }
     });
   });
 
@@ -5995,6 +6014,33 @@ void main() {
       .querySelectorAll(".psearch-item")
       .forEach((el) => el._psUnsub?.());
     searchRes.innerHTML = "";
+
+    // An empty result list used to render as a blank box, which reads as a
+    // broken filter rather than as an honest "nothing matches" — the Active
+    // chip is empty on a fresh session by definition, and that is the first
+    // chip most people press. Say which filter is doing the hiding.
+    if (!all.length) {
+      const EMPTY = {
+        active:   "No parameter has a controller yet. Right-click (or Ctrl+click) any row to assign one.",
+        modified: "Every parameter is still at its default value.",
+        lfo:      "No parameter is driven by an LFO yet.",
+        midi:     "No parameter is bound to MIDI yet.",
+        sound:    "No parameter is driven by the sound input yet.",
+        mouse:    "No parameter is driven by the mouse yet.",
+        assigned: "No parameter uses one of the other controller types yet.",
+      };
+      const hint = document.createElement("div");
+      hint.className = "psearch-empty";
+      hint.textContent =
+        q && _searchFilter !== "all"
+          ? `Nothing matching “${query}” in this filter.`
+          : q
+            ? `Nothing matching “${query}”.`
+            : (EMPTY[_searchFilter] ?? "Nothing to show.");
+      searchRes.appendChild(hint);
+      return all;
+    }
+
     all.forEach((p, i) => {
       // Reuse the same row builder as the main param panels — gives inline
       // drag/toggle/select/dblclick-reset editing directly in the results.
@@ -6106,6 +6152,19 @@ void main() {
   // ── Keyboard shortcuts ────────────────────────────────────────────────────
 
   window.addEventListener("keydown", (e) => {
+    // ⌘K / Ctrl+K — parameter search, the layout-independent way in. Must sit
+    // ABOVE the modifier guard below. `/` is unreachable on Nordic layouts
+    // (there it is Shift+7, which Shift+1–8 clip select claims first) and `þ`
+    // is a workaround only an Icelandic user would ever find, so neither is a
+    // key the tour can honestly tell everyone to press. Matched on e.code so
+    // the physical K works whatever the layout prints on it.
+    if (e.code === "KeyK" && (e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey) {
+      e.preventDefault();
+      if (searchEl && !searchEl.classList.contains("hidden")) closeParamSearch();
+      else openParamSearch();
+      return;
+    }
+
     if (e.metaKey || e.ctrlKey) return;
 
     // Teletext sub-page navigation — before focus guard so arrows work when UI inputs have focus

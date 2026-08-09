@@ -405,22 +405,28 @@ export function openCtrlPopover(param, anchorEl, ctrl, tables) {
     popover.style.top  = `${Math.max(4, top)}px`;
   });
 
+  // Close on the next outside gesture — pointerdown, NOT click. This popover is
+  // opened from `contextmenu`, which macOS fires on MOUSEDOWN for Ctrl+click and
+  // then follows with a `click` on release. setTimeout(…, 0) does not save us:
+  // the macrotask runs the moment the stack unwinds, long before a human lets
+  // the button up, so the release closed the popover every time and Ctrl+click
+  // (the only right-click a trackpad has by default) could never edit a
+  // controller. The opening pointerdown is already dispatched by the time we get
+  // here, so a pointerdown now is necessarily a new gesture.
   const closeClick = e => {
     if (!popover.contains(e.target) && e.target !== anchorEl) {
       popover.remove();
-      document.removeEventListener('click',   closeClick, true);
-      document.removeEventListener('keydown', closeKey,   true);
+      document.removeEventListener('pointerdown', closeClick, true);
+      document.removeEventListener('keydown',     closeKey,   true);
     }
   };
   const closeKey = e => {
     if (e.key === 'Escape') {
       popover.remove();
-      document.removeEventListener('click',   closeClick, true);
-      document.removeEventListener('keydown', closeKey,   true);
+      document.removeEventListener('pointerdown', closeClick, true);
+      document.removeEventListener('keydown',     closeKey,   true);
     }
   };
-  setTimeout(() => {
-    document.addEventListener('click',   closeClick, true);
-    document.addEventListener('keydown', closeKey,   true);
-  }, 0);
+  document.addEventListener('pointerdown', closeClick, true);
+  document.addEventListener('keydown',     closeKey,   true);
 }
