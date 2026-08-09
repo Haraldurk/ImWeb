@@ -304,7 +304,7 @@ console.log('\nelastic is an underdamped spring, not a timed curve');
     reactedAfter >= 0 && reactedAfter < 8,
     `took ${reactedAfter} frames to start moving`);
 
-  // _slewX must not leak past the park, or the next move starts off-target.
+  // _slewPos must not leak past the park, or the next move starts off-target.
   const r = mk();
   r.slew = 0.3;
   r.slewShape = 'elastic';
@@ -312,7 +312,7 @@ console.log('\nelastic is an underdamped spring, not a timed curve');
   r.setNormalized(1);
   for (let i = 0; i < 1200; i++) r.tickSlew(DT);
   check('the spring position is reset when it parks',
-    r._slewX === r._target, `_slewX ${r._slewX} vs target ${r._target}`);
+    r._slewPos === r._target, `_slewPos ${r._slewPos} vs target ${r._target}`);
 }
 
 // ── 5d-ter. The spring bounces off min/max, and Strength/Damp do their jobs ──
@@ -542,11 +542,22 @@ console.log('\nX-map → LFO rate is logarithmic and floored');
     Array.from({ length: 200 }, (_, i) => xmapHz(i / 199))
       .every((v, i, a) => i === 0 || v > a[i - 1]));
 
-  // The point of the change: the slow half must be reachable by hand.
+  // Mid-travel must be a rate you can SEE moving. Linear put it at 10 Hz, which
+  // wasted the whole slow half; a 0.001 floor put it at 0.14 Hz, which is over
+  // seven seconds a cycle and reads as the mapping doing nothing at all. The
+  // window between those two mistakes is what this checks.
   const halfTravel = xmapHz(0.5);
-  check('mid-travel lands in the slow region, not at 10 Hz',
-    halfTravel > 0.05 && halfTravel < 0.5,
-    `mid-travel = ${halfTravel.toFixed(4)} Hz — linear put it at 10 Hz`);
+  check('mid-travel is a visibly moving rate, neither 10 Hz nor near-stopped',
+    halfTravel > 0.3 && halfTravel < 3,
+    `mid-travel = ${halfTravel.toFixed(4)} Hz — linear gave 10 Hz, a 0.001 floor gave 0.14 Hz`);
+  check('an X-map sine spends most of its cycle at a visible rate',
+    (() => {
+      const s = new LFO({ shape: 'sine', hz: 0.5 });
+      let slow = 0;
+      for (let i = 0; i < 120; i++) if (xmapHz(s.tick(DT)) < 0.1) slow++;
+      return slow / 120 < 0.3;
+    })(),
+    'more than 30% of the cycle below 0.1 Hz — the modulated LFO looks frozen');
   const normFor = (hz) => {
     let lo = 0, hi = 1;
     for (let i = 0; i < 60; i++) { const m = (lo + hi) / 2; if (xmapHz(m) < hz) lo = m; else hi = m; }
@@ -616,13 +627,52 @@ console.log('\ncircular parameters wrap and take the short way round');
   const p = rot(true);
   check('a value past max reappears at min', p._wrapValue(370) === 10, `${p._wrapValue(370)}`);
   check('a value below min reappears at max', p._wrapValue(-10) === 350, `${p._wrapValue(-10)}`);
-  check('max folds onto min', p._wrapValue(360) === 0, `${p._wrapValue(360)}`);
+  // max must NOT fold onto min. It is the same point on the circle, but folding
+  // an IN-RANGE value collapsed the top of every controller sweep: a square LFO
+  // asks for max half the time, got min, and stood perfectly still on every hue
+  // and rotation in the instrument.
+  check('an in-range max is left alone, NOT folded to min',
+    p._wrapValue(360) === 360, `${p._wrapValue(360)}`);
+  check('an in-range mid value is untouched', p._wrapValue(123) === 123);
   check('the short way from 350 to 10 is +20', p._shortestTo(350, 10) === 20,
     `${p._shortestTo(350, 10)}`);
   check('the short way from 10 to 350 is −20', p._shortestTo(10, 350) === -20,
     `${p._shortestTo(10, 350)}`);
   check('a half-turn resolves consistently rather than oscillating',
     Math.abs(p._shortestTo(0, 180)) === 180);
+  // A full turn wraps to a delta of zero. Standing still is the wrong reading:
+  // it is what a square LFO across the whole wheel is explicitly asking for.
+  check('a full turn min→max is honoured as a sweep, not a no-op',
+    p._shortestTo(0, 360) === 360, `${p._shortestTo(0, 360)}`);
+  check('and max→min sweeps back the other way',
+    p._shortestTo(360, 0) === -360, `${p._shortestTo(360, 0)}`);
+  check('a target equal to the value is still a no-op',
+    p._shortestTo(90, 90) === 0);
+
+  // THE REGRESSION: a square LFO must actually toggle on a circular parameter.
+  const square = (wrap, slew) => {
+    const ps2 = new ParameterSystem();
+    ps2.register(new Parameter({
+      id: 'h', type: PARAM_TYPE.CONTINUOUS, min: 0, max: 360, step: 1, value: 0, wrap,
+    }));
+    const q = ps2.params.get('h');
+    q.slew = slew;
+    const lfo = new LFO({ shape: 'square', hz: 2, width: 0.5 });
+    const out = [];
+    for (let i = 0; i < 180; i++) { q.setNormalized(lfo.tick(DT)); q.tickSlew(DT); out.push(q.value); }
+    return out;
+  };
+  // A slewed square cannot complete a whole turn between flips — at 2 Hz it has
+  // 0.25 s per half cycle — so the bar is "sweeps most of the wheel", not "all
+  // of it". Standing still is what this is guarding against.
+  for (const [lbl, slew, span] of [['unslewed', 0, 359], ['slewed', 0.15, 200]]) {
+    const v = square(true, slew);
+    check(`a ${lbl} square LFO still moves a circular parameter`,
+      Math.max(...v) - Math.min(...v) > span,
+      `range ${Math.min(...v).toFixed(0)}..${Math.max(...v).toFixed(0)} — a square that ` +
+      'sits still means max is being folded onto min, or the full-turn sweep is ' +
+      'being read as a zero-length move');
+  }
 
   // Overshoot has somewhere to go now, which is the whole point.
   const e = rot(true, 'elastic', 0.5);

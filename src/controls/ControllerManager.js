@@ -11,8 +11,21 @@
 import { LFOController } from './LFO.js';
 import { BeatDetector }  from './BeatDetector.js';
 
-/** Default sweep range for an X-map targeting an LFO's rate. */
-export const XMAP_HZ_MIN = 0.001;
+/**
+ * Default sweep range for an X-map targeting an LFO's rate.
+ *
+ * The floor is NOT the instrument's slowest rate — you can still type 0.001 Hz
+ * into an LFO's own Freq field, and should. This is the span an X-map SWEEPS,
+ * and it is a different job: the source is usually another LFO covering the
+ * whole 0–1, so it spends half its time in the bottom half of the range.
+ *
+ * At a 0.001 floor that bottom half is 0.001–0.14 Hz, and a target LFO under
+ * about 0.1 Hz takes over ten seconds a cycle — indistinguishable from stopped.
+ * Measured against a 0.5 Hz sine driving the rate, the modulated LFO sat below
+ * 0.1 Hz for 48% of every cycle, which reads as the mapping doing nothing.
+ * At 0.05 the median lands on 1 Hz and that drops to 23%.
+ */
+export const XMAP_HZ_MIN = 0.05;
 export const XMAP_HZ_MAX = 20;
 
 /**

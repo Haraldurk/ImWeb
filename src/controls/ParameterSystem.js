@@ -234,7 +234,7 @@ export class Parameter {
     // the range the spring is told it is at max with the velocity it had at
     // 1.19, so it keeps pushing outward, is clipped again, and the ring never
     // comes back — measured as 78 frames pinned flat against the limit.
-    this._slewX = this._value;
+    this._slewPos = this._value;
     // 'elastic' spring shape. Stiffness and damping ratio are THE two constants
     // of a spring and they are orthogonal: Damp alone sets how far it throws
     // past the target and how many times it rings, Strength alone sets how
@@ -284,7 +284,7 @@ export class Parameter {
       // any segment in flight so the next controller move starts from here.
       this._slewVel = 0;
       this._slewFrom = clamped;
-      this._slewX = clamped;
+      this._slewPos = clamped;
       this._slewK = 1;
     }
 
@@ -334,7 +334,7 @@ export class Parameter {
     this._target = clamped;
     this._slewVel = 0;
     this._slewFrom = clamped;
-    this._slewX = clamped;
+    this._slewPos = clamped;
     this._slewK = 1;
     if (clamped === this._value) return;
     this._value = clamped;
@@ -346,10 +346,18 @@ export class Parameter {
     return this.wrap && this.type === PARAM_TYPE.CONTINUOUS && this.max > this.min;
   }
 
-  /** Fold a value into [min, max), where max is the same place as min. */
+  /**
+   * Fold a value that has left the range back into it.
+   *
+   * Only what is genuinely OUTSIDE gets folded. Folding an in-range `max` onto
+   * `min` — mathematically defensible, since they are the same point — quietly
+   * collapsed the top of every controller sweep: a square LFO asks for max half
+   * the time, got min, and so sat perfectly still on every hue and rotation.
+   */
   _wrapValue(v) {
     const s = this.max - this.min;
     if (s <= 0) return this.min;
+    if (v >= this.min && v <= this.max) return v;
     return this.min + ((((v - this.min) % s) + s) % s);
   }
 
@@ -363,14 +371,40 @@ export class Parameter {
   _shortestTo(from, to) {
     const s = this.max - this.min;
     if (s <= 0) return 0;
-    const d = (((to - from) % s) + s) % s;
-    return d > s / 2 ? d - s : d;
+    const raw = to - from;
+    const d = (((raw % s) + s) % s);
+    const short = d > s / 2 ? d - s : d;
+    // A deliberate FULL TURN — min asked to travel to max, or back — wraps to a
+    // delta of exactly zero, because on a circle those are the same point. Take
+    // it as the sweep it plainly is rather than standing still: that is what a
+    // square LFO across the whole wheel is asking for, and it is the difference
+    // between "hue sweeps the spectrum" and "hue does nothing".
+    if (Math.abs(short) < 1e-9 && Math.abs(raw) > 1e-9) return raw;
+    return short;
   }
 
-  /** Where a glide should actually aim, given it may cross the seam. */
-  _aimFrom(base) {
-    return this._wrapping ? base + this._shortestTo(this._wrapValue(base), this._target)
-                          : this._target;
+  /**
+   * Advance the glide target, keeping it UNWRAPPED on a circular parameter.
+   *
+   * A shortest-path aim recomputed every frame cannot sweep a full turn: the
+   * moment the value leaves 0 on its way to 360, "shortest path to 360" points
+   * backwards, and it oscillates in place. So the target accumulates instead —
+   * each new request moves it by the short way round from where it already was,
+   * and the glide then runs on plain unwrapped numbers with no circular logic
+   * inside it at all. 359 → 1 accumulates +2, and 0 → 360 accumulates +360.
+   */
+  _retarget(raw) {
+    if (!this._wrapping) { this._target = raw; return; }
+    this._target += this._shortestTo(this._wrapValue(this._target), raw);
+    // Neither position nor target may drift for ever through a long spin.
+    // Shifting BOTH by the same whole number of turns leaves the glide
+    // untouched — only the absolute numbers get smaller.
+    const s = this.max - this.min;
+    const turns = Math.floor((this._slewPos - this.min) / s);
+    if (turns !== 0) {
+      this._slewPos -= turns * s;
+      this._target -= turns * s;
+    }
   }
 
   /** Bring a freshly computed value back into range, by wrapping or clamping. */
@@ -421,13 +455,10 @@ export class Parameter {
         // Filters have no segment to arm — leaving _slewK at 0 for them would
         // block the early-out in tickSlew and fire listeners forever.
         if (SLEW_CURVES[this.slewShape] && this._slewK >= 1 && target !== this._target) {
-          this._slewFrom = this._value;
+          this._slewFrom = this._slewPos;
           this._slewK = 0;
         }
-        // Bound the target too: on a wrapping param an unfolded max (360 when
-        // the value folds to 0) would never compare equal, so the settled
-        // early-out in tickSlew could never fire.
-        this._target = this._bound(target); // defer to tickSlew
+        this._retarget(target); // defer to tickSlew
       } else {
         this._setModulated(target);
       }
@@ -475,7 +506,7 @@ export class Parameter {
       // the short way round the circle.
       const ex = slewExcursion(this.slewShape, curveStrength);
       const wrapping = this._wrapping;
-      const aim = this._aimFrom(this._slewFrom);
+      const aim = this._target;
       const d = aim - this._slewFrom;
       const mag = Math.abs(d);
       let k = this._slewK;
@@ -541,9 +572,9 @@ export class Parameter {
       const rest = Math.max(0, 1 - zeta);
       const lo = this.min;
       const hi = this.max;
-      let x = this._slewX;
+      let x = this._slewPos;
       let v = this._slewVel;
-      let aim = this._aimFrom(x);
+      const aim = this._target;
       for (let i = 0; i < sub; i++) {
         v += (-2 * zeta * omega * v - omega * omega * (x - aim)) * h;
         x += v * h;
@@ -553,11 +584,6 @@ export class Parameter {
         }
       }
       this._slewVel = v;
-      // Folding x back each frame keeps it bounded through an endless spin
-      // without disturbing the dynamics: the aim is re-derived from the folded
-      // position next frame, so the displacement the spring sees is unchanged.
-      if (wrapping) { x = this._wrapValue(x); aim = this._aimFrom(x); }
-      this._slewX = x;
       next = x; // the caller bounds for display; the spring keeps the truth
       // Park it, same as 'ease', so the early-out can fire and the ring does
       // not idle forever a hair off the target.
@@ -566,7 +592,7 @@ export class Parameter {
           Math.abs(this._slewVel) < span * 1e-3) {
         next = aim;
         this._slewVel = 0;
-        this._slewX = aim;
+        this._slewPos = aim;
       }
     } else if (this.slewShape === "ease") {
       // Critically damped spring. Carrying VELOCITY across frames is what buys
@@ -578,8 +604,8 @@ export class Parameter {
       // simply trails it, so this is not a stepped-source-only mode.
       const dtc = Math.min(dt, 0.05); // frame hitches must not blow up the filter
       const omega = 2 / Math.max(0.001, this.slew); // ≈ settle time = slew
-      const aim = this._aimFrom(this._value);
-      const x = this._value - aim;
+      const aim = this._target;
+      const x = this._slewPos - aim;
       const od = omega * dtc;
       const exp =
         1 / (1 + od + 0.48 * od * od + 0.235 * od * od * od);
@@ -596,8 +622,12 @@ export class Parameter {
     } else {
       // Exponential lag: approach target at rate 1/slew per second.
       const alpha = Math.min(1, dt / Math.max(0.001, this.slew));
-      next = this._value + (this._aimFrom(this._value) - this._value) * alpha;
+      next = this._slewPos + (this._target - this._slewPos) * alpha;
     }
+    // _slewPos is the glide's own position: unwrapped on a circular parameter
+    // and unclamped for the overshooting shapes. _value is the projection of it
+    // that the rest of the instrument reads.
+    this._slewPos = next;
     const clamped = this._bound(next);
     if (clamped !== this._value) {
       this._value = clamped;
