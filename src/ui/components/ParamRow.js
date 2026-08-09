@@ -280,6 +280,16 @@ export function buildParamRow(param, contextMenu) {
       e.stopPropagation();
       openValueEditor();
     });
+    // Ctrl+click on the VALUE means "type a number" and nothing else. macOS
+    // fires `contextmenu` on the mousedown of that very gesture, which reaches
+    // the row's handler below and opens the assignment menu on top of the
+    // editor. That went unnoticed only because the menu used to close itself on
+    // the release; once the close moved to pointerdown — so Ctrl+click could
+    // reach the menu at all — the collision became visible. A real right-click
+    // carries no ctrlKey, so the row menu still opens from the value column.
+    valueEl.addEventListener('contextmenu', e => {
+      if (e.ctrlKey) { e.preventDefault(); e.stopPropagation(); }
+    });
     // Touch: the value column claims its own gestures (the row's pointer
     // capture would otherwise swallow the pointerups the double-tap
     // detector needs) and preventDefaults so iOS never starts its native

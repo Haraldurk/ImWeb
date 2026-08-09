@@ -92,6 +92,17 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
   controller-assignment grammar unusable. Both now close on the next
   *pointerdown*, which can only be a new gesture. Reported by a beta tester on an
   M1 MacBook Air.
+- **Ctrl+click on a state tile opens its menu instead of recalling the state.**
+  The same mousedown/release mismatch, on the surface where it costs most: the
+  menu closed on the release *and* the tile's own click handler fired, so
+  reaching for Save here / Export / Clear jumped the whole instrument to that
+  state mid-performance. Same fix on the Stills Buffer slot menu, where the
+  stray click selected a different frame.
+- **Ctrl+click on a value still only opens the type-in editor.** Ctrl+click is
+  two gestures at once on macOS — `contextmenu` on the press, `click` on the
+  release — so with the menus no longer closing themselves, the value column had
+  to claim the press for itself. A real right-click on the value still opens the
+  assignment menu.
 - **Sub-headings in Effects (and LUT, and others) actually collapse now.** The
   arrow flipped ▾→▸ and the rows stayed exactly where they were, because the
   handler styled from a `.panel-subsection` ancestor that those sections do not

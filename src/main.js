@@ -4835,8 +4835,11 @@ async function main() {
     bufferSection.insertBefore(capRow, bufferCanvas ?? null);
   }
 
-  // Click to select frame
+  // Click to select frame. Ctrl+click belongs to the slot context menu below —
+  // macOS delivers this click on the release of that gesture, and selecting a
+  // different frame was not what the user was reaching for.
   bufferCanvas?.addEventListener("click", (e) => {
+    if (e.ctrlKey || e.metaKey) return;
     const rect = bufferCanvas.getBoundingClientRect();
     const { cols, cw, ch } = gridLayout();
     const mx = (e.clientX - rect.left) * (CANVAS_W / rect.width);
@@ -4974,15 +4977,17 @@ async function main() {
     _bufSlotMenu.style.top = `${Math.min(y, window.innerHeight - 140)}px`;
     _bufSlotMenu.classList.remove("hidden");
 
-    setTimeout(
-      () =>
-        document.addEventListener("click", _hideBufSlotMenu, { once: true }),
-      0,
-    );
+    // pointerdown outside, not click — this menu opens from `contextmenu`,
+    // which macOS fires on the mousedown of a Ctrl+click, so a click-based
+    // closer shut it again the moment the button came back up. Not `once`
+    // either: a pointerdown INSIDE the menu must not spend the listener.
+    document.addEventListener("pointerdown", _hideBufSlotMenu, true);
   }
 
-  function _hideBufSlotMenu() {
+  function _hideBufSlotMenu(e) {
+    if (e && _bufSlotMenu.contains(e.target)) return;
     _bufSlotMenu.classList.add("hidden");
+    document.removeEventListener("pointerdown", _hideBufSlotMenu, true);
   }
 
   ps.get("buffer.fs1").onChange(refreshBufferGrid);

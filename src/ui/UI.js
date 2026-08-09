@@ -952,7 +952,11 @@ export class StateBar {
       num.className = 'state-tile-num';
       num.textContent = i + 1;
       tile.appendChild(num);
-      tile.addEventListener('click', () => {
+      tile.addEventListener('click', e => {
+        // Ctrl+click is the tile's context-menu gesture on a trackpad; macOS
+        // still sends this click on the release, and recalling a state from it
+        // is a full instrument change nobody asked for.
+        if (e.ctrlKey || e.metaKey) return;
         if (this.pm.current?.states[i]) this.pm.recallState(i);
       });
       tile.addEventListener('contextmenu', e => {
@@ -1116,7 +1120,15 @@ export class StateBar {
     m.className = 'hidden';
     document.body.appendChild(m);
     this._menuEl = m;
-    document.addEventListener('click', () => m.classList.add('hidden'));
+    // pointerdown, and only outside the menu — see ContextMenu._wire. This menu
+    // opens from `contextmenu`, which macOS fires on the mousedown of a
+    // Ctrl+click, so closing on `click` shut it again on the release. Worse
+    // here than elsewhere: the tile's own click handler RECALLS the state, so
+    // Ctrl+clicking a tile to rename or overwrite it silently jumped the whole
+    // instrument to that state instead.
+    document.addEventListener('pointerdown', e => {
+      if (!m.contains(e.target)) m.classList.add('hidden');
+    });
     document.addEventListener('keydown', e => { if (e.key === 'Escape') m.classList.add('hidden'); });
   }
 
