@@ -541,11 +541,21 @@ console.log('\nX-map → LFO rate is logarithmic and floored');
     Array.from({ length: 200 }, (_, i) => xmapHz(i / 199))
       .every((v, i, a) => i === 0 || v > a[i - 1]));
 
-  // The point of the change: the slow half must be reachable by hand.
+  // Mid-travel must be a rate you can SEE moving. Linear put it at 10 Hz, which
+  // wasted the whole slow half; a 0.001 floor put it at 0.14 Hz, over seven
+  // seconds a cycle, which reads as the mapping doing nothing at all.
   const halfTravel = xmapHz(0.5);
-  check('mid-travel lands in the slow region, not at 10 Hz',
-    halfTravel > 0.05 && halfTravel < 0.5,
-    `mid-travel = ${halfTravel.toFixed(4)} Hz — linear put it at 10 Hz`);
+  check('mid-travel is a visibly moving rate, neither 10 Hz nor near-stopped',
+    halfTravel > 0.3 && halfTravel < 3,
+    `mid-travel = ${halfTravel.toFixed(4)} Hz — linear gave 10 Hz, a 0.001 floor gave 0.14 Hz`);
+  check('an X-map sine spends most of its cycle at a visible rate',
+    (() => {
+      const s = new LFO({ shape: 'sine', hz: 0.5 });
+      let slow = 0;
+      for (let i = 0; i < 120; i++) if (xmapHz(s.tick(DT)) < 0.1) slow++;
+      return slow / 120 < 0.3;
+    })(),
+    'more than 30% of the cycle below 0.1 Hz — the modulated LFO looks frozen');
   const normFor = (hz) => {
     let lo = 0, hi = 1;
     for (let i = 0; i < 60; i++) { const m = (lo + hi) / 2; if (xmapHz(m) < hz) lo = m; else hi = m; }
@@ -565,6 +575,52 @@ console.log('\nX-map → LFO rate is logarithmic and floored');
     Math.abs(xmapHz(0, 0.5, 4) - 0.5) < 1e-9 && Math.abs(xmapHz(1, 0.5, 4) - 4) < 1e-9);
   check('an inverted range degrades to a constant rather than NaN',
     Number.isFinite(xmapHz(0.5, 10, 1)), `got ${xmapHz(0.5, 10, 1)}`);
+}
+
+// ── 5f. The Phase control must move a running LFO ────────────────────────────
+// `phase` is read at construction and on retrigger only; a free-running LFO
+// advances its own accumulator. Assigning lfo.phase therefore wrote a number
+// nothing looked at, and the Phase field in the badge popover did visibly
+// nothing on any un-synced LFO — which is most of them.
+console.log('\nPhase moves a running LFO, not just a stored number');
+{
+  const sample = (mutate) => {
+    const l = new LFO({ shape: 'sine', hz: 1, phase: 0 });
+    for (let i = 0; i < 15; i++) l.tick(DT);   // let it get somewhere
+    const before = l.tick(DT);
+    mutate(l);
+    return { before, after: l.tick(DT), lfo: l };
+  };
+  const direct = sample((l) => { l.phase = 0.5; });
+  check('the old direct assignment is indeed inert (test is not vacuous)',
+    Math.abs(direct.after - direct.before) < 0.05,
+    'a bare `lfo.phase = v` appears to work, so this guard proves nothing');
+
+  const viaSetter = sample((l) => l.setPhase(0.5));
+  check('setPhase shifts the output immediately',
+    Math.abs(viaSetter.after - viaSetter.before) > 0.3,
+    `moved only ${Math.abs(viaSetter.after - viaSetter.before).toFixed(4)}`);
+
+  // Relative, not absolute: it slides the wave, it does not restart the cycle.
+  const l = new LFO({ shape: 'sine', hz: 1, phase: 0 });
+  for (let i = 0; i < 20; i++) l.tick(DT);
+  const t0 = l._t;
+  l.setPhase(0.25);
+  check('the shift is relative to where the wave already was',
+    Math.abs(l._t - (((t0 + 0.25) % 1))) < 1e-9,
+    `_t ${l._t.toFixed(4)} from ${t0.toFixed(4)}`);
+  l.setPhase(0);
+  check('and returning to 0 restores the original position',
+    Math.abs(l._t - t0) < 1e-9, `_t ${l._t.toFixed(4)} vs ${t0.toFixed(4)}`);
+  check('phase stays normalised into [0,1)',
+    (l.setPhase(1.25), l.phase === 0.25) && (l.setPhase(-0.25), Math.abs(l.phase - 0.75) < 1e-9),
+    `phase ${l.phase}`);
+
+  // Beat-synced LFOs always read `phase` live — that path must still work.
+  const bs = new LFO({ shape: 'sine', hz: 1, phase: 0, beatSync: true, beatDiv: 1 });
+  const b0 = bs.tickBeat(0.25);
+  bs.setPhase(0.5);
+  check('beat-synced LFOs still respond to Phase', bs.tickBeat(0.25) !== b0);
 }
 
 // ── 6. 'lag' is the default, so old saved states recall unchanged ────────────

@@ -245,7 +245,9 @@ export function openCtrlPopover(param, anchorEl, ctrl, tables) {
 
     popover.appendChild(makeRow('Phase', makeDragNum(
       () => lfo?.phase ?? c.phase ?? 0,
-      v  => { v = Math.max(0, Math.min(1, v)); if (lfo) lfo.phase = v; c.phase = v; },
+      // setPhase, not `lfo.phase = v` — a free-running LFO never re-reads the
+      // field, so a direct assignment moved the wave nowhere until a recall.
+      v  => { v = Math.max(0, Math.min(1, v)); if (lfo) lfo.setPhase(v); c.phase = v; },
       { decimals: 2, fineStep: 0.01, coarseStep: 0.1 }
     )));
 

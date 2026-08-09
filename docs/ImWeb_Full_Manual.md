@@ -1957,7 +1957,7 @@ One controller can modulate parameters of another controller.
 
 | X-Map Target | Description |
 |--------------|-------------|
-| hz | Modulate LFO frequency, 0.001–20 Hz **logarithmically** |
+| hz | Modulate LFO frequency, 0.05–20 Hz **logarithmically** |
 | amp | VCA-style amplitude scaling |
 | value | Direct override of controller output |
 
@@ -1967,21 +1967,25 @@ of the rate. Where the useful rates sit:
 
 | Rate | Controller travel |
 |------|-------------------|
-| 0.001 Hz | 0% |
-| 0.01 Hz | 23% |
-| 0.1 Hz | 47% |
-| 0.5 Hz | 63% |
-| 1 Hz | 70% |
-| 5 Hz | 86% |
+| 0.05 Hz | 0% |
+| 0.1 Hz | 12% |
+| 0.5 Hz | 38% |
+| 1 Hz | 50% |
+| 5 Hz | 77% |
 | 20 Hz | 100% |
 
-The bottom of the travel is 0.001 Hz, never 0 — a stopped LFO is not a slow one,
+This is the range an X-map **sweeps**, not the instrument's slowest rate — an
+LFO's own Freq field still reaches 0.001 Hz. The sweep sits higher because the
+source is usually another LFO covering the whole travel, so it spends half its
+time in the bottom half.
+
+The bottom of the travel is 0.05 Hz, never 0 — a stopped LFO is not a slow one,
 and there is no way to tell them apart while playing.
 
 > **Changed behaviour.** This mapping used to be linear (`travel × 20 Hz`), which
 > put everything below 0.5 Hz in the bottom 2.5% of the range and produced a dead
 > stop at zero. An X-map on `hz` saved before this change will play much slower:
-> mid-travel moves from 10 Hz to 0.14 Hz. Re-dial affected patches.
+> mid-travel moves from 10 Hz to 1 Hz. Re-dial affected patches.
 
 | X-Map Source options | |
 |----------------------|-|

@@ -104,7 +104,7 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
   accepted 0 or a negative rate, which stalled the LFO or ran its phase
   backwards.
 
-- **X-Map onto an LFO's rate is now logarithmic**, over 0.001–20 Hz, and floored.
+- **X-Map onto an LFO's rate is now logarithmic**, over 0.05–20 Hz, and floored.
   Rate is heard as a ratio, so the old linear `travel × 20 Hz` wasted the
   control: everything below 0.5 Hz lived in the bottom 2.5% of the travel, which
   is not playable by hand. Equal moves now give equal frequency ratios — 0.01 Hz
@@ -114,10 +114,17 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
   which of the two you have. Per-mapping `minHz`/`maxHz` override the defaults.
 
   **This changes existing patches.** An X-map targeting `hz` will play much
-  slower than before — mid-travel moves from 10 Hz to 0.14 Hz. Re-dial affected
+  slower than before — mid-travel moves from 10 Hz to 1 Hz. Re-dial affected
   patches.
 
 ### Fixed
+- **The Phase control did nothing on a free-running LFO.** `phase` is read at
+  construction and on retrigger only — a free-running LFO advances its own
+  accumulator and never looks at the field again — so dragging Phase moved a
+  number nothing consulted until the next Display State recall. It now shifts
+  the running waveform immediately, by the delta rather than absolutely, so the
+  knob slides the wave under the playhead instead of restarting the cycle.
+  Beat-synced LFOs always read it live and are unchanged.
 - **The LFO rate prompt could silently stop the LFO.** Its default was built with
   `toFixed(2)`, so opening it on a rate below 0.005 Hz pre-filled `0.00`; pressing
   OK unchanged then parsed to 0. The default now round-trips exactly at any legal

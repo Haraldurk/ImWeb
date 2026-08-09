@@ -79,6 +79,25 @@ export class LFO {
     return this._sample(t);
   }
 
+  /**
+   * Move the waveform to a new phase offset, NOW.
+   *
+   * `phase` is only consulted at construction and on retrigger — a free-running
+   * LFO advances its own `_t` accumulator and never looks at `phase` again — so
+   * assigning `lfo.phase` directly wrote a number nothing read until the next
+   * Display State recall. Dragging Phase in the badge popover therefore did
+   * visibly nothing on any un-synced LFO, which is most of them.
+   *
+   * Shifting `_t` by the DELTA rather than setting it to the new phase keeps the
+   * knob relative: it slides the wave under the playhead instead of jumping the
+   * playhead back to the start of the cycle.
+   */
+  setPhase(p) {
+    const next = (((p % 1) + 1) % 1);
+    this._t = ((((this._t + (next - this.phase)) % 1) + 1) % 1);
+    this.phase = next;
+  }
+
   retrigger() {
     this._t = this.phase;
     this._running = true;

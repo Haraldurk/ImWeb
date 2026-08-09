@@ -11,8 +11,21 @@
 import { LFOController } from './LFO.js';
 import { BeatDetector }  from './BeatDetector.js';
 
-/** Default sweep range for an X-map targeting an LFO's rate. */
-export const XMAP_HZ_MIN = 0.001;
+/**
+ * Default sweep range for an X-map targeting an LFO's rate.
+ *
+ * The floor is NOT the instrument's slowest rate — an LFO's own Freq field
+ * still reaches 0.001 Hz. This is the span an X-map SWEEPS, which is a
+ * different job: the source is usually another LFO covering the whole 0–1, so
+ * it spends half its time in the bottom half of the range.
+ *
+ * Shipped at 0.001 first, chosen for a hand on a fader. Measured against a
+ * 0.5 Hz sine driving the rate, that put the modulated LFO below 0.1 Hz — over
+ * ten seconds a cycle, indistinguishable from stopped — for 48% of every cycle,
+ * and the whole feature read as broken. At 0.05 the median lands on 1 Hz and
+ * that drops to 23%. Per-mapping minHz still reaches lower when wanted.
+ */
+export const XMAP_HZ_MIN = 0.05;
 export const XMAP_HZ_MAX = 20;
 
 /**
@@ -21,18 +34,17 @@ export const XMAP_HZ_MAX = 20;
  * Rate is perceived in octaves, not in Hz, so a linear map wastes almost all of
  * the travel. Against the old `norm * 20`:
  *
- *     norm   linear      log (0.001–20 Hz)
- *     0.00   0.000 Hz    0.001 Hz      ← linear STOPS the LFO dead at zero
- *     0.25   5.000 Hz    0.012 Hz
- *     0.50  10.000 Hz    0.141 Hz
- *     0.75  15.000 Hz    1.680 Hz
+ *     norm   linear      log (0.05–20 Hz)
+ *     0.00   0.000 Hz    0.050 Hz      ← linear STOPS the LFO dead at zero
+ *     0.25   5.000 Hz    0.224 Hz
+ *     0.50  10.000 Hz    1.000 Hz
+ *     0.75  15.000 Hz    4.472 Hz
  *     1.00  20.000 Hz   20.000 Hz
  *
- * Everything from 0.001 to 0.5 Hz — the entire slow half of the instrument's
- * useful range — used to live in the bottom 2.5% of a fader, which is not
- * playable by hand. The floor also matters on its own: norm 0 gave exactly
- * 0 Hz, which freezes the LFO rather than running it slowly, and there is no
- * way back out by pushing the fader a little.
+ * Everything below 0.5 Hz used to live in the bottom 2.5% of the travel, which
+ * is not playable by hand. The floor also matters on its own: norm 0 gave
+ * exactly 0 Hz, which freezes the LFO rather than running it slowly, and there
+ * is no way back out by pushing the fader a little.
  *
  * Exported and pure so the mapping can be audited without a DOM.
  */
