@@ -96,13 +96,20 @@ export const SLEW_CURVES = {
   // Back in/out: pulls BACKWARDS before setting off (anticipation), then
   // overshoots past the target and eases back. The only curve here that leaves
   // the [0,1] band at both ends.
-  back: (k) => {
-    const c = 1.70158 * 1.525;
+  //
+  // `strength` scales the single constant that governs both lobes — 1 is the
+  // textbook shape (±10% of the move), 0 degenerates to a plain cubic in/out
+  // with no excursion at all, and the endpoints stay exact at every value.
+  back: (k, strength = 1) => {
+    const c = 1.70158 * 1.525 * strength;
     return k < 0.5
       ? (Math.pow(2 * k, 2) * ((c + 1) * 2 * k - c)) / 2
       : (Math.pow(2 * k - 2, 2) * ((c + 1) * (2 * k - 2) + c) + 2) / 2;
   },
 };
+
+/** Which segment curves read the Strength knob. */
+export const SLEW_CURVE_HAS_STRENGTH = { back: true };
 
 /**
  * How far each segment curve leaves the [0,1] band, and when.
@@ -115,19 +122,39 @@ export const SLEW_CURVES = {
  * Sampled once at load rather than hand-copied, so editing a curve cannot
  * leave a stale constant behind.
  */
-export const SLEW_EXCURSION = Object.fromEntries(
-  Object.entries(SLEW_CURVES).map(([name, f]) => {
-    const N = 4000;
-    let lo = 0, hi = 1, k0 = 0;
-    for (let i = 0; i <= N; i++) {
-      const y = f(i / N);
-      if (y < lo) lo = y;
-      if (y > hi) hi = y;
-      if (y < 0) k0 = (i + 1) / N; // last k still inside the opening dip
-    }
-    return [name, { under: -lo, over: hi - 1, k0: lo < 0 ? k0 : 0 }];
-  }),
-);
+const _exCache = new Map();
+
+/**
+ * Measured, not hand-copied, so editing a curve cannot leave a stale constant
+ * behind. Strength reshapes Back, and NOT linearly — the excursion runs 3.1%,
+ * 10.0%, 27.0%, 45.3% at Strength 0.5, 1, 2, 3, and the k at which the opening
+ * dip returns to zero moves with it too. So this is keyed by strength and
+ * memoised rather than computed once: the sampling loop is far too expensive
+ * to run per frame, and the values are far too curved to scale by hand.
+ */
+export function slewExcursion(shape, strength = 1) {
+  const f = SLEW_CURVES[shape];
+  if (!f) return { under: 0, over: 0, k0: 0 };
+  // Quantise the key: a drag through Strength would otherwise mint an entry per
+  // frame. 0.01 is finer than the UI can express and the fit is insensitive
+  // to it — and the [min,max] clamp is still there as the backstop.
+  const s = SLEW_CURVE_HAS_STRENGTH[shape] ? Math.round(strength * 100) / 100 : 1;
+  const key = `${shape}:${s}`;
+  let e = _exCache.get(key);
+  if (e) return e;
+  const N = 4000;
+  let lo = 0, hi = 1, k0 = 0;
+  for (let i = 0; i <= N; i++) {
+    const y = f(i / N, s);
+    if (y < lo) lo = y;
+    if (y > hi) hi = y;
+    if (y < 0) k0 = (i + 1) / N; // last k still inside the opening dip
+  }
+  e = { under: -lo, over: hi - 1, k0: lo < 0 ? k0 : 0 };
+  if (_exCache.size > 512) _exCache.clear(); // bounded; it refills in one frame
+  _exCache.set(key, e);
+  return e;
+}
 
 /**
  * Damping ratio and stiffness for the 'elastic' spring.
@@ -390,7 +417,10 @@ export class Parameter {
       // then leaves immediately instead of waiting out a dip it cannot make.
       // The time warp is piecewise linear and pinned at both ends, so k=0 still
       // maps to the start value and k=1 still lands exactly on the target.
-      const ex = SLEW_EXCURSION[this.slewShape];
+      const curveStrength = SLEW_CURVE_HAS_STRENGTH[this.slewShape]
+        ? Math.max(0, Math.min(3, this.slewStrength ?? 1))
+        : 1;
+      const ex = slewExcursion(this.slewShape, curveStrength);
       const d = this._target - this._slewFrom;
       const mag = Math.abs(d);
       let k = this._slewK;
@@ -406,7 +436,7 @@ export class Parameter {
           : ex.k0 + ((k - kA) / (1 - kA)) * (1 - ex.k0);  // the rest, stretched back out
       }
 
-      let f = curve(k);
+      let f = curve(k, curveStrength);
       if (f < 0) {
         f *= sUnder;
       } else if (f > 1 && ex.over > 0 && mag > 0) {

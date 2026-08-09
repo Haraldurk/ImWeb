@@ -32,7 +32,7 @@
  */
 
 import {
-  ParameterSystem, Parameter, PARAM_TYPE, SLEW_CURVES, SLEW_SHAPES,
+  ParameterSystem, Parameter, PARAM_TYPE, SLEW_CURVES, SLEW_SHAPES, slewExcursion,
 } from '../src/controls/ParameterSystem.js';
 import { LFO } from '../src/controls/LFO.js';
 import { xmapHz, XMAP_HZ_MIN, XMAP_HZ_MAX } from '../src/controls/ControllerManager.js';
@@ -453,6 +453,74 @@ console.log('\nsegment curves never stall against a rail');
         Math.abs(v[v.length - 1] - to) < 1e-9, `ended at ${v[v.length - 1]}`);
     }
   }
+}
+
+// ── 5d-quinquies. Strength reshapes Back, and the excursion table follows ────
+// The fit above needs to know how far the curve leaves [0,1]. Strength changes
+// that, and NOT linearly — 3.1% / 10.0% / 27.0% / 45.3% at 0.5 / 1 / 2 / 3, with
+// the k at which the opening dip closes moving too. A table computed once at
+// load would silently mis-fit every non-default Strength.
+console.log('\nBack responds to Strength, and the excursion table tracks it');
+{
+  const back = (from, to, st, n = 90) => {
+    const p = mk();
+    p.slew = 0.5;
+    p.slewShape = 'back';
+    p.slewStrength = st;
+    p.value = from;
+    p.setNormalized(to);
+    const v = [];
+    for (let i = 0; i < n; i++) { p.tickSlew(DT); v.push(p.value); }
+    return v;
+  };
+  const dip = (st) => 0.2 - Math.min(...back(0.2, 0.8, st));
+
+  check('Strength 0 leaves a plain ease — no anticipation, no overshoot',
+    dip(0) < 1e-3 && Math.max(...back(0.2, 0.8, 0)) - 0.8 < 1e-6,
+    `dip ${dip(0).toFixed(5)}`);
+  check('raising Strength deepens the excursion',
+    dip(0.5) < dip(1) && dip(1) < dip(2),
+    `dips ${[0.5, 1, 2].map((s) => dip(s).toFixed(4)).join(' ')}`);
+  check('the default Strength 1 reproduces the historical ±10% shape',
+    Math.abs(dip(1) - 0.0599) < 1e-3, `dip ${dip(1).toFixed(4)}`);
+
+  for (const st of [0, 0.5, 1, 2, 3]) {
+    check(`Strength ${st}: still lands exactly on the target`,
+      Math.abs(back(0.2, 0.8, st).at(-1) - 0.8) < 1e-9,
+      `ended at ${back(0.2, 0.8, st).at(-1)}`);
+  }
+
+  // The excursion table must move with Strength, or the rail fit mis-measures.
+  const e0 = slewExcursion('back', 0.5);
+  const e1 = slewExcursion('back', 1);
+  const e2 = slewExcursion('back', 2);
+  check('slewExcursion reports a different shape per Strength',
+    e0.under < e1.under && e1.under < e2.under && e0.k0 < e1.k0 && e1.k0 < e2.k0,
+    `under ${e0.under.toFixed(3)}/${e1.under.toFixed(3)}/${e2.under.toFixed(3)}, ` +
+    `k0 ${e0.k0.toFixed(3)}/${e1.k0.toFixed(3)}/${e2.k0.toFixed(3)}`);
+  check('a curve with no Strength input is unaffected by the argument',
+    slewExcursion('bounce', 3).over === slewExcursion('bounce', 1).over);
+
+  // The rail fit must keep working when Strength asks for more room than exists.
+  const railed = back(0.0, 0.8, 3);
+  let stalled = 0;
+  for (const x of railed) { if (Math.abs(x) < 1e-9) stalled++; else break; }
+  check('a high Strength starting on a rail still moves on the first frame',
+    stalled === 0, `frozen ${stalled} frames`);
+  check('…and still lands exactly',
+    Math.abs(railed.at(-1) - 0.8) < 1e-9, `ended at ${railed.at(-1)}`);
+
+  // Elastic must not have been disturbed by sharing the field.
+  const p = mk();
+  p.slew = 0.5;
+  p.slewShape = 'elastic';
+  p.value = 0.2;
+  p.setNormalized(0.8);
+  const v = [];
+  for (let i = 0; i < 90; i++) { p.tickSlew(DT); v.push(p.value); }
+  check('elastic still overshoots ~19% at its defaults',
+    Math.abs((Math.max(...v) - 0.8) / 0.6 - 0.19) < 0.02,
+    `${(((Math.max(...v) - 0.8) / 0.6) * 100).toFixed(1)}%`);
 }
 
 // ── 5e. X-map onto an LFO's rate sweeps logarithmically and never hits 0 ─────

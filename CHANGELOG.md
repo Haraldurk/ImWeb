@@ -46,6 +46,16 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
   The timed curves land *exactly* on the target and in exactly the slew time,
   where the filters are asymptotic and arrive a hair short.
 
+- **Back gains Strength** (0–3, default 1), scaling the single constant that
+  governs both of its lobes, so its anticipation and overshoot grow together:
+  ±3.1% of the move at 0.5, ±10.0% at 1, ±27.0% at 2, ±45.3% at 3, and no
+  excursion at all at 0 (a plain in/out ease). It gets **no Damp** by design —
+  damping describes how a *ring* decays and Back has no ring, making one
+  excursion at each end and stopping. The excursion measurements that drive the
+  rail fit are keyed by Strength and memoised, since they are markedly
+  non-linear in it and a table computed once would mis-fit every non-default
+  setting.
+
 - **Elastic gains Strength and Damp**, the two constants of a spring, shown in
   the badge popover when Elastic is selected (and settable from Set Slew as
   `0.4 elastic 1.5 0.3`). **Strength** (0.25–4, default 1) is stiffness: higher

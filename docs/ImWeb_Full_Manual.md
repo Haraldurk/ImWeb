@@ -1866,10 +1866,12 @@ Three things worth knowing about the stepped group:
   top or bottom of a parameter's range the `min`/`max` clamp flattens the
   anticipation or the overshoot and it looks like an ordinary ease.
 
-### Elastic: Strength and Damp
+### Strength and Damp
 
-Selecting **Elastic** adds two rows to the popover. They are the two constants
-of a spring, and they are independent of each other:
+The two curves that travel past their target get extra rows in the popover.
+
+**Elastic** gets both. They are the two constants of a spring and they are
+independent of each other:
 
 | Field | Range | What it does |
 |-------|-------|--------------|
@@ -1878,6 +1880,22 @@ of a spring, and they are independent of each other:
 
 Slew still sets the overall time base. Damp owns how *far* it throws, Strength
 owns how *fast* it gets there.
+
+**Back** gets **Strength** only, 0–3, default 1. It scales the single constant
+governing both of Back's lobes, so the anticipation and the overshoot grow and
+shrink together:
+
+| Strength | Anticipation / overshoot |
+|----------|--------------------------|
+| 0 | none at all — a plain in/out ease |
+| 0.5 | ±3.1% of the move |
+| 1 (default) | ±10.0% |
+| 2 | ±27.0% |
+| 3 | ±45.3% |
+
+Back has **no Damp**, and that is deliberate rather than an omission: damping
+describes how a *ring* decays, and Back has no ring. It makes one excursion at
+each end and stops.
 
 ### What overshoot does at the ends of the scale
 

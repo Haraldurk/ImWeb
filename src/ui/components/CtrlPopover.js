@@ -138,9 +138,16 @@ export function openCtrlPopover(param, anchorEl, ctrl, tables) {
 
     // Spring constants. Only 'elastic' reads them, so they only appear for it —
     // an always-visible pair of inert fields is worse than none.
+    // Strength means "stiffness" to the spring and "how far it throws" to Back,
+    // so the range differs: Back may go to 0 (no excursion at all, a plain
+    // in/out ease), the spring may not (a stiffness of 0 never arrives).
     const strengthRow = makeRow('  ↳ Strength', makeDragNum(
       () => param.slewStrength ?? 1,
-      v  => { param.slewStrength = Math.max(0.25, Math.min(4, v)); },
+      v  => {
+        const lo = shapeSel.value === 'back' ? 0 : 0.25;
+        const hi = shapeSel.value === 'back' ? 3 : 4;
+        param.slewStrength = Math.max(lo, Math.min(hi, v));
+      },
       { decimals: 2, fineStep: 0.05, coarseStep: 0.25 }
     ));
     const dampRow = makeRow('  ↳ Damp', makeDragNum(
@@ -148,16 +155,22 @@ export function openCtrlPopover(param, anchorEl, ctrl, tables) {
       v  => { param.slewDamp = Math.max(0.05, Math.min(1, v)); },
       { decimals: 2, fineStep: 0.01, coarseStep: 0.1 }
     ));
-    strengthRow.title = 'Stiffness. Higher is tighter and faster — more rings inside the same Slew time.';
-    dampRow.title     = 'Damping. Lower throws further past the target and rings longer.\n' +
-                        '1.00 removes the overshoot entirely, which is Ease in/out.';
+    dampRow.title = 'Damping. Lower throws further past the target and rings longer.\n' +
+                    '1.00 removes the overshoot entirely, which is Ease in/out.';
     popover.appendChild(strengthRow);
     popover.appendChild(dampRow);
 
     const syncSpringRows = () => {
-      const on = shapeSel.value === 'elastic';
-      strengthRow.style.display = on ? '' : 'none';
-      dampRow.style.display     = on ? '' : 'none';
+      const shape = shapeSel.value;
+      // Strength is meaningful to both overshooting curves; Damp describes the
+      // decay of a RING, which only the spring has.
+      const hasStrength = shape === 'elastic' || shape === 'back';
+      strengthRow.style.display = hasStrength ? '' : 'none';
+      dampRow.style.display     = shape === 'elastic' ? '' : 'none';
+      strengthRow.title = shape === 'back'
+        ? 'How far Back pulls back before setting off and overshoots on arrival.\n' +
+          '1.00 is ±10% of the move; 0 removes both and leaves a plain ease.'
+        : 'Stiffness. Higher is tighter and faster — more rings inside the same Slew time.';
     };
     syncSpringRows();
     shapeSel.addEventListener('change', () => {
