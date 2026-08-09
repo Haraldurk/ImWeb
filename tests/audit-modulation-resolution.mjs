@@ -402,6 +402,59 @@ console.log('\nelastic bounces off the rails rather than parking on them');
     `got strength ${old.slewStrength}, damp ${old.slewDamp}`);
 }
 
+// ── 5d-quater. A segment curve must never STALL against a rail ──────────────
+// Back dips below its start before setting off. Starting a move at min made
+// that dip impossible, and letting the clamp absorb it froze the value for ten
+// frames at 60fps before anything moved — a sixth of a second of nothing at the
+// top of every move that begins at the bottom. The lobe is now scaled to the
+// room in front of it AND squeezed in time, so travel begins immediately.
+console.log('\nsegment curves never stall against a rail');
+{
+  const trace = (shape, from, to, n = 60) => {
+    const p = mk();
+    p.slew = 0.5;
+    p.slewShape = shape;
+    p.value = from;
+    p.setNormalized(to);
+    const v = [];
+    for (let i = 0; i < n; i++) { p.tickSlew(DT); v.push(p.value); }
+    return v;
+  };
+  const stalled = (v, from) => {
+    let n = 0;
+    for (const x of v) { if (Math.abs(x - from) < 1e-9) n++; else break; }
+    return n;
+  };
+
+  for (const [from, to] of [[0, 0.8], [1, 0.2], [0.02, 0.8], [0.98, 0.2]]) {
+    const s = stalled(trace('back', from, to), from);
+    check(`back ${from} → ${to}: moves on the first frame`, s === 0,
+      `frozen for ${s} frames — the anticipation lobe is being clamped instead of fitted`);
+  }
+
+  // Fitting must be gradual, not a cliff: more room ⇒ a deeper dip.
+  const dip = (from) => from - Math.min(...trace('back', from, 0.8));
+  check('the dip grows smoothly with the room available',
+    dip(0) <= dip(0.02) + 1e-9 && dip(0.02) < dip(0.05) && dip(0.05) < dip(0.2),
+    `dips ${[0, 0.02, 0.05, 0.2].map((f) => dip(f).toFixed(4)).join(' ')}`);
+
+  // And a move that had room must be untouched by any of this.
+  const mid = trace('back', 0.2, 0.8);
+  check('a mid-range move keeps the full anticipation and overshoot',
+    Math.abs((0.2 - Math.min(...mid)) - 0.0599) < 1e-3 &&
+    Math.abs((Math.max(...mid) - 0.8) - 0.0599) < 1e-3,
+    `dip ${(0.2 - Math.min(...mid)).toFixed(4)}, overshoot ${(Math.max(...mid) - 0.8).toFixed(4)}`);
+
+  // The time warp must not cost the exact landing.
+  for (const shape of Object.keys(SLEW_CURVES)) {
+    for (const [from, to] of [[0, 0.8], [0.2, 0.8], [1, 0]]) {
+      const v = trace(shape, from, to, 120);
+      check(`${shape} ${from} → ${to} still lands exactly`,
+        Math.abs(v[v.length - 1] - to) < 1e-9, `ended at ${v[v.length - 1]}`);
+    }
+  }
+}
+
 // ── 5e. X-map onto an LFO's rate sweeps logarithmically and never hits 0 ─────
 // A rate of exactly 0 Hz is not "very slow", it is STOPPED, and no amount of
 // nudging the fader off the bottom stop distinguishes the two while you are

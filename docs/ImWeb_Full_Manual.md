@@ -1903,11 +1903,28 @@ bounce at all, which is correct because at that setting it never overshoots.
 A move that had headroom to begin with is completely unaffected; the rail
 logic only engages on contact.
 
-**Back** has no such treatment — it is a timed curve, not a spring, so near the
-top or bottom of a range the clamp still flattens its anticipation or its
-overshoot. Give the controller a **min/max sub-range** on the parameter row if
-you want Back's full character everywhere. Reducing the slew time does not help:
-the overshoot is a fraction of the move, not of the time.
+**Back** is a timed curve rather than a spring, so it has no velocity to
+reverse and cannot bounce. Instead each of its two lobes is **fitted to the room
+in front of it**:
+
+- A move that **starts** on a rail cannot dip backwards first. The dip is scaled
+  to whatever room exists — and squeezed in *time* as well, so the value leaves
+  immediately rather than waiting out a dip it cannot make. Without that it sat
+  frozen for about a sixth of a second at the top of every move beginning at the
+  bottom of the range.
+- A move that **ends** on a rail cannot overshoot. The overshoot is scaled to the
+  room beyond the target, shrinking to nothing when the target is the rail
+  itself.
+
+The fit is gradual, so a move starting at 0.02 gets a small dip and one starting
+at 0.20 gets the full one. A move with room at both ends is completely
+unaffected.
+
+There is no way around the second case: if a controller drives a parameter to
+exactly its maximum, nothing can travel past it. Give the controller a
+**min/max sub-range** on the parameter row if you want Back's overshoot
+everywhere. Reducing the slew time does not help — the overshoot is a fraction
+of the move, not of the time.
 
 Note that a **response table is not a slew curve**. Tables reshape *what value*
 a controller produces (amplitude); slew shapes *how the value travels in time*.

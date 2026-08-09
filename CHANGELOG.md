@@ -64,10 +64,21 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
   Restitution follows Damp, so a springier spring rebounds further and a fully
   damped one does not bounce at all. A move that had headroom is unaffected.
 
-  **Back** is a timed curve rather than a spring and gets no such treatment: at
-  the ends of a range the clamp still flattens it. Give the controller a min/max
-  sub-range for its full character. A shorter slew time does not help — the
-  overshoot is a fraction of the move, not of the time.
+### Fixed
+- **Back no longer stalls when a move starts on a rail.** Back dips below its
+  start before setting off; beginning a move at `min` makes that impossible, and
+  letting the clamp absorb it froze the value for **ten frames at 60 fps** — a
+  sixth of a second of nothing at the head of every move starting from the
+  bottom of the range. Each lobe is now fitted to the room in front of it, and
+  the opening dip is scaled in *time* as well, so travel begins on the first
+  frame. The fit is gradual (a move from 0.02 gets a small dip, one from 0.20
+  the full one) and a move with room at both ends is bit-identical to before.
+
+  Back has no velocity to reverse, so it cannot bounce the way Elastic now does.
+  A move that *ends* on a rail still cannot overshoot — nothing can travel past
+  a maximum. Use a min/max sub-range if you want that overshoot everywhere; a
+  shorter slew does not help, the overshoot being a fraction of the move rather
+  than of the time.
 
   `slewShape` serializes with the parameter and defaults to `lag` on both
   construction and deserialize, so every existing state, bank and `.imweb` file

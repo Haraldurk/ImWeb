@@ -105,6 +105,31 @@ export const SLEW_CURVES = {
 };
 
 /**
+ * How far each segment curve leaves the [0,1] band, and when.
+ *
+ *   under — deepest dip below 0 (the anticipation lobe)
+ *   over  — highest rise above 1 (the overshoot lobe)
+ *   k0    — the k at which the initial dip returns to 0; 0 for curves that
+ *           never go negative
+ *
+ * Sampled once at load rather than hand-copied, so editing a curve cannot
+ * leave a stale constant behind.
+ */
+export const SLEW_EXCURSION = Object.fromEntries(
+  Object.entries(SLEW_CURVES).map(([name, f]) => {
+    const N = 4000;
+    let lo = 0, hi = 1, k0 = 0;
+    for (let i = 0; i <= N; i++) {
+      const y = f(i / N);
+      if (y < lo) lo = y;
+      if (y > hi) hi = y;
+      if (y < 0) k0 = (i + 1) / N; // last k still inside the opening dip
+    }
+    return [name, { under: -lo, over: hi - 1, k0: lo < 0 ? k0 : 0 }];
+  }),
+);
+
+/**
  * Damping ratio and stiffness for the 'elastic' spring.
  *
  * zeta < 1 is underdamped: it overshoots and rings where 'ease' (critically
@@ -348,7 +373,49 @@ export class Parameter {
       // start to the LIVE target. Re-aiming rather than restarting is what lets
       // a bounce survive a target that drifts while the bounce is happening.
       this._slewK = Math.min(1, this._slewK + dt / Math.max(0.001, this.slew));
-      next = this._slewFrom + (this._target - this._slewFrom) * curve(this._slewK);
+
+      // Fit the excursions to the headroom that actually exists.
+      //
+      // Back dips below its start before setting off and rises past its target
+      // on arrival, each by about a tenth of the move. Neither is possible when
+      // the move begins or ends on a rail, and simply letting the [min,max]
+      // clamp eat it costs more than the shape: a move starting at min sat
+      // FROZEN for ten frames at 60fps while the curve tried to travel below
+      // zero. "Nothing happens for a sixth of a second" is not a subtler
+      // anticipation, it is a stall.
+      //
+      // So each lobe is scaled to the room in front of it, and the opening dip
+      // is scaled in TIME as well — squeezed into proportionally less of the
+      // segment, vanishing entirely when there is no room at all. The value
+      // then leaves immediately instead of waiting out a dip it cannot make.
+      // The time warp is piecewise linear and pinned at both ends, so k=0 still
+      // maps to the start value and k=1 still lands exactly on the target.
+      const ex = SLEW_EXCURSION[this.slewShape];
+      const d = this._target - this._slewFrom;
+      const mag = Math.abs(d);
+      let k = this._slewK;
+      let sUnder = 1;
+
+      if (ex.under > 0 && mag > 0) {
+        // Room on the far side of the start, i.e. against the direction of travel.
+        const room = d > 0 ? this._slewFrom - this.min : this.max - this._slewFrom;
+        sUnder = Math.min(1, Math.max(0, room) / (mag * ex.under));
+        const kA = ex.k0 * sUnder;
+        k = k < kA
+          ? (k / kA) * ex.k0                              // dip, compressed in time
+          : ex.k0 + ((k - kA) / (1 - kA)) * (1 - ex.k0);  // the rest, stretched back out
+      }
+
+      let f = curve(k);
+      if (f < 0) {
+        f *= sUnder;
+      } else if (f > 1 && ex.over > 0 && mag > 0) {
+        // Room beyond the target, in the direction of travel.
+        const room = d > 0 ? this.max - this._target : this._target - this.min;
+        const sOver = Math.min(1, Math.max(0, room) / (mag * ex.over));
+        f = 1 + (f - 1) * sOver;
+      }
+      next = this._slewFrom + d * f;
     } else if (this.slewShape === "elastic") {
       // UNDERDAMPED spring — the same physics as 'ease' with the damping ratio
       // taken below 1, so it overshoots and rings instead of settling straight
