@@ -134,8 +134,36 @@ export function openCtrlPopover(param, anchorEl, ctrl, tables) {
       'Stepped sources: timed curves that can overshoot and bounce. Built for S+H,\n' +
       'Random, Square and MIDI notes; on a continuously sweeping source they add\n' +
       'ripple instead of smoothing.';
-    shapeSel.addEventListener('change', () => { param.slewShape = shapeSel.value; });
     popover.appendChild(makeRow('Slew curve', shapeSel));
+
+    // Spring constants. Only 'elastic' reads them, so they only appear for it —
+    // an always-visible pair of inert fields is worse than none.
+    const strengthRow = makeRow('  ↳ Strength', makeDragNum(
+      () => param.slewStrength ?? 1,
+      v  => { param.slewStrength = Math.max(0.25, Math.min(4, v)); },
+      { decimals: 2, fineStep: 0.05, coarseStep: 0.25 }
+    ));
+    const dampRow = makeRow('  ↳ Damp', makeDragNum(
+      () => param.slewDamp ?? 0.45,
+      v  => { param.slewDamp = Math.max(0.05, Math.min(1, v)); },
+      { decimals: 2, fineStep: 0.01, coarseStep: 0.1 }
+    ));
+    strengthRow.title = 'Stiffness. Higher is tighter and faster — more rings inside the same Slew time.';
+    dampRow.title     = 'Damping. Lower throws further past the target and rings longer.\n' +
+                        '1.00 removes the overshoot entirely, which is Ease in/out.';
+    popover.appendChild(strengthRow);
+    popover.appendChild(dampRow);
+
+    const syncSpringRows = () => {
+      const on = shapeSel.value === 'elastic';
+      strengthRow.style.display = on ? '' : 'none';
+      dampRow.style.display     = on ? '' : 'none';
+    };
+    syncSpringRows();
+    shapeSel.addEventListener('change', () => {
+      param.slewShape = shapeSel.value;
+      syncSpringRows();
+    });
   };
 
   /** Table select row (shared by random and lfo). */

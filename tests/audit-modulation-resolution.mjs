@@ -314,6 +314,94 @@ console.log('\nelastic is an underdamped spring, not a timed curve');
     r._slewX === r._target, `_slewX ${r._slewX} vs target ${r._target}`);
 }
 
+// ── 5d-ter. The spring bounces off min/max, and Strength/Damp do their jobs ──
+// Overshoot is a fraction of the MOVE, so any large move landing near a rail
+// throws well past it. Clipping that silently is what "elastic does nothing at
+// the extremes" means in practice. The spring collides with the rail instead.
+console.log('\nelastic bounces off the rails rather than parking on them');
+{
+  const spring = ({ from, to, n = 90, st = 1, dp = 0.45, slew = 0.5 }) => {
+    const p = mk();
+    p.slew = slew;
+    p.slewShape = 'elastic';
+    p.slewStrength = st;
+    p.slewDamp = dp;
+    p.value = from;
+    p.setNormalized(to);
+    const v = [];
+    for (let i = 0; i < n; i++) { p.tickSlew(DT); v.push(p.value); }
+    return v;
+  };
+  const longestPin = (v) => {
+    let m = 0, r = 0;
+    for (const x of v) { if (x >= 1 - 1e-9 || x <= 1e-9) { r++; m = Math.max(m, r); } else r = 0; }
+    return m;
+  };
+
+  const top = spring({ from: 0.05, to: 1.0 });
+  check('a full-range move onto the ceiling does not park on it',
+    longestPin(top) <= 4,
+    `pinned ${longestPin(top)} consecutive frames — clipping instead of bouncing`);
+  check('and visibly rebounds off it',
+    Math.min(...top.slice(0, 40)) < 0.97,
+    `never came back below 0.97 — the rail collision is not reversing velocity`);
+
+  const bot = spring({ from: 0.95, to: 0.0 });
+  check('the floor behaves the same way',
+    longestPin(bot) <= 4 && Math.max(...bot.slice(0, 40)) > 0.03,
+    `pin ${longestPin(bot)}, rebound peak ${Math.max(...bot.slice(0, 40)).toFixed(3)}`);
+
+  // A bounce must not disturb a move that had room to begin with.
+  const mid = spring({ from: 0.2, to: 0.8 });
+  check('a move with headroom is untouched by the rail logic',
+    Math.max(...mid) < 1 && Math.max(...mid) > 0.85,
+    `peaked at ${Math.max(...mid).toFixed(4)}`);
+
+  // Damp: the overshoot control. At 1 it must vanish entirely — that is the
+  // continuum back to 'ease', and a non-zero overshoot there means the damping
+  // ratio is not reaching the caller.
+  const over = (dp) => (Math.max(...spring({ from: 0.2, to: 0.8, dp, n: 200 })) - 0.8) / 0.6;
+  check('Damp 1.0 removes the overshoot completely (elastic becomes ease)',
+    over(1) < 1e-4, `overshoot ${(over(1) * 100).toFixed(3)}%`);
+  check('lowering Damp increases the overshoot',
+    over(0.7) < over(0.45) && over(0.45) > 0.1,
+    `damp0.70 ${(over(0.7) * 100).toFixed(1)}%  damp0.45 ${(over(0.45) * 100).toFixed(1)}%`);
+
+  // Strength: the speed/tightness control, orthogonal to Damp.
+  const settle = (st) => {
+    const v = spring({ from: 0.2, to: 0.8, st, n: 600 });
+    return v.findIndex((_, i) => v.slice(i).every((y) => Math.abs(y - 0.8) < 0.012));
+  };
+  check('raising Strength settles the spring sooner',
+    settle(4) < settle(1) && settle(1) < settle(0.25),
+    `st4 ${settle(4)}, st1 ${settle(1)}, st0.25 ${settle(0.25)} frames`);
+  check('Strength barely moves the overshoot — it is Damp that owns that',
+    Math.abs(over(0.45) - (Math.max(...spring({ from: 0.2, to: 0.8, st: 2, n: 200 })) - 0.8) / 0.6) < 0.05,
+    'the two knobs are supposed to be independent');
+
+  // Out-of-range settings must be clamped, not trusted.
+  const wild = spring({ from: 0.2, to: 0.8, st: 1e6, dp: -5, n: 200 });
+  check('absurd Strength/Damp values cannot produce NaN or a runaway',
+    wild.every((x) => Number.isFinite(x) && x >= 0 && x <= 1),
+    'the spring constants are not being clamped at use time');
+
+  // Persistence.
+  const a = mk();
+  a.slewShape = 'elastic';
+  a.slewStrength = 2.5;
+  a.slewDamp = 0.2;
+  const b = mk();
+  b.deserialize(a.serialize());
+  check('Strength and Damp survive a serialize/deserialize round trip',
+    b.slewStrength === 2.5 && b.slewDamp === 0.2,
+    `got strength ${b.slewStrength}, damp ${b.slewDamp}`);
+  const old = mk();
+  old.deserialize({ slew: 0.4, slewShape: 'elastic' });   // written before the knobs existed
+  check('a file without them keeps the original spring feel',
+    old.slewStrength === 1 && Math.abs(old.slewDamp - 0.45) < 1e-9,
+    `got strength ${old.slewStrength}, damp ${old.slewDamp}`);
+}
+
 // ── 5e. X-map onto an LFO's rate sweeps logarithmically and never hits 0 ─────
 // A rate of exactly 0 Hz is not "very slow", it is STOPPED, and no amount of
 // nudging the fader off the bottom stop distinguishes the two while you are

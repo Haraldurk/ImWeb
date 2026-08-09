@@ -46,12 +46,28 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
   The timed curves land *exactly* on the target and in exactly the slew time,
   where the filters are asymptotic and arrive a hair short.
 
-  **Overshoot needs headroom.** Elastic and Back travel past the target, and a
-  parameter cannot, so when the target sits at `min` or `max` the outward half
-  of the excursion is clipped. The inward half still shows — Elastic driven into
-  the ceiling holds there briefly and then dips visibly back before settling.
-  Give the controller a min/max sub-range for the full character. A shorter slew
-  time does not help: the overshoot is a fraction of the move, not of the time.
+- **Elastic gains Strength and Damp**, the two constants of a spring, shown in
+  the badge popover when Elastic is selected (and settable from Set Slew as
+  `0.4 elastic 1.5 0.3`). **Strength** (0.25–4, default 1) is stiffness: higher
+  is tighter and faster, more rings inside the same slew time. **Damp**
+  (0.05–1, default 0.45) is damping: lower throws further past the target and
+  rings longer, and at 1.00 the overshoot disappears entirely, which is Ease.
+  The two are independent — Damp owns how far, Strength owns how fast.
+
+- **Elastic now bounces off `min` and `max`** instead of pressing flat against
+  them. Overshoot is a fraction of the *move*, so a large move landing near a
+  rail throws well past it; clipping that silently meant the value parked on the
+  limit for around a third of a second and the character disappeared exactly
+  where S&H puts it most often. The spring now collides with the rail, reversing
+  and keeping part of its speed, so the excursion that cannot be shown outwards
+  is shown inwards as a rebound — 21 consecutive frames on the limit becomes 1.
+  Restitution follows Damp, so a springier spring rebounds further and a fully
+  damped one does not bounce at all. A move that had headroom is unaffected.
+
+  **Back** is a timed curve rather than a spring and gets no such treatment: at
+  the ends of a range the clamp still flattens it. Give the controller a min/max
+  sub-range for its full character. A shorter slew time does not help — the
+  overshoot is a fraction of the move, not of the time.
 
   `slewShape` serializes with the parameter and defaults to `lag` on both
   construction and deserialize, so every existing state, bank and `.imweb` file

@@ -117,8 +117,12 @@ export const SLEW_CURVES = {
  * for a curve whose whole point is to keep moving after it arrives, slew is a
  * characteristic time, not a deadline.
  */
-const ELASTIC_ZETA  = 0.45;
-const ELASTIC_OMEGA = 5;
+export const ELASTIC_ZETA  = 0.45;  // default Damp
+export const ELASTIC_OMEGA = 5;     // stiffness at Strength 1
+export const ELASTIC_DAMP_MIN = 0.05;
+export const ELASTIC_DAMP_MAX = 1;
+export const ELASTIC_STRENGTH_MIN = 0.25;
+export const ELASTIC_STRENGTH_MAX = 4;
 
 /** Shapes driven by a stateful filter rather than a timed segment. */
 export const SLEW_FILTERS = ["lag", "ease", "elastic"];
@@ -172,6 +176,12 @@ export class Parameter {
     // 1.19, so it keeps pushing outward, is clipped again, and the ring never
     // comes back — measured as 78 frames pinned flat against the limit.
     this._slewX = this._value;
+    // 'elastic' spring shape. Stiffness and damping ratio are THE two constants
+    // of a spring and they are orthogonal: Damp alone sets how far it throws
+    // past the target and how many times it rings, Strength alone sets how
+    // tight and fast that ringing is inside the time `slew` asks for.
+    this.slewStrength = 1;
+    this.slewDamp = ELASTIC_ZETA;
     this.ctrlMin = null; // controller output range override (null = param.min)
     this.ctrlMax = null; // controller output range override (null = param.max)
     this.feedbackVisible = config.feedbackVisible ?? false;
@@ -356,15 +366,32 @@ export class Parameter {
       // Semi-implicit Euler, substepped so stiffness cannot outrun the frame:
       // the closed form used for 'ease' is a critically-damped-only identity
       // and does not generalise to zeta < 1.
+      const zeta = Math.max(ELASTIC_DAMP_MIN,
+        Math.min(ELASTIC_DAMP_MAX, this.slewDamp ?? ELASTIC_ZETA));
+      const strength = Math.max(ELASTIC_STRENGTH_MIN,
+        Math.min(ELASTIC_STRENGTH_MAX, this.slewStrength ?? 1));
       const dtc = Math.min(dt, 0.05);
-      const omega = ELASTIC_OMEGA / Math.max(0.001, this.slew);
+      const omega = (ELASTIC_OMEGA * strength) / Math.max(0.001, this.slew);
       const sub = Math.max(1, Math.ceil((dtc * omega) / 0.3));
       const h = dtc / sub;
+      // The spring COLLIDES with min/max rather than being quietly clipped
+      // against them. Overshoot is a fraction of the MOVE, so a big move
+      // landing near a rail throws far past it — measured 21 straight frames
+      // parked flat on the limit, which is where "elastic does nothing at the
+      // extremes" comes from. A collision that reverses the velocity and keeps
+      // some of it turns that into a visible bounce off the end stop: 1 frame.
+      // Restitution follows Damp, so a springier spring bounces more springily
+      // and a fully damped one (Damp 1) does not bounce at all.
+      const rest = Math.max(0, 1 - zeta);
+      const lo = this.min;
+      const hi = this.max;
       let x = this._slewX;
       let v = this._slewVel;
       for (let i = 0; i < sub; i++) {
-        v += (-2 * ELASTIC_ZETA * omega * v - omega * omega * (x - this._target)) * h;
+        v += (-2 * zeta * omega * v - omega * omega * (x - this._target)) * h;
         x += v * h;
+        if (x > hi) { x = hi; if (v > 0) v = -v * rest; }
+        else if (x < lo) { x = lo; if (v < 0) v = -v * rest; }
       }
       this._slewVel = v;
       this._slewX = x;
@@ -537,6 +564,8 @@ export class Parameter {
       cycle: this.cycle,
       slew: this.slew,
       slewShape: this.slewShape,
+      slewStrength: this.slewStrength,
+      slewDamp: this.slewDamp,
       feedbackVisible: this.feedbackVisible,
       feedbackPos: { ...this.feedbackPos },
     };
@@ -559,6 +588,10 @@ export class Parameter {
     // Files written before eased slew existed have no slewShape — 'lag' is the
     // historical curve, so an old state recalls exactly as it did. An unknown
     // name (a state from a newer build) also falls back rather than throwing.
+    // Absent in files written before the spring was adjustable — the defaults
+    // reproduce exactly what those files sounded like.
+    if (Number.isFinite(data.slewStrength)) this.slewStrength = data.slewStrength;
+    if (Number.isFinite(data.slewDamp)) this.slewDamp = data.slewDamp;
     this.slewShape = SLEW_SHAPES.includes(data.slewShape)
       ? data.slewShape
       : "lag";

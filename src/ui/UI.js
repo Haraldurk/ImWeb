@@ -1854,7 +1854,8 @@ export class ContextMenu {
             'Append a curve, e.g. "0.4 bounce":\n' +
             '  any source      lag (default) · ease · elastic\n' +
             '  stepped sources ease2 · expo · bounce · back\n' +
-            '(the stepped curves can overshoot; on a sweeping LFO they ripple)',
+            '(the stepped curves can overshoot; on a sweeping LFO they ripple)\n' +
+            'After "elastic" you may add strength and damp: "0.4 elastic 1.5 0.3"',
             cur
           );
           if (raw !== null) {
@@ -1866,6 +1867,10 @@ export class ContextMenu {
               // resetting it to lag, which is what a typo used to do.
               const word = (parts[1] ?? '').toLowerCase();
               if (SLEW_SHAPES.includes(word)) p.slewShape = word;
+              const st = parseFloat(parts[2]);
+              const dp = parseFloat(parts[3]);
+              if (!isNaN(st)) p.slewStrength = Math.max(0.25, Math.min(4, st));
+              if (!isNaN(dp)) p.slewDamp = Math.max(0.05, Math.min(1, dp));
               this.hide();
             }
           }

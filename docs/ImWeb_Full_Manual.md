@@ -1866,29 +1866,48 @@ Three things worth knowing about the stepped group:
   top or bottom of a parameter's range the `min`/`max` clamp flattens the
   anticipation or the overshoot and it looks like an ordinary ease.
 
+### Elastic: Strength and Damp
+
+Selecting **Elastic** adds two rows to the popover. They are the two constants
+of a spring, and they are independent of each other:
+
+| Field | Range | What it does |
+|-------|-------|--------------|
+| **Strength** | 0.25–4, default 1 | Stiffness. Higher is tighter and faster: more rings packed into the same Slew time, and a quicker settle. |
+| **Damp** | 0.05–1, default 0.45 | Damping. Lower throws further past the target and rings longer. **At 1.00 the overshoot disappears entirely** — Elastic becomes Ease in/out. |
+
+Slew still sets the overall time base. Damp owns how *far* it throws, Strength
+owns how *fast* it gets there.
+
 ### What overshoot does at the ends of the scale
 
-Elastic and Back deliberately travel past the target. A parameter cannot, so
-when the target sits at (or near) `min` or `max` the excursion has nowhere to
-go and is clipped.
+Elastic and Back deliberately travel past the target. A parameter cannot.
 
-This is not a defect — a spring pressed against a stop behaves the same way —
-but it is worth knowing what you will see. Driving Elastic from 0.4 to a target
-of exactly 1.0 on a 0–1 parameter, the value rises smoothly, sits at 1.000 for
-about a third of a second while the unshowable part of the first swing goes by,
-then **dips to about 0.978 and comes back** — the second half of the ring, which
-points inwards, is fully visible. Only the outward half is lost. The same move
-in the middle of the range shows the whole thing:
+**Elastic bounces off `min` and `max` rather than pressing against them.** The
+overshoot is a fraction of the *move*, so a large move landing near a rail
+throws well past it — with nothing done about that, the value simply parks flat
+on the limit for a third of a second and the character vanishes exactly where
+S&H puts it most often. Instead the spring collides with the rail, reversing and
+keeping part of its speed, so the excursion that cannot be shown outwards is
+shown inwards as a rebound:
 
 ```
-target 1.0 (the ceiling):  0.417 0.537 0.709 0.875 1.000 1.000 1.000 … 0.983 0.978 0.985 0.997 1.000
-target 0.8 (mid-range)  :  0.217 0.337 0.509 0.675 0.804 0.882 0.913 … 0.783 0.778 0.785 0.797 0.801
+0.05 → 1.0 (into the ceiling):  0.076 0.354 0.719 1.000 0.918 0.903 0.929 0.966 0.997 0.993 …
+0.95 → 0.0 (into the floor)  :  0.924 0.646 0.281 0.000 0.082 0.097 0.071 0.034 0.003 0.007 …
 ```
 
-If you want the full character everywhere, give the controller a **min/max
-sub-range** on the parameter row so there is headroom on both sides. Reducing
-the slew time does not help — the overshoot is a fraction of the move, not of
-the time.
+One frame on the limit, then a clear rebound. How lively that bounce is follows
+**Damp** — a springier spring rebounds further, and at Damp 1.00 it does not
+bounce at all, which is correct because at that setting it never overshoots.
+
+A move that had headroom to begin with is completely unaffected; the rail
+logic only engages on contact.
+
+**Back** has no such treatment — it is a timed curve, not a spring, so near the
+top or bottom of a range the clamp still flattens its anticipation or its
+overshoot. Give the controller a **min/max sub-range** on the parameter row if
+you want Back's full character everywhere. Reducing the slew time does not help:
+the overshoot is a fraction of the move, not of the time.
 
 Note that a **response table is not a slew curve**. Tables reshape *what value*
 a controller produces (amplitude); slew shapes *how the value travels in time*.
