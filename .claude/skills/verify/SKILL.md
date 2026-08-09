@@ -105,6 +105,18 @@ readbacks are dead by construction:
 - **`drawImage(webglCanvas)` into a 2D canvas returns a STALE frame** without
   `preserveDrawingBuffer`. Four different source selections once gave
   bit-identical luma/chroma to 0.1 while the field was visibly animating.
+- **`vite preview` will serve a bundle that is no longer in `dist/`.** Rebuild,
+  navigate, and the browser can still be running a cached chunk with a hash that
+  no longer exists on disk — which reads exactly like "the fix did not work", and
+  cost a real fix an hour of being disbelieved. Before trusting any negative
+  result, check what the page actually loaded:
+
+  ```js
+  [...document.scripts].map(s => s.src.split('/').pop())   // vs `ls dist/assets`
+  ```
+
+  Navigating with a fresh query string (`?cb=<something new>`) forces the issue.
+  Better: iterate on a dev server, which has no hashed dist to go stale.
 
 The general rule: **identical readings across a control that visibly moves means
 the READBACK is dead, not the control.** Fall back to the screenshot tool.
@@ -174,6 +186,27 @@ document.getElementById('btn-load-lut').click();
 HTMLInputElement.prototype.click = orig;
 // the handler awaits file.text(), so the name element updates a tick later
 ```
+
+## Gestures the automation cannot speak for
+
+Synthetic events model the SEQUENCE faithfully and the DEVICE not at all. Where a
+bug lives in the difference between two ways of performing the same gesture, a
+green check here means nothing — hand the last thirty seconds to a real trackpad.
+
+**Ctrl+click is not the same event stream as a right-click, and the whole team is
+blind to the difference.** macOS fires `contextmenu` on the MOUSEDOWN of a
+Ctrl+click and then still delivers a `click` on the release. A two-finger
+secondary click sends button 2 and emits **no `click` at all**. So any menu that
+closes on an outside click works perfectly for anyone with secondary click
+enabled — which is every maintainer — and is unusable for anyone without it. Four
+menus shipped that way for years and it took an outside beta tester to find it.
+`tests/audit-contextmenu-dismissal.mjs` now guards the code, but the general
+point stands: **when checking a pointer gesture by hand, deliberately use the
+gesture you do NOT normally use.**
+
+Do not "fix" this by asking users to turn on secondary click. Ctrl+click and
+two-finger click both work, the guide says so, and a workaround in the docs
+outlives the bug it was written for.
 
 ## Known-good check sequence (Draw features)
 
