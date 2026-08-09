@@ -6799,7 +6799,9 @@ void main() {
     const ORBIT = 0.35; // deg/px — matches GestureArbitrator's touch orbit
     const PAN = 0.01; // pos-units/px
     const FLICK_MAX_AGE_MS = 80; // same freshness rule as the touch flick
-    const wrap = (v) => ((v % 360) + 360) % 360;
+    // scene3d.rot.* are declared circular (CIRCULAR_PARAM_IDS), so ps.set folds
+    // them for us — no local wrap helper, which is how the four that used to
+    // live here and in GestureArbitrator got a chance to drift apart.
     let drag = null;
     canvas.addEventListener("pointerdown", (e) => {
       if (e.pointerType !== "mouse") return;
@@ -6830,8 +6832,8 @@ void main() {
       const dx = e.clientX - drag.x;
       const dy = e.clientY - drag.y;
       if (drag.btn === 0) {
-        ps.set("scene3d.rot.y", wrap(drag.rotY + dx * ORBIT));
-        ps.set("scene3d.rot.x", wrap(drag.rotX + dy * ORBIT));
+        ps.set("scene3d.rot.y", drag.rotY + dx * ORBIT);
+        ps.set("scene3d.rot.x", drag.rotX + dy * ORBIT);
         // Flick velocity (deg/s), same EMA smoothing as the touch orbit
         const now = performance.now();
         const mdt = (now - drag.lastT) / 1000;

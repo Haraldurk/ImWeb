@@ -198,6 +198,13 @@ export class Parameter {
     this.unit = config.unit ?? ""; // display unit string e.g. '°', '%'
     this.step = config.step ?? null; // optional snap step
 
+    // Circular domain: max and min are the SAME PLACE, so the value wraps
+    // instead of clamping and every glide takes the short way round. True for
+    // hues and full-turn rotations. Declared, never user-editable — the
+    // topology of a hue is a fact, not a preference — which is also why it
+    // needs no Display State capture and no migration. See CIRCULAR_PARAM_IDS.
+    this.wrap = config.wrap ?? false;
+
     this._value = config.value ?? this.min;
     this._target = this._value; // slew target
     this.defaultValue = this._value;
@@ -264,8 +271,8 @@ export class Parameter {
         Math.min((this.options?.length ?? 1) - 1, Math.round(v)),
       );
     } else {
-      clamped = Math.max(this.min, Math.min(this.max, v));
-      if (this.step) clamped = Math.round(clamped / this.step) * this.step;
+      clamped = this._bound(v);
+      if (this.step) clamped = this._bound(Math.round(clamped / this.step) * this.step);
     }
 
     const changed = clamped !== this._value;
@@ -321,9 +328,9 @@ export class Parameter {
    */
   _setModulated(v) {
     if (this.locked) return;
-    let clamped = Math.max(this.min, Math.min(this.max, v));
+    let clamped = this._bound(v);
     const q = this._modStep;
-    if (q) clamped = Math.round(clamped / q) * q;
+    if (q) clamped = this._bound(Math.round(clamped / q) * q);
     this._target = clamped;
     this._slewVel = 0;
     this._slewFrom = clamped;
@@ -332,6 +339,45 @@ export class Parameter {
     if (clamped === this._value) return;
     this._value = clamped;
     this._listeners.forEach((fn) => fn(clamped, this));
+  }
+
+  /** True when this parameter's domain is a circle with a usable span. */
+  get _wrapping() {
+    return this.wrap && this.type === PARAM_TYPE.CONTINUOUS && this.max > this.min;
+  }
+
+  /** Fold a value into [min, max), where max is the same place as min. */
+  _wrapValue(v) {
+    const s = this.max - this.min;
+    if (s <= 0) return this.min;
+    return this.min + ((((v - this.min) % s) + s) % s);
+  }
+
+  /**
+   * Shortest signed way round the circle from `from` to `to`.
+   *
+   * This is the whole point of `wrap`. Without it a slewed rotation driven by a
+   * ramp LFO reverses at the seam and crawls backwards through the entire wheel
+   * once per cycle, because 359 → 1 reads as a journey of −358 rather than +2.
+   */
+  _shortestTo(from, to) {
+    const s = this.max - this.min;
+    if (s <= 0) return 0;
+    const d = (((to - from) % s) + s) % s;
+    return d > s / 2 ? d - s : d;
+  }
+
+  /** Where a glide should actually aim, given it may cross the seam. */
+  _aimFrom(base) {
+    return this._wrapping ? base + this._shortestTo(this._wrapValue(base), this._target)
+                          : this._target;
+  }
+
+  /** Bring a freshly computed value back into range, by wrapping or clamping. */
+  _bound(v) {
+    return this._wrapping
+      ? this._wrapValue(v)
+      : Math.max(this.min, Math.min(this.max, v));
   }
 
   // Normalized value in [0, 1]
@@ -378,7 +424,10 @@ export class Parameter {
           this._slewFrom = this._value;
           this._slewK = 0;
         }
-        this._target = target; // defer to tickSlew
+        // Bound the target too: on a wrapping param an unfolded max (360 when
+        // the value folds to 0) would never compare equal, so the settled
+        // early-out in tickSlew could never fire.
+        this._target = this._bound(target); // defer to tickSlew
       } else {
         this._setModulated(target);
       }
@@ -420,13 +469,19 @@ export class Parameter {
       const curveStrength = SLEW_CURVE_HAS_STRENGTH[this.slewShape]
         ? Math.max(0, Math.min(3, this.slewStrength ?? 1))
         : 1;
+      //
+      // A wrapping parameter has no rails to fit against — the excursion simply
+      // goes round — so the fit is skipped entirely there and the aim is taken
+      // the short way round the circle.
       const ex = slewExcursion(this.slewShape, curveStrength);
-      const d = this._target - this._slewFrom;
+      const wrapping = this._wrapping;
+      const aim = this._aimFrom(this._slewFrom);
+      const d = aim - this._slewFrom;
       const mag = Math.abs(d);
       let k = this._slewK;
       let sUnder = 1;
 
-      if (ex.under > 0 && mag > 0) {
+      if (!wrapping && ex.under > 0 && mag > 0) {
         // Room on the far side of the start, i.e. against the direction of travel.
         const room = d > 0 ? this._slewFrom - this.min : this.max - this._slewFrom;
         sUnder = Math.min(1, Math.max(0, room) / (mag * ex.under));
@@ -439,9 +494,9 @@ export class Parameter {
       let f = curve(k, curveStrength);
       if (f < 0) {
         f *= sUnder;
-      } else if (f > 1 && ex.over > 0 && mag > 0) {
+      } else if (!wrapping && f > 1 && ex.over > 0 && mag > 0) {
         // Room beyond the target, in the direction of travel.
-        const room = d > 0 ? this.max - this._target : this._target - this.min;
+        const room = d > 0 ? this.max - aim : aim - this.min;
         const sOver = Math.min(1, Math.max(0, room) / (mag * ex.over));
         f = 1 + (f - 1) * sOver;
       }
@@ -479,28 +534,39 @@ export class Parameter {
       // some of it turns that into a visible bounce off the end stop: 1 frame.
       // Restitution follows Damp, so a springier spring bounces more springily
       // and a fully damped one (Damp 1) does not bounce at all.
+      // On a wrapping parameter there are no rails to hit: the ring just goes
+      // round, which is the nicest case of all. Aim is recomputed each substep
+      // relative to the spring's own position so the seam is invisible to it.
+      const wrapping = this._wrapping;
       const rest = Math.max(0, 1 - zeta);
       const lo = this.min;
       const hi = this.max;
       let x = this._slewX;
       let v = this._slewVel;
+      let aim = this._aimFrom(x);
       for (let i = 0; i < sub; i++) {
-        v += (-2 * zeta * omega * v - omega * omega * (x - this._target)) * h;
+        v += (-2 * zeta * omega * v - omega * omega * (x - aim)) * h;
         x += v * h;
-        if (x > hi) { x = hi; if (v > 0) v = -v * rest; }
-        else if (x < lo) { x = lo; if (v < 0) v = -v * rest; }
+        if (!wrapping) {
+          if (x > hi) { x = hi; if (v > 0) v = -v * rest; }
+          else if (x < lo) { x = lo; if (v < 0) v = -v * rest; }
+        }
       }
       this._slewVel = v;
+      // Folding x back each frame keeps it bounded through an endless spin
+      // without disturbing the dynamics: the aim is re-derived from the folded
+      // position next frame, so the displacement the spring sees is unchanged.
+      if (wrapping) { x = this._wrapValue(x); aim = this._aimFrom(x); }
       this._slewX = x;
-      next = x; // the caller clamps for display; the spring keeps the truth
+      next = x; // the caller bounds for display; the spring keeps the truth
       // Park it, same as 'ease', so the early-out can fire and the ring does
       // not idle forever a hair off the target.
       const span = this.max - this.min;
-      if (Math.abs(next - this._target) < span * 1e-5 &&
+      if (Math.abs(next - aim) < span * 1e-5 &&
           Math.abs(this._slewVel) < span * 1e-3) {
-        next = this._target;
+        next = aim;
         this._slewVel = 0;
-        this._slewX = this._target;
+        this._slewX = aim;
       }
     } else if (this.slewShape === "ease") {
       // Critically damped spring. Carrying VELOCITY across frames is what buys
@@ -512,26 +578,27 @@ export class Parameter {
       // simply trails it, so this is not a stepped-source-only mode.
       const dtc = Math.min(dt, 0.05); // frame hitches must not blow up the filter
       const omega = 2 / Math.max(0.001, this.slew); // ≈ settle time = slew
-      const x = this._value - this._target;
+      const aim = this._aimFrom(this._value);
+      const x = this._value - aim;
       const od = omega * dtc;
       const exp =
         1 / (1 + od + 0.48 * od * od + 0.235 * od * od * od);
       const temp = (this._slewVel + omega * x) * dtc;
       this._slewVel = (this._slewVel - omega * temp) * exp;
-      next = this._target + (x + temp) * exp;
+      next = aim + (x + temp) * exp;
       // Park the spring once it is inside float noise of the target, so the
       // early-out above can fire and we stop burning listeners forever.
-      if (Math.abs(next - this._target) < (this.max - this.min) * 1e-5 &&
+      if (Math.abs(next - aim) < (this.max - this.min) * 1e-5 &&
           Math.abs(this._slewVel) < (this.max - this.min) * 1e-3) {
-        next = this._target;
+        next = aim;
         this._slewVel = 0;
       }
     } else {
       // Exponential lag: approach target at rate 1/slew per second.
       const alpha = Math.min(1, dt / Math.max(0.001, this.slew));
-      next = this._value + (this._target - this._value) * alpha;
+      next = this._value + (this._aimFrom(this._value) - this._value) * alpha;
     }
-    const clamped = Math.max(this.min, Math.min(this.max, next));
+    const clamped = this._bound(next);
     if (clamped !== this._value) {
       this._value = clamped;
       this._listeners.forEach((fn) => fn(clamped, this));
@@ -6545,5 +6612,47 @@ export function registerCoreParameters(ps) {
     unit: "px",
   });
 
+  applyCircularParams(ps);
+  return ps;
+}
+
+/**
+ * Parameters whose domain is a CIRCLE: max and min are the same place.
+ *
+ * ONE canonical list, applied after registration rather than sprinkled through
+ * five hundred `ps.register` calls — and deliberately not a heuristic on
+ * `unit: '°'`, because several degree-valued params are emphatically not
+ * circular and wrapping them would be wrong:
+ *
+ *   scene3d.spin.x/y/z   °/s — a RATE. Wrapping a velocity is meaningless.
+ *   sdf.lightEl, sdf.orbitY, rutt.elev, effect.halfangle
+ *                        elevations and half-ranges, where the end of the
+ *                        range is a pole or a limit, not a seam.
+ *   scene3d.cam.fov, sdf.fov, scene3d.clone.twist
+ *                        bounded quantities that merely happen to be angles.
+ *
+ * Hues are included at both 0–360 and −180–180: a hue offset wraps just as a
+ * hue does. Everything here spans exactly one full turn.
+ */
+export const CIRCULAR_PARAM_IDS = [
+  // Hues
+  "keyer.chromahue", "palette.fg.hue", "palette.bg.hue", "feedback.hue",
+  "scene3d.mat.hue", "scene3d.mat.rimHue", "scene3d.mat.emissiveHue",
+  "sdf.hue", "sdf.glowHue2", "draw.color.h", "text.hue", "text.outlineHue",
+  "fg.hue", "bg.hue", "effect.vighue", "effect.outhue",
+  "effect.duohue1", "effect.duohue2", "rutt.hue",
+  // Rotations, azimuths and other full-turn angles
+  "scene3d.rot.x", "scene3d.rot.y", "scene3d.rot.z",
+  "sdf.orbitX", "sdf.lightAz", "sdf.kifsAngle",
+  "displace.angle", "displace.warpDrawAngle",
+  "text.rotation", "effect.rgbangle", "td.angle", "rutt.angle",
+];
+
+/** Mark the circular parameters. Safe to call twice. */
+export function applyCircularParams(ps) {
+  for (const id of CIRCULAR_PARAM_IDS) {
+    const p = ps.params.get(id);
+    if (p) p.wrap = true;
+  }
   return ps;
 }

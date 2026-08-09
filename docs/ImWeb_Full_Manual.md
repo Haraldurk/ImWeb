@@ -1897,7 +1897,35 @@ Back has **no Damp**, and that is deliberate rather than an omission: damping
 describes how a *ring* decays, and Back has no ring. It makes one excursion at
 each end and stops.
 
+### Circular parameters
+
+Hues and full-turn rotations have no ends — 360° and 0° are the same place.
+About thirty parameters are declared **circular**, and for them:
+
+- The value **wraps** instead of clamping. Past the top it reappears at the
+  bottom, so a rotation orbits endlessly rather than stopping at 360.
+- Every glide takes the **short way round**. Going from 350° to 10° travels
+  +20°, not −340°.
+- **Overshoot has nowhere it cannot go.** Elastic's ring and Back's excursion
+  pass straight through the seam, so the clipping described below simply does
+  not apply to them.
+
+That second point is not a nicety. Without it, a slewed rotation driven by a
+ramp LFO reversed at the seam and crawled backwards through the entire wheel
+once per cycle.
+
+Circular is a property of the parameter, not a setting — the topology of a hue
+is a fact rather than a preference — so there is nothing to switch on and
+nothing stored in a Display State.
+
+Deliberately **not** circular, even though they are measured in degrees:
+Spin X/Y/Z (those are degrees *per second* — a rate), the orbit and light
+**elevations** (where the end of the range is a pole, not a seam), and the
+field-of-view controls.
+
 ### What overshoot does at the ends of the scale
+
+*(Applies to bounded parameters. Circular ones, above, have no ends to hit.)*
 
 Elastic and Back deliberately travel past the target. A parameter cannot.
 

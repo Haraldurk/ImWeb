@@ -135,10 +135,11 @@ export class GestureArbitrator {
     if (!spinning) return;
     const mesh = this.sm?.mesh;
     if (mesh) {
-      const norm = (rad) => (((rad * 180 / Math.PI) % 360) + 360) % 360;
-      this.ps.set('scene3d.rot.x', norm(mesh.rotation.x));
-      this.ps.set('scene3d.rot.y', norm(mesh.rotation.y));
-      this.ps.set('scene3d.rot.z', norm(mesh.rotation.z));
+      // Degrees only — scene3d.rot.* are declared circular, so ps.set folds them.
+      const deg = (rad) => (rad * 180) / Math.PI;
+      this.ps.set('scene3d.rot.x', deg(mesh.rotation.x));
+      this.ps.set('scene3d.rot.y', deg(mesh.rotation.y));
+      this.ps.set('scene3d.rot.z', deg(mesh.rotation.z));
     }
     this.ps.set('scene3d.spin.x', 0);
     this.ps.set('scene3d.spin.y', 0);
@@ -233,11 +234,10 @@ export class GestureArbitrator {
       this._coastVY = 0;
       return;
     }
-    const wrap = (v) => ((v % 360) + 360) % 360;
     const ry = this.ps.get('scene3d.rot.y');
     const rx = this.ps.get('scene3d.rot.x');
-    if (ry) this.ps.set('scene3d.rot.y', wrap(ry.value + this._coastVX * dt));
-    if (rx) this.ps.set('scene3d.rot.x', wrap(rx.value + this._coastVY * dt));
+    if (ry) this.ps.set('scene3d.rot.y', ry.value + this._coastVX * dt);
+    if (rx) this.ps.set('scene3d.rot.x', rx.value + this._coastVY * dt);
     const f = Math.pow(COAST_FRICTION, dt * 60);
     this._coastVX *= f;
     this._coastVY *= f;
@@ -288,10 +288,11 @@ export class GestureArbitrator {
       const [cx, cy] = this._centroid();
       // Wrap, don't clamp: rotation is periodic, so folding the value back
       // into the 0–360 param range gives endless orbit instead of hitting
-      // the param bounds and stopping
-      const wrap = (v) => ((v % 360) + 360) % 360;
-      this.ps.set('scene3d.rot.y', wrap(this._baseRotY + (cx - this._startCX) * ORBIT_DEG_PER_PX));
-      this.ps.set('scene3d.rot.x', wrap(this._baseRotX + (cy - this._startCY) * ORBIT_DEG_PER_PX));
+      // the param bounds and stopping. That folding now lives on the parameter
+      // itself (CIRCULAR_PARAM_IDS), so controller-driven writes get it too —
+      // they used to clamp while these gesture paths wrapped.
+      this.ps.set('scene3d.rot.y', this._baseRotY + (cx - this._startCX) * ORBIT_DEG_PER_PX);
+      this.ps.set('scene3d.rot.x', this._baseRotX + (cy - this._startCY) * ORBIT_DEG_PER_PX);
 
       // Sample flick velocity (deg/s), lightly smoothed against jitter
       const now = performance.now();

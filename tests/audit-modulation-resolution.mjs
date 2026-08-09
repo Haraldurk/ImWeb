@@ -33,6 +33,7 @@
 
 import {
   ParameterSystem, Parameter, PARAM_TYPE, SLEW_CURVES, SLEW_SHAPES, slewExcursion,
+  registerCoreParameters, CIRCULAR_PARAM_IDS,
 } from '../src/controls/ParameterSystem.js';
 import { LFO } from '../src/controls/LFO.js';
 import { xmapHz, XMAP_HZ_MIN, XMAP_HZ_MAX } from '../src/controls/ControllerManager.js';
@@ -565,6 +566,99 @@ console.log('\nX-map → LFO rate is logarithmic and floored');
     Math.abs(xmapHz(0, 0.5, 4) - 0.5) < 1e-9 && Math.abs(xmapHz(1, 0.5, 4) - 4) < 1e-9);
   check('an inverted range degrades to a constant rather than NaN',
     Number.isFinite(xmapHz(0.5, 10, 1)), `got ${xmapHz(0.5, 10, 1)}`);
+}
+
+// ── 5f. Circular parameters wrap, and glide the SHORT way round ──────────────
+// A hue and a full-turn rotation have no ends: max and min are the same place.
+// Before this, a slewed rotation driven by a ramp LFO reversed at the seam and
+// crawled backwards through the entire wheel once per cycle, because 359 → 1
+// reads as a journey of −358 unless something knows the domain is circular.
+console.log('\ncircular parameters wrap and take the short way round');
+{
+  const rot = (wrap, shape = 'lag', slew = 0.3) => {
+    const ps = new ParameterSystem();
+    ps.register(new Parameter({
+      id: 'rot', type: PARAM_TYPE.CONTINUOUS, min: 0, max: 360, step: 1, value: 0, wrap,
+    }));
+    const p = ps.params.get('rot');
+    p.slew = slew;
+    p.slewShape = shape;
+    return p;
+  };
+  // A ramp LFO on a rotation is a continuous spin. It must never run backwards.
+  const spin = (p) => {
+    const lfo = new LFO({ shape: 'sawtooth', hz: 0.5 });
+    const v = [];
+    for (let i = 0; i < 300; i++) { p.setNormalized(lfo.tick(DT)); p.tickSlew(DT); v.push(p.value); }
+    return v;
+  };
+  // Count frames where the value moved backwards by a large amount that is NOT
+  // a seam crossing — i.e. genuinely reversed rather than wrapped.
+  const reversals = (v) => {
+    let n = 0;
+    for (let i = 1; i < v.length; i++) {
+      const d = v[i] - v[i - 1];
+      if (d < 0 && d > -180) n++;   // a wrap shows as ≈ −360, not a small step back
+    }
+    return n;
+  };
+
+  check('without wrap, a slewed spin DOES reverse at the seam (test is not vacuous)',
+    reversals(spin(rot(false))) > 20,
+    'if this passes cleanly the bug being guarded against is gone by other means');
+  for (const shape of ['lag', 'ease', 'elastic']) {
+    const n = reversals(spin(rot(true, shape)));
+    check(`with wrap, ${shape} never runs backwards through the wheel`, n === 0,
+      `${n} backward frames — the glide is taking the long way round the seam`);
+  }
+
+  // Wrapping arithmetic itself.
+  const p = rot(true);
+  check('a value past max reappears at min', p._wrapValue(370) === 10, `${p._wrapValue(370)}`);
+  check('a value below min reappears at max', p._wrapValue(-10) === 350, `${p._wrapValue(-10)}`);
+  check('max folds onto min', p._wrapValue(360) === 0, `${p._wrapValue(360)}`);
+  check('the short way from 350 to 10 is +20', p._shortestTo(350, 10) === 20,
+    `${p._shortestTo(350, 10)}`);
+  check('the short way from 10 to 350 is −20', p._shortestTo(10, 350) === -20,
+    `${p._shortestTo(10, 350)}`);
+  check('a half-turn resolves consistently rather than oscillating',
+    Math.abs(p._shortestTo(0, 180)) === 180);
+
+  // Overshoot has somewhere to go now, which is the whole point.
+  const e = rot(true, 'elastic', 0.5);
+  e.value = 350;
+  e.setNormalized(0);                       // target 0, arriving through the seam
+  const v = [];
+  for (let i = 0; i < 60; i++) { e.tickSlew(DT); v.push(e.value); }
+  check('elastic overshoots THROUGH the seam instead of clipping at it',
+    v.some((x) => x > 0 && x < 180), 'no value landed past the target on the far side');
+
+  // A non-wrapping parameter must be completely unaffected.
+  const flat = rot(false, 'lag');
+  flat.value = 350;
+  flat.setNormalized(0);
+  const w = [];
+  for (let i = 0; i < 60; i++) { flat.tickSlew(DT); w.push(flat.value); }
+  check('a bounded parameter still travels the long way, as it must',
+    w.every((x) => x <= 350 + 1e-9), 'a non-circular param must never wrap');
+
+  // The declared list must be real, and must be exactly one turn each.
+  const core = registerCoreParameters(new ParameterSystem());
+  const found = CIRCULAR_PARAM_IDS.map((id) => core.params.get(id));
+  check('every declared circular id exists',
+    found.every(Boolean),
+    `missing: ${CIRCULAR_PARAM_IDS.filter((id) => !core.params.get(id)).join(', ')}`);
+  check('every one is flagged wrap', found.every((q) => q && q.wrap));
+  check('every one spans exactly one full turn',
+    found.every((q) => q && q.max - q.min === 360),
+    `spans: ${[...new Set(found.filter(Boolean).map((q) => q.max - q.min))].join(', ')}`);
+  // The exclusions are the point of having a hand-written list at all.
+  for (const id of ['scene3d.spin.x', 'scene3d.spin.y', 'scene3d.spin.z',
+                    'sdf.lightEl', 'sdf.orbitY', 'scene3d.cam.fov', 'sdf.fov']) {
+    const q = core.params.get(id);
+    check(`${id} is NOT circular`, !q || !q.wrap,
+      'rates, elevations and bounded angles must not wrap — a pole is not a seam');
+  }
 }
 
 // ── 6. 'lag' is the default, so old saved states recall unchanged ────────────

@@ -74,7 +74,32 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
   Restitution follows Damp, so a springier spring rebounds further and a fully
   damped one does not bounce at all. A move that had headroom is unaffected.
 
+- **Circular parameters.** About thirty parameters — every hue and every
+  full-turn rotation — are now declared circular: `max` and `min` are the same
+  place. Their values wrap instead of clamping, and every glide takes the short
+  way round. Overshoot gains somewhere to go, so Elastic's ring and Back's
+  excursion pass through the seam rather than being clipped at it.
+
+  Declared per parameter alongside `min`/`max`/`step`, not user-editable and not
+  captured by Display States — the topology of a hue is a fact, not a
+  preference — so there is no migration and no saved-state churn.
+
+  Deliberately excluded despite being measured in degrees: `scene3d.spin.x/y/z`
+  (°/s, a rate), `sdf.lightEl` and `sdf.orbitY` (elevations, where the end of
+  the range is a pole rather than a seam), and the field-of-view controls.
+
+  This also collapses four hand-rolled `((v % 360) + 360) % 360` helpers in
+  `main.js` and `GestureArbitrator.js` into the one declared property.
+
 ### Fixed
+- **A slewed rotation or hue no longer runs backwards at the seam.** Every
+  human-driven path (drag, coast, gesture) already wrapped these parameters by
+  hand; the controller path did not, so the same parameter had two different
+  topologies depending on who drove it. With slew on, a ramp LFO crossing 360→0
+  read as a journey of −358, and the value crawled backwards through the entire
+  wheel once per cycle — `303 306 309 292 276 261 247 …` where it should have
+  read `351 354 357 0 3 6 9 …`. Glides now take the short way round.
+
 - **Back no longer stalls when a move starts on a rail.** Back dips below its
   start before setting off; beginning a move at `min` makes that impossible, and
   letting the clamp absorb it froze the value for **ten frames at 60 fps** — a
