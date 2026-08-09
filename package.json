@@ -12,7 +12,7 @@
     "prep-video": "node imweb-prep.js",
     "push-master": "git add public/Projects/MasterProject.imweb && (git diff --cached --quiet || git commit -m 'chore: update MasterProject') && git push origin HEAD:$(git symbolic-ref --short HEAD)",
     "install-hooks": "bash scripts/install-hooks.sh",
-    "test": "node tests/audit-source-resolution.mjs && node tests/audit-capture-base.mjs && node tests/audit-panel-coverage.mjs && node tests/audit-sdf-migration.mjs && node tests/audit-blend-percent.mjs && node tests/audit-gitignore-banks.mjs && node tests/audit-table-write-paths.mjs && node tests/audit-modulation-resolution.mjs &&node tests/audit-clip-space-winding.mjs && node tests/audit-halffloat-slew.mjs && node tests/audit-derived-defaults.mjs && node tests/audit-texture-upload-formats.mjs && node tests/audit-boot-buffer-size.mjs && node tests/audit-feedback-targets.mjs && node tests/audit-guide-targets.mjs"
+    "test": "node tests/audit-source-resolution.mjs && node tests/audit-capture-base.mjs && node tests/audit-panel-coverage.mjs && node tests/audit-sdf-migration.mjs && node tests/audit-blend-percent.mjs && node tests/audit-gitignore-banks.mjs && node tests/audit-table-write-paths.mjs && node tests/audit-modulation-resolution.mjs &&node tests/audit-clip-space-winding.mjs && node tests/audit-halffloat-slew.mjs && node tests/audit-derived-defaults.mjs && node tests/audit-texture-upload-formats.mjs && node tests/audit-boot-buffer-size.mjs && node tests/audit-feedback-targets.mjs && node tests/audit-guide-targets.mjs && node tests/audit-contextmenu-dismissal.mjs"
   },
   "dependencies": {
     "@codemirror/lang-cpp": "^6.0.3",

@@ -41,35 +41,60 @@ a **source**, and there are 33 of them.
 
 The whole instrument is three ideas:
 
-1. **Sources are routed**, not wired. Any source can feed any input.
+1. **Anything can feed anything.** A *source* is a picture the instrument can
+   produce. An *input* is a slot that wants a picture — Foreground, Background,
+   the displacement map, the keyer. Every slot accepts every source, and you
+   change what feeds a slot by picking a name from a menu. There are no cables
+   and nothing to connect.
 2. **Every value is a parameter**, and every parameter can be driven by
-   something else — an LFO, a knob, a key, the sound in the room.
+   something else — an automatic wobble, a knob, a key, the sound in the room.
 3. **The output is a source too**, so the picture can feed itself.
 
-The Basics track covers how to work the controls. The Principles track is six
-small patches that each demonstrate one of those three. Take them in order the
-first time.
+### Where to start
+
+The **Basics** track covers how to work the controls. The **Principles** track
+is six small patches, each one demonstrating a single idea from the list above.
+Go through them in order the first time.
 
 ## Finding anything: the two keys
 <!-- guide
 track: basics
-keys: ?, /
+keys: ?, ⌘K
 -->
 
 **`?`** opens the keyboard shortcut overlay — every key the instrument has.
 
-**`/`** opens parameter search. Type any part of a name, `↑`/`↓` to move,
-`Enter` to jump. The results are **live parameter rows**: you can drag and edit
-them right there without leaving the search. The **⌖** button on a result
-scrolls the real panel to it and flashes it.
+**`⌘K`** (`Ctrl`+`K` away from a Mac) opens parameter search. Type any part of a
+name, `↑`/`↓` to move, `Enter` to jump. `/` does the same thing on a US
+keyboard; on an Icelandic or other Nordic layout `/` is `Shift`+`7`, which the
+instrument has already spent on something else, so `⌘K` is the one to learn — it
+works on every layout.
 
-Learn `/` first. There are around a thousand parameters; nobody navigates that
-by memory, and the panel is organised for performing, not for finding.
+Use the mouse to adjust the results directly: each one is a working parameter
+row, so you can drag it, type into it, and hear what it does without leaving the
+search. The **⌖** button beside a result takes you to that parameter in the side
+panel, where you can also see everything that sits around it.
 
-The five tabs run left to right in signal order — **Sources · Mix · Effects ·
-Output · Project**. Click any section header to collapse or expand it; the
-**⊟/⊞** button does all of them at once. If a panel looks empty, you are looking
-at a collapsed header.
+There are around a thousand parameters. Nobody navigates that many by memory,
+which is why this is the first thing to learn.
+
+### The side panel
+
+Everything else lives in the panel down the side of the screen. Its five tabs
+run left to right in signal order — **Sources · Mix · Effects · Output ·
+Project**. The big editors (3D, Analog, Draw, Live GLSL) are not permanent tabs:
+open one from its row and it appears as an extra tab alongside these, then goes
+away again when you close it.
+
+The panel is grouped for playing rather than for looking things up: every
+control belonging to one machine sits together in one place, so a section can be
+long and the thing you want can be several headings down. That is the trade —
+quick to reach once you know where it lives, slow to hunt through when you do
+not. Search is the shortcut for the second case.
+
+Click any section header to collapse or expand it, and any sub-heading to fold
+away the rows under it; the **⊟/⊞** button does all of them at once. If a panel
+looks empty, you are looking at a collapsed header.
 
 ## The parameter row
 <!-- guide
@@ -85,16 +110,18 @@ Every row is the same shape, and learning it once is learning the whole panel:
                                         [── slider ──]
 ```
 
-Two of these gestures are not what you would guess:
-
-- **Drag the row left/right** to change the value. Horizontal, not vertical —
-  about 200 px covers the full range. Vertical scrolls the panel instead.
+- **Drag anywhere on the row, left and right**, to change the value. Sideways,
+  not up and down — about 200 px of travel covers the whole range. Dragging up
+  or down scrolls the panel instead, so if the value is not moving, check which
+  way your hand is going.
 - **Double-click resets to default.** To *type* a number, **Ctrl+click
   (⌘+click) the value**, then `Enter`. `Esc` cancels.
-- **Alt+wheel** over a row is a fine adjust — 1% of range per notch, 5% with
-  `Shift` held.
-- The **thin slider** underneath is the same value, absolute instead of
-  relative. On a tablet, a fast flick coasts to a stop.
+- **`⌥`+scroll wheel** over a row is a fine adjust — 1% of the range per notch,
+  5% with `Shift` held. `⌥` is the **alt** / **option** key, immediately left of
+  the space bar on a Mac keyboard.
+- The **thin slider** underneath is the same value again, but absolute instead
+  of relative: click a spot on it and the value jumps there. On a tablet, a fast
+  flick coasts to a stop.
 
 Toggles and triggers take a plain **click** anywhere on the row. Selects with
 eight options or fewer are a button strip; longer lists are a dropdown.
@@ -110,14 +137,23 @@ range** — the span something driving this parameter will sweep. They are not
 the parameter's hard limits, and changing them does not change the current
 value.
 
-- **Drag a min/max field up/down** to adjust it — vertical here, 0.1 per pixel,
-  `Shift` for one parameter step per pixel.
+- **Drag a min/max field up and down** to adjust it. Up and down here — the two
+  little numbers are their own targets, and only the row itself drags sideways.
+  0.1 per pixel, `Shift` for one parameter step per pixel.
 - **Double-click** to type. `Enter` commits, `Esc` cancels.
 - A field that has been moved off its default shows highlighted.
 
-This is where most of the musicianship lives. An LFO on a parameter whose range
-is the full 0–100 is a special effect; the same LFO on 40–46 is a texture. Set
-the range first, then assign the controller.
+The range is what decides whether something reads as an effect or as texture.
+Say you put an **LFO** on a parameter — a *low-frequency oscillator*, which is
+just a slow automatic wobble that sweeps a value up and down, over and over,
+without you touching it. Leave the range wide open at 0–100 and every cycle
+drags the parameter across its entire span: big, obvious, unmistakably an
+effect. Narrow the range to 40–46 and the identical wobble now only nudges the
+value a few percent: the picture keeps moving, but it reads as the image
+breathing rather than as something being done to it. The LFO did not change.
+Only the amount of room you gave it did.
+
+Set the range first, then assign the controller.
 
 ## Giving a parameter a controller
 <!-- guide
@@ -125,12 +161,19 @@ track: basics
 point: displace.amount, displace.angle
 -->
 
-**Right-click any row** (long-press on a tablet) to open the assignment menu.
-The list is long; the ones to know first:
+**Right-click any row** to open its **assignment menu** — the list of things
+that can move that parameter for you instead of your hand. On a Mac trackpad
+with no right button, **Ctrl+click** or a two-finger click opens the same menu;
+on a tablet, press and hold.
+
+The menu offers many, and you can ignore most of them at first. These are the
+ones worth knowing:
 
 - **Random** — a new value at a chosen rate, with slew to smooth the jumps.
-- **LFO Sine / Triangle / Saw ↑ / Saw ↓ / Square / S&H** — a shape at a chosen
-  frequency.
+- **LFO Sine / Triangle / Saw ↑ / Saw ↓ / Square / S&H** — a *low-frequency
+  oscillator*: an automatic wobble in a chosen shape, at a chosen speed. Sine
+  glides, Square flips between two values, S&H jumps to a new random one each
+  beat.
 - **MIDI Learn** — then move a knob on your controller and it binds itself.
   (**MIDI CC…** if you would rather type the number.)
 - **Sound Level / Bass / Mid / High** — the room drives the parameter.
@@ -153,8 +196,9 @@ track: basics
 point: displace.amount
 -->
 
-**Right-click the badge** (or Ctrl+click, or long-press) to open its settings —
-a small dark panel next to the badge, closed with `Esc` or a click outside.
+**Right-click the badge** to open its settings — a small dark panel next to the
+badge, closed with `Esc` or a click anywhere outside it. **Ctrl+click** and
+long-press work here too, so a trackpad with no right button reaches everything.
 
 What is in it depends on the controller: **Rate** and **Slew** for Random;
 **Shape**, **Freq**, **Phase** and **Slew** for an LFO; **Value** for Fixed. All
@@ -176,6 +220,10 @@ A controller produces a number from 0 to 1. A **response curve** reshapes that
 number before it reaches the parameter — so an LFO can spend most of its time
 near the bottom and snap through the top, or ease at both ends.
 
+A curve only has anything to reshape once the parameter has a controller, so
+assign one first — the previous two steps — and then come back here to hear the
+difference.
+
 Curves are drawn in **Project ▸ Response Curves** and assigned per parameter
 from the row's right-click menu (**Assign Table…**) or the badge popover's
 **Table** field. One curve can be shared by many parameters, and there is a
@@ -196,16 +244,21 @@ A **Display State** is a snapshot of the whole instrument.
 
 - **`Shift`+`S`** saves the current look to the next empty slot.
 - **`0`–`9`** recall states 0 to 9. The state bar along the bottom has the rest.
-- **Morph** (bottom right) sets how long a recall takes. At 0 it cuts; at two
-  seconds every parameter slides, and recalling states becomes a performance
-  move rather than a reset.
+- **Morph** (bottom right) sets how long a recall takes. At 0 the picture cuts
+  straight to the new state. At two seconds every parameter slides from where it
+  is now to where the saved state puts it, so the two looks bleed through each
+  other on the way across — the transition itself becomes something you can play
+  with, instead of a switch you flip.
 
 Do this the moment something works. Rebuilding a patch from memory takes far
 longer than you expect, and the state bar is the fastest instrument in the
 program.
 
-Banks, project save/load and the state step sequencer are all on the **Project**
-tab. Projects are `.imweb` files; individual states are `.imstate`.
+Banks, project save/load and the **state step sequencer** are all on the
+**Project** tab. The step sequencer walks through your saved states in order on
+a clock, holding each for a set number of beats — so with Morph turned up, a
+row of saved looks plays itself while your hands are somewhere else. Projects
+are `.imweb` files; individual states are `.imstate`.
 
 ## The performance keys
 <!-- guide

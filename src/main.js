@@ -1445,8 +1445,27 @@ async function main() {
   document.querySelectorAll(".subsection-header").forEach((hdr) => {
     hdr.addEventListener("click", (e) => {
       if (e.target.tagName === "BUTTON") return;
-      hdr.closest(".panel-subsection")?.classList.toggle("collapsed");
+      const wrap = hdr.closest(".panel-subsection");
+      wrap?.classList.toggle("collapsed");
       hdr.classList.toggle("collapsed");
+      // Not every subsection has a .panel-subsection wrapper — Effects, LUT and
+      // several others are a bare header followed by sibling blocks. Those got
+      // the arrow (it is CSS on the header alone) and nothing else, so the
+      // heading flipped ▾→▸ while the rows stayed put, which reads as broken
+      // rather than as unsupported. Collapse the run of siblings up to the next
+      // heading instead. Guarded on `wrap` so wrapped subsections keep using
+      // the CSS rule and cannot be hidden twice by two mechanisms.
+      if (wrap) return;
+      const collapsed = hdr.classList.contains("collapsed");
+      let sib = hdr.nextElementSibling;
+      while (
+        sib &&
+        !sib.classList.contains("subsection-header") &&
+        !sib.classList.contains("section-header")
+      ) {
+        sib.classList.toggle("subsection-hidden", collapsed);
+        sib = sib.nextElementSibling;
+      }
     });
   });
 
@@ -4816,8 +4835,11 @@ async function main() {
     bufferSection.insertBefore(capRow, bufferCanvas ?? null);
   }
 
-  // Click to select frame
+  // Click to select frame. Ctrl+click belongs to the slot context menu below —
+  // macOS delivers this click on the release of that gesture, and selecting a
+  // different frame was not what the user was reaching for.
   bufferCanvas?.addEventListener("click", (e) => {
+    if (e.ctrlKey || e.metaKey) return;
     const rect = bufferCanvas.getBoundingClientRect();
     const { cols, cw, ch } = gridLayout();
     const mx = (e.clientX - rect.left) * (CANVAS_W / rect.width);
@@ -4955,15 +4977,17 @@ async function main() {
     _bufSlotMenu.style.top = `${Math.min(y, window.innerHeight - 140)}px`;
     _bufSlotMenu.classList.remove("hidden");
 
-    setTimeout(
-      () =>
-        document.addEventListener("click", _hideBufSlotMenu, { once: true }),
-      0,
-    );
+    // pointerdown outside, not click — this menu opens from `contextmenu`,
+    // which macOS fires on the mousedown of a Ctrl+click, so a click-based
+    // closer shut it again the moment the button came back up. Not `once`
+    // either: a pointerdown INSIDE the menu must not spend the listener.
+    document.addEventListener("pointerdown", _hideBufSlotMenu, true);
   }
 
-  function _hideBufSlotMenu() {
+  function _hideBufSlotMenu(e) {
+    if (e && _bufSlotMenu.contains(e.target)) return;
     _bufSlotMenu.classList.add("hidden");
+    document.removeEventListener("pointerdown", _hideBufSlotMenu, true);
   }
 
   ps.get("buffer.fs1").onChange(refreshBufferGrid);
@@ -5995,6 +6019,33 @@ void main() {
       .querySelectorAll(".psearch-item")
       .forEach((el) => el._psUnsub?.());
     searchRes.innerHTML = "";
+
+    // An empty result list used to render as a blank box, which reads as a
+    // broken filter rather than as an honest "nothing matches" — the Active
+    // chip is empty on a fresh session by definition, and that is the first
+    // chip most people press. Say which filter is doing the hiding.
+    if (!all.length) {
+      const EMPTY = {
+        active:   "No parameter has a controller yet. Right-click (or Ctrl+click) any row to assign one.",
+        modified: "Every parameter is still at its default value.",
+        lfo:      "No parameter is driven by an LFO yet.",
+        midi:     "No parameter is bound to MIDI yet.",
+        sound:    "No parameter is driven by the sound input yet.",
+        mouse:    "No parameter is driven by the mouse yet.",
+        assigned: "No parameter uses one of the other controller types yet.",
+      };
+      const hint = document.createElement("div");
+      hint.className = "psearch-empty";
+      hint.textContent =
+        q && _searchFilter !== "all"
+          ? `Nothing matching “${query}” in this filter.`
+          : q
+            ? `Nothing matching “${query}”.`
+            : (EMPTY[_searchFilter] ?? "Nothing to show.");
+      searchRes.appendChild(hint);
+      return all;
+    }
+
     all.forEach((p, i) => {
       // Reuse the same row builder as the main param panels — gives inline
       // drag/toggle/select/dblclick-reset editing directly in the results.
@@ -6106,6 +6157,19 @@ void main() {
   // ── Keyboard shortcuts ────────────────────────────────────────────────────
 
   window.addEventListener("keydown", (e) => {
+    // ⌘K / Ctrl+K — parameter search, the layout-independent way in. Must sit
+    // ABOVE the modifier guard below. `/` is unreachable on Nordic layouts
+    // (there it is Shift+7, which Shift+1–8 clip select claims first) and `þ`
+    // is a workaround only an Icelandic user would ever find, so neither is a
+    // key the tour can honestly tell everyone to press. Matched on e.code so
+    // the physical K works whatever the layout prints on it.
+    if (e.code === "KeyK" && (e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey) {
+      e.preventDefault();
+      if (searchEl && !searchEl.classList.contains("hidden")) closeParamSearch();
+      else openParamSearch();
+      return;
+    }
+
     if (e.metaKey || e.ctrlKey) return;
 
     // Teletext sub-page navigation — before focus guard so arrows work when UI inputs have focus
@@ -8703,10 +8767,26 @@ if (window.matchMedia("(pointer: coarse)").matches) {
 // dev reloads before any click are unaffected. iOS Safari/WebKit ignores
 // beforeunload entirely — there the CSS overscroll-behavior lockdown is the
 // only in-page defense against gesture navigation.
-window.addEventListener("beforeunload", (e) => {
+const _unloadGuard = (e) => {
   e.preventDefault();
   e.returnValue = ""; // legacy Chrome requires returnValue to show the prompt
-});
+};
+window.addEventListener("beforeunload", _unloadGuard);
+
+// ...but not for a reload the dev server itself asked for. The comment above is
+// right that the guard cannot fire before any click — and wrong about what that
+// buys, because a development session is nothing but clicks. After the first
+// one, every source edit becomes a "Reload site?" dialog to dismiss by hand:
+// Vite full-reloads on save, the guard fires, and the count over an afternoon
+// runs to dozens. Drop the guard for that one reload only. A genuine Cmd+W,
+// swipe-back or address-bar reload still gets it, in dev exactly as in
+// production, and `import.meta.hot` is undefined in a build so this whole block
+// is stripped from the shipped bundle.
+if (import.meta.hot) {
+  import.meta.hot.on("vite:beforeFullReload", () =>
+    window.removeEventListener("beforeunload", _unloadGuard),
+  );
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Boot

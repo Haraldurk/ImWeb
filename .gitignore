@@ -152,6 +152,10 @@ vite.config.ts.timestamp-*
 !.claude/skills/
 !.claude/agents/
 !.claude/settings.json
+# launch.json is commands and ports — identical on every clone, no /Users paths,
+# no secrets. Untracked, each fresh clone left an agent to pick a dev port for
+# itself, and it picked one that collided with the maintainer's own server.
+!.claude/launch.json
 
 # Backups
 index_v4_working_do_not_touch.html
