@@ -116,7 +116,12 @@ readbacks are dead by construction:
   ```
 
   Navigating with a fresh query string (`?cb=<something new>`) forces the issue.
-  Better: iterate on a dev server, which has no hashed dist to go stale.
+
+  Do NOT answer this by starting a dev server of your own — `guard-dev-server.sh`
+  blocks that, and for a better reason than this one is worth: a second port is a
+  second origin, so presets, warp slots and API keys saved on the owner's :5173
+  read as missing and the whole thing looks like an app bug. Rebuild and
+  cache-bust instead.
 
 The general rule: **identical readings across a control that visibly moves means
 the READBACK is dead, not the control.** Fall back to the screenshot tool.
