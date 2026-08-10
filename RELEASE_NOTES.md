@@ -1,113 +1,127 @@
-# ImWeb v0.18.0 — The Way In
+# ImWeb v0.19.0 — The Second Pair of Hands
 
-*Released 2026-08-07*
+*Released 2026-08-10*
 
-A release about getting in. The guided tour ships, the documentation gets a
-front door, and the one control the tour asks you to touch first has been made
-to behave the way the tour always said it did.
+The guide describes a parameter with a controller on it as "a second pair of
+hands that never gets tired and never gets bored". This release is about those
+hands: being able to *assign* one at all, and the shape of how it moves once
+assigned.
 
-Most of what follows was found by reading the panel rather than by running the
-tests. The suite was green throughout — including while the tour pointed at a
-control nobody could reach, and while a knob that saved, recalled and MIDI-mapped
-perfectly moved nothing at all.
+Both halves came from someone else using the instrument. The slew work started
+from a report that slow LFOs stuttered; the reachability work started from a beta
+tester who could not assign a single controller and said so.
 
-## The guided tour
+---
 
-**27 steps in three tracks**, opened with `⇧G`, the new `?` menu, or the button
-on the first-run splash.
+## Ctrl+click reaches the controller menus
 
-- **Basics** (9) — the panel, the parameter row, what min and max actually mean,
-  assigning and editing a controller, response curves, states and morph, the
-  performance keys.
-- **Principles** (6) — small patches, three or four moves each, one idea apiece:
-  a composite is two layers; any source can drive any other; any parameter can
-  be driven; the output is a source; time is an axis you point at; then all five
-  in one patch.
-- **Instruments** (12) — the machines.
+If your pointer has no secondary button — every Mac trackpad at its default
+settings — you could open the assignment menu and never reach an item in it. It
+closed the instant you let go.
 
-**It points; it never sets.** Each step names its targets and gives you a chip
-per name that switches to the owning tab, expands the collapsed section, scrolls
-the row into view and flashes it. Your hand moves the control. A tour that set
-values would wreck a patch someone was halfway through, and it teaches nothing,
-because the hand that moved the control was not theirs.
+macOS fires `contextmenu` on the **mousedown** of a Ctrl+click and then still
+delivers a `click` on the release, so a close-on-outside-click handler shuts the
+menu before it can be used. Four surfaces had it: the parameter assignment menu,
+the controller badge popover, the state tile menu and the Stills Buffer slot
+menu. Between them, that is the entire controller-assignment grammar plus the
+state bar.
 
-The content is one markdown file, `docs/ImWeb-Guide.md`, parsed at runtime —
-readable on GitHub, sendable as an email, editable without touching JavaScript.
+Two of those did worse than close. A state tile's plain click **recalls the
+state**, so Ctrl+clicking a tile to reach *Save here* or *Export* jumped the
+whole instrument to that state, mid-performance. A buffer cell selected a
+different frame.
 
-## A Help menu
+It survived years of daily use because it is invisible from the inside: a
+button-2 press emits no `click` at all, so anyone with two-finger secondary click
+enabled — which is every maintainer — can never reproduce it. It took an outside
+tester on a default trackpad.
 
-A **`?` button in the status bar**: Guided Tour, Keyboard Shortcuts, Quick Start,
-Quick Reference, Full Manual, About.
+`tests/audit-contextmenu-dismissal.mjs` now enforces the rule: pair the close
+gesture with the phase the open gesture used.
 
-This is the first release in which the documentation has a persistent front door.
-The splash offers the tour once per browser and then never again, and the manual
-links used to live at the bottom of the AI provider settings panel — nobody
-configuring an API key is looking for a guided tour.
+## Slew curves
 
-## Blend Amt is a three-stop crossfade
+Slew gains a response curve, set in the badge popover or by appending a word to
+Set Slew (`0.4 bounce`). The menu is in two groups because the split is
+structural rather than cosmetic:
 
-`0 %` Background alone → `50 %` the blend mode at full strength → `100 %`
-Foreground alone. **The default is now 50 %**, the centre detent.
+- ***Any source*** — **Lag**, **Ease in/out**, **Elastic**. Filters, with no
+  clock and no fixed endpoint, so they behave the same on a stepped source and a
+  swept one.
+- ***Stepped sources*** — timed curves running from a captured start to the
+  target over exactly the slew time. That clock is the only way to overshoot,
+  ring or bounce, and also the limitation: on a continuously sweeping source they
+  add ripple instead of removing it.
 
-It was a plain layer opacity, which is what every compositing program means by
-the word, but it left no way to fade the Background out at all — with `Screen`
-at 100 % the Background was still plainly there. One knob now fades out either
-layer with the blend in the middle, which is what the tour had been describing
-all along.
+**Elastic** is an underdamped spring rather than the textbook `easeOutElastic`,
+which covered **39% of the whole move in its first frame** at 60 fps — a snap
+with a wobble after it, and the one curve in the set that did not ease in at all.
+It now bounces off `min` and `max` instead of pressing flat against them, which
+is where S+H lands most often. **Back** no longer stalls for ten frames when a
+move starts on a rail. Both gained **Strength**, and Elastic a **Damp**.
 
-Only the Foreground layer takes the new curve. The Background's control is a
-**self-process** — it blends the Background against itself, a tone treatment of
-one picture rather than a meeting of two — and it is now labelled as one instead
-of masquerading as a second blend mode. The two amounts also moved out of Layer
-Color to sit with the mode they scale, under `SOURCE` / `BLEND` column captions.
+## Modulation that is actually slow
 
-### If you have saved work
+- **Rate floor is now 0.001 Hz** — one cycle per ~17 minutes.
+- **Slow modulation no longer stutters.** `step` was doing double duty as the UI
+  drag increment *and* a value quantum, so a 0.001 Hz sine moved the value on 4
+  frames out of 600 while the fps counter read a healthy 60. Controller-driven
+  writes bypass sub-unit snapping now; integer steps still snap.
+- **X-Map onto an LFO's rate is logarithmic**, over 0.05–20 Hz. Linear put every
+  rate under 0.5 Hz inside the bottom 2.5% of the travel.
+- **Phase** did nothing on a free-running LFO. It does now.
 
-Layer blend amounts moved from `0–1` to `0–100 %`. Every `.imweb`, `.imbank`,
-`.imstate` and stored bank migrates automatically on load, controller recall
-bounds included.
+## Finding things, on any keyboard
 
-Foreground values scale by 50 rather than 100, because the old maths was exactly
-the first half of the new curve — so a patch saved at full blend lands on the
-50 % detent at full blend, not at 100 % showing a raw Foreground.
+**`⌘K` / `Ctrl+K`** opens parameter search whatever your layout. `/` cannot work
+on Nordic keyboards — there it is `Shift`+`7`, which clip select claims first —
+and the `þ` alias was only ever discoverable by accident. Matched on the physical
+key, so it follows the key rather than the character printed on it.
 
-Checked against the factory project and bank: 108 values, every one landing on
-the blend detent. **Nothing you have saved should look different.** What changes
-is where the knob travels the next time you move it.
+An empty filter now says *why* it is empty. *Active* on a fresh session is empty
+by definition, and it is the first chip most people press.
 
-## Fixes
+## The guided tour, rewritten from tester notes
 
-- **The Background's blend amount had never done anything.** The self-blend
-  hardcoded its strength, so a control that was registered, documented, captured
-  by Display States and MIDI-mappable moved nothing at all.
-- **Touching a slider disabled the performance keys.** Any focused input killed
-  every single-key shortcut, and every parameter slider is one — so a single
-  click silenced `q` / `a` / `z` / `v` / `m` for the rest of the session. It read
-  as "the keys don't work on this tab", the tab being whichever one you happened
-  to touch a slider on.
-- **The service worker could invent a network failure.** Unguarded cache lookups
-  meant a storage hiccup surfaced as a bare `Failed to fetch` with no status
-  behind it, indistinguishable from the server being down.
-- **The service worker was failing to install on the deployed site.** Its app
-  shell listed development-only paths against an all-or-nothing cache call, so a
-  single missing file rejected the entire install and the worker never activated.
-  Offline support has been broken in production longer than anyone noticed.
-- **Documentation is served network-first**, so an edited manual reaches a reader
-  who has already opened the old one. It was previously cached indefinitely.
-- **`ImWeb_Quick_Start.md`** was served to readers but left out of the docs sync,
-  so the copy inside the app had been quietly drifting from the edited one.
-- **Tour corrections.** Principle 1 claimed the blend amount crossfaded one
-  picture into the other, and never mentioned that the default `Copy` mode
-  bypasses the blend entirely — so following the step exactly left the control
-  inert. `g` was documented as cycling three canvas modes when there are five,
-  and the warp-drawing step asked for the wrong one.
+Rewritten wherever a first-time reader got lost: source and input each defined
+plainly instead of "routed, not wired"; **LFO** expanded on first use; the drag
+directions disambiguated (the row drags sideways, the min/max fields vertically);
+`⌥` named as the alt/option key and located on the keyboard; the state step
+sequencer described rather than alluded to.
+
+The tour's highlight is visible now. It was one 1.6 s pulse of the same yellow
+that already means "this row has a controller", so it both said the wrong thing
+and vanished into the rows that are legitimately yellow. Three pulses of blue
+over 2.6 s, with an outline and a glow.
+
+Sub-headings in **Effects** and **LUT** collapse when you click the arrow. They
+had been flipping the arrow and moving nothing, which reads as broken rather than
+as unsupported.
 
 ## Under the hood
 
-`tests/audit-blend-percent.mjs` covers the migration end to end: the conversion,
-the version stamp that gates it, every file format's read and write path, the
-curve's three endpoints, and the guarantee that the shared blend material is
-never left holding a stale curve uniform. It was confirmed to fail with each
-fault injected rather than merely passing on correct code.
+`tests/audit-contextmenu-dismissal.mjs` was confirmed to fail with each of seven
+faults injected rather than merely passing on correct code: four
+`pointerdown`→`click` reversions, both modifier guards removed, and an unreviewed
+listener appended.
 
-The suite is 240 assertions.
+---
+
+## Upgrading
+
+No project or state file changes. `.imweb`, `.imbank` and `.imstate` files from
+v0.18.0 load unchanged.
+
+The service worker cache is bumped to `imweb-v0.15`. **If you self-host, deploy a
+fresh `npm run build`** — a returning visitor's browser serves the cached
+`index.html` until that constant changes, and a stale one points at a bundle hash
+that no longer exists on disk.
+
+## Credits
+
+Reachability and guide feedback from a beta tester working on an M1 MacBook Air
+with an Icelandic keyboard, who found in one afternoon what the project had
+walked past for a year.
+
+ImWeb is a reimagining of *Image/ine* by Tom Demeyer and Steina Vasulka
+(STEIM Amsterdam, 1997/2008). See [CREDITS.md](CREDITS.md).

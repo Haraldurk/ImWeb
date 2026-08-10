@@ -8,6 +8,13 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
 
 ## [Unreleased]
 
+---
+
+## [0.19.0] — 2026-08-10 — The Second Pair of Hands
+
+Everything here is the controller layer: being able to *assign* one, and the
+shape of how it moves once assigned.
+
 ### Added
 - **`⌘K` / `Ctrl+K` opens parameter search on any keyboard layout.** `/` is
   unreachable on Nordic layouts — there it is `Shift`+`7`, which clip select
