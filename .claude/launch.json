@@ -21,26 +21,22 @@
         "--strictPort"
       ],
       "port": 4174
-    },
-    {
-      "_comment": [
-        "Agent dev server, deliberately NOT the one you run on 5173.",
-        "Isolated so automation cannot recall states, assign LFOs or edit",
-        "params in a live session someone is working in — driving 5173 would",
-        "do exactly that. Its own port also means its own origin, so it cannot",
-        "touch your saved presets or slot contents (both per-origin).",
-        "Preferred over vite preview for iterating: no rebuild step, and no",
-        "hashed dist to serve a stale bundle from cache. Verify against",
-        "imweb-preview before shipping, per CLAUDE.md.",
-        "BROWSER=none stops Vite's server.open from popping a window."
-      ],
-      "name": "imweb-dev-agent",
-      "runtimeExecutable": "sh",
-      "runtimeArgs": [
-        "-c",
-        "BROWSER=none npx vite --port 5175 --strictPort"
-      ],
-      "port": 5175
     }
+  ],
+  "_comment": [
+    "Preview servers ONLY. Do not add a dev-server entry here.",
+    "",
+    "`.claude/hooks/guard-dev-server.sh` blocks a second Vite dev server on any",
+    "port but the owner's 5173, because a different port is a different origin:",
+    "API keys, GLSL user presets and warp slots saved on 5173 read as missing,",
+    "and that looks like an app bug rather than like two servers. See LEARNED.md",
+    "2026-07-12, which cost a session to a 'test-connection paradox' that was",
+    "config split across two ports.",
+    "",
+    "An entry here would route around that hook, which only sees Bash — the",
+    "preview_start tool does not go through it. `vite preview` is the sanctioned",
+    "path and is isolated from the owner's session anyway. It costs a rebuild",
+    "per change; the stale-bundle trap that comes with hashed dist filenames is",
+    "written up in the verify skill."
   ]
 }
