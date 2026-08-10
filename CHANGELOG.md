@@ -1766,7 +1766,7 @@ the device itself as a controller.
   and a fullscreen zero-height guard). Pre-existing (present at `bdbe955`).
   Commit `ae1e661`.
 
-## [0.9.0] — 2026-06-15
+## [0.9.0] — 2026-06-15 — The Noise Family
 
 ### Added
 - feat(shaders): uSwirl added to PsrdWarp — gradient vs curl warp blend;
@@ -1942,7 +1942,7 @@ the device itself as a controller.
 - **Stills Buffer slot count docs corrected** — 1–64 via a configurable 8×8
   grid (default 4×4=16), not 4–32 as previously documented. Commit `003240c`.
 
-## [0.8.9] — 2026-05-12
+## [0.8.9] — 2026-05-12 — Banks That Remember
 
 ### Fixed
 
@@ -1960,7 +1960,7 @@ the device itself as a controller.
 - **Splash screen** shows MasterProject load status on first launch only
 - **Bundled Models section** added to 3D tab for URL-based public asset loading
 
-## [0.8.8] — 2026-05-06
+## [0.8.8] — 2026-05-06 — Second Screen & Save Repairs
 
 ### Fixed
 
@@ -1969,7 +1969,7 @@ the device itself as a controller.
 - **Second screen → black output** — DPR change handled with `matchMedia` listener re-registration; added `webglcontextlost` / `webglcontextrestored` handlers to recover gracefully from GPU context loss (45fbaa04)
 - **MasterProject not auto-pushed** — `npm run push-master` script added; optional post-commit hook available via `npm run install-hooks`; workflow documented in CLAUDE.md (726e0c0)
 
-## [0.8.7] — 2026-04-29
+## [0.8.7] — 2026-04-29 — Per-Layer Blend & Feedback
 
 ### Changed
 
@@ -2025,7 +2025,7 @@ the device itself as a controller.
 
 ---
 
-## [0.8.5] — 2026-04-16
+## [0.8.5] — 2026-04-16 — Analog TV & CRT (Phase 1)
 
 ### Added
 - **Analog TV & CRT Simulation (Phase 1)** — Dedicated 720x480 internal render target for stable performance; includes 4:3 cropping and base signal color grading (hue, saturation, brightness, contrast); routed as a standard Layer Source.
@@ -2046,7 +2046,7 @@ the device itself as a controller.
 
 ---
 
-## [0.8.4] — 2026-04-16
+## [0.8.4] — 2026-04-16 — Hypercube Faces
 
 ### Added
 - **Hypercube pipeline texture on faces (Session 2)** — `HypercubeFaces.js` now uses `ShaderMaterial` with `uFaceTexture` to sample the real-time pipeline texture onto hypercube faces; added `hypercube.faces.active` and `hypercube.faces.opacity` parameters with UI controls; corrected all hypercube parameter registrations in `main.js` to use the valid single-object `ps.register({})` form, fixing a critical bug where parameters were stored under `undefined`.
@@ -2060,28 +2060,28 @@ the device itself as a controller.
 
 ---
 
-## [0.8.3] — 2026-04-16
+## [0.8.3] — 2026-04-16 — Hypercube 2-Cell Faces
 
 ### Added
 - **Hypercube 2-cell face rendering (Session 1)** — Added `generate2CellFaces(dim)` to `HypercubeGeometry.js` returning corners and axes for all $C(dim,2) \cdot 2^{dim-2}$ faces; introduced `HypercubeFaces.js` using `InstancedMesh` of `PlaneGeometry` with zero-allocation optimizations; wired into `HypercubeObject.js` for real-time centroid/normal/size computation; 4D hypercube now correctly renders 24 rotating faces.
 
 ---
 
-## [0.8.2] — 2026-04-16
+## [0.8.2] — 2026-04-16 — Screen-Space Edge Width
 
 ### Added
 - **Real screen-space hypercube edge width** — Replaced `LineSegments` with quad `Mesh` (2 triangles per edge) for true variable-width lines (0.5–8.0 px); implemented per-edge quad buffers (`_quadEndABuf`, `_quadEndBBuf`, etc.) with zero per-frame allocation; vertex shader performs screen-space extrusion perpendicular to edge direction; added `uResolution` uniform sync and `DoubleSide` rendering.
 
 ---
 
-## [0.8.1] — 2026-04-16
+## [0.8.1] — 2026-04-16 — Hypercube Edge Width
 
 ### Added
 - **Hypercube edge width shader (Session 1)** — Replaced `LineBasicMaterial` with `ShaderMaterial` on hypercube edges; `uEdgeWidth` uniform wired through `_lineMat` and updated per-frame; added `setEdgeWidth()` public setter (0.5–8.0 clamp); `hypercube.edgeWidth` parameter registered and UI slider added.
 
 ---
 
-## [0.8.0] — 2026-04-16
+## [0.8.0] — 2026-04-16 — The Hypercube Engine
 
 ### Added
 - **N-D Hypercube engine (4D–12D)** — 60fps performance at 12D; vertex/edge generation, Givens projection, morph state machine with 5 easing functions; permanent Float32/Float64 buffers with zero per-frame allocation; `_colorsDirty` GPU gate; `MAX_DIM` draw range; circular points shader; vertex pub/sub
@@ -2094,7 +2094,9 @@ the device itself as a controller.
 
 ---
 
-## [Unreleased] — Noise System Overhaul (D1)
+## Unversioned — Noise System Overhaul (D1)
+
+*Shipped somewhere in the 0.8.x–0.9.0 window; never attached to a release.*
 
 ### Added
 - feat(scene3d): HypercubeInstancer — InstancedMesh at hypercube vertex positions, geo types sphere/box/cone/torus/octahedron, scale, opacity controls
@@ -2112,7 +2114,7 @@ the device itself as a controller.
 - fix(scene3d): emissive forced white when texture active on adopted mesh
 - fix(scene3d): feedback loop guard bypassed for adopted instancer mesh
 
-## [0.61.0] — 2026-04-14
+## [0.6.1] — 2026-04-14 — Banks & States
 
 ### Added
 - **Program > Bank > State Hierarchy:** Completely overhauled the UI and mental model to standard performance software hierarchy. "Presets" are now "Banks", and "Display States" are now "States".
@@ -2146,7 +2148,17 @@ the device itself as a controller.
 
 ---
 
-## [0.7.0] — 2026-04-10
+## [0.7.1] — 2026-04-11 — The Timewarp Buffer
+
+### Added
+- **SequenceBuffer timewarp mode** — slit-scan temporal buffer, absorbs VasulkaWarp concept. New params: `seq${n}.mode` (Loop/TimeWarp), `tw.axis`, `tw.flip`, `tw.speed`, `tw.mix`, `tw.offset`, `tw.warp`
+- **Temporal density control** — `tw.speed` governs columns per frame: speed=1 → 1 col/frame (~21 s range at 60 fps); speed=3600 → 1 col/second (~21 hr range)
+- **Strip RT persistence via IndexedDB** — timewarp strip saves automatically on project save, restores on project load; slit-scan state survives page reloads across sessions
+- **VasulkaWarp deprecated** — kept in codebase for compatibility, removed from UI and signal path
+
+---
+
+## [0.7.0] — 2026-04-10 — Text, Materials & the Vasulka Warp
 
 ### Added
 - **Text animation system** — `text.rate` + `text.autoplay` auto-advance clock (LFO/MIDI/sound-assignable); `text.animMode` (Bounce/Wave/Fade/Typewriter), `text.animSpeed`, `text.animAmt`; `text.contentIdx` indexes multi-line textarea content, MIDI/LFO-driveable
@@ -2171,17 +2183,7 @@ the device itself as a controller.
 
 ---
 
-## [0.7.1] — 2026-04-11
-
-### Added
-- **SequenceBuffer timewarp mode** — slit-scan temporal buffer, absorbs VasulkaWarp concept. New params: `seq${n}.mode` (Loop/TimeWarp), `tw.axis`, `tw.flip`, `tw.speed`, `tw.mix`, `tw.offset`, `tw.warp`
-- **Temporal density control** — `tw.speed` governs columns per frame: speed=1 → 1 col/frame (~21 s range at 60 fps); speed=3600 → 1 col/second (~21 hr range)
-- **Strip RT persistence via IndexedDB** — timewarp strip saves automatically on project save, restores on project load; slit-scan state survives page reloads across sessions
-- **VasulkaWarp deprecated** — kept in codebase for compatibility, removed from UI and signal path
-
----
-
-## [0.6.0] — 2026-04-05
+## [0.6.0] — 2026-04-05 — The Movie Rack
 
 ### Added
 - **Auto-load clips from `_imweb_ready/`** — on startup ImWeb reads `_imweb_ready/manifest.json` and loads all listed clips automatically; `imweb-prep.js` writes/updates the manifest after each conversion run
@@ -2208,7 +2210,7 @@ the device itself as a controller.
 
 ---
 
-## [0.5.1] — 2026-04-05
+## [0.5.1] — 2026-04-05 — Touch Projection Mapping
 
 ### Added
 - **Touch-optimised projection mapping** — 64px handles (up from 40px, meets Apple HIG minimum); `<meta viewport user-scalable=no>`; `touch-action:manipulation` on body prevents iOS scroll bounce; handles always visible when projmap active (no hover dependency)
@@ -2217,7 +2219,7 @@ the device itself as a controller.
 
 ---
 
-## [0.5.0] — 2026-04-05
+## [0.5.0] — 2026-04-05 — The SDF Generator
 
 ### Added
 - **SDF Generator Phase 3** — camera navigation (camX/Y/Z, lookAt matrix), KIFS fractal folding (kifsIter 0–5, kifsAngle), op mode (Soft Union / Soft Cut / Morph), video luma displacement (lumaWarp, lumaThresh), animation speed, triplanar video texturing (texBlend), AO + step-count glow, HSV colour (hue/sat/val), glass refraction + Fresnel, dedicated texture routing (texSrc / refractSrc decoupled from pipeline FG/BG layers)
@@ -2231,7 +2233,7 @@ the device itself as a controller.
 
 ---
 
-## [0.4.2] — 2026-04-04
+## [0.4.2] — 2026-04-04 — Cloner & SDF Beginnings
 
 ### Added
 - **3D Cloner / MoGraph** — InstancedMesh clone mode for any 3D geometry; count, spread, wave animation, WaveShape (Sine/Square/Triangle/Sawtooth), WaveAmp, WaveFreq, Twist, Scatter, CloneScale, ScaleStep (progressive taper on positions + wave height); all MIDI/LFO-assignable
@@ -2241,7 +2243,7 @@ the device itself as a controller.
 
 ---
 
-## [0.4.1] — 2026-04-03
+## [0.4.1] — 2026-04-03 — Movie Transport
 
 ### Added
 - **Movie reverse playback** — negative `MovieSpeed` now steps frames backward manually (browser rejects negative `playbackRate`)
@@ -2255,7 +2257,7 @@ the device itself as a controller.
 
 ---
 
-## [0.4.0] — 2026-03-20
+## [0.4.0] — 2026-03-20 — 3D Depth as a Source
 
 ### Fixed (2026-03-30)
 - **Duplicate material params** — removed double-append to #material-params in UI.js; bulk sections loop is now the single source of truth
@@ -2285,7 +2287,7 @@ the device itself as a controller.
 
 ---
 
-## [0.3.0] — 2026-03-19
+## [0.3.0] — 2026-03-19 — Sequencers & Second Monitor
 
 ### Added
 - **Sequencer buffers** — 3 independent sequence recorders; variable frame count (4–480 frames), per-seq source selector, VRAM estimate hint
@@ -2335,7 +2337,7 @@ the device itself as a controller.
 
 ---
 
-## [0.2.0] — 2026-03-18
+## [0.2.0] — 2026-03-18 — Camera, Movies & Buffers
 
 ### Added
 - **Movie clip playback** — load video files; speed, position scrub, loop range, mirror; up to 8 clips; Shift+1–8 to select
@@ -2352,7 +2354,7 @@ the device itself as a controller.
 
 ---
 
-## [0.1.0] — 2026-03-18  *(initial build)*
+## [0.1.0] — 2026-03-18 — Initial Build
 
 ### Added
 - **Core compositing pipeline** — Three.js WebGL render targets; foreground, background, and displace-source layers
