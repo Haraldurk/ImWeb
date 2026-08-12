@@ -175,23 +175,38 @@ Reasons: zero-install distribution, shareable URL, modern GPU pipeline access, f
 ## Architecture summary
 
 ```
-INPUT SOURCES (22+)
-Camera · Movies · Stills Buffer · Color · Color2 (gradient, animated)
-Text · Draw · Noise (38 types) · 3D Scene · 3D Depth · Sound · SlitScan
-Particles · Vectorscope · Delay · BG1/BG2 stills · Output (feedback)
-SDF Generator · Analog TV (CRT simulation)
+INPUT SOURCES (33 — canonical list is SOURCE_DEFS, append-only)
+Camera · Movie A · Movie B · Buffer · Color · Color2 (gradient, animated)
+Noise (38 types) · Draw · Text · 3D Scene · 3D Depth · SDF · SDF Depth
+Output (feedback) · BG1 · BG2 · Sound · Delay · Scope · SlitScan
+Particles · Seq1/2/3 · Warp Tape · TimeDisp · Analog · Rutt-Etra
+RGB Delay · Motion · Mix 1 · Mix 2 · Mix 3
+
+        ↓ any source routable into ↓
+
+Mix 1 | Mix 2 | Mix 3      (free srcA/srcB per bus — a bus is a graph
+                            node, not a hardwired crossfader, and buses
+                            are themselves sources)
 
         ↓ assigned to ↓
 
 Foreground | Background | DisplaceSrc
 
-        ↓ 20-pass effects chain ↓
+        ↓ fixed pre-chain ↓
 
 FG/BG CC → TransferMode → Displace → Keyer → ChromaKey → WarpMap
-→ Blend/Feedback (Refactored) → ColorShift → Pixelate → Edge → RGBShift
-→ Kaleidoscope → QuadMirror → Posterize → Solarize → Vignette → Bloom
-→ Levels → LUT3D → WhiteBalance → PixelSort → FilmGrain → Interlace
-→ Fade → Custom GLSL → Output
+→ Blend/Feedback
+
+        ↓ 23-effect reorderable chain (DEFAULT_FX_ORDER, Pipeline.js) ↓
+
+pixelate → edge → sharpen → rgbshift → wave → lens → polar
+→ kaleidoscope → quadmirror → flip → posterize → solarize → halftone
+→ duotone → vignette → bloom → outhsv → levels → lut → whitebal
+→ pixelsort → grain → interlace
+
+        ↓ fixed post-chain ↓
+
+Fade → Custom GLSL → Output
 
         ↓
 
@@ -275,9 +290,9 @@ All pixel operations run as GLSL shaders on GPU render targets via Three.js WebG
 - ✓ **Movie reverse playback** — negative MovieSpeed seeks frames backward
 - ✓ **Live GLSL editor** — custom shader pass with uParam1–4 bindings
 - ✓ **BPM tap tempo** — click status bar, or `t` key
-- ✓ **Parameter search overlay** — `/` key
+- ✓ **Parameter search overlay** — `/` key, and `⌘K` / `Ctrl+K` on any keyboard layout (v0.19)
 - ✓ **Parameter lock** — prevent controller from overwriting value
-- ✓ **Slew/lag** — per-parameter smoothing time
+- ✓ **Slew/lag** — per-parameter smoothing time; seven curves as of v0.19 (see below)
 - ✓ **Drag-and-drop** — video files → clips, images → buffer, models → 3D scene
 - ✓ **N-D Hypercube** — 4D to 12D projection engine; face rendering; vertex instancer
 - ✓ **Analog TV & CRT** — 720x480 stable internal RT; signal grading
@@ -286,6 +301,28 @@ All pixel operations run as GLSL shaders on GPU render targets via Three.js WebG
 - ✓ **38 Noise Types** — Classic, Structured, Geometric, Signal, Fractal, Fluid categories
 - ✓ **Text Animation** — Typewriter/Wave/Fade/Bounce modes; auto-advance clock
 - ✓ **Per-layer Blend refactor** — FG.blend composites over BG; feedback.mode TransferMode
+
+### Added since v0.9 (2026-06 → 2026-08)
+
+*The list above was written at v0.8.7. Everything below arrived in the v0.9–v0.19
+arc; see the Implementation roadmap and Session log for detail.*
+
+- ✓ **Three mix buses** — free srcA/srcB selection, double-buffered so a bus reading a later bus sees last frame
+- ✓ **Dual movie decks** — Movie A/B engines, Deck B rack UI, idle-deck upload gating
+- ✓ **Movie Library** — drag a row onto either deck; a rack is bounded by bytes (~837 MB), not slots
+- ✓ **Performative warp drawing** — draw the warp on the main canvas; 16 slots, 8 presets, slot fade
+- ✓ **Live GLSL overhaul** — persistence, user presets, insert routing, VJ uniform contract, AI shader generation, `glsl.preset` MIDI recall
+- ✓ **Draw arc** — Pointer Events with pressure, draw on the output canvas, 4-slot stroke looper, Stroke→LFO driver, video-as-ink
+- ✓ **Rutt-Etra scan processor** — 23 controls; the Vasulka scan-processor lineage made routable
+- ✓ **Spacetime / the Warp family** — a source selector on every temporal engine; Time Displace angle + map source; Warp Tape scrubbing; Video Delay Line depth
+- ✓ **Motion Extraction** and **RGB Channel Delay** — one control spanning both classical motion methods
+- ✓ **Effects chain opened up** — Polar, Wave, Halftone, Duotone, Lens added; four the codebase already had, now routed; All FX / Clear All FX
+- ✓ **Device motion controllers** — orientation and acceleration as controller sources
+- ✓ **Seven slew curves** — Lag, Ease in/out, Elastic (spring, bounces off min/max), Super Ease in/out, Exponential, Bounce, Back (with Strength)
+- ✓ **LFO rates to 0.001 Hz** — the slow-LFO "stutter" was step quantization at 60fps, not frame rate
+- ✓ **Help menu and guided tour** — one markdown file; the tour points, it never sets
+- ✓ **Touch & ergonomics** — flick momentum, touch value entry, unified long-press, mobile state pad, live-performance safety
+- ◻ **Audio half** — designed 2026-08-12, `ImWeb-Audio-Blueprint.md`. **No code exists.**
 
 ## Technology stack
 
