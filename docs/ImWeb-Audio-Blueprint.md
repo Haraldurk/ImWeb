@@ -228,6 +228,8 @@ routing choice, not two kinds of program. Running a Voice and committing — ren
 the next four seconds into a partition — is *freezing*, and it is a real
 instrumental move.
 
+How a snippet is authored, and why the worklet never sees text: §4.9.
+
 ### 4.5 The spectrogram is a writer, not the tape
 
 Painted or imported frequency-time image → **inverse-transformed once, at write
@@ -307,6 +309,86 @@ is far too large to be the default.
 Run the `state-capture-auditor` agent before any of this ships. This is the bug class
 that fails silently on reload, on another machine, and on another origin.
 
+### 4.9 Voice authoring — the worklet executes graphs, never text
+
+**Text → graph on the client. Graph → message → executed by the worklet.**
+
+This is the one structural decision in Voice authoring. Everything else can arrive
+later; this cannot be retrofitted.
+
+#### Why the GLSL safety model does not transfer
+
+**There is no watchdog on the audio thread.** The last-good-compile fallback protects
+against *syntax* errors, and both failure modes that actually matter here compile
+fine:
+
+- An **infinite loop** in `process()` kills the audio thread permanently — not a
+  glitch, but silence for the rest of the set, unrecoverable without a reload.
+- An **allocation in the inner loop** — one array literal, one string concat — puts
+  GC on the audio thread. This is the real source of granular crackle, and it is
+  invisible until it is loud.
+
+On the video side neither matters: a pathological shader is killed by the driver
+watchdog and costs a frame. There is no audio equivalent. Any design that evaluates
+user text inside the worklet inherits a hazard with no counterpart in the half of
+the instrument that already exists.
+
+Mechanically, `addModule()` is also one-way — registered processors cannot be
+unregistered, so compiling each snippet edit into a new processor accumulates across
+a set. That route is unavailable for live coding regardless of the safety argument.
+
+#### The SuperCollider precedent
+
+**SuperCollider does not run user code in the audio thread.** sclang evaluates on the
+language side and what evaluation *produces* is a SynthDef — a graph of unit
+generators. That graph goes to scsynth, which executes pre-compiled UGens. User code
+runs once, at graph-build time, never per sample.
+
+That is why SC survives three hours of live coding. The safety is not bolted on; it
+falls out of the same client-server split already committed to in §4.1.
+
+#### What this buys
+
+- **The editor is CodeMirror, reused**, with the same last-good-compile discipline.
+  Evaluating text is a main-thread act: it may be slow, it may throw, it may loop
+  forever, and it hangs only the UI.
+- **The fallback becomes total rather than partial.** Bad text never reaches the audio
+  thread at all; the previous graph keeps running. Strictly stronger than the GLSL
+  case.
+- **Cost is predictable.** A graph's per-sample cost is known before it runs, so the
+  instrument can *refuse* to fade in a snippet that would blow the budget, instead of
+  dropping out mid-phrase.
+- **Both destinations fall out.** A graph has no notion of realtime: drive it at 1×
+  to the output and it is a Voice; drive it as fast as possible into a partition and
+  it is a Synth Zone (§4.4).
+- **It answers part of the protocol question.** A graph is exactly what the message
+  vocabulary should carry — text in, graph across, execute there.
+
+#### Honest costs
+
+Defining the UGen set is the real work, and it is where the sound actually lives — a
+mediocre oscillator and filter set will sound mediocre under any architecture. Graphs
+are awkward for sample-accurate feedback, conditional structure and recursion; SC has
+exactly this awkwardness and it would be inherited. And even a small language is a
+project; a bad one is worse than raw JS.
+
+An escape hatch is possible — a `Custom` node taking a bounded, loop-free expression
+compiled to a closure — but leave it out initially. SC users live inside UGens
+without experiencing it as a cage.
+
+#### Sequencing
+
+**Voices do not need text authoring on day one, and arguably should not have it.**
+
+The zone model is already an instrument with no user code: recording, load, spectral
+render, playback with direction and skip patterns, corpus navigation by drawing. Add
+a small fixed set of parameterized generators — noise, an oscillator bank, a granular
+reader — exposed as ordinary parameters, and every existing controller (LFO, random
+with slew, MIDI, response tables, device motion) drives them for free.
+
+That yields a playable instrument, and it reveals which UGens are actually reached
+for before a language is designed around guesses.
+
 ---
 
 ## 5. Rejected paths
@@ -326,6 +408,9 @@ Recorded so they are not rediscovered.
 | User-created, user-named partitions | A captured index would resolve to a different partition on another machine — the `warpSlot` / `glsl.preset` failure. Fixed indexed slots, names as labels. |
 | Mid-set partition resizing | Relocates live material for a gesture nobody performs. Clearing and reassigning cover the real need and need no relayout. |
 | Choosing rolling *or* static tape | False choice. A ring-configured partition sits beside static ones. |
+| User text evaluated inside the worklet | No watchdog on the audio thread. An infinite loop is silence for the rest of the set; an inner-loop allocation is GC crackle. Both compile cleanly, so the last-good-compile fallback does not catch either. See §4.9. |
+| `addModule()` per snippet edit | Registered processors cannot be unregistered; definitions accumulate across a set. |
+| Text authoring for Voices in the first pass | The zone model plus a few parameterized generators is already playable. Designing a UGen set before knowing which ones get reached for is designing around guesses. |
 
 ---
 
@@ -338,13 +423,15 @@ rather than merely settling it — the envelope representation removed the case 
 `SharedArrayBuffer` entirely, and fixed indexed partition slots replaced the
 user-named list.
 
+Voice authoring, opened and resolved the same day, moved to §4.9 — the worklet
+executes graphs and never sees text, because the audio thread has no watchdog and the
+last-good-compile fallback cannot catch an infinite loop or an inner-loop allocation.
+
 What genuinely remains, none of it blocking, all still at the prose stage:
 
-1. **How is a Voice authored?** Reuse the CodeMirror editor and its last-good-compile
-   fallback, a restricted DSL, or something else? The fallback discipline is
-   non-negotiable whatever the answer — the instrument must not stop when you type
-   something wrong, which is JITLib's core insight and already the rule on the GLSL
-   side.
+1. **The UGen set** — the real work, and where the sound actually lives (§4.9). To be
+   derived from which generators get reached for in the pre-text instrument, not
+   designed up front.
 2. **Sample rate and channel count.** One of each throughout (§4.3). Device output
    rate varies; committing to a fixed internal rate means resampling at the edges.
 3. **How many partition slots**, and how many zones per type. RoSa's answer was 128
@@ -354,7 +441,8 @@ What genuinely remains, none of it blocking, all still at the prose stage:
    instruments sharing a gesture (§4.6); whether they share a *widget* is a UI
    question, not an architectural one.
 5. **The protocol vocabulary itself** — pending the RoSa v2 Implementation manual
-   (§2). Do not invent one before reading it.
+   (§2). Do not invent one before reading it. Note that §4.9 already fixes part of
+   its shape: graphs travel over it.
 
 ---
 
