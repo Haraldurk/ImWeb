@@ -545,13 +545,15 @@ list said nothing here was, which was wrong once §8.1 landed:
 1. **The UGen set beyond phase one.** §4.10 records the six-item starting hypothesis
    and where quality actually lives; the set beyond it is still to be derived from
    what gets reached for, not designed up front.
-2. **ANSWERED in §8.7 — what clocks audio-relevant parameters.** ParameterSystem ticks from rAF, which a
-   hidden tab suspends while the worklet keeps running — sound continues, modulation
-   freezes (§4.10). Either minimal LFO/envelope UGens run in the worklet, accepting
-   the duplication, or the parameter tick is driven from the audio clock when audio
-   is active. The latter is better architecturally — the audio thread never suspends
-   and is sample-accurate — but it changes how ParameterSystem ticks, which is not a
-   small claim.
+2. **ANSWERED in §8.7 — what clocks audio-relevant parameters.** ParameterSystem
+   ticks from rAF, which a hidden tab suspends while the worklet keeps running —
+   sound continues, modulation freezes (§4.10). **Answered by neither of the two
+   options originally listed here.** Running worklet-side LFO/envelope UGens
+   duplicates the controller layer, and driving the tick from the audio clock leaves
+   the freeze intact because evaluation still happens on a throttled thread. §8.7
+   takes the third option: the client describes the controller, the worklet evaluates
+   it, and for controllers feeding audio the worklet is authoritative and echoes
+   values back.
 3. **Sample rate and channel count.** One of each throughout (§4.3). Device output
    rate varies; committing to a fixed internal rate means resampling at the edges.
 4. **How many partition slots**, and how many zones per type. RoSa's answer was 128
@@ -844,3 +846,37 @@ Three costs specific to this:
 **Rejected: compile when possible, fall back to `new Function` when not.** Two
 evaluation paths for one feature is exactly where the costs above say bugs live, and
 the fallback would keep the wedge alive.
+
+#### Controller phase, capture, and the re-send trap
+
+Moving evaluation to the worklet makes running controller phase worklet-resident
+state, which §4.8's capture story does not cover. Two separate things, and only one
+of them is new.
+
+**Phase is already ephemeral across captures, and stays that way.**
+`captureState()` (`src/controls/ParameterSystem.js:778`) stores `p.value` and
+nothing else; controller *configs* are serialized separately (`src/state/Preset.js:89`,
+`:101`). Running LFO phase is stored nowhere today. So a Display State recalled
+mid-set has never restored the phase the performer was hearing, and the move to the
+worklet inherits that rather than causing it.
+
+**Decision: controller phase remains ephemeral across captures.** Recorded as a
+decision rather than left implicit, because §4.8 exists precisely to catch state that
+silently differs after reload. Capturing phase would mean a Display State that
+restores *where an oscillator was*, which sounds desirable and is not: recalling a
+state would then rewind every modulation to a stored moment rather than continuing
+from the present, and morph between states would have to interpolate a wrapping
+quantity. The `phase` field in a controller config is an **offset**, is config, and
+is captured; the running value is not.
+
+**The new hazard is the re-send, not the capture.** After the move, restoring a state
+re-sends controller descriptions to the worklet. If the worklet treats *receiving a
+description* as *starting that controller*, then every state recall resets every LFO
+to zero — which is a regression, because today `restoreState()` writes param values
+and leaves running LFOs untouched.
+
+**Rule: a re-sent controller description is an update, not a restart.** Phase
+survives a description that changes rate, shape, table or slew. Retriggering stays a
+separate explicit message, mirroring `ControllerManager.retriggerLFOs()`
+(`src/controls/ControllerManager.js:439`), which exists as the deliberate path and is
+already what the beat-detect branch calls when BPM moves.
