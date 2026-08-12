@@ -562,12 +562,17 @@ list said nothing here was, which was wrong once §8.1 landed:
    surface is the existing draw surface or a separate one. They are deliberately two
    instruments sharing a gesture (§4.6); whether they share a *widget* is a UI
    question, not an architectural one.
-6. **The protocol vocabulary itself** — pending the RoSa v2 Implementation manual
-   (§2). Do not invent one before reading it. Note that §4.9 already fixes part of
-   its shape: graphs travel over it. Two more items belong in it: how the envelope
-   (§4.2) is refetched on zoom or resize — resampling a fixed-resolution min/max view
-   is lossy, so a zoomed view probably has to ask the worklet for that span — and how
-   a render writer reports progress while chunking across quanta (§8.3).
+6. **ANSWERED in §8.8 — the protocol vocabulary itself.** This item said "pending the
+   RoSa v2 Implementation manual (§2); do not invent one before reading it." **That
+   precondition cannot be met and the item is unblocked by its own impossibility** —
+   the manual only ever shipped inside `RoSa v2.zip`, which is gone from steim.org
+   and whose single Internet Archive capture (2015-09-20) is a 408 with no body. See
+   §8.8's preamble. The waiting was also worth less than it looked: §4.1 asked for
+   RoSa's protocol *shape* — buffer, zones, zone types, OSC-style addresses — and
+   that shape is stated on RoSa's own public page, which is where the manual would
+   have added detail rather than direction. §8.8 drafts the vocabulary, including the
+   two items this entry named: envelope refetch on zoom or resize, and render-writer
+   progress across quanta (§8.3).
 7. **Freeze continuity.** §4.4 makes freezing a running Voice into a partition an
    instrumental move, and §8.3 makes the render chunked. So while the graph renders
    across quanta, does the live Voice keep sounding from its own state, and are the
@@ -888,3 +893,224 @@ which exists as the deliberate path and is already what tap tempo and the
 beat-detect branch call. So Display State recall must emit that message alongside
 the re-sent descriptions — otherwise the update-not-restart rule silently drops
 the recall-retriggers-LFOs behavior the instrument has today.
+
+### 8.8 Item 6 answered — the protocol vocabulary
+
+#### The manual is not coming
+
+§6 item 6 said *do not invent one before reading the RoSa v2 Implementation manual*.
+That instruction is now void, and it is worth recording why so nobody spends another
+session looking.
+
+`www.steim.org/software/RoSa/` was an Apache autoindex holding **exactly one file** —
+`RoSa v2.zip`, 1.5 MB, 04-May-2015. There was never a standalone manual URL; both the
+reference and implementation manuals shipped inside that archive, which is what the
+page means by "using the download link." The zip is 404 on every live host and scheme
+variant today, and the Internet Archive holds a single capture of it —
+`20150920051100`, status **408**, 418 bytes — a crawler timeout that stored no
+content. Wayback successfully archived nearly every other STEIM binary (junXion
+v4.1/v5.2/v5.38, LiSa X v1.25, LiSa 2.56, BigEye, the junXion boX and Spider
+manuals); RoSa v2.zip is the one that failed. The remaining routes are social, not
+technical: STEIM's contact page, or Frank Baldé, LiSa's developer and almost
+certainly RoSa's — RoSa replaces LiSa's engine, and junXion, named on RoSa's page as
+a client, is also his. *(Not Tom Demeyer — his STEIM work was Big Eye and Image/ine,
+the video side. Worth stating because the ImWeb lineage makes him the obvious guess
+and he is the wrong one.)*
+
+**The blocker was less load-bearing than it looked.** §4.1 asked to adopt RoSa's
+protocol *shape* — buffer, zones, zone types, OSC-style addresses — and all four are
+stated on RoSa's public page. A manual would have supplied argument-level detail for
+an engine we are not building; the direction was never in doubt. What follows is
+therefore an ImWeb vocabulary in RoSa's shape, not a reconstruction of RoSa's.
+
+#### Seven rules, then the addresses
+
+The addresses matter less than the rules. Address lists get extended by whoever needs
+a message; the rules are what keep the extension from quietly voiding §4.1.
+
+**1. Every message must be representable as OSC 1.0.** Addresses are OSC-legal paths;
+arguments are `i` `f` `s` `b` `T` `F` and nothing else. No JS objects, no `Map`, no
+closures, no structured-clone-only shapes. *Test: could this message go over UDP to
+another machine, unchanged?* This is the only thing that keeps §4.1's
+transport-agnosticism honest. A protocol that is "transport-agnostic" but passes an
+object graph `postMessage` happens to accept is not transport-agnostic, it is a local
+API with an aspiration attached — and the 2002 two-machine deployment mode is the
+thing that stops being available.
+
+**2. Two channels: control and bulk.** Control messages are small and OSC-shaped.
+Bulk payloads — a spectral render in, a tape dump out, an envelope span, a table —
+travel as transferables at zero copy (§4.1), each announced by a control message that
+carries its correlation id. Over a network transport bulk degrades to an OSC blob and
+a copy. That cost is real and is stated here rather than discovered later.
+
+**3. No ImWeb identifier ever crosses the boundary.** This is §4.1's zero-imports test
+applied to the wire. The tempting design is a general `/param/set <name> <value>`
+backdoor, and it makes the boundary fake: the engine would then have to know ImWeb's
+namespace, and `ps.get()` inside the worklet becomes a refactor away rather than a
+rule away. Instead the client allocates an **opaque integer slot** for each
+audio-relevant controller and binds it to an engine-side target address once. The
+engine knows the integer and the target; `displace.warpDrawAmt` never travels. Echoes
+(§8.7) come back keyed by that integer.
+
+**4. A re-sent description is an update, not a restart.** §8.7 establishes this for
+controllers; it is promoted here to a protocol-wide invariant covering zones, graphs,
+partitions and taps. Restart, retrigger, reset and clear are always separate explicit
+verbs. The reason generalizes as cleanly as the rule: any receiver that infers "start
+over" from "received a description" makes every unrelated field update a hidden
+retrigger, and the bug is inaudible until the one recall where it matters.
+
+**5. Addresses carry indices and fixed type tokens — never names.** §4.3 fixed
+partitions to indexed slots because a captured user-named index means a different
+partition on another machine, the `displace.warpSlot` and `glsl.preset` failure. The
+same reasoning applies to every address segment. Labels are client-side presentation
+and do not travel.
+
+**6. Client→engine is imperative; engine→client is observational.** The engine never
+initiates a request. It answers, echoes, and reports progress. The one request/reply
+pair (envelope spans, below) is client-initiated and correlated by id.
+
+**7. Engine→client traffic is rate-limited and aggregated to frame cadence.** One
+echo message per frame carrying all slots, not one per slot; one progress message per
+frame per job, not one per quantum. The failure this prevents is a render that
+finishes in 200 ms flooding the port with progress nobody displays.
+
+#### The address space
+
+```
+/engine/hello        <proto:i>                        → /engine/ready | /engine/refuse
+/engine/tape/alloc   <seconds:f>
+/engine/panic
+
+/tape/env/req        <start:i> <end:i> <cols:i> <reqId:i>
+/tape/env/data       <reqId:i> <start:i> <end:i> <cols:i> <b>      [engine→client]
+/tape/env/dirty      <start:i> <end:i>                             [engine→client]
+
+/part/<slot>/bounds  <start:i> <len:i>
+/part/<slot>/ring    <T|F>
+/part/<slot>/clear
+
+/zone/<type>/<i>/part    <slot:i>
+/zone/<type>/<i>/region  <startRel:f> <lenRel:f>
+/zone/<type>/<i>/unsafe  <T|F>
+/zone/<type>/<i>/on | /off
+/zone/play/<i>/rate      <f>            (negative = reverse)
+/zone/rec/<i>/dynamic    <T|F>
+/zone/synth/<i>/render   <graph:i> <startRel:f> <len:i> <job:i>
+
+/graph/def   <graph:i> <b>              flat topologically-sorted node list
+/graph/free  <graph:i>
+/voice/<i>/graph <graph:i>
+
+/ctrl/<slot>/target    <address:s>      bind once
+/ctrl/<slot>/desc      <type:s> <...> <table:i>
+/ctrl/<slot>/retrigger
+/ctrl/<slot>/clear
+/ctrl/echo   <b>                        packed [slot:u16, value:f32]  [engine→client]
+/table/<id>/data <b>                    16384 × f32
+/expr/<id>/code  <b>                    compiled instruction list
+
+/job/<id>/progress <done:i> <total:i>                              [engine→client]
+/job/<id>/done | /job/<id>/error <code:i> <msg:s>                  [engine→client]
+/job/<id>/cancel
+
+/tap/src     <mic | master | zone/<type>/<i>>
+/bus/out/gain <f>   /bus/out/limit <thresh:f> <release:f>
+```
+
+Four things in that list are doing more work than their one line suggests.
+
+**`/tap/src` cannot name a partition.** §8.6 routes the analyser over *signals* and
+never over a partition, which is storage. Rather than validate that at runtime, the
+address grammar makes it unrepresentable — there is no production for `/part/` in a
+tap source. A rule the vocabulary cannot express is a rule that cannot rot.
+
+**`/part/<slot>/bounds` is a setup act with teeth.** §4.3 fixes layout at session
+start. The engine therefore *rejects* a bounds change while any zone bound to that
+slot is active, and replies `/engine/refuse`. The protocol enforces the document's
+rule instead of trusting the client to remember it.
+
+**Zone regions are partition-relative floats** (§4.3), so a layout can differ between
+machines without every zone landing in the wrong material. `unsafe` zones are the
+stated exception and take absolute coordinates by definition.
+
+**`/expr/<id>/code` already exists.** The compiled instruction list is
+`src/controls/ExprCompiler.js`, shipped in c3b5b12 for #33 — a flat array, no
+callable references, no backward jumps. §8.7 anticipated needing this format for the
+audio move; closing the grammar for a video-side security bug produced it early. The
+blob is that array, and nothing else needs designing.
+
+#### The two items §6 item 6 named
+
+**Envelope refetch on zoom or resize.** The rule is one sentence: **the client never
+resamples an envelope it already has into a different resolution — it asks.**
+Resampling a fixed-resolution min/max view is lossy in the direction that matters,
+because min/max is not an average and a zoomed-in view reconstructed from a coarse
+one invents peaks it never saw and loses the ones between columns. `/tape/env/req`
+takes an explicit sample span and a column count — one column per screen pixel — and
+the engine answers from the tape.
+
+Two operational rules come with it. **One outstanding request per view**, coalesced:
+a zoom drag emits a request per frame otherwise, and the engine is not the place to
+absorb that. And **`reqId` exists so stale replies can be dropped** — during a drag,
+replies will arrive for spans the user has already left, and applying them makes the
+display flicker backwards through zoom levels. The engine also pushes
+`/tape/env/dirty` for regions a writer has touched, so the client re-requests only
+what changed rather than polling; that is what keeps the incremental rebuild in §4.2
+incremental.
+
+**Render-writer progress across quanta.** A render writer (§4.4) chunks its work
+across quanta (§8.3) and reports against a **`job` id assigned by the client**, not by
+the engine — client-assigned ids mean a cancel can be sent before the first progress
+message arrives, which matters because the whole point of faster-than-realtime render
+is that some jobs finish before the UI has drawn anything. `/job/<id>/progress`
+carries frames done and frames total, aggregated to frame cadence per rule 7.
+Terminal states are `done` or `error`; `cancel` is client-initiated and must still
+produce a terminal message, so a cancelled job cannot leak a progress indicator.
+
+Partial output is kept, not rolled back. A cancelled or failed render leaves whatever
+it wrote in the partition — this is an instrument, the half-rendered material is
+playable, and a rollback would need a shadow buffer for a gesture whose failure mode
+is "interesting" rather than "wrong."
+
+#### What this vocabulary deliberately cannot say
+
+- **Text.** No address takes a string that gets evaluated. `/graph/def` takes a node
+  list, `/expr/<id>/code` takes an instruction list. The one `s` argument in the whole
+  space that is not a fixed token is `/job/<id>/error`'s message, which travels
+  engine→client and is displayed, never parsed. §4.9 holds without an exception.
+- **A generic parameter setter.** See rule 3.
+- **Anything about ImWeb's UI.** No tab, panel, badge or Display State concept
+  appears. The engine does not know Display States exist; recall is a client-side act
+  that emits ordinary descriptions plus an explicit retrigger (§8.7).
+
+#### Honest costs
+
+**Rule 1 costs convenience continuously.** Every message needs flattening to OSC
+types, and the natural JS shape is usually a nested object. This will feel like
+bureaucracy on every message written for a two-machine mode nobody is currently
+running. It is still right — the alternative is discovering at deployment that the
+protocol was never portable — but the cost is paid every day and the benefit is paid
+once, which is exactly the shape of a rule that gets quietly abandoned. Worth an
+audit that greps the message constructors for non-OSC argument types.
+
+**Rule 3 adds a slot allocator** — one more piece of client bookkeeping, with
+lifecycle bugs available when a controller is deleted and its slot reused while an
+echo is in flight. Sequence the slot table so a reused slot is a new integer.
+
+**Rule 7's aggregation makes the engine hold a dirty set** and flush on a cadence,
+which is state the naive design does not have.
+
+**The `job` id space and the `reqId` space are both client-allocated** and both need
+to survive an engine restart after a WebGL context loss or an `/engine/panic`. Neither
+is hard; both are the kind of thing that is not designed and then leaks.
+
+#### One hole left open on purpose
+
+§6 item 7 — freeze continuity — is unresolved, and the vocabulary above does not
+prejudge it. `/zone/synth/<i>/render` currently says *render this graph into this
+region*, which is silent on whether a live Voice running the same graph keeps
+sounding from its own state during the chunked render, and whether the two are the
+same performance. Whatever item 7 concludes will add an argument or a sibling verb
+here (a phase-snapshot reference, or a `freeze` that is distinct from `render`). It is
+noted rather than guessed because the musical answer determines the message, not the
+other way round.
