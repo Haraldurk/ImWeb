@@ -389,6 +389,69 @@ with slew, MIDI, response tables, device motion) drives them for free.
 That yields a playable instrument, and it reveals which UGens are actually reached
 for before a language is designed around guesses.
 
+### 4.10 The generator set — phase one
+
+The full UGen set stays deferred per §4.9. What follows is the small fixed set the
+pre-text instrument needs, **recorded as a starting hypothesis, not a specification**
+— the entire point of the sequencing above is that real use revises it.
+
+#### The dividing rule
+
+**Do not rebuild in UGens what the controller layer already does.** LFOs,
+random-with-slew, seven slew curves, response tables, MIDI and device motion are
+already mapped to every parameter; a control-rate LFO UGen is a duplicate with worse
+ergonomics.
+
+- **Control-rate modulation → ParameterSystem.** Already exists.
+- **Audio-rate modulation → UGens.** FM, AM, ring mod cannot come from frame-rate
+  parameters. That is the *only* reason they need to be UGens.
+
+> **Hazard attached to that rule.** ParameterSystem ticks from `requestAnimationFrame`.
+> A hidden tab suspends rAF and does **not** suspend the AudioWorklet. LEARNED.md
+> already records this trap for video, where it means a frozen picture and void
+> observations. Here it is worse: the sound keeps playing while every modulation
+> freezes. Unresolved — see §6.
+
+#### Quality lives in the tape reader, not the generator count
+
+In a LiSa-lineage instrument the tape reader runs constantly and the oscillators run
+occasionally. Two things decide how it sounds, and effort belongs here before it
+goes anywhere else:
+
+1. **Interpolation.** Reading between samples at arbitrary rates with linear
+   interpolation sounds dull and grainy. Cubic/Hermite is the standard fix and costs
+   almost nothing. Highest-value single decision in the set.
+2. **Rate-dependent anti-aliasing.** Reading *faster* than 1× shifts content upward,
+   and anything crossing Nyquist folds back. This is the classic sampler problem, and
+   because this instrument is built on arbitrary-rate scrubbing it is the main path,
+   not an edge case. Mip-mapped buffer copies or a rate-tracking lowpass before the
+   read.
+
+Get those right and a plain sine sounds good. Get them wrong and no UGen set rescues
+it. Oscillators have the same issue in their own form — a naive saw or pulse aliases
+badly up high; PolyBLEP is the cheap standard answer.
+
+#### The set
+
+| UGen | Why it earns a slot |
+|---|---|
+| **Tape reader** | The instrument. Cubic interpolation, rate-aware anti-aliasing. |
+| **Noise** | Raw material for the spectral and warp treatments; fastest way to test the whole chain. One colour parameter. |
+| **Oscillator** | Waveform select plus a **phase input** — the phase input is what makes FM and phase distortion free instead of needing their own UGens. |
+| **State-variable filter** | One structure yields LP/BP/HP/notch with a morphable type. Worth ten mediocre oscillators. |
+| **Saturator** | Digital sums are brittle without one. Cheap, and it is most of what "warmth" means. |
+| **Gain / mix** | Unglamorous, required. |
+
+**Deliberately absent: envelope generators.** SC needs them because it is note-based.
+This instrument has no note-on — the envelope is a hand on a fader or slew on a
+parameter, both of which already exist. A real structural difference from SC, and one
+not to import out of habit.
+
+**Also not built here: reverb, delay, chorus, compression.** Those are downstream
+effects, not voice components, and the instrument already has a pass architecture for
+them. If they belong anywhere it is there, and after the tape reader has been heard
+unadorned.
+
 ---
 
 ## 5. Rejected paths
@@ -429,18 +492,25 @@ last-good-compile fallback cannot catch an infinite loop or an inner-loop alloca
 
 What genuinely remains, none of it blocking, all still at the prose stage:
 
-1. **The UGen set** — the real work, and where the sound actually lives (§4.9). To be
-   derived from which generators get reached for in the pre-text instrument, not
-   designed up front.
-2. **Sample rate and channel count.** One of each throughout (§4.3). Device output
+1. **The UGen set beyond phase one.** §4.10 records the six-item starting hypothesis
+   and where quality actually lives; the set beyond it is still to be derived from
+   what gets reached for, not designed up front.
+2. **What clocks audio-relevant parameters.** ParameterSystem ticks from rAF, which a
+   hidden tab suspends while the worklet keeps running — sound continues, modulation
+   freezes (§4.10). Either minimal LFO/envelope UGens run in the worklet, accepting
+   the duplication, or the parameter tick is driven from the audio clock when audio
+   is active. The latter is better architecturally — the audio thread never suspends
+   and is sample-accurate — but it changes how ParameterSystem ticks, which is not a
+   small claim.
+3. **Sample rate and channel count.** One of each throughout (§4.3). Device output
    rate varies; committing to a fixed internal rate means resampling at the edges.
-3. **How many partition slots**, and how many zones per type. RoSa's answer was 128
+4. **How many partition slots**, and how many zones per type. RoSa's answer was 128
    zones per type; the partition count has no precedent.
-4. **Which descriptors** the corpus index extracts, and whether its 2D navigation
+5. **Which descriptors** the corpus index extracts, and whether its 2D navigation
    surface is the existing draw surface or a separate one. They are deliberately two
    instruments sharing a gesture (§4.6); whether they share a *widget* is a UI
    question, not an architectural one.
-5. **The protocol vocabulary itself** — pending the RoSa v2 Implementation manual
+6. **The protocol vocabulary itself** — pending the RoSa v2 Implementation manual
    (§2). Do not invent one before reading it. Note that §4.9 already fixes part of
    its shape: graphs travel over it.
 
