@@ -62,7 +62,72 @@ The core principle stays intact: **the interface is also the performance**. No e
 
 Both manuals fully extracted and cross-referenced. See [[#Feature delta summary]] below.
 
-## Current status (2026-05-17)
+## Current status (2026-08-12)
+
+**v0.19.0 — "The Second Pair of Hands"**, released 2026-08-10. Build is Vite 8.
+Tom hosts the live instrument at `imweb.image-ine.org`; that deploy is his, not the
+repo's, so a release here does not update it.
+
+### Where the instrument stands
+
+The signal path is complete and coherent end to end: a single append-only source
+list (`SOURCE_DEFS`) feeding three free-routing mix buses, a reorderable effects
+chain, and three layers with per-layer blend and feedback. Every routable source has
+visible UI. The large source editors — 3D, Analog, Draw — sit at top level because
+they are editors, not a taxonomic kind.
+
+Around that sit the control and authoring layers: a Live GLSL editor with
+last-good-compile fallback and AI generation, performative warp drawing across three
+surfaces, a 4-slot stroke looper, device motion controllers, MIDI with response
+tables, and seven slew curves. Program → Bank → State persistence throughout.
+
+### The arc just completed
+
+The v0.16–v0.19 run was about **reach** rather than new signal: getting the
+instrument's existing power under the hands.
+
+- **v0.16–v0.17** — Motion Extraction and RGB Channel Delay as sources; the effects
+  chain opened up with five new effects and four the codebase already had but had
+  never routed.
+- **v0.18** — the way in. A help menu and guided tour that *points and never sets*,
+  built from one markdown file.
+- **v0.19** — a second pair of hands. `⌘K` parameter search, seven slew curves,
+  LFO rates down to 0.001 Hz. The slow-LFO "stutter" turned out to be step
+  quantization at a healthy 60fps, not a frame-rate problem — the diagnosis mattered
+  more than the fix.
+
+### The audio half — designed today, not built
+
+`docs/ImWeb-Audio-Blueprint.md` settles the architecture for the audio side:
+AudioWorklet as server, RoSa's zone model, a time-domain waveform tape in fixed
+indexed partitions, the spectrogram as a *writer* rather than the tape, corpus
+synthesis as an index, and graphs rather than text executed in the worklet.
+**No code exists.** Six open questions remain, all sizing rather than architecture.
+
+The lineage is deliberate: LiSa and RoSa were Image/ine's siblings at STEIM, so this
+is the other half of the pair rather than an audio feature bolted to a video app.
+
+### Known issues
+
+Active, from `KNOWN-ISSUES.md`:
+- One preload clip times out racking, but scans fine
+- `xController` override re-applies the response table (double-shaping)
+- Period values above ~Scale have no visible effect
+- PsrdWarp gradient discontinuity seams at small period values with Gain > 0
+- Textured 3D objects render darker than the 2D background pipeline
+
+Open beyond that: **SDF edge aliasing (#24)** — diagnosis done, fix outstanding —
+an unprofiled stutter in the SDF rework, three unreproduced beta-tester reports
+awaiting follow-up questions, and circular params parked at tag
+`circular-params-parked`.
+
+### Note on this file
+
+On 2026-08-12 this file was destroyed by a stale editor buffer and recovered only
+partially — it had been gitignored and untracked since 2026-06-16, with no backup of
+any kind. It is **now tracked in git**. Do not re-add it to `.gitignore`. The Session
+log and Implementation roadmap sections below were reconstructed from `git log` and
+`CHANGELOG.md`; their facts are accurate but the original prose is gone.
 
 ## ImWeb — Chrome 148 Metal Fix — RESOLVED (2026-06-10)
 
@@ -235,7 +300,7 @@ All pixel operations run as GLSL shaders on GPU render targets via Three.js WebG
 | HID | Gamepad API |
 | State | IndexedDB (presets, states, tables, assets) |
 | Files | `.imweb` JSON project format |
-| Build | Vite 5.4 · no framework · vanilla JS modules |
+| Build | Vite 8 · no framework · vanilla JS modules |
 
 ## Control system
 
@@ -292,15 +357,104 @@ Three-layer system · ExtKey · All displacement modes · MIDI · LFOs · Sound 
 - ✓ Per-layer blend architecture refactor
 - ✓ Feedback loop TransferMode integration
 
+> **Reconstructed 2026-08-12** from `CHANGELOG.md`, release tags and `git log`,
+> after the original was destroyed by a stale-buffer overwrite. Entries from `v0.9`
+> onward are version-titled rather than phase-numbered — see the note on numbering
+> above. Phases 1–7 above are original.
+
+### v0.9 — The Noise Family ✓ Complete
+- ✓ PsrdWarp gradient domain warp (uType 40) · psrdnoise2 (uType 39) with parameters wired
+- ✓ Noise panel family→type selector · noise UI wiring simplified
+- ✓ Noise animation stutter from wall-clock time fixed · speed slider phase jump · `noisePhase` render-gate bypass
+
+### v0.10 – v0.11 — The Touch Instrument ✓ Complete
+- ✓ Device motion controllers · mobile state pad · hybrid mobile state bar
+- ✓ Long-press to clear · long-press action menu · touch double-tap on param rows
+- ✓ Slot-based mirror: Mirror FG / Mirror BG (**breaking**) · pad-mode crosshair · orbit inertia · 3-finger tap mode cycle
+- ✓ Movie texture upload gating · canvas grab takes control from auto-spin
+- ✓ Flick momentum on param drags · touch value entry · unified long-press · desktop canvas parity · UI chrome toggles
+- ✓ Live-performance safety (Grill Report P1) · coarse-pointer param rows rebuilt · rAF-batched param→DOM sync
+
+### v0.12 — Dual-Deck ✓ Complete
+- ✓ Deck B movie engine (headless first) · Deck B UI and clip routing · deck target toggle for touch
+- ✓ MixBus A/B engine · Movie B status header
+- ✓ Idle-deck upload gating · autoplay recovery · menu restructure · desktop state-bar ＋ tile
+
+### v0.13 — Live GLSL, Draw & the Signal Graph ✓ Complete
+*CHANGELOG Phases 13–22 (Live GLSL + Draw), Phase 23 (MixBus), Phase 24 (Warp Drawing).*
+- ✓ Live GLSL editor (CodeMirror 6) with last-good-compile fallback · persistence · user shader presets · GLSL insert routing · VJ uniform contract
+- ✓ AI shader generation (✨ Prompt AI) · `glsl.preset` MIDI recall · recall range for all SELECT params
+- ✓ Draw arc: Pointer Events + pressure · draw on the output canvas · 4-slot stroke looper · draw↔synthesis crossovers · Stroke→LFO driver · video-as-ink
+- ✓ **Three mix buses with free source selection** — a bus becomes a real graph node, not a crossfader hardwired to the two decks
+- ✓ One-frame-behind feedback via double buffering rather than an identity guard
+- ✓ **Consumption analysis is a fixpoint** (`_srcUsed`), replacing seven near-duplicates
+- ✓ **Source list consolidated to one origin** (`SOURCE_DEFS`) — six hand-synced copies existed and three had drifted
+- ✓ Panel taxonomy follows signal flow · data-driven initial tab activation
+- ✓ Performative warp drawing on the main canvas · `warpSlot` (1–16) · `warpPreset` (8 shapes) · controller assignment on non-param-row controls
+
+### v0.14 — The Movie Library ✓ Complete
+- ✓ Movie Library panel · drag a row onto Movie A or B · Deck B rack UI · `Option+1-8` · per-row `✕` and `✕ Clear`
+- ✓ **A rack is bounded by bytes, not slots** — the ~837 MB media budget, not the slot count, was the real ceiling; `preload='metadata'` with only the playing clip promoted
+- ✓ `imweb-prep.js` writes faststart MP4s (the `moov` position was a second, independent bug)
+- ✓ **Project import no longer destroys banks** — `importAll()` is additive, destruction gated behind `{ replace: true }`
+
+### v0.15 — Spacetime & the Scan Processor ✓ Complete
+*CHANGELOG Phase 25 (Spacetime), Phase 26 (Rutt-Etra).*
+- ✓ A source selector on every temporal engine — FG/BG/DS Src on every capture selector
+- ✓ Time Displace gains angle and map source · Warp Tape scrubbing · Video Delay Line depth, ring split from tap
+- ✓ "Warp" becomes the family name · `_resolveLayerTex()` extended from 16 of 29 sources to all
+- ✓ **Appending a source no longer breaks saved captures** — the capture-base stamp now gates every future source append
+- ✓ Rutt-Etra scan processor with 23 controls in four collapsible groups · subsections collapse app-wide
+- ✓ SDF (formerly "Metaballs") rework — sphere-as-ellipse, black frame looking straight up/down, flattening refraction
+
+### v0.16 – v0.17 — The Motion Matte & The Chain ✓ Complete
+- ✓ Motion Extraction and RGB Channel Delay as sources · one control spans both classical motion methods · `motion.blur` ("Smoothness")
+- ✓ The keyer's external key gains its own source selector · LUT data packed to RGBA half-float
+- ✓ `?soak=1` instrumentation · per-deck upload counters
+- ✓ **Verified rather than assumed** — dual-deck thermal/decoder budget PASS; v0.12 upload gating confirmed by counting rather than by soak
+- ✓ All FX / Clear All FX · five new effects (Polar, Wave, Halftone, Duotone, Lens) · four the codebase already had, now routed
+- ✓ A saved `fxOrder` no longer silently drops effects it has never heard of
+
+### v0.18 — The Way In ✓ Complete
+- ✓ Help menu and guided tour — Basics · Principles · Instruments
+- ✓ **The tour points; it never sets** · content is one markdown file · docs served network-first
+- ✓ `Blend Amt` becomes a three-stop crossfade · layer blend amounts become percent params
+
+### v0.19 — The Second Pair of Hands ✓ Complete
+- ✓ `⌘K` / `Ctrl+K` parameter search on any keyboard layout
+- ✓ Seven slew curves — Lag · Ease in/out · Elastic · Super Ease in/out · Exponential · Bounce · Back
+- ✓ Back gains Strength · Elastic gains Strength and Damp and bounces off `min`/`max`
+- ✓ Slow LFOs down to 0.001 Hz — the "stutter" was step quantization at a healthy 60fps, not a frame-rate problem
+- ✓ Ctrl+click reaches the controller menus (on macOS it arrives as a right-click)
+- ✓ Guided tour rewritten from beta-tester notes
+- ✓ Post-release: an audit so a version bump cannot ship without a service worker cache bump; every release back to 0.1.0 titled
+
+### Next — Audio ◻ Designed, not started
+*Blueprint: `docs/ImWeb-Audio-Blueprint.md`. **No code exists.***
+- ◻ AudioWorklet as server, ParameterSystem as client, message protocol between them
+- ◻ RoSa zone model — writers (Recording / Load / Spectral / Synth), readers (Playback)
+- ◻ Time-domain waveform tape · fixed indexed partition slots with opt-in `unsafe` flag
+- ◻ Spectrogram as a **writer** (inverse-transformed once at write time), scale-quantized
+- ◻ Corpus synthesis as an index into the tape, navigated by drawing
+- ◻ Graphs, never text, executed in the worklet — the audio thread has no watchdog
+- ◻ Phase-one generator set: tape reader, noise, oscillator, SVF, saturator, gain
+
+### Open ◻
+- ◻ SDF edge aliasing (#24) — diagnosis done, fix outstanding
+- ◻ An unprofiled stutter in the SDF rework
+- ◻ Three unreproduced beta-tester reports still awaiting follow-up questions
+- ◻ Circular params parked at tag `circular-params-parked`
+
 ## Files & references
 
 | File | Location | Notes |
 |---|---|---|
-| Architecture spec | `imagine-remake-architecture.md` | Technical spec, updated v0.4 |
-| Testing log | `Testings.md` | Session 5 — Phase 4 development |
-| Codebase | `~/Documents/GitHub/ImWeb` | Vite 5.4, vanilla JS + Three.js |
+| Architecture spec | `imagine-remake-architecture.md` | Technical spec, updated v0.9.0 |
+| Testing log | `Testings.md` | Session 6 — v0.9.0 |
+| Codebase | `~/Documents/GitHub/ImWeb` | Vite 8, vanilla JS + Three.js |
 | ImOs9 source manual | Archive | 108pp, 1997, STEIM |
 | ImX source manual | Archive | 12pp, ~2008, Tom Demeyer |
+| Audio blueprint | `ImWeb-Audio-Blueprint.md` | DESIGN ONLY, no code — LiSa/RoSa lineage, waveform tape, partitions |
 
 ## Connections to other work
 
@@ -338,6 +492,252 @@ Claude Code for editing, Gemini for docs, OpenCode for cheap recon.
 **Context management:** context-mode MCP plugin (session continuity, token savings)
 
 ## Session log
+
+> **Entries from 2026-06-15 onward were reconstructed on 2026-08-12** from
+> `git log`, `CHANGELOG.md` and release tags, after the original ~199 lines were
+> destroyed by a stale-buffer overwrite. The facts, dates, versions and hashes are
+> accurate. **The original prose is gone** — these entries are summaries, not the
+> notes that were written at the time. Entries below 2026-06-10 are original.
+
+## 2026-08-12 — Audio blueprint; knowledge base lost and re-tracked
+
+**Commits:** e89f85a (#27), 17f13a2 (#28)
+**Version:** v0.19.0 (no app change — docs only)
+
+### The audio half, designed
+- Blueprint written for the audio side of the instrument: `docs/ImWeb-Audio-Blueprint.md`.
+  **Design only — no code exists.** Lineage is STEIM's LiSa (Waisvisz/Baldé) and its
+  successor RoSa, the audio siblings of Image/ine, plus SuperCollider as the synthetic pole.
+- **AudioWorklet is the server, ParameterSystem the client**, message protocol between
+  them, engine carrying zero ImWeb imports. Same split RoSa and SC3 both arrived at.
+- **The tape is a time-domain waveform.** Scrubbing must stay index arithmetic; a
+  spectral tape would need phase-vocoder reads and kill the tactility that is the whole
+  LiSa paradigm.
+- **The spectrogram is a writer, not the tape** — inverse-transformed once at write
+  time, never in the playback path, vertical axis quantized to a scale. This is the
+  Metasynth/UPIC path, and it is what makes drawn spectra musical rather than noise.
+- **One allocation, fixed indexed partition slots, opt-in `unsafe` flag.** Fixed slots
+  because a user-named list would make a captured index resolve to different material on
+  another machine — the `warpSlot` / `glsl.preset` failure.
+- **`SharedArrayBuffer` rejected.** Video reads a downsampled ~16 KB envelope, never the
+  23 MB tape, so `postMessage` suffices — which avoids COOP/COEP cross-origin isolation
+  and makes concurrent-access tearing stop existing.
+- **The worklet executes graphs, never text.** The audio thread has no watchdog: an
+  infinite loop is silence for the rest of the set, an inner-loop allocation is GC
+  crackle, and both compile cleanly, so the GLSL editor's last-good-compile fallback
+  catches neither. This is what SC actually does — sclang builds a SynthDef, scsynth
+  executes pre-compiled UGens.
+
+### Knowledge base destroyed and recovered
+- `docs/imweb-obsidian.md` was overwritten by a stale Zed buffer, replacing an 852-line
+  version (status 2026-07-29) with a 379-line one (status 2026-05-02). ~322 lines lost.
+- **No backup existed** — the file was gitignored and untracked (`bd8ed23`, 2026-06-16),
+  was never in an Obsidian vault, and was not in Time Machine.
+- Restored to `bd8ed23^` (530 lines, status 2026-05-17), the last version git ever saw,
+  and **the file is now tracked** so a repeat is a `git checkout` rather than a loss.
+- All 21 headings survived; the loss was confined to Session log, Implementation roadmap
+  and Current status.
+
+## 2026-08-10 — v0.19.0 The Second Pair of Hands
+
+**Commits:** b06fa0f (tag), 7be272a (#21), 5f4369b (#23), 4cb0582 (#25)
+**Version:** v0.19.0
+
+- `⌘K` / `Ctrl+K` opens parameter search on any keyboard layout.
+- Seven slew curves land: Lag, Ease in/out, Elastic, Super Ease in/out, Exponential,
+  Bounce, Back. Back gains Strength; Elastic gains Strength and Damp and now bounces off
+  `min` and `max` rather than passing through them.
+- The LUT panel heading explains itself.
+- Post-release: an audit added so a version bump cannot ship without a service worker
+  cache bump (#23), and every release back to 0.1.0 was given a title, with three
+  history defects corrected (#25).
+
+## 2026-08-09 — Slew refinements; Ctrl+click reaches the menus
+
+**Commits:** 8afcae2 (#18), 7bb6dfe (#19), f35b5f0 (#20), dbcff7e (tag `circular-params-parked`)
+
+- Elastic reworked as a spring; Back's stall behaviour and Strength; X-map floor; Phase fix.
+- **Ctrl+click now reaches the controller menus** — the blind spot was that Ctrl+click on
+  macOS is a right-click, so the handler never saw it.
+- Guided tour rewritten from beta-tester notes.
+- Verification lessons recorded: the Ctrl+click blind spot and the stale-preview-bundle
+  trap (#20).
+- Circular params parked at tag `circular-params-parked`.
+
+## 2026-08-08 — Slow LFOs that don't stutter
+
+**Commits:** 1b197d6 (#16)
+
+- The slow-LFO "stutter" was **step quantization at a healthy 60fps**, not a frame-rate
+  problem — the diagnosis that mattered.
+- Rates down to 0.001 Hz, seven slew curves, logarithmic X-map taper.
+
+## 2026-08-07 — v0.18.0 The Way In
+
+**Commits:** f18ceb9 (tag), 0e6276b (#15)
+**Version:** v0.18.0
+
+- **Help menu and guided tour** — Basics, Principles, Instruments. The tour *points; it
+  never sets*, and its content is one markdown file. Documentation is served
+  network-first.
+- `Blend Amt` becomes a three-stop crossfade; layer blend amounts become percent params.
+- Fixed: `layer.bg.blendAmount` did nothing, and a focused slider killed every single-key
+  shortcut — the two bugs behind a tour step nobody could follow.
+
+## 2026-08-06 — Git history purge
+
+**Tags:** `pre-history-purge-2026-08-06`, `pre-history-purge-guide-branch-2026-08-06`,
+`pre-history-purge-quickstart-branch-2026-08-06`
+
+- Repository history rewritten. Three `pre-history-purge-*` tags mark the prior state of
+  main and two branches before the rewrite. Keep them.
+
+## 2026-08-05 — v0.16.0 The Motion Matte, then v0.17.0 The Chain
+
+**Commits:** c6f2145 / a089000 (v0.16.0), 57dc99b / ab0a4af (v0.17.0)
+**Version:** v0.16.0 → v0.17.0 (same day)
+
+### v0.16.0 — The Motion Matte
+- **Motion Extraction** and **RGB Channel Delay** added as sources. One control spans
+  both classical motion methods instead of a mode select. `motion.blur` ("Smoothness").
+- The keyer's external key gains its own source selector.
+- `?soak=1` instrumentation and per-deck upload counters.
+- **Verified rather than assumed:** dual-deck thermal and decoder budget PASS; v0.12
+  idle-deck upload gating confirmed *by counting rather than by soak*; the tab bar passed
+  on a premise that had already expired.
+- LUT data packed to RGBA half-float.
+
+### v0.17.0 — The Chain
+- **All FX / Clear All FX**, and the effect chain gains five new effects — Polar, Wave,
+  Halftone, Duotone, Lens — plus four the codebase already had but had never routed.
+- Fixed: a saved `fxOrder` silently dropped effects it had never heard of; Kaleidoscope
+  worked in raw UV; Posterize and Solarize were OFF at their maximum.
+
+## 2026-08-02 — v0.15.0 Spacetime (Phase 25) and the Scan Processor (Phase 26)
+
+**Commits:** 8cc5e0f (tag), c627aba, 48b759d (tag `pre-rutt-etra-phase26`)
+**Version:** v0.15.0 (two CHANGELOG entries, same version)
+
+### Phase 25 — Spacetime & the Warp Family
+- **A source selector on every temporal engine** — FG/BG/DS Src on every capture
+  selector. Time Displace gains an angle and a map source; Warp Tape gains scrubbing;
+  Video Delay Line gains depth, with the ring split from the tap.
+- "Warp" becomes the family name.
+- **`_resolveLayerTex()` handled only 16 of 29 sources** — the drift that appending a
+  source kept re-introducing. Appending a source no longer breaks saved captures.
+
+### Phase 26 — Rutt-Etra Scan Processor
+- **Rutt-Etra scan processor** added as a source, with 23 controls in four collapsible
+  groups: `zcurve`/`zpivot`, `bleed` ("Spread"), `hue`/`sat`/`colorAmt`, `rise`/`fall`,
+  `shape`, `drawMode`/`pointSize`.
+- Subsections now collapse anywhere in the app.
+- **Source routing had drifted three ways** — the capture-base stamp introduced here now
+  gates every future source append.
+- SDF (formerly "Metaballs") fixes: a sphere rendered as a wide ellipse; looking straight
+  up or down returned a black frame; refraction flattened the object.
+
+## 2026-07-29 — v0.14.0 The Movie Library
+
+**Commits:** 924ea46 (tag), 5b22a66
+**Version:** v0.14.0
+
+- **Movie Library panel**; drag a Library row onto Movie A or Movie B; Deck B finally
+  gets a rack UI; `Option+1-8`; `✕` per row and `✕ Clear` for Deck B; a full rack evicts
+  its oldest clip.
+- **A rack is bounded by bytes, not slots** — `preload='auto'` buffers a clip in full and
+  exhausts the media budget around **837 MB**, which was the real cause of the rack
+  hanging on its eighth clip. Loading now uses `preload='metadata'` and only the clip
+  actually playing is promoted. Reasoning recorded in
+  `ImWeb-MovieLibrary-Blueprint.md` §2.4, which corrects its own §2.3 advice.
+- `imweb-prep.js` now writes faststart MP4s — the `moov` position was a second,
+  independent bug wearing the same costume as the byte ceiling.
+- **Project import no longer destroys banks** — `importAll()` is additive, and
+  destruction is gated behind an explicit `{ replace: true }`.
+- `removeClip()` kept the playhead on its own clip; routing a layer to a deck now
+  switches that deck on; `q`/`a`/`z` cycle sources in the LAYERS dropdown's order.
+
+## 2026-07-28 — v0.13.0: Live GLSL (13–20), MixBus Rethink (23), Warp Drawing (24)
+
+**Commits:** 9810808 (tag), 3830bf0, 8a2345d (tag `pre-rutt-etra`)
+**Version:** v0.13.0 (three CHANGELOG entries, same version)
+
+### Phases 13–20 — The Live GLSL Overhaul
+- Live GLSL editor with persistence, user shader presets, GLSL insert routing, and a VJ
+  uniform contract.
+- **AI shader generation** (✨ Prompt AI), `glsl.preset` MIDI recall, and recall range for
+  all SELECT params.
+- Draw arc: pen-ready drawing (Pointer Events + pressure), draw on the output canvas,
+  stroke looper, draw↔synthesis crossovers, Stroke→LFO controller driver, video-as-ink.
+
+### Phase 23 — MixBus Rethink
+- **Three mix buses with free source selection** — a bus becomes a real graph node rather
+  than a crossfader hardwired to the two movie decks.
+- **One-frame-behind feedback** via double buffering rather than an identity guard.
+- **Consumption analysis is a fixpoint** (`_srcUsed`), replacing seven near-duplicates.
+- Panel taxonomy follows signal flow; initial tab activation becomes data-driven.
+- **Six hand-synced copies of the source list existed and three had drifted** — breaking
+  TimeDisplace capture of Movie B and Mix Bus, and making the AI Narrator report `?` for
+  the newest sources. Consolidated to one origin, `SOURCE_DEFS`.
+
+### Phase 24 — Performative Warp Drawing
+- Draw the warp on the main canvas. `warpDrawX`/`Y`, `warpDrawRadius`, `warpSlot` (1–16),
+  `warpPreset` (8 shapes), `warpSlotFade`, `warpDrawFixed`/`warpDrawAngle`.
+- Controller assignment on controls that are not param rows. WarpAmt ceiling 100% → 200%.
+- **Warp drawing was mirrored vertically, twice** — position and direction both needed
+  flipping; fixing one alone just moved the mirror. Plus a half-texel register error, an
+  upside-down grid overlay, and a mini editor that barely drew and whose mesh was 2.5×
+  exaggerated.
+
+## 2026-07-10 — v0.12.0 Dual-Deck & Touch Polish
+
+**Commits:** 7815724 (tag), d8fedbb, 1ec5673 (tag `pre-dualdeck`)
+**Version:** v0.12.0
+
+- **Deck B movie engine** (headless first), Deck B UI and clip routing, and the
+  **MixBus A/B engine**. Deck target toggle for touch; Movie B status header.
+- **Idle-deck upload gating** — the perf work that later got confirmed by counting rather
+  than by soak.
+- Menu restructure; desktop state-bar ＋ tile; autoplay recovery.
+- Fixed: iPad context-menu taps; TimeDisplace "Native" on large desktops; repo hygiene.
+
+## 2026-07-07 — v0.10.0 The Touch Instrument, then v0.11.0 Ergonomics
+
+**Commits:** fd911a9 (v0.10.0), 0f170a2; 5b50f67 (v0.11.0), 2a58906
+**Version:** v0.10.0 → v0.11.0 (same day)
+
+### v0.10.0 — The Touch Instrument
+- **Device motion controllers (Phase 6)**; mobile state pad and hybrid state bar
+  (Phase 4); long-press to clear, long-press action menu, touch double-tap on param rows.
+- Slot-based mirror: Mirror FG / Mirror BG (Phase 5, **breaking**); pad-mode crosshair;
+  orbit inertia; 3-finger tap mode cycle; **movie texture upload gating (Phase 5)**.
+- Canvas grab takes control from auto-spin.
+
+### v0.11.0 — Touch & Ergonomics Overhaul
+- Flick momentum on param drags; touch value entry; unified long-press; desktop canvas
+  parity; UI chrome toggles.
+- **Live-performance safety (Grill Report P1)**.
+- Coarse-pointer param rows rebuilt; rAF-batched param→DOM sync.
+- Fixed: rotation slider stutter; context menu scroll safety; coach notification;
+  detached panels and floated signal path drag on touch.
+
+## 2026-07-05 — UI componentization closed
+
+**Tags:** `pre-ui-componentization` (16852fb), `ui-componentization-done` (916d435)
+
+- Phase 2 UI extraction completed and tagged at both ends.
+
+## 2026-06-15 — v0.9.0 The Noise Family
+
+**Commits:** d6fa520 (tag), acef99a
+**Version:** v0.9.0
+
+- **PsrdWarp gradient domain warp as uType 40**; psrdnoise2 as uType 39 (Phase 2), with
+  its parameters wired.
+- Noise panel gains a family→type selector (Phase 1); noise UI wiring simplified.
+- Fixed: **noise animation stutter from wall-clock time**; speed slider phase jump;
+  `noisePhase` render-gate bypass; alpha cycling in non-periodic mode; PsrdWarp `mod()`
+  wrapping; PsrdWarp/Psrd2D asymmetric period response; HyperCube wireframe framerate;
+  period step reverted to 1.
 
 ## 2026-06-10 — Chrome 148 Metal/ANGLE bug fixed upstream
 - **Chromium bug resolved by Google** — the ANGLE/Metal backend regression
