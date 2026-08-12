@@ -531,13 +531,17 @@ last-good-compile fallback cannot catch an infinite loop or an inner-loop alloca
 What genuinely remains. **The first item IS blocking** — an earlier version of this
 list said nothing here was, which was wrong once §8.1 landed:
 
-0. **The monitoring path, and everything in §8.1.** A Recording Zone capturing the
+0. **ANSWERED in §8.6 — the monitoring path, and everything in §8.1.** A Recording Zone capturing the
    mic while a Voice plays to the monitors makes `mic → tape → monitors → mic` the
    *default* state of the instrument. One `AudioContext` or two, whether the
    sound-reactive controller layer hears the instrument's own output, and what the
    monitoring discipline is — these outrank every question below, because by §4.7's
    own test they are the class that ruins a performance rather than merely sounding
-   wrong. Nothing should be built until they are answered.
+   wrong. §8.6 settles all three: one AudioContext owned by the engine, a routable
+   analyser tap over *signals* (mic / master out / zone outputs — never a partition,
+   which is storage), and the loop drawn in the signal path display. It also narrows
+   what this blocks: the recording path and the engine's construction shape, not the
+   DSP — tape, playback, spectral writer and corpus index are all buildable deaf.
 1. **The UGen set beyond phase one.** §4.10 records the six-item starting hypothesis
    and where quality actually lives; the set beyond it is still to be derived from
    what gets reached for, not designed up front.
@@ -677,3 +681,75 @@ difference between the two halves being in time and merely being close.
   open and notes that RoSa's 128 was *zones per type*, not partitions. 16–32 is a
   plausible answer to that open question rather than a correction to a claim this
   document makes.
+
+### 8.6 Item 0 answered — the monitoring path
+
+§6 item 0 was the one blocking question. These are its answers, arrived at in
+discussion and reviewed against the code before being recorded.
+
+**One `AudioContext`, owned by the engine.** Two contexts mean two clocks, so the
+relationship between what the instrument hears and what it plays drifts — and §3's
+coupling claim dies with it. `ControllerManager.enableSound()`
+(`src/controls/ControllerManager.js:862`) currently constructs its own and becomes a
+*consumer* of the engine's instead.
+
+State the cost rather than let it be discovered: **the audio half is not purely
+additive.** It reaches back into shipped code.
+
+It also takes on the context's lifecycle. A context starts suspended and must be
+resumed from a user gesture (§8.1); `enableSound()` works today only because it is
+itself called from a user act — the first sound-controller assignment. Once the
+engine owns construction, the boot sequence has to survive *engine constructed
+before any gesture, `ControllerManager` handed a context that exists but is
+suspended*. A boot-ordering detail, not a threat to the decision.
+
+**The analyser input is a routable source — of signals, not storage.** Mic-only
+deafens the instrument to itself, which is a poor trade for an AV instrument whose
+whole claim is coupling; output-only deafens it to the room. So it is selected, in
+the grammar the project already speaks: free `srcA`/`srcB` on the mix buses,
+`_resolveSource()` in `Pipeline.js`, `_resolveLayerTex()` in `main.js:3831`.
+
+> **Correction to an earlier phrasing of this idea, which said "mic, output bus, or a
+> specific partition".** That mixes two categories. **A partition is a region of tape
+> — storage. Nothing flows out of it until a Playback Zone reads it.** You cannot tap
+> a partition; you tap a zone's output. Per §4.4, zones are region-plus-role and it is
+> the *readers* that produce signal. The tap list is therefore **mic / master out /
+> zone or voice outputs** — equally enumerable, and it stays in the signal domain,
+> which is what keeps it consistent with `srcA`/`srcB` selecting things that produce
+> frames rather than buffers that store them.
+
+Three consequences:
+
+- **The master tap is post-limiter**, chosen rather than inherited. The video
+  response then visibly flattens when the ceiling of §4.11 engages — the picture
+  tells you the limiter is working, which is a feature in a feedback instrument.
+- **The default is mic-only**, so the safe state requires no selection.
+- **Tap selection is capturable as a normal group.** It is an enumerated fixed set,
+  not a user-editable list, so it does not inherit the snippet-index portability
+  problem of §4.8.
+
+**Monitoring discipline: draw the loop.** Of the available mitigations this is the
+one worth building, because it is the only one that turns the hazard into an object
+the performer can reason about, and it reuses a surface that already exists — the
+signal path display. With the audio graph in it, a closed `mic → tape → monitors →
+mic` path is something you can *see* rather than something you discover at volume.
+
+Alongside it: Recording Zone input is a *selected* source rather than implicitly the
+mic, so recording the room is a deliberate act; and the non-bypassable output limiter
+of §4.11 bounds what a loop can do.
+
+**The headphones/speakers monitoring mode is a setup act, not performance state.**
+In §4.3's sense it belongs with partition layout: fixed at session start, excluded
+from Display State capture, and **never a controller target**. Written down
+explicitly because "a switch that changes defaults" is exactly the kind of control
+that drifts into being controller-assignable when nobody records that it must not
+be — and the thing it changes is the performer's feedback exposure.
+
+**What item 0 actually blocks.** An earlier wording said nothing should be built
+until these were answered. Too strong: the tape, playback zones, the spectral writer
+and the corpus index are all buildable deaf, and the loop only closes when a
+Recording Zone meets a live input. But the narrower wording must not create a new
+trap — the one-context decision constrains the engine's **construction shape** from
+day one, because the engine has to be written as the context owner before the
+`ControllerManager` rewiring lands. So item 0 blocks the recording path and the
+engine's boot structure. It does not block the DSP.
