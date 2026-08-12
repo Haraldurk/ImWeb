@@ -869,14 +869,22 @@ from the present, and morph between states would have to interpolate a wrapping
 quantity. The `phase` field in a controller config is an **offset**, is config, and
 is captured; the running value is not.
 
-**The new hazard is the re-send, not the capture.** After the move, restoring a state
-re-sends controller descriptions to the worklet. If the worklet treats *receiving a
-description* as *starting that controller*, then every state recall resets every LFO
-to zero — which is a regression, because today `restoreState()` writes param values
-and leaves running LFOs untouched.
+**The new hazard is the re-send, not the capture — and it runs the other way.**
+Today's semantics are: recall retriggers, capture stores no phase. `restoreState()`
+writes param values, and `Preset.js:293` immediately follows it with
+`retriggerLFOs()` (again at `:352`, `:445` and `:460` — morph completion and
+value-set paths), so a Display State recall deliberately resets every running LFO
+to phase zero. After the move, restoring a state re-sends controller descriptions
+to the worklet; if the worklet treated *receiving a description* as *restarting
+that controller* the behavior would be preserved only by accident, and if it
+treated every re-send as a restart, unrelated description updates would start
+resetting LFOs that today only recall resets.
 
-**Rule: a re-sent controller description is an update, not a restart.** Phase
-survives a description that changes rate, shape, table or slew. Retriggering stays a
-separate explicit message, mirroring `ControllerManager.retriggerLFOs()`
-(`src/controls/ControllerManager.js:439`), which exists as the deliberate path and is
-already what the beat-detect branch calls when BPM moves.
+**Rule: a re-sent controller description is an update, not a restart — and recall
+sends the retrigger explicitly.** Phase survives a description that changes rate,
+shape, table or slew. Retriggering stays a separate explicit message, mirroring
+`ControllerManager.retriggerLFOs()` (`src/controls/ControllerManager.js:439`),
+which exists as the deliberate path and is already what tap tempo and the
+beat-detect branch call. So Display State recall must emit that message alongside
+the re-sent descriptions — otherwise the update-not-restart rule silently drops
+the recall-retriggers-LFOs behavior the instrument has today.
