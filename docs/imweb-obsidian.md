@@ -16,7 +16,7 @@ tags:
   - person/steina-vasulka
   - type/technical
 created: 2026-03-18
-modified: 2026-05-02
+modified: 2026-05-23
 status: active-development
 phase: v0.8.7
 related:
@@ -62,7 +62,26 @@ The core principle stays intact: **the interface is also the performance**. No e
 
 Both manuals fully extracted and cross-referenced. See [[#Feature delta summary]] below.
 
-## Current status (2026-05-02)
+## Current status (2026-05-17)
+
+## ImWeb — Chrome 148 Metal Fix — RESOLVED (2026-06-10)
+
+Root cause: Chrome 148 ANGLE/Metal backend regression on macOS.
+Broke: Hypercube wireframe edges + Harabara GLB model.
+Confirmed: production URL imweb.image-ine.org also broken.
+Chromium bug filed: May 16 2026.
+
+**Status: fixed upstream by Google in a Chrome update.** The
+`--use-angle=gl` workaround is no longer required — Hypercube wireframe
+and GLB models render correctly on Chrome with the default Metal backend.
+The defensive code fixes from commit `379d694` (aTB attribute, highp
+sampler2D/textureLod, SkinnedMesh→Mesh) remain in place and are harmless/
+beneficial regardless.
+
+Test method (historical): run Chrome normally (Metal, broken) after each
+fix. Use --use-angle=gl Chrome to verify logic is correct if needed.
+
+(2026-05-02)
 
 **v0.8.7 — Phase 7 complete + Hypercube & Analog TV.** Codebase at `/Users/haraldurkarlsson/Documents/GitHub/ImWeb`, built with Vite 5.4. Hosted at imweb.image-ine.org (Tom Demeyer).
 
@@ -318,21 +337,153 @@ Claude Code for editing, Gemini for docs, OpenCode for cheap recon.
 **Knowledge base:** Obsidian vault → `imweb-obsidian.md` in project root for AI access  
 **Context management:** context-mode MCP plugin (session continuity, token savings)
 
-### Standard prompt template
-You are working on ImWeb. Codebase: ~/Documents/GitHub/ImWeb
-Rules: NEVER rewrite whole files. Surgical edits only.
-One feature per prompt.
-BEFORE TOUCHING ANYTHING:
-
-git log --oneline -5
-git status
-Read [relevant file]
-
-TASK: [single clearly scoped task]
-ACCEPTANCE: [what done looks like]
-AFTER: git add [files] && git commit -m "[message]" && git push
-
 ## Session log
+
+## 2026-06-10 — Chrome 148 Metal/ANGLE bug fixed upstream
+- **Chromium bug resolved by Google** — the ANGLE/Metal backend regression
+  (filed May 16 2026, see [[#ImWeb — Chrome 148 Metal Fix — RESOLVED (2026-06-10)]])
+  has been fixed in a Chrome update. Hypercube wireframe edges and the
+  Harabara GLB model now render correctly on Chrome with the default Metal
+  backend — the `--use-angle=gl` workaround / `chrome-gl` alias is no
+  longer needed.
+- **Noise: Sharpen relocated + strengthened** — `noise.sharpen` lives in
+  the Noise panel (not a global Effects pass), applied via a dedicated
+  512×512 `_noiseSharpTarget` unsharp-mask pass. Widened kernel radius to
+  2px and raised max effect to 8x so it's visible on smooth procedural
+  noise. Commits `f2cecb4`, `fff4bfa`.
+- **Noise: Value/Gradient speed-pulsing fixed** — `vNoise`'s quintic ease
+  curve had zero z-derivative at integer time-cell boundaries with random
+  per-cell amplitude, producing a periodic "speed up/slow down" pulse.
+  Fixed with a two-phase time crossfade (sample at `t` and `t+0.5`,
+  blend toward whichever has the stronger derivative). Isolated to
+  Gradient/Value (uType==1). Commit `c079d4b`.
+
+## 2026-05-26 — Chrome perf investigation + reset cascade fix
+
+**Commits:** 0bfdfe9, 83118ba
+**Version:** v0.8.9
+
+### Investigation (Claude in Chrome)
+- Confirmed --use-angle=gl flag active: ANGLE / AMD Radeon Pro 5500M
+  OpenGL 4.1, not Metal
+- 7 simultaneous WebGL2 contexts identified as GPU overhead — 4
+  anonymous 300×150 preview canvases render every frame regardless of
+  panel visibility. Deferred.
+- 3D Scene pipeline: ~22–30fps GPU-bound. Movie/Camera pipeline: 60fps.
+  CPU 3–4ms throughout — bottleneck is GPU not CPU.
+- Identified two separate reset code paths: ↺ button (_resetAllParams)
+  and ○ button (neutralState listener, Shift+0). User was pressing ○.
+- Root cause of "shifting loop": ps.getAll().forEach(p => p.reset())
+  with MORPH active (2.0s) fired ~80+ onChange events through the morph
+  interpolation system — looked like cycling through all states.
+
+### Fixes
+- 0bfdfe9: suspend morphspeed during _resetAllParams cascade
+- 83118ba: same fix applied to neutralState listener (the actual trigger)
+- Both: _morphParam._value = 0 before loop, restore via .value setter
+  after — one clean syncDisplay update on restore. TODO comment for
+  future ps.suspendMorph() migration left in both locations.
+
+### New issue found
+After neutral reset, layer.fg lands on Movie (1) instead of Camera (0)
+despite explicit ps.set('layer.fg', 0). Accompanied by MovieInput.tick
+NaN currentTime error. Logged in KNOWN-ISSUES.md. Under investigation.
+
+### Deferred
+- 7 WebGL2 contexts: preview canvases should lazy-render only when panel
+  visible (IntersectionObserver gate on rAF loops)
+- 3D pipeline fps: same root cause — no fix this session
+
+### 2026-05-23 — uRidge parameter (v0.8.9+)
+
+Added uRidge uniform to PsrdWarp (uType 40) accumulation loop.
+Continuous 0→1 blend: standard noise (0) → abs() ridge/tendril mode (1).
+ridgeN = 1.0 - 2.0 * abs(r.n) per octave, mixed with uRidge.
+Orthogonal to uSwirl — both work simultaneously.
+4 files: shaders/index.js, ParameterSystem.js, Pipeline.js, main.js.
+
+### 2026-05-23 — uSwirl parameter (v0.8.9+)
+
+Added uSwirl uniform to PsrdWarp (uType 40) domain warp loop.
+Blends gradient warp (uSwirl=0, clouds/smoke) vs curl warp (uSwirl=1,
+vortex/cyclone). Single mix() line in octave loop. 4 files: shaders/index.js,
+ParameterSystem.js, Pipeline.js, main.js. Commit 3f4ce77.
+
+### 2026-05-23 — PsrdNoise phase investigation (v0.8.9+)
+
+Extended multi-agent debugging session tracing PsrdWarp (uType 40)
+and Psrd2D (uType 39) rendering artifacts. Agents: Claude Chat
+(architecture), Claude Code (surgical edits), Codex GPT-5.5 High
+(diagnosis), Kimi K2.6 (full-file tracing).
+
+Root causes diagnosed and resolved:
+- PsrdWarp tearing: manual mod() on warped coordinates removed
+- Asymmetric period response: periodicP centering applied to both types
+- Animation stutter: wall-clock time replaced with capped-dt accumulator
+- Speed phase jump: uPhase uniform with noisePhase += speed * dt in JS
+- noisePhase render-gate bypass fixed
+- Alpha cycling: unbounded in non-periodic mode, bounded only when tiling
+
+Gustavson psrdnoise2 source paper and full interactive tutorial reviewed.
+Key insight: original reference uses alpha = time (unbounded, non-periodic).
+The cyclical/mechanical feel was caused by mod() bounding alpha always,
+and by pow(sc, 0.33) suppressing high-frequency rotation (vs tutorial's
+s * alpha linear scaling).
+
+Deferred:
+- Period tile-count semantics redesign
+- psrdnoise_grad integer lattice index wrapping (gradient discontinuity)
+- Swirl and Ridge extensions (see Todo)
+
+### 2026-05-22 — Noise panel Phase 1
+- **Noise family→type selector** — added `noise.family` with six top-level
+  families: Gradient, Fractal, Cellular, Warp, Pattern, and Analog.
+- **Noise panel rebuilt** — `buildNoisePanel()` now renders the family row,
+  type grid, shared noise params, and Fractal-only controls.
+- **Main wiring simplified** — removed legacy noise visibility/optgroup patch
+  helpers from `main.js`; `generateNoise()` now receives `p.family`.
+- **Commit:** `d2b7fe2` — `feat(ui): noise panel family→type two-level selector
+  (Phase 1)`.
+- **Next:** fix noise scale-from-center shader behavior; Phase 2 adds
+  psrdnoise / Periodic family.
+
+### 2026-05-16 (v0.8.9+)
+- **Chrome 148 Metal bug diagnosed** — Root cause identified: Chrome 148 
+  ANGLE/Metal backend regression on macOS breaks Hypercube wireframe edges 
+  and Harabara GLB model. Safari and Firefox unaffected. Not a code bug — 
+  confirmed by testing across multiple git commits back to v0.8.7, all broken.
+- **Workaround:** launch Chrome with `--use-angle=gl` flag. Alias added to 
+  `~/.zshrc`: `chrome-gl`
+- **Chromium bug filed:** May 16 2026 at issues.chromium.org — ANGLE Metal 
+  backend regression, live reproduction at imweb.image-ine.org included.
+- **Debug session committed** — aTB attribute replaces gl_VertexID in edge 
+  shader; highp sampler2D + textureLod hardening; SkinnedMesh→Mesh in 
+  loadGLTF. Commit `379d694`. Repo synced, origin/main current.
+- **Pending:** fix code to work on Chrome Metal without flag (see Chrome 148 
+  Metal Fix Needed note above).
+
+### 2026-05-23 — PsrdNoise extensions + 3D material noise fixes (v0.8.9+)
+uSwirl and uRidge added to PsrdWarp, wired to UI. Six 3D material noise
+fixes: animation, seamless period, triplanar UV seam elimination, T-Displace
+noise routing and triplanar matching. material.color fixed to always white;
+MatHue/MatSat moved to emissive tinting. Default white 3D object appearance
+still not resolved visually — parked for next session first task.
+
+
+### 2026-05-05 — 2026-05-13 (v0.8.8 → v0.8.9)
+- **Bundled Models** — URL-based asset loading list in 3D tab; SceneManager 
+  closure fix for click handler.
+- **3D model URL persistence** — `currentModelUrl` saved to `.imweb` project 
+  files, `.imbank` bank files, and per-state via `mediaRefs.scene3d`.
+- **Second display WebGL recovery** — DPR change listener + 
+  `webglcontextlost`/`restored` handlers; canvas stays live when window 
+  moves to external display.
+- **MasterProject system** — `npm run push-master` script + post-commit hook; 
+  MasterProject.imweb auto-pushed on commit. Load status shown in splash.
+- **Pipeline fixes** — blend and feedback gated on active toggles; 
+  BG blend labelled as self-process to clarify asymmetry with FG blend.
+- **Bank lookup fix** — active bank resolved by index field not array position.
+- **Version bumped to v0.8.9.**
 
 ### 2026-05-02
 - **Obsidian Update** — Note updated to v0.8.7; includes Hypercube engine, Analog TV simulation, and per-layer blend refactor.
@@ -376,4 +527,4 @@ AFTER: git add [files] && git commit -m "[message]" && git push
 ### 2026-03-18 — 2026-03-19
 - Phases 1–3 built: full signal chain, all ImOs9 features restored, preset system, MIDI, second monitor, sequencers.
 
-*Development with Claude Sonnet 4.6, sessions starting 2026-03-18. v0.8.7 current 2026-05-02.*
+*Development with Claude Sonnet 4.6, sessions starting 2026-03-18. v0.8.9+ current 2026-05-16.*
