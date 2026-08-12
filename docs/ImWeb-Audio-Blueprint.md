@@ -523,3 +523,103 @@ Waveform editing. A timeline. Arrangement. A mixer. Plugin hosting. Undo.
 LiSa refused all of these, and the refusal is what made it an instrument. If a
 region editor starts appearing, the design has drifted into a DAW and the argument
 for living inside ImWeb collapses.
+
+
+---
+
+## 8. Corrections from review (2026-08-12)
+
+Findings from a review of §1–§7, verified against the codebase before being
+recorded here. None require redesign; all four are things §4 asserts or assumes
+that are wrong or incomplete.
+
+### 8.1 The audio field is not green — and the mic closes a feedback loop
+
+§1–§7 are written as though audio is unbuilt. It is not. There is already:
+
+- a **live mic input path** — `ControllerManager.enableSound()`
+  (`src/controls/ControllerManager.js:862`) opens an `AudioContext`, takes
+  `getUserMedia({ audio: true })`, and runs a 512-point analyser (256 bins)
+- **`BeatDetector`** (`src/controls/BeatDetector.js`), fed from that analyser
+- **`tAudio`** — a 256×2 texture exposed to Live GLSL (`src/main.js:5008`),
+  y<0.5 FFT bins, y>0.5 waveform
+
+So the engine arrives into an app that already listens.
+
+**The consequence the rest of this document should have caught: the moment a
+Recording Zone captures the mic while a Voice plays to the monitors, the default
+state of the instrument is mic → tape → monitors → mic.** That is acoustic
+feedback with a tape delay in it, and by §4.7's own test it belongs to the class
+that ruins a performance rather than merely sounding wrong. It cannot be left to
+be discovered at load-in.
+
+Three things follow, none of them decided yet:
+
+- **One `AudioContext` or two.** The controller path creates its own. A second
+  context for the engine means two clocks and no sample-accurate relationship
+  between what the instrument hears and what it plays.
+- **Does the sound-reactive controller layer hear the instrument's own output?**
+  If yes, every audio-driven video parameter becomes part of the feedback path.
+  If no, the two halves are deaf to each other, which is a strange thing for a
+  coupling instrument.
+- **Monitoring discipline.** Some combination of an input-mute-while-armed rule,
+  an explicit output-to-input tap rather than an ambient one, and a visible
+  indication of when the loop is closed.
+
+Also to state as a boot step: an `AudioContext` starts suspended and must be
+resumed from a user gesture. The engine has to survive being constructed before
+that gesture arrives.
+
+### 8.2 Tape contents do not belong in `.imweb`
+
+§4.8 says tape audio can ride in the `.imweb` file as an opt-in payload. That
+contradicts the precedent already set in `src/io/ProjectFile.js`, which
+deliberately keeps large binary out: full-res stills are excluded with the
+comment *"too large (>100MB)"*, and timewarp strips are written to **IndexedDB**
+instead.
+
+`.imweb` is pretty-printed JSON. Sixty seconds of stereo float32 tape is ~23 MB
+raw, roughly **31 MB base64** once encoded, inside indented JSON.
+
+Portability may still justify an export that carries audio, but it should be an
+explicit override of an existing project decision rather than an unnoticed
+contradiction of it — and it should be a binary container, not base64 in JSON.
+The default should follow the strips: IndexedDB, with the project file holding a
+reference.
+
+### 8.3 "Faster than realtime" has to be chunked
+
+§4.4 says a Synth Zone can render ten seconds of material "in a fraction of a
+second". True in aggregate, misleading in scheduling: a worklet processes 128
+samples per quantum, about **2.67 ms at 48 kHz**, and a render writer cannot
+block one without dropping live audio.
+
+Render writers must therefore fill spare budget **across** quanta — render a
+slice, yield, resume — with the zone unreadable until complete, or readable
+progressively if that turns out to be musically useful. Implementable, but it is
+the one realtime-scheduling detail in the design and §4.4's phrasing hides it.
+
+### 8.4 The rAF-tick hazard is worse than "hidden tabs"
+
+§4.10 and §6 record that a hidden tab suspends rAF while the worklet keeps
+running. The sharper statement: **even in a healthy foreground tab, every
+parameter-driven modulation carries up to a frame plus a quantum of jitter**, so
+§3's "one gesture that is simultaneously a video warp and an audio navigation"
+should expect a few milliseconds of audio-to-video skew by construction.
+
+That raises the priority of the fix already named in §6 item 2. Driving the
+parameter tick from the audio clock is not just hidden-tab insurance — it is
+what makes the coupling sample-accurate rather than frame-accurate, which is the
+difference between the two halves being in time and merely being close.
+
+### 8.5 Checked and not adopted
+
+- **"OSC is unwired."** It is not. `OSCBridge` is imported at `src/main.js:111`
+  and instantiated at `src/main.js:2444` as `new OSCBridge(ps, presetMgr)`.
+  Whether it is *useful* without a relay running is a separate question, and the
+  controller list marking OSC "Planned" may reflect that — but the transport
+  named in §4.1 is not vapour.
+- **"128 partitions is too many."** §6 item 3 already leaves the partition count
+  open and notes that RoSa's 128 was *zones per type*, not partitions. 16–32 is a
+  plausible answer to that open question rather than a correction to a claim this
+  document makes.
