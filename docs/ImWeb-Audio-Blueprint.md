@@ -93,6 +93,16 @@ communicate by message protocol only.
   WebRTC data channel later is a transport swap, not a rewrite. That keeps the 2002
   two-machine setup available as a *deployment mode* — for large installations, or
   so a WebGL context loss cannot take the sound down mid-set.
+- **Message port, not `SharedArrayBuffer`.** The worklet owns the tape exclusively;
+  nothing else touches it. Per-frame traffic is the envelope (§4.2), ~16 KB, which
+  `postMessage` carries without strain. One-off transfers — a spectral render in, a
+  tape dump out for saving — use transferables at zero copy.
+  This is not a compromise, it is the better design: it avoids COOP/COEP
+  cross-origin isolation, under which *every* cross-origin resource must opt in via
+  CORP or fail to load — a real load-in hazard for an instrument that loads media
+  and is hosted on someone else's domain. It also makes the tearing and
+  synchronisation problem of concurrent buffer access **stop existing** rather than
+  needing to be managed.
 - Adopt RoSa's protocol *shape* (buffer, zones, zone types, OSC-style addresses)
   rather than inventing one.
 
@@ -113,11 +123,52 @@ adding latency, and trading the tactile immediacy that is the entire point.
 It also gives amplitude→geometry coupling for free, which is the authentic
 Rutt-Etra / Paik-Abe / Vasulka relationship: raw signal to raster displacement.
 
+**Budget.** Stereo float32 at 48 kHz costs ~0.375 MB/s — roughly 23 MB for 60 s,
+115 MB for 5 min, 230 MB for 10 min. Default 60 s, user-settable, sized by assigned
+memory in RoSa's manner rather than fixed as an architectural constant.
+
+### Two representations
+
+"Video displaces from the tape" is not literally true and must not be implemented
+that way — 23 MB cannot be uploaded to a texture every frame.
+
+| | owner | size | role |
+|---|---|---|---|
+| **Tape** | audio worklet, exclusively | tens of MB | audio truth |
+| **Envelope** | main thread, rebuilt from messages | ~16 KB | the video view |
+
+The envelope is a downsampled min/max summary, one column per screen pixel — the
+standard waveform-display representation — regenerated incrementally for dirty
+regions only. It is what makes the whole-session landscape affordable, and it is
+what makes the message-port transport (§4.1) sufficient.
+
 ### 4.3 Partitions
 
-**One allocation, named bounds-checked partitions, opt-in `unsafe` flag.**
+**One allocation, fixed indexed partition slots, bounds-checked, opt-in `unsafe`
+flag.**
 
-Zones belong to a named partition and are clamped to its bounds.
+Zones belong to a partition and are clamped to its bounds.
+
+Three rules that travel together:
+
+- **Partitions are fixed slots addressed by index**, in RoSa's manner (it fixed 128
+  zones per type). Names are labels only. If partitions were a user-created,
+  user-named list, a captured index would mean a *different* partition on another
+  machine — precisely the `displace.warpSlot` and `glsl.preset` failure. Fixed slots
+  make the index safe and keep layout capturable (§4.8).
+- **Zone positions are partition-relative**, never absolute. This is what lets a
+  layout differ between machines without every zone landing in the wrong material,
+  and it is the same choice that makes save work.
+- **Layout is fixed at session start; contents are freely mutable.** Changing what is
+  *inside* a partition is the instrument. Changing the *set* of partitions and their
+  bounds is a setup act — LiSa and RoSa both sized at startup — and mid-set resizing
+  would mean relocating live material for a gesture nobody performs. Clearing and
+  reassigning need no relayout and stay live.
+
+A partition may be configured as a **ring** — always recording the last N seconds.
+That gives the capture-what-just-happened gesture without the whole tape shifting
+under everything else, so rolling versus static is not a choice to make: a rolling
+partition sits beside static ones holding committed material.
 
 Why one allocation rather than several tapes: because video displaces from the
 whole tape, a single buffer means **the entire session is one visible landscape** —
@@ -135,10 +186,10 @@ between a drawn spectral render and a live recording produces material nobody
 composed. That accident is productive. The flag makes it **opt-in** — the best
 accident becomes a feature, the worst failure becomes something you have to ask for.
 
-Accepted costs: one sample rate and channel count throughout; resizing partitions
-mid-session implies relocation (mitigate by fixing layout at session start);
-"partition" is a concept neither RoSa nor SC had, so there is no prior art to crib
-ergonomics from.
+Accepted costs: one sample rate and channel count throughout; unsafe cross-partition
+zones need absolute coordinates by definition, so they are the one thing that cannot
+survive a relayout — which is fine, unsafe means unsafe; and "partition" is a concept
+neither RoSa nor SC had, so there is no prior art to crib ergonomics from.
 
 ### 4.4 Zones and Voices
 
@@ -233,6 +284,29 @@ surface, pointer/pressure handling and stroke looper already exist.
 Division of labour: **the performer keeps timing, intensity, and which couplings are
 true right now. The machine holds more relationships live than a person can.**
 
+### 4.8 Capture and save
+
+Display State capture is **opt-out, not opt-in** — `ParameterSystem.js:781` captures
+every parameter whose group is not `'global'`. Any parameter added without thinking
+about this is therefore captured by default.
+
+| Thing | Decision | Why |
+|---|---|---|
+| Partition layout | captured, normal group | structural; means the same thing on any machine |
+| Zone positions | captured, partition-relative | relative positions survive layout differences |
+| Zone → partition binding | captured, **by index** | safe only because slots are fixed (§4.3) |
+| Zone/Voice levels, coupling faders | captured | this is performance state |
+| Snippet selection | **`group: 'global'`** | snippets live in per-origin localStorage, so an index drifts across ports and machines — the exact `glsl.preset` precedent |
+| Tape contents | **not a parameter at all** | tens of MB; belongs in the `.imweb` payload or nowhere |
+
+Structural consequence: a captured state that references tape material assumes that
+material is loaded. Same class as `warpSlot`. **States capture structure and
+settings; tape audio rides in the `.imweb` file as an explicit, opt-in payload** — it
+is far too large to be the default.
+
+Run the `state-capture-auditor` agent before any of this ships. This is the bug class
+that fails silently on reload, on another machine, and on another origin.
+
 ---
 
 ## 5. Rejected paths
@@ -248,30 +322,39 @@ Recorded so they are not rediscovered.
 | "Raw chaotic flexibility" as a design goal | Chaos is easy and is not what made the 2002 setup sound good. Faders did. |
 | Granular as a separate engine | It is a read pattern over a short zone — one member of the "forwards, backwards, spiralling, skipping" family, not a second subsystem. |
 | ImWeb as a client of the real RoSa | Viable as a *prototype* to validate mappings without writing DSP. Rejected as a foundation: an unmaintained Intel-Mac binary from a dissolved foundation, and it reintroduces every cross-process problem the browser had already solved. |
+| `SharedArrayBuffer` for the tape | Solved a problem the envelope representation (§4.2) eliminates. Costs COOP/COEP cross-origin isolation, under which every cross-origin resource must opt in via CORP or fail to load, and reintroduces concurrent-access tearing that exclusive worklet ownership avoids entirely. |
+| User-created, user-named partitions | A captured index would resolve to a different partition on another machine — the `warpSlot` / `glsl.preset` failure. Fixed indexed slots, names as labels. |
+| Mid-set partition resizing | Relocates live material for a gesture nobody performs. Clearing and reassigning cover the real need and need no relayout. |
+| Choosing rolling *or* static tape | False choice. A ring-configured partition sits beside static ones. |
 
 ---
 
 ## 6. Open questions
 
-None blocking; all still at the prose stage.
+The four questions this document opened on 2026-08-12 were resolved the same day and
+have moved into the sections above: partition mutability → §4.3, tape duration →
+§4.2, transport → §4.1, capture and save → §4.8. Two of them changed the design
+rather than merely settling it — the envelope representation removed the case for
+`SharedArrayBuffer` entirely, and fixed indexed partition slots replaced the
+user-named list.
 
-1. **Partition layout — fixed at session start or mutable?** Mutable implies
-   relocation of live material.
-2. **Tape duration and memory budget.** RoSa sized its buffer by *assigned memory*
-   specifically so this would not become an architectural constant. Follows from the
-   partition design, not the other way round.
-3. **`SharedArrayBuffer` vs message port.** SAB requires cross-origin isolation
-   (COOP/COEP headers), which constrains embedding and hosting — a real load-in
-   risk for an instrument that travels as a URL. Message-port designs avoid it at
-   some latency cost.
-4. **Capture and save.** Partition *layout* looks like it should be captured by
-   Display States (structural, means the same thing across machines). Tape *contents*
-   look like they should not (megabytes of live material, and a captured index into
-   them would mean something different elsewhere — the same reasoning that keeps
-   `displace.warpSlot` out of capture while `displace.warpPreset` stays in). Getting
-   this wrong is silent until someone reloads a saved state on another machine and
-   the material is gone. Decide while it is still prose, and run the
-   `state-capture-auditor` before shipping.
+What genuinely remains, none of it blocking, all still at the prose stage:
+
+1. **How is a Voice authored?** Reuse the CodeMirror editor and its last-good-compile
+   fallback, a restricted DSL, or something else? The fallback discipline is
+   non-negotiable whatever the answer — the instrument must not stop when you type
+   something wrong, which is JITLib's core insight and already the rule on the GLSL
+   side.
+2. **Sample rate and channel count.** One of each throughout (§4.3). Device output
+   rate varies; committing to a fixed internal rate means resampling at the edges.
+3. **How many partition slots**, and how many zones per type. RoSa's answer was 128
+   zones per type; the partition count has no precedent.
+4. **Which descriptors** the corpus index extracts, and whether its 2D navigation
+   surface is the existing draw surface or a separate one. They are deliberately two
+   instruments sharing a gesture (§4.6); whether they share a *widget* is a UI
+   question, not an architectural one.
+5. **The protocol vocabulary itself** — pending the RoSa v2 Implementation manual
+   (§2). Do not invent one before reading it.
 
 ---
 
