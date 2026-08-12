@@ -72,8 +72,11 @@ CataRT (Schwarz, IRCAM, mid-2000s) and its descendants. Neither is new.
 
 What is new is **one gesture that is simultaneously a video warp and an audio
 navigation**, in one runtime, live, on an instrument whose drawing surface already
-exists. Nobody has that, because nobody had both domains in one process with a real
-drawing instrument already built.
+exists. Max/MSP/Jitter has had both domains in one runtime for two decades, with
+drawing surfaces — the claim is not "both domains in one process". It is this
+particular coupling: one gesture acting on a LiSa-lineage tape and on the picture at
+once, on an instrument whose drawing surface, stroke looper and controller layer
+already exist and are already played.
 
 Overclaiming the components weakens a claim that is defensible as stated.
 
@@ -139,7 +142,7 @@ that way — 23 MB cannot be uploaded to a texture every frame.
 
 The envelope is a downsampled min/max summary, one column per screen pixel — the
 standard waveform-display representation — regenerated incrementally for dirty
-regions only. It is what makes the whole-session landscape affordable, and it is
+regions only. The ~16 KB figure is ~2K columns × min/max × float32. It is what makes the whole-session landscape affordable, and it is
 what makes the message-port transport (§4.1) sufficient.
 
 ### 4.3 Partitions
@@ -288,7 +291,7 @@ true right now. The machine holds more relationships live than a person can.**
 
 ### 4.8 Capture and save
 
-Display State capture is **opt-out, not opt-in** — `ParameterSystem.js:781` captures
+Display State capture is **opt-out, not opt-in** — `src/controls/ParameterSystem.js:781` captures
 every parameter whose group is not `'global'`. Any parameter added without thinking
 about this is therefore captured by default.
 
@@ -300,6 +303,15 @@ about this is therefore captured by default.
 | Zone/Voice levels, coupling faders | captured | this is performance state |
 | Snippet selection | **`group: 'global'`** | snippets live in per-origin localStorage, so an index drifts across ports and machines — the exact `glsl.preset` precedent |
 | Tape contents | **not a parameter at all** | tens of MB; belongs in the `.imweb` payload or nowhere |
+
+**Snippet text has the same exposure as snippet selection, and the same answer.**
+Marking the *selection* `group: 'global'` keeps a drifting index out of Display
+States, but it leaves the code itself origin-bound — a state portable in structure
+whose sound-generating text lives only in one browser's localStorage. The precedent
+is already in the project and is not the one this section started from: warp slot
+*contents* ride in the `.imweb` file (`src/io/ProjectFile.js:72` reads
+`localStorage['imweb-warpmaps']` into the project) while the slot *index* stays out
+of capture. Snippet texts should travel the same way, as GLSL user presets do.
 
 Structural consequence: a captured state that references tape material assumes that
 material is loaded. Same class as `warpSlot`. **States capture structure and
@@ -355,7 +367,9 @@ falls out of the same client-server split already committed to in §4.1.
 - **The fallback becomes total rather than partial.** Bad text never reaches the audio
   thread at all; the previous graph keeps running. Strictly stronger than the GLSL
   case.
-- **Cost is predictable.** A graph's per-sample cost is known before it runs, so the
+- **Cost is predictable** for a fixed-topology graph — which the phase-one set is.
+  A graph whose structure varies at runtime would need a bound rather than a figure.
+  A graph's per-sample cost is known before it runs, so the
   instrument can *refuse* to fade in a snippet that would blow the budget, instead of
   dropping out mid-phrase.
 - **Both destinations fall out.** A graph has no notion of realtime: drive it at 1×
@@ -452,6 +466,30 @@ effects, not voice components, and the instrument already has a pass architectur
 them. If they belong anywhere it is there, and after the tape reader has been heard
 unadorned.
 
+### 4.11 The output bus — limiting and de-clicking
+
+Two things §4.7 implies and never assigns. Both are cheap now and painful to
+retrofit.
+
+**A master limiter is not a detail here, it is load-bearing.** §4.7 names runaway as
+the audio failure that ruins a performance, §8.1 establishes that
+`mic → tape → monitors → mic` is the instrument's default state, and §4.10 puts a
+saturator in the *per-voice* set with nothing at the output. A feedback instrument
+without an output ceiling is one dialled coupling away from damaging monitors and
+ears in a room. **A hard ceiling and limiter sit at the output bus, after everything,
+and are not bypassable** — not by `effect.enable`, not by a Display State, not by a
+loaded project. The one control that must never be a controller target.
+
+**De-clicking belongs to the worklet, not the protocol.** Parameter changes arrive at
+control rate as messages; playback rate, zone bounds and levels all produce
+discontinuities if applied instantly, and §4.7's asymmetry is that audio does not
+forgive them. Smoothing them in the protocol would mean the transport carrying
+per-sample detail, which defeats §4.1. So **every zone and voice parameter is slewed
+inside the worklet at audio rate**, on arrival. The protocol carries targets; the
+worklet decides how it gets there. This is deliberately *not* the ParameterSystem
+slew of §4.10 — that runs at frame rate on the client and cannot prevent a
+per-sample discontinuity.
+
 ---
 
 ## 5. Rejected paths
@@ -490,8 +528,16 @@ Voice authoring, opened and resolved the same day, moved to §4.9 — the workle
 executes graphs and never sees text, because the audio thread has no watchdog and the
 last-good-compile fallback cannot catch an infinite loop or an inner-loop allocation.
 
-What genuinely remains, none of it blocking, all still at the prose stage:
+What genuinely remains. **The first item IS blocking** — an earlier version of this
+list said nothing here was, which was wrong once §8.1 landed:
 
+0. **The monitoring path, and everything in §8.1.** A Recording Zone capturing the
+   mic while a Voice plays to the monitors makes `mic → tape → monitors → mic` the
+   *default* state of the instrument. One `AudioContext` or two, whether the
+   sound-reactive controller layer hears the instrument's own output, and what the
+   monitoring discipline is — these outrank every question below, because by §4.7's
+   own test they are the class that ruins a performance rather than merely sounding
+   wrong. Nothing should be built until they are answered.
 1. **The UGen set beyond phase one.** §4.10 records the six-item starting hypothesis
    and where quality actually lives; the set beyond it is still to be derived from
    what gets reached for, not designed up front.
@@ -512,7 +558,15 @@ What genuinely remains, none of it blocking, all still at the prose stage:
    question, not an architectural one.
 6. **The protocol vocabulary itself** — pending the RoSa v2 Implementation manual
    (§2). Do not invent one before reading it. Note that §4.9 already fixes part of
-   its shape: graphs travel over it.
+   its shape: graphs travel over it. Two more items belong in it: how the envelope
+   (§4.2) is refetched on zoom or resize — resampling a fixed-resolution min/max view
+   is lossy, so a zoomed view probably has to ask the worklet for that span — and how
+   a render writer reports progress while chunking across quanta (§8.3).
+7. **Freeze continuity.** §4.4 makes freezing a running Voice into a partition an
+   instrumental move, and §8.3 makes the render chunked. So while the graph renders
+   across quanta, does the live Voice keep sounding from its own state, and are the
+   two phases the same performance? Musically this is the whole point — you freeze
+   *this* moment, not a re-rendered one — and the answer is not obvious.
 
 ---
 
@@ -523,3 +577,103 @@ Waveform editing. A timeline. Arrangement. A mixer. Plugin hosting. Undo.
 LiSa refused all of these, and the refusal is what made it an instrument. If a
 region editor starts appearing, the design has drifted into a DAW and the argument
 for living inside ImWeb collapses.
+
+
+---
+
+## 8. Corrections from review (2026-08-12)
+
+Findings from a review of §1–§7, verified against the codebase before being
+recorded here. None require redesign. §8.1–§8.4 are things §4 asserts or assumes that
+are wrong or incomplete; §8.5 records claims that did not survive checking.
+
+### 8.1 The audio field is not green — and the mic closes a feedback loop
+
+§1–§7 are written as though audio is unbuilt. It is not. There is already:
+
+- a **live mic input path** — `ControllerManager.enableSound()`
+  (`src/controls/ControllerManager.js:862`) opens an `AudioContext`, takes
+  `getUserMedia({ audio: true })`, and runs a 512-point analyser (256 bins)
+- **`BeatDetector`** (`src/controls/BeatDetector.js`), fed from that analyser
+- **`tAudio`** — a 256×2 texture exposed to Live GLSL (`src/main.js:5008`),
+  y<0.5 FFT bins, y>0.5 waveform
+
+So the engine arrives into an app that already listens.
+
+**The consequence the rest of this document should have caught: the moment a
+Recording Zone captures the mic while a Voice plays to the monitors, the default
+state of the instrument is mic → tape → monitors → mic.** That is acoustic
+feedback with a tape delay in it, and by §4.7's own test it belongs to the class
+that ruins a performance rather than merely sounding wrong. It cannot be left to
+be discovered at load-in.
+
+Three things follow, none of them decided yet:
+
+- **One `AudioContext` or two.** The controller path creates its own. A second
+  context for the engine means two clocks and no sample-accurate relationship
+  between what the instrument hears and what it plays.
+- **Does the sound-reactive controller layer hear the instrument's own output?**
+  If yes, every audio-driven video parameter becomes part of the feedback path.
+  If no, the two halves are deaf to each other, which is a strange thing for a
+  coupling instrument.
+- **Monitoring discipline.** Some combination of an input-mute-while-armed rule,
+  an explicit output-to-input tap rather than an ambient one, and a visible
+  indication of when the loop is closed.
+
+Also to state as a boot step: an `AudioContext` starts suspended and must be
+resumed from a user gesture. The engine has to survive being constructed before
+that gesture arrives.
+
+### 8.2 Tape contents do not belong in `.imweb`
+
+§4.8 says tape audio can ride in the `.imweb` file as an opt-in payload. That
+contradicts the precedent already set in `src/io/ProjectFile.js`, which
+deliberately keeps large binary out: full-res stills are excluded with the
+comment *"too large (>100MB)"*, and timewarp strips are written to **IndexedDB**
+instead.
+
+`.imweb` is pretty-printed JSON. Sixty seconds of stereo float32 tape is ~23 MB
+raw, roughly **31 MB base64** once encoded, inside indented JSON.
+
+Portability may still justify an export that carries audio, but it should be an
+explicit override of an existing project decision rather than an unnoticed
+contradiction of it — and it should be a binary container, not base64 in JSON.
+The default should follow the strips: IndexedDB, with the project file holding a
+reference.
+
+### 8.3 "Faster than realtime" has to be chunked
+
+§4.4 says a Synth Zone can render ten seconds of material "in a fraction of a
+second". True in aggregate, misleading in scheduling: a worklet processes 128
+samples per quantum, about **2.67 ms at 48 kHz**, and a render writer cannot
+block one without dropping live audio.
+
+Render writers must therefore fill spare budget **across** quanta — render a
+slice, yield, resume — with the zone unreadable until complete, or readable
+progressively if that turns out to be musically useful. Implementable, but it is
+the one realtime-scheduling detail in the design and §4.4's phrasing hides it.
+
+### 8.4 The rAF-tick hazard is worse than "hidden tabs"
+
+§4.10 and §6 record that a hidden tab suspends rAF while the worklet keeps
+running. The sharper statement: **even in a healthy foreground tab, every
+parameter-driven modulation carries up to a frame plus a quantum of jitter**, so
+§3's "one gesture that is simultaneously a video warp and an audio navigation"
+should expect a few milliseconds of audio-to-video skew by construction.
+
+That raises the priority of the fix already named in §6 item 2. Driving the
+parameter tick from the audio clock is not just hidden-tab insurance — it is
+what makes the coupling sample-accurate rather than frame-accurate, which is the
+difference between the two halves being in time and merely being close.
+
+### 8.5 Checked and not adopted
+
+- **"OSC is unwired."** It is not. `OSCBridge` is imported at `src/main.js:111`
+  and instantiated at `src/main.js:2444` as `new OSCBridge(ps, presetMgr)`.
+  Whether it is *useful* without a relay running is a separate question, and the
+  controller list marking OSC "Planned" may reflect that — but the transport
+  named in §4.1 is not vapour.
+- **"128 partitions is too many."** §6 item 3 already leaves the partition count
+  open and notes that RoSa's 128 was *zones per type*, not partitions. 16–32 is a
+  plausible answer to that open question rather than a correction to a claim this
+  document makes.
