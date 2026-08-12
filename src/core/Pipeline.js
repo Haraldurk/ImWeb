@@ -835,7 +835,7 @@ export class Pipeline {
     const fadeAmt = 1 - (p.get('output.fade').value / 100);
     if (fadeAmt < 1) {
       faded = this._pass(this.m.fade, {
-        uTexture: interlaced, uAmount: fadeAmt,
+        uTexture: postOut, uAmount: fadeAmt,
       });
     }
 
