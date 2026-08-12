@@ -545,13 +545,15 @@ list said nothing here was, which was wrong once §8.1 landed:
 1. **The UGen set beyond phase one.** §4.10 records the six-item starting hypothesis
    and where quality actually lives; the set beyond it is still to be derived from
    what gets reached for, not designed up front.
-2. **What clocks audio-relevant parameters.** ParameterSystem ticks from rAF, which a
-   hidden tab suspends while the worklet keeps running — sound continues, modulation
-   freezes (§4.10). Either minimal LFO/envelope UGens run in the worklet, accepting
-   the duplication, or the parameter tick is driven from the audio clock when audio
-   is active. The latter is better architecturally — the audio thread never suspends
-   and is sample-accurate — but it changes how ParameterSystem ticks, which is not a
-   small claim.
+2. **ANSWERED in §8.7 — what clocks audio-relevant parameters.** ParameterSystem
+   ticks from rAF, which a hidden tab suspends while the worklet keeps running —
+   sound continues, modulation freezes (§4.10). **Answered by neither of the two
+   options originally listed here.** Running worklet-side LFO/envelope UGens
+   duplicates the controller layer, and driving the tick from the audio clock leaves
+   the freeze intact because evaluation still happens on a throttled thread. §8.7
+   takes the third option: the client describes the controller, the worklet evaluates
+   it, and for controllers feeding audio the worklet is authoritative and echoes
+   values back.
 3. **Sample rate and channel count.** One of each throughout (§4.3). Device output
    rate varies; committing to a fixed internal rate means resampling at the edges.
 4. **How many partition slots**, and how many zones per type. RoSa's answer was 128
@@ -753,3 +755,136 @@ trap — the one-context decision constrains the engine's **construction shape**
 day one, because the engine has to be written as the context owner before the
 `ControllerManager` rewiring lands. So item 0 blocks the recording path and the
 engine's boot structure. It does not block the DSP.
+
+### 8.7 Item 2 answered — what clocks audio-relevant parameters
+
+§6 item 2 framed this as a hidden-tab problem. It is three problems, and only the
+first is about hidden tabs.
+
+1. **The freeze.** `ctrl.tick(dt, beatPhase)` (`src/main.js:7083`) runs inside the
+   rAF loop (`main.js:7026`). A hidden tab suspends rAF; the worklet keeps running.
+   Sound continues, every modulation stops.
+2. **Jitter.** Even in a healthy foreground tab, every modulation carries up to a
+   frame of quantization (§8.4).
+3. **Resolution.** 60 Hz control rate *steps*. This is already known in the video
+   domain — the slow-LFO "stutter" investigated for v0.19 turned out to be step
+   quantization at a healthy 60fps, not a frame-rate problem. In audio a stepped
+   parameter is not a stutter, it is zipper noise on every fader move.
+
+**Driving the tick from the audio clock does not fix this.** If evaluation still
+happens on the main thread, a hidden tab throttles it regardless — background
+`setTimeout` is clamped to ~1s, and messages arriving from the worklet are consumed
+by a deprioritised thread. That addresses jitter and leaves the freeze.
+
+#### The answer is §4.9's move, one level down
+
+**The client describes the controller; the worklet evaluates it.** Shape, rate,
+phase, slew curve and table travel over the protocol once, as data. Evaluation
+happens at audio rate on the thread that never suspends. The badge popover, MIDI
+mapping, range fields and every other authoring surface stay exactly where they are.
+
+This **refines §4.10's dividing rule rather than contradicting it.** That rule says
+do not rebuild the controller layer in UGens, and it is right — do not duplicate the
+*authoring*. Moving the *evaluation* is the entire point, and shipping a description
+rather than a reimplementation is what keeps one canonical definition of each curve.
+
+**Curves become tables.** Response tables are already 16,384-step data. Sample the
+seven slew curves the same way and transfer them as buffers, so there is one
+definition of "Elastic" rather than a client one and a worklet one that drift.
+
+#### The inversion, stated plainly
+
+If one LFO drives both a shader uniform and a zone rate, two oscillators in two
+clocks is the wrong answer. So **for any controller feeding audio, the worklet is
+authoritative and echoes its value back** for the video side and the UI to read each
+frame.
+
+ParameterSystem therefore stops being the sole source of truth for modulated values.
+That is a real change, and it is also what makes §3's claim literally true: the two
+domains are in phase *by construction* rather than by luck, which is the difference
+between a coupling and a coincidence. Display may lag a frame; display is allowed to.
+
+#### Costs
+
+- **Two code paths.** With audio off entirely, modulation falls back to rAF. This is
+  where bugs will live, and there is no way around it short of running the audio
+  thread always.
+- **A per-parameter audio-relevance question** — which parameters does the worklet
+  consume? Same shape as the `_srcUsed` consumption fixpoint, and subject to the same
+  warning: extend one canonical function, do not copy the pattern.
+
+#### Expression controllers
+
+The awkward case, and smaller than its description. `ControllerManager.js:378-396`
+compiles **one expression, one variable, fourteen helpers** — `t` plus sin, cos, tan,
+abs, floor, ceil, round, mod, fract, clamp, mix, pow, sqrt, noise. The `return (…)`
+wrap forces expression context. That is a scalar expression tree, not a language, and
+it parses into a flat instruction list evaluated in the worklet zero-alloc and
+guaranteed-terminating. No text crosses the boundary, so §4.9 holds without an
+exception.
+
+**This makes expression controllers safer than they are today.** The grammar is not
+actually closed now: `new Function` accepts any JS expression, including
+`(() => { while (true) {} })()`, and the tick's `catch` sees throws but not hangs. A
+text field can wedge the render loop today, with no audio involved — filed as **#33**,
+which should ship first and independently, because the audio work is not its release
+vehicle.
+
+Three costs specific to this:
+
+- **The grammar closes, which is breaking.** Accept a *superset* of the documented
+  vocabulary — ternaries, comparisons, `Math.*` constants — and reject only
+  statements, loops and object/array literals. Saved projects are where a
+  too-narrow grammar would bite.
+- **`noise()` is `Math.random()`** and needs its own RNG in the worklet, so
+  expressions using it do not reproduce across the move.
+- **`t` changes meaning.** `_exprTime` accumulates `dt` from rAF, so today it is
+  *time the tab was visible*; from the audio clock it becomes real elapsed time. An
+  improvement, and still a behaviour change for a project left running through a
+  hidden-tab period.
+
+**Rejected: compile when possible, fall back to `new Function` when not.** Two
+evaluation paths for one feature is exactly where the costs above say bugs live, and
+the fallback would keep the wedge alive.
+
+#### Controller phase, capture, and the re-send trap
+
+Moving evaluation to the worklet makes running controller phase worklet-resident
+state, which §4.8's capture story does not cover. Two separate things, and only one
+of them is new.
+
+**Phase is already ephemeral across captures, and stays that way.**
+`captureState()` (`src/controls/ParameterSystem.js:778`) stores `p.value` and
+nothing else; controller *configs* are serialized separately (`src/state/Preset.js:89`,
+`:101`). Running LFO phase is stored nowhere today. So a Display State recalled
+mid-set has never restored the phase the performer was hearing, and the move to the
+worklet inherits that rather than causing it.
+
+**Decision: controller phase remains ephemeral across captures.** Recorded as a
+decision rather than left implicit, because §4.8 exists precisely to catch state that
+silently differs after reload. Capturing phase would mean a Display State that
+restores *where an oscillator was*, which sounds desirable and is not: recalling a
+state would then rewind every modulation to a stored moment rather than continuing
+from the present, and morph between states would have to interpolate a wrapping
+quantity. The `phase` field in a controller config is an **offset**, is config, and
+is captured; the running value is not.
+
+**The new hazard is the re-send, not the capture — and it runs the other way.**
+Today's semantics are: recall retriggers, capture stores no phase. `restoreState()`
+writes param values, and `Preset.js:293` immediately follows it with
+`retriggerLFOs()` (again at `:352`, `:445` and `:460` — morph completion and
+value-set paths), so a Display State recall deliberately resets every running LFO
+to phase zero. After the move, restoring a state re-sends controller descriptions
+to the worklet; if the worklet treated *receiving a description* as *restarting
+that controller* the behavior would be preserved only by accident, and if it
+treated every re-send as a restart, unrelated description updates would start
+resetting LFOs that today only recall resets.
+
+**Rule: a re-sent controller description is an update, not a restart — and recall
+sends the retrigger explicitly.** Phase survives a description that changes rate,
+shape, table or slew. Retriggering stays a separate explicit message, mirroring
+`ControllerManager.retriggerLFOs()` (`src/controls/ControllerManager.js:439`),
+which exists as the deliberate path and is already what tap tempo and the
+beat-detect branch call. So Display State recall must emit that message alongside
+the re-sent descriptions — otherwise the update-not-restart rule silently drops
+the recall-retriggers-LFOs behavior the instrument has today.
