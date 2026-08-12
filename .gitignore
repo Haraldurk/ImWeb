@@ -253,7 +253,10 @@ glsl-user-presets-backup.json
 *-presets-backup.json
 
 # Obsidian
-imweb-obsidian.md
+# docs/imweb-obsidian.md is deliberately TRACKED. It is the project knowledge
+# base. While ignored it had no backup of any kind — not git, not Time Machine,
+# not an Obsidian vault — and on 2026-08-12 a stale editor buffer overwrote it,
+# destroying ~322 lines covering 2026-05-17 → 2026-07-29. Do not re-add it here.
 
 # HTML export snapshots
 *.imweb.htm
