@@ -176,6 +176,8 @@ Reasons: zero-install distribution, shareable URL, modern GPU pipeline access, f
 
 ```
 INPUT SOURCES (33 — canonical list is SOURCE_DEFS, append-only)
+Buffer source is pre-processed first: pan/scale transform, then frame
+blend of fs1/fs2 when buffer.frameblend > 0.
 Camera · Movie A · Movie B · Buffer · Color · Color2 (gradient, animated)
 Noise (38 types) · Draw · Text · 3D Scene · 3D Depth · SDF · SDF Depth
 Output (feedback) · BG1 · BG2 · Sound · Delay · Scope · SlitScan
@@ -192,12 +194,18 @@ Mix 1 | Mix 2 | Mix 3      (free srcA/srcB per bus — a bus is a graph
 
 Foreground | Background | DisplaceSrc
 
-        ↓ fixed pre-chain ↓
+        ↓ GLSL insert (glsl.target 1/2/3 — one slot at a time,
+          before per-layer colour correction) ↓
 
-FG/BG CC → TransferMode → Displace → Keyer → ChromaKey → WarpMap
-→ Blend/Feedback
+        ↓ fixed pre-chain, per Pipeline.render() ↓
 
-        ↓ 23-effect reorderable chain (DEFAULT_FX_ORDER, Pipeline.js) ↓
+FG: ColorCorrect → Fade      BG: ColorCorrect → Fade
+→ TransferMode → Displace → Keyer → ChromaKey → WarpMap
+→ Feedback (rotate, then offset/scale) → TransferMode → ColorShift
+
+        ↓ 23-effect reorderable chain (DEFAULT_FX_ORDER, Pipeline.js)
+          effect.enable skips the whole loop — a master bypass, not a
+          mute, and it does NOT touch Feedback or ColorShift ↓
 
 pixelate → edge → sharpen → rgbshift → wave → lens → polar
 → kaleidoscope → quadmirror → flip → posterize → solarize → halftone
@@ -206,7 +214,8 @@ pixelate → edge → sharpen → rgbshift → wave → lens → polar
 
         ↓ fixed post-chain ↓
 
-Fade → Custom GLSL → Output
+Fade → Custom GLSL (glsl.target 0 = Master, post-fade)
+→ final blit (optional bicubic) → Output
 
         ↓
 
