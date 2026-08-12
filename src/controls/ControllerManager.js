@@ -10,6 +10,7 @@
 
 import { LFOController } from './LFO.js';
 import { BeatDetector }  from './BeatDetector.js';
+import { compileExpression } from './ExprCompiler.js';
 
 /**
  * Default sweep range for an X-map targeting an LFO's rate.
@@ -378,22 +379,13 @@ export class ControllerManager {
     } else if (t === 'expr') {
       const src = controllerConfig.expr ?? '0';
       try {
-        // Build a safe evaluator with common math functions in scope
-        // eslint-disable-next-line no-new-func
-        const fn = new Function('t','sin','cos','tan','abs','floor','ceil','round','mod','fract','clamp','mix','pow','sqrt','noise',
-          `"use strict"; return (${src});`
-        );
-        const bound = t2 => fn(t2,
-          Math.sin, Math.cos, Math.tan, Math.abs,
-          Math.floor, Math.ceil, Math.round,
-          (a,b) => ((a % b) + b) % b,    // mod
-          a => a - Math.floor(a),          // fract
-          (a,lo,hi) => Math.max(lo, Math.min(hi, a)), // clamp
-          (a,b,t3) => a + (b-a)*t3,       // mix
-          Math.pow, Math.sqrt,
-          () => Math.random(),             // noise
-        );
-        this.exprs.set(paramId, { fn: bound });
+        // Compile to a bounded instruction list — no `new Function`, so loops,
+        // statements and allocation literals are rejected HERE, at compile
+        // time, instead of wedging the render loop at evaluation time (#33).
+        // On failure the previous expression stays live (last-good, same
+        // discipline as the GLSL editor).
+        const fn = compileExpression(src);
+        this.exprs.set(paramId, { fn });
       } catch (e) {
         console.warn(`[Expr] Compile error for ${paramId}: ${e.message}`);
       }
