@@ -8,6 +8,21 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
 
 ## [Unreleased]
 
+### Fixed
+- **The master Fade works.** Raising Fade above 0 — by the slider, by **`h`
+  (Hold / fade to black)**, by a controller, by a Display State recall or by a
+  loaded project — threw `ReferenceError: interlaced is not defined` inside the
+  render loop, stopping the picture on its last good frame. The Fade pass was
+  still reading a variable that ceased to exist when interlace became
+  `_FX.interlace` and moved into the reorderable chain. It went unnoticed
+  because Fade defaults to 0, the one value that keeps the branch shut — so the
+  most ordinary performance move there is, fading to black, was the trigger.
+
+### Added
+- `tests/audit-unresolved-identifiers.mjs` — asserts that every free identifier
+  in `src/core/` resolves to a declaration in its own file, which is the family
+  the Fade bug belonged to rather than the single instance.
+
 ---
 
 ## [0.19.0] — 2026-08-10 — The Second Pair of Hands
