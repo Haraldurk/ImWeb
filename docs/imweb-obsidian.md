@@ -148,9 +148,9 @@ fix. Use --use-angle=gl Chrome to verify logic is correct if needed.
 
 (2026-05-02)
 
-**v0.8.7 — Phase 7 complete + Hypercube & Analog TV.** Codebase at `/Users/haraldurkarlsson/Documents/GitHub/ImWeb`, built with Vite 5.4. Hosted at imweb.image-ine.org (Tom Demeyer).
+**v0.8.7 — Phase 7 complete + Hypercube & Analog TV.** *Historical snapshot, accurate as of 2026-05-02 — for current state see [[#Current status (2026-08-12)]]. The build has since moved to Vite 8 and the source list below has grown well past 22.* Codebase at `/Users/haraldurkarlsson/Documents/GitHub/ImWeb`, built with Vite 5.4 at the time. Hosted at imweb.image-ine.org (Tom Demeyer).
 
-### What's running today
+### What was running then (2026-05-02)
 
 **Input sources (22+):** Camera · Movie/clips (×8, thumbnails) · Stills Buffer · Color (solid HSV) · Color2 (gradient: solid/H/V/radial, animated) · Noise (38 types: Classic, Structured, Geometric, Signal, Fractal, Fluid) · Draw layer · Text layer · 3D Scene · 3D Depth (Distance/Normals) · Output (feedback) · Sound · SlitScan · Sequencer buffers ×3 · Particles · Vectorscope · Video Delay · BG1/BG2 stills · SDF Generator (GPU-raymarched metaballs) · **Analog TV Source** (720x480 CRT simulation with signal grading)
 
