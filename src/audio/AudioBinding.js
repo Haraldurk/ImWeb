@@ -22,11 +22,12 @@
  */
 
 import { AudioEngine, TAP } from './AudioEngine.js';
+import { SLEW_TABLE_BASE } from './protocol.js';
 import { TapeView } from './TapeView.js';
 import { partitionSpan, zoneSpan, clampToPartition } from './tape-geometry.js';
 import {
   AUDIO_TARGETS, describeController, describeSlew, descDiff, semitoneToHz,
-  sampleSlewCurve, SLEW_MECHANISM, SLEW_SEGMENT,
+  sampleSlewCurve, slewStrength, SLEW_MECHANISM, SLEW_SEGMENT,
 } from './ctrl-handoff.js';
 // The ONE table resolver (§8.7 needs the curve to upload it; ParameterSystem
 // applies it). See tests/audit-table-write-paths.mjs for both halves of that.
@@ -314,16 +315,18 @@ export class AudioBinding {
    * rightly, since that would silently become no slew at all — so the sequence
    * is not cosmetic.
    *
-   * Slew curves live in the upper half of the table slots so a controller can
-   * hold a response curve AND a slew curve at once. Two different jobs, two
-   * slots, one uploader.
+   * Slew curves live in the upper half of the table slots, so a controller can
+   * hold a response curve AND a slew curve at once. The base is `SLEW_TABLE_BASE`
+   * from protocol.js, NOT `AUDIO_TARGETS.length`: the latter is a soft contract
+   * that holds only while the target list stays shorter than the controller
+   * count, and the day it does not, two controllers quietly share a slot.
    */
   _pushSlew(slot, slew) {
     if (!slew) {
       this.engine.ctrlSlew(slot, 0, 0.1);
       return;
     }
-    const curveSlot = slot + AUDIO_TARGETS.length;
+    const curveSlot = slot + SLEW_TABLE_BASE;
     if (slew.curve) this.engine.tableData(curveSlot, Float32Array.from(slew.curve));
     this.engine.ctrlSlewFit(slot, slew.curve ? curveSlot : -1,
       slew.min, slew.max, slew.under, slew.over, slew.k0);
@@ -369,7 +372,7 @@ export class AudioBinding {
     if (mode === undefined) return null;
     if (mode !== SLEW_SEGMENT) return describeSlew(p, null, null);
     const strength = SLEW_CURVE_HAS_STRENGTH[shape]
-      ? Math.max(0, Math.min(3, p.slewStrength ?? 1)) : 1;
+      ? slewStrength(SLEW_SEGMENT, p.slewStrength) : 1;
     const key = `${shape}:${Math.round(strength * 100) / 100}`;
     let curve = this._slewCurves.get(key);
     if (!curve) {

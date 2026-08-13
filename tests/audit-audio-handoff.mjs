@@ -20,11 +20,14 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 import { LFO } from '../src/controls/LFO.js';
-import { Parameter, SLEW_CURVES, slewExcursion } from '../src/controls/ParameterSystem.js';
+import {
+  Parameter, SLEW_CURVES, SLEW_CURVE_HAS_STRENGTH, slewExcursion,
+} from '../src/controls/ParameterSystem.js';
 import {
   AUDIO_TARGETS, CTRL_SHAPES, describeController, describeSlew, descDiff,
-  semitoneToHz, sampleSlewCurve, SLEW_MECHANISM, SLEW_SEGMENT,
+  semitoneToHz, sampleSlewCurve, slewStrength, SLEW_MECHANISM, SLEW_SEGMENT,
 } from '../src/audio/ctrl-handoff.js';
+import { PROTO_VERSION } from '../src/audio/protocol.js';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const read = (p) => readFileSync(resolve(root, p), 'utf8');
@@ -62,7 +65,7 @@ console.log('the audio-relevance list');
   // entry added here that the engine refuses fails at build time rather than as
   // an LFO that mysteriously does nothing.
   const p = new Processor();
-  p.port.onmessage({ data: { a: '/engine/hello', t: 'i', v: [1] } });
+  p.port.onmessage({ data: { a: '/engine/hello', t: 'i', v: [PROTO_VERSION] } });
   for (let slot = 0; slot < AUDIO_TARGETS.length; slot++) {
     p.__sent.length = 0;
     p.port.onmessage({ data: { a: `/ctrl/${slot}/target`, t: 's', v: [AUDIO_TARGETS[slot].address] } });
@@ -219,7 +222,7 @@ console.log('\nthe two code paths agree on the same description');
   const engineRun = (desc) => {
     const p = new Processor();
     const send = (a, ...v) => p.port.onmessage({ data: { a, t: '', v } });
-    send('/engine/hello', 1);
+    send('/engine/hello', PROTO_VERSION);
     send('/ctrl/0/lfo', desc.shape, desc.hz, desc.width, desc.mode);
     send('/ctrl/0/range', desc.lo, desc.hi, desc.map);
     send('/ctrl/0/phase', desc.phase);
@@ -285,24 +288,30 @@ console.log('\nslew: both implementations, same description, same dt');
   const DT = 1 / SR;
   const STEPS = 6000;                          // ~125 ms of audio
 
-  /** The client: one Parameter, slewed, driven by a moving target. */
-  const clientRun = (shape, target) => {
+  /**
+   * The client: one Parameter, slewed, driven by a moving target.
+   *
+   * Through `setNormalized`, not through a hand-rolled copy of the arming rule.
+   * The arming rule — a new segment only once the previous one landed — is part
+   * of what is under test, and re-stating it here would be a second copy inside
+   * the very test that exists to catch second copies. The parameter is 0..1 with
+   * no ctrlMin/ctrlMax and no table, so a normalized write IS the target.
+   */
+  const clientRun = (shape, target, cfg = {}) => {
     const p = new Parameter({
       id: 'test', label: 'test', min: 0, max: 1, value: 0.5, step: 0.001,
     });
-    p.slew = 0.02;
+    p.slew = cfg.slew ?? 0.02;
     p.slewShape = shape;
+    p.slewDamp = cfg.damp ?? 0.45;
+    p.slewStrength = cfg.strength ?? 1;
     p._value = 0.5;
     p._target = 0.5;
     p._slewFrom = 0.5;
     p._slewK = 1;
     const out = new Float32Array(STEPS);
     for (let i = 0; i < STEPS; i++) {
-      const t = target(i);
-      if (t !== p._target) {
-        if (SLEW_CURVES[shape] && p._slewK >= 1) { p._slewFrom = p._value; p._slewK = 0; }
-        p._target = t;
-      }
+      p.setNormalized(target(i));
       p.tickSlew(DT);
       out[i] = p._value;
     }
@@ -310,14 +319,26 @@ console.log('\nslew: both implementations, same description, same dt');
   };
 
   /** The engine: the same slew, fed the same targets through _ctrlSlew. */
-  const engineRun = (shape, target) => {
+  const engineRun = (shape, target, cfg = {}) => {
     const proc = new Processor();
     const send = (a, ...v) => proc.port.onmessage({ data: { a, t: '', v } });
-    send('/engine/hello', 1);
+    send('/engine/hello', PROTO_VERSION);
+    const strength = cfg.strength ?? 1;
     const slew = describeSlew(
-      { slew: 0.02, slewShape: shape, min: 0, max: 1, slewDamp: 0.45, slewStrength: 1 },
-      SLEW_MECHANISM[shape] === SLEW_SEGMENT ? sampleSlewCurve(SLEW_CURVES[shape], 1) : null,
-      SLEW_MECHANISM[shape] === SLEW_SEGMENT ? slewExcursion(shape, 1) : null);
+      {
+        slew: cfg.slew ?? 0.02, slewShape: shape, min: 0, max: 1,
+        slewDamp: cfg.damp ?? 0.45, slewStrength: strength,
+      },
+      // Sampled at the CLAMPED strength, through the same helper the binding
+      // uses — the client clamps a segment curve to 0..3 and the elastic spring
+      // to 0.25..4, and sampling at the raw 4 while the client evaluates 3 is a
+      // different shape. That is what this corner found.
+      SLEW_MECHANISM[shape] === SLEW_SEGMENT
+        ? sampleSlewCurve(SLEW_CURVES[shape],
+          SLEW_CURVE_HAS_STRENGTH[shape] ? slewStrength(SLEW_SEGMENT, strength) : 1) : null,
+      SLEW_MECHANISM[shape] === SLEW_SEGMENT
+        ? slewExcursion(shape,
+          SLEW_CURVE_HAS_STRENGTH[shape] ? slewStrength(SLEW_SEGMENT, strength) : 1) : null);
     if (slew.curve) send('/table/0/data', slew.curve.buffer);
     send('/ctrl/0/slewfit', slew.curve ? 0 : -1, slew.min, slew.max, slew.under, slew.over, slew.k0);
     send('/ctrl/0/slew', slew.mode, slew.seconds, slew.damp, slew.strength);
@@ -358,6 +379,29 @@ console.log('\nslew: both implementations, same description, same dt');
       }
       check(`${shape} on ${name}: the two implementations agree`, worst < 1e-6,
         `worst divergence ${worst.toExponential(2)} at step ${at}`);
+    }
+  }
+
+  // THE CLAMP CORNERS. The comparison above runs at one setting, and the
+  // springs' agreement is not unconditional in the way a curve's is: elastic's
+  // stiffness is ω = 5·Strength / Slew, so the corner of the two clamps —
+  // Strength 4 against the 1 ms floor — puts ω·dt at 0.42, past the 0.3 rad
+  // limit where the client substeps. Before the worklet substepped too, that
+  // corner diverged by 0.107 while every check here stayed green.
+  {
+    for (const [label, cfg] of [
+      ['stiffest: strength 4, slew 1 ms, damp 0.05', { slew: 0.001, strength: 4, damp: 0.05 }],
+      ['fast and springy: strength 4, slew 5 ms', { slew: 0.005, strength: 4, damp: 0.2 }],
+      ['softest: strength 0.25, slew 2 s, damp 1', { slew: 2, strength: 0.25, damp: 1 }],
+    ]) {
+      for (const shape of ['elastic', 'ease', 'lag', 'back']) {
+        const a = clientRun(shape, rails, cfg);
+        const b = engineRun(shape, rails, cfg);
+        let worst = 0;
+        for (let i = 0; i < STEPS; i++) worst = Math.max(worst, Math.abs(a[i] - b[i]));
+        check(`${shape} at the ${label}: still agree`, worst < 1e-6,
+          `worst divergence ${worst.toExponential(2)}`);
+      }
     }
   }
 

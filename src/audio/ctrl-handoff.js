@@ -65,6 +65,21 @@ export const SLEW_MECHANISM = {
 export const SLEW_CURVE_POINTS = 16384;
 
 /**
+ * Strength, clamped the way the CLIENT clamps it — which is not one range.
+ * `tickSlew` clamps a segment curve's strength to 0..3 and the elastic spring's
+ * to 0.25..4, two different limits on one field, and the difference is not
+ * cosmetic: a curve sampled at 4 while the client evaluates 3 is a different
+ * shape. Clamped HERE, once, so the sampled curve and the shipped number cannot
+ * disagree — the divergence this fixes was found by comparing at Strength 4.
+ */
+export function slewStrength(mode, raw) {
+  const s = raw ?? 1;
+  return mode === SLEW_SEGMENT
+    ? Math.max(0, Math.min(3, s))
+    : Math.max(0.25, Math.min(4, s));
+}
+
+/**
  * Sample a segment curve into the table the worklet reads.
  *
  * The client's own function is the source — `SLEW_CURVES[shape]` — so Back's
@@ -171,7 +186,7 @@ export function describeSlew(param, curve = null, excursion = null) {
     mode,
     seconds: param.slew,
     damp: param.slewDamp ?? 0.45,
-    strength: param.slewStrength ?? 1,
+    strength: slewStrength(mode, param.slewStrength),
     curve,
     min: param.min,
     max: param.max,

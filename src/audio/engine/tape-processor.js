@@ -15,7 +15,7 @@
  * Zones are step 2 (§4.4).
  */
 
-const PROTO_VERSION = 1;
+const PROTO_VERSION = 2;
 const REFUSE_PROTO_MISMATCH = 1;
 const REFUSE_NO_TAPE = 2;
 const REFUSE_BAD_RANGE = 3;
@@ -768,11 +768,11 @@ class TapeProcessor extends AudioWorkletProcessor {
    * description at matched dt and compares them sample for sample; a divergence
    * is a failure, not a tolerance to widen.
    *
-   * Substepping is deliberately absent from the springs. The client substeps
-   * because a frame is up to 50 ms and stiffness can outrun it; here dt is
-   * 20 µs, so ω·dt is four orders of magnitude smaller than the 0.3 rad limit
-   * that triggers substepping there. One step is already finer than the client's
-   * finest.
+   * The elastic spring substeps on the client's own trigger. One sample is
+   * finer than a frame at every ordinary setting — `sub` is 1 — but the margin
+   * is not unconditional, and a comment claiming margin it does not have is
+   * worse than no comment: at Strength 4 against the 1 ms floor on Slew, ω·dt
+   * reaches 0.42 and the two implementations part company by 0.107.
    */
   _ctrlSlew(c, target, dt) {
     if (!c.slewInit) { c.slewInit = 1; c.slewVal = target; c.slewTgt = target; c.slewK = 1; }
@@ -823,14 +823,26 @@ class TapeProcessor extends AudioWorkletProcessor {
       const zeta = c.slewDamp;
       const omega = (ELASTIC_OMEGA * c.slewStrength) / c.slewSec;
       const rest = Math.max(0, 1 - zeta);
+      // Substepped on the SAME trigger the client uses, because the margin is
+      // not unconditional. At the corners of the clamps — Strength 4 against the
+      // 1 ms floor on Slew — ω reaches 20000 and ω·dt is 0.42 at 48 kHz, past
+      // the 0.3 rad limit, and the two implementations then diverge by up to
+      // 0.107. Those settings are absurd (a 1 ms elastic snap is a click either
+      // way) and the spring stays stable, so this could have been written down
+      // as a limit instead. It is fixed instead because the fix is the client's
+      // own formula and costs nothing: at every sane setting `sub` is 1.
+      const sub = Math.max(1, Math.ceil((dt * omega) / 0.3));
+      const h = dt / sub;
       let x = c.slewVal, v = c.slewVel;
-      v += (-2 * zeta * omega * v - omega * omega * (x - target)) * dt;
-      x += v * dt;
-      // The spring COLLIDES with the rails rather than being clipped against
-      // them: overshoot is a fraction of the move, so a large move landing near
-      // a rail otherwise parks flat on it.
-      if (x > hi) { x = hi; if (v > 0) v = -v * rest; }
-      else if (x < lo) { x = lo; if (v < 0) v = -v * rest; }
+      for (let s = 0; s < sub; s++) {
+        v += (-2 * zeta * omega * v - omega * omega * (x - target)) * h;
+        x += v * h;
+        // The spring COLLIDES with the rails rather than being clipped against
+        // them: overshoot is a fraction of the move, so a large move landing
+        // near a rail otherwise parks flat on it.
+        if (x > hi) { x = hi; if (v > 0) v = -v * rest; }
+        else if (x < lo) { x = lo; if (v < 0) v = -v * rest; }
+      }
       c.slewVel = v;
       next = x;
       // Parked on arrival, with the client's own thresholds — otherwise the

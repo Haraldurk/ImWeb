@@ -20,7 +20,11 @@
  * a message that could not survive a UDP hop cannot be constructed at all.
  */
 
-export const PROTO_VERSION = 1;
+// 2 since step 7: the controller vocabulary arrived (§8.7) and
+// `/ctrl/<n>/range` gained an argument. A signature that changes without a
+// bump is precisely the half-understood protocol `/engine/hello` exists to
+// refuse — the handshake can only protect what the number tracks.
+export const PROTO_VERSION = 2;
 
 /** The complete permitted argument-type set. Rule 1 — do not extend casually. */
 export const TYPE_TAGS = Object.freeze(['i', 'f', 's', 'b', 'T', 'F']);
@@ -275,6 +279,22 @@ export function isOscLegalAddress(a) {
     && !a.includes('//')
     && !OSC_ILLEGAL.test(a.replace(/<[a-z]+>/g, 'x'));
 }
+
+/**
+ * How many controller slots the engine has, and where slew curves live.
+ *
+ * Part of the contract rather than a client convenience: a controller may hold
+ * a response curve AND a slew curve at once, so the table space is two halves
+ * and the split has to mean the same thing on both sides. Offsetting by the
+ * number of audio targets instead — which is what this did first — is a soft
+ * contract that holds only while that list is shorter than the controller
+ * count, and breaks silently rather than loudly when it is not.
+ *
+ * The engine declares these again (it cannot import this file); the protocol
+ * audit checks the two agree.
+ */
+export const MAX_CONTROLLERS = 16;
+export const SLEW_TABLE_BASE = MAX_CONTROLLERS;
 
 /** Zone type tokens. Fixed vocabulary — rule 5 forbids a free name here. */
 export const ZONE_TYPES = Object.freeze(['rec', 'play', 'load', 'spectral', 'synth']);

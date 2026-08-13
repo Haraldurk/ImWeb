@@ -27,6 +27,9 @@
 
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
+// The handshake is version-gated, so the audit sends the CONSTANT — a literal
+// here would keep passing through a bump and stop testing the gate.
+import { PROTO_VERSION } from '../src/audio/protocol.js';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -58,7 +61,7 @@ function makeEngine({ tapeSeconds = 1, fill = 0.5 } = {}) {
   const p = new Processor();
   const sent = () => p.__sent;
   const send = (a, ...v) => p.port.onmessage({ data: { a, t: '', v } });
-  send('/engine/hello', 1);
+  send('/engine/hello', PROTO_VERSION);
   send('/engine/tape/alloc', tapeSeconds);
   // A constant, non-zero tape: silence and NaN are then distinguishable, which
   // a zero-filled tape would hide (a NaN read still reads as "not 0.5").
@@ -235,7 +238,7 @@ console.log('\nrequest/reply correlation');
   const p = new Processor();
   const sent = () => p.__sent;
   const send = (a, ...v) => p.port.onmessage({ data: { a, t: '', v } });
-  send('/engine/hello', 1);
+  send('/engine/hello', PROTO_VERSION);
   send('/tape/env/req', 0, 100, 8, 77);        // no tape allocated yet
   const err = sent().find((m) => m.a === '/tape/env/err');
   check('a refused envelope request replies with its reqId', !!err,
@@ -532,7 +535,7 @@ console.log('\nthe phase-one UGens — oscillator, noise, filter, saturator');
   const voice = (cfg = {}, quanta = 32) => {
     const p = new Processor();
     const send = (a, ...v) => p.port.onmessage({ data: { a, t: '', v } });
-    send('/engine/hello', 1);
+    send('/engine/hello', PROTO_VERSION);
     send('/bus/out/gain', 1);
     send('/voice/0/level', cfg.level ?? 0.5);
     send('/voice/0/src', cfg.src ?? 0);
