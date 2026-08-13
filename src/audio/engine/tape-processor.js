@@ -56,15 +56,23 @@ const ZONE_SPECIFIC = new Set([
 
 function makeZone() {
   return {
-    part: 0, startRel: 0, lenRel: 0, unsafe: false,
+    part: 0, unsafe: false,
     on: false, dynamic: false,
     gainCur: 0, gainTgt: 0,
     rateCur: 1, rateTgt: 1,
     phase: 0, writePos: 0, recorded: 0,
-    // A pending edit ducks the zone to silence, applies at the bottom of the
-    // ramp, then rises again — §4.11 names zone bounds as a discontinuity
-    // source, and moving a region under a running playhead clicks otherwise.
-    pend: false, pendPart: 0, pendStart: 0, pendLen: 0,
+    // §4.11 says zone BOUNDS are slewed at audio rate, like rate and level.
+    // They were briefly ducked-and-reapplied instead, which is fine for a hand
+    // on a field and catastrophic under a controller: an LFO writes the param
+    // every frame, so a fresh "structural edit" lands every ~16 ms, the duck
+    // never completes, and the zone only speaks at the LFO's turning points
+    // where the value momentarily stops changing. A slewed base is also the
+    // musically right answer — moving it smoothly IS scrubbing.
+    startCur: 0, startTgt: 0, lenCur: 0, lenTgt: 0,
+    // A PARTITION change still ducks. That one is genuinely structural: the
+    // new region can be anywhere in the tape, and sliding a read position
+    // across the gap would sweep through whatever material lies between.
+    pend: false, pendPart: 0,
   };
 }
 
@@ -102,6 +110,10 @@ class TapeProcessor extends AudioWorkletProcessor {
     this._limThresh = LIMIT_THRESHOLD;
     this._limRelease = 1 - Math.exp(-1 / (LIMIT_RELEASE_S * sampleRate));
     this._limGain = 1;
+    // Scratch for _computeSpan(), declared here so the object shape is fixed
+    // before the first quantum.
+    this._sa = 0;
+    this._sb = 0;
 
     this.port.onmessage = (e) => this._dispatch(e.data);
   }
@@ -118,17 +130,25 @@ class TapeProcessor extends AudioWorkletProcessor {
    * overwriting material you are playing. Clamping is the default; crossing the
    * seam is productive enough to keep, so it is opt-in rather than forbidden.
    */
-  _span(z) {
+  /**
+   * Writes the zone's absolute span into `_sa` / `_sb` rather than returning a
+   * pair. It is called PER SAMPLE now that bounds slew, and `return [a, b]`
+   * would be 48000 array literals a second per zone — §4.9's inner-loop
+   * allocation, i.e. GC on the audio thread, i.e. the crackle that is invisible
+   * until it is loud.
+   */
+  _computeSpan(z) {
     const p = this._parts[z.part];
-    let a = p.start + z.startRel;
-    let b = a + z.lenRel;
+    let a = p.start + z.startCur;
+    let b = a + z.lenCur;
     if (!z.unsafe) {
       a = Math.max(p.start, Math.min(a, p.start + p.len));
       b = Math.max(a, Math.min(b, p.start + p.len));
     }
     a = Math.max(0, Math.min(a, this._length));
     b = Math.max(a, Math.min(b, this._length));
-    return [a, b];
+    this._sa = a;
+    this._sb = b;
   }
 
   // ── protocol ──────────────────────────────────────────────────────────────
@@ -352,17 +372,24 @@ class TapeProcessor extends AudioWorkletProcessor {
       return this._refuse(REFUSE_BAD_RANGE, `partition ${slot} out of range`);
     }
     if (!z.on && z.gainCur === 0) { z.part = slot; return; }
-    z.pend = true; z.pendPart = slot; z.pendStart = z.startRel; z.pendLen = z.lenRel;
+    z.pend = true; z.pendPart = slot;
   }
 
+  /**
+   * Bounds are TARGETS, slewed at audio rate (§4.11) — not a structural edit.
+   * A controller writes this every frame, and anything that interrupts playback
+   * per message makes the zone speak only where the controller happens to sit
+   * still. Idle zones snap, so starting a stopped zone does not slide into
+   * position from wherever it last was.
+   */
   _zoneRegion(type, i, startRel, lenRel) {
     const z = this._zone(type, i);
     if (!z) return;
+    z.startTgt = startRel;
+    z.lenTgt = lenRel;
     if (!z.on && z.gainCur === 0) {
-      z.startRel = startRel; z.lenRel = lenRel; z.phase = 0; z.writePos = 0;
-      return;
+      z.startCur = startRel; z.lenCur = lenRel; z.phase = 0; z.writePos = 0;
     }
-    z.pend = true; z.pendPart = z.part; z.pendStart = startRel; z.pendLen = lenRel;
   }
 
   _zoneOn(type, i, on) {
@@ -373,7 +400,10 @@ class TapeProcessor extends AudioWorkletProcessor {
       // LiSa's dynamic length: the recording runs to the end of the region and
       // the length is taken from where you stopped, so you capture a phrase
       // without having declared how long it would be first.
-      z.lenRel = z.recorded;
+      // Snap BOTH, not just the target: a dynamic length is a fact about what
+      // was captured, and slewing into it would leave the zone briefly reading
+      // past the end of the material it just recorded.
+      z.lenCur = z.lenTgt = z.recorded;
       this.port.postMessage(
         { a: `/zone/rec/${i}/length`, t: 'f', v: [z.recorded] });
     }
@@ -405,7 +435,8 @@ class TapeProcessor extends AudioWorkletProcessor {
     // while the recorder is dead.
     if (!z.on || !input || !input.length) return;
     const p = this._parts[z.part];
-    const [a, spanEnd] = this._span(z);
+    this._computeSpan(z);
+    const a = this._sa, spanEnd = this._sb;
     // Dynamic length runs to the end of the PARTITION, not the declared region:
     // the point is to capture a phrase without having said how long it will be.
     const b = z.dynamic
@@ -430,21 +461,30 @@ class TapeProcessor extends AudioWorkletProcessor {
   }
 
   _renderPlay(z, L, R, frames) {
-    const [a, b] = this._span(z);
-    const room = b - a;
     for (let i = 0; i < frames; i++) {
       z.gainTgt = z.on && !z.pend ? 1 : 0;
       z.gainCur = this._approach(z.gainCur, z.gainTgt);
       z.rateCur = this._approach(z.rateCur, z.rateTgt);
+      // Bounds slew per sample, so a controller sweeping Start slides the read
+      // position continuously instead of restarting the zone.
+      z.startCur = this._approach(z.startCur, z.startTgt);
+      z.lenCur = this._approach(z.lenCur, z.lenTgt);
       if (z.gainCur === 0) {
         if (z.pend) {                              // bottom of the duck: apply
-          z.part = z.pendPart; z.startRel = z.pendStart; z.lenRel = z.pendLen;
+          z.part = z.pendPart;
           z.phase = 0; z.pend = false;
         }
         if (!z.on) return;
         continue;
       }
+
+      // Recomputed per sample because the bounds are moving; it is what makes a
+      // modulated region a scrub rather than a sequence of jumps.
+      this._computeSpan(z);
+      const a = this._sa, b = this._sb;
+      const room = b - a;
       if (room <= 1) continue;
+      if (z.phase >= room) z.phase = room > 0 ? z.phase % room : 0;
 
       const p = z.phase;
       const i0 = a + Math.floor(p);

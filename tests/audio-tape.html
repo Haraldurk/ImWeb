@@ -252,6 +252,59 @@ document.getElementById('go').onclick = async (e) => {
     ramp0.data[0] < -0.5 && ramp0.data[15] > 0.5,
     `${ramp0.data[0]} .. ${ramp0.data[15]}`);
 
+  log('\nmodulated bounds keep sounding (§4.11 — bounds slew, never duck)');
+  // The regression: region edits used to duck the zone to silence, apply, and
+  // rise. A controller writes its param EVERY FRAME, so the duck never
+  // completed and the zone only spoke where the controller sat still — audible
+  // as "it plays at 0 and 1 but not in between".
+  eng.zonePart('play', 0, 0);
+  eng.zoneRegion('play', 0, 0, len);
+  eng.playRate(0, 1);
+  eng.zoneOn('play', 0);
+  await new Promise((r) => setTimeout(r, 200));
+
+  // Measure the ENGINE'S OUTPUT, not its willingness to accept messages. A
+  // ducked zone accepts every message and refuses nothing — "no refusal" and
+  // "still ticking" both pass while it is silent, which is the trap this whole
+  // page keeps falling into.
+  const scope = eng.ctx.createAnalyser();
+  scope.fftSize = 2048;
+  eng.node.connect(scope);
+  const frame = new Float32Array(scope.fftSize);
+  const rms = () => {
+    scope.getFloatTimeDomainData(frame);
+    let s = 0;
+    for (let i = 0; i < frame.length; i++) s += frame[i] * frame[i];
+    return Math.sqrt(s / frame.length);
+  };
+
+  await new Promise((r) => setTimeout(r, 200));
+  const baseline = rms();
+  check('the zone is audible with a static region', baseline > 1e-3,
+    `rms=${baseline.toFixed(4)} — nothing below can mean anything if this is silent`);
+
+  // Sweep Start the way an LFO does: a new value every frame.
+  let ticks = 0, worst = Infinity;
+  await new Promise((done) => {
+    const iv = setInterval(() => {
+      const f = (Math.sin(ticks / 8) * 0.5 + 0.5) * 0.5;   // 0 … 0.5 of the region
+      eng.zoneRegion('play', 0, f * len, len * 0.5);
+      if (ticks > 4) worst = Math.min(worst, rms());       // skip the first ramp-in
+      if (++ticks >= 40) { clearInterval(iv); done(); }
+    }, 16);
+  });
+
+  check('a per-frame region sweep is not refused',
+    refused === null, refused ? `${refused[0]}: ${refused[1]}` : '');
+  check('the zone stays audible THROUGHOUT a per-frame sweep',
+    worst > baseline * 0.25,
+    `worst rms during sweep ${worst.toFixed(4)} vs baseline ${baseline.toFixed(4)} — `
+    + 'a collapse here is the duck-per-message regression');
+
+  eng.node.disconnect(scope);
+  eng.zoneOff('play', 0);
+  await new Promise((r) => setTimeout(r, 150));
+
   log('\noutput bus (§4.11)');
   check('there is no client method to disable the limiter',
     typeof eng.bypassLimiter !== 'function' && typeof eng.limiterOff !== 'function');
