@@ -1213,6 +1213,21 @@ console.log('\nworklet-resident controllers');
       s.send('/ctrl/0/table', -1);
       check('-1 detaches the curve without complaint', refusals(s).length === 2);
     }
+
+    // A segment slew with no curve to read is refused for the same reason: it
+    // would silently become no slew at all, which is a shape the performer
+    // chose quietly not happening.
+    {
+      const s = makeEngine();
+      s.send('/ctrl/0/slew', 4, 0.1, 0.45, 1);
+      check('a segment slew with no curve is refused', refusals(s).length === 1,
+        'it would degrade to no slew, silently');
+      s.send('/ctrl/0/slew', 9, 0.1, 0.45, 1);
+      check('an unknown slew mode is refused', refusals(s).length === 2);
+      s.send('/ctrl/0/slew', 1, 0.1, 0.45, 1);
+      check('a filter slew needs no curve', refusals(s).length === 2
+        && s.p._ctrls[0].slewMode === 1);
+    }
   }
 
   // The echo (§8.7's inversion). Off by default — an echo nobody reads is 60

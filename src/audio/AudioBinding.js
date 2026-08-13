@@ -25,11 +25,17 @@ import { AudioEngine, TAP } from './AudioEngine.js';
 import { TapeView } from './TapeView.js';
 import { partitionSpan, zoneSpan, clampToPartition } from './tape-geometry.js';
 import {
-  AUDIO_TARGETS, describeController, descDiff, semitoneToHz,
+  AUDIO_TARGETS, describeController, describeSlew, descDiff, semitoneToHz,
+  sampleSlewCurve, SLEW_MECHANISM, SLEW_SEGMENT,
 } from './ctrl-handoff.js';
 // The ONE table resolver (§8.7 needs the curve to upload it; ParameterSystem
 // applies it). See tests/audit-table-write-paths.mjs for both halves of that.
-import { resolveTable } from '../controls/ParameterSystem.js';
+// `SLEW_CURVES` and `slewExcursion` come from the same place for the same
+// reason: the curve the worklet runs is sampled from the client's function, and
+// the excursion constants are the client's measurements — neither is re-derived.
+import {
+  resolveTable, SLEW_CURVES, SLEW_CURVE_HAS_STRENGTH, slewExcursion,
+} from '../controls/ParameterSystem.js';
 
 const PARTITION_SLOTS = 4;
 
@@ -64,6 +70,8 @@ export class AudioBinding {
     /** Last description sent per slot, so only changes go over the port. */
     this._sentDesc = new Map();
     this._echoOn = false;
+    /** Sampled slew curves, keyed by shape:strength — 64 KB each. */
+    this._slewCurves = new Map();
     /** Has `process()` been PROVEN to run? Gates the hand-off — see `start()`. */
     this._alive = false;
   }
@@ -290,6 +298,7 @@ export class AudioBinding {
         if (want.table) this.engine.tableData(slot, Float32Array.from(want.table.points));
         this.engine.ctrlTable(slot, want.table ? slot : -1);
       }
+      if (d.slew) this._pushSlew(slot, want.slew);
       if (d.bind) {
         this.engine.ctrlTarget(slot, entry.address);
         this._owned.set(entry.id, slot);
@@ -297,6 +306,28 @@ export class AudioBinding {
       }
       this._sentDesc.set(slot, want);
     }
+  }
+
+  /**
+   * Slew, in the order the engine needs it: the curve, then the fit that points
+   * at it, then the mode. The engine refuses a segment mode with no curve —
+   * rightly, since that would silently become no slew at all — so the sequence
+   * is not cosmetic.
+   *
+   * Slew curves live in the upper half of the table slots so a controller can
+   * hold a response curve AND a slew curve at once. Two different jobs, two
+   * slots, one uploader.
+   */
+  _pushSlew(slot, slew) {
+    if (!slew) {
+      this.engine.ctrlSlew(slot, 0, 0.1);
+      return;
+    }
+    const curveSlot = slot + AUDIO_TARGETS.length;
+    if (slew.curve) this.engine.tableData(curveSlot, Float32Array.from(slew.curve));
+    this.engine.ctrlSlewFit(slot, slew.curve ? curveSlot : -1,
+      slew.min, slew.max, slew.under, slew.over, slew.k0);
+    this.engine.ctrlSlew(slot, slew.mode, slew.seconds, slew.damp, slew.strength);
   }
 
   _release(slot, entry) {
@@ -320,6 +351,37 @@ export class AudioBinding {
    * is therefore drivable in Node; this only fetches the live object, because
    * the badge popover mutates it in place and never re-calls `assign()`.
    */
+  /**
+   * The slew half of a description. A segment curve is SAMPLED from the
+   * client's own function here, with the live Strength, so the shape the
+   * worklet runs is definitionally the shape the client would have run — and
+   * the excursion constants travel as the client's measurements rather than
+   * being measured again on the other side.
+   *
+   * The sampled array is cached per (shape, strength) because it is 64 KB and
+   * the reconcile asks every frame; the cache key is also what the diff
+   * compares, so an unchanged curve produces no upload.
+   */
+  _slewFor(p) {
+    if (!(p.slew > 0)) return null;
+    const shape = p.slewShape ?? 'lag';
+    const mode = SLEW_MECHANISM[shape];
+    if (mode === undefined) return null;
+    if (mode !== SLEW_SEGMENT) return describeSlew(p, null, null);
+    const strength = SLEW_CURVE_HAS_STRENGTH[shape]
+      ? Math.max(0, Math.min(3, p.slewStrength ?? 1)) : 1;
+    const key = `${shape}:${Math.round(strength * 100) / 100}`;
+    let curve = this._slewCurves.get(key);
+    if (!curve) {
+      const fn = SLEW_CURVES[shape];
+      if (!fn) return null;
+      curve = sampleSlewCurve(fn, strength);
+      if (this._slewCurves.size > 32) this._slewCurves.clear();
+      this._slewCurves.set(key, curve);
+    }
+    return describeSlew(p, curve, slewExcursion(shape, strength));
+  }
+
   _describe(p, entry) {
     const c = this.controllers?.lfos?.get(p.id);
     if (!c?.lfo) return null;
@@ -328,7 +390,8 @@ export class AudioBinding {
     // second copy of that lookup is how the display and the sound end up
     // disagreeing about which curve is in force. Resolved here, APPLIED in the
     // worklet — never both.
-    return describeController(p, c.lfo, entry, p.table ? resolveTable(p) : null);
+    return describeController(
+      p, c.lfo, entry, p.table ? resolveTable(p) : null, this._slewFor(p));
   }
 
   /**

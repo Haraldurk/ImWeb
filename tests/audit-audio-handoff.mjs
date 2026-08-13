@@ -20,8 +20,10 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 import { LFO } from '../src/controls/LFO.js';
+import { Parameter, SLEW_CURVES, slewExcursion } from '../src/controls/ParameterSystem.js';
 import {
-  AUDIO_TARGETS, CTRL_SHAPES, describeController, descDiff, semitoneToHz,
+  AUDIO_TARGETS, CTRL_SHAPES, describeController, describeSlew, descDiff,
+  semitoneToHz, sampleSlewCurve, SLEW_MECHANISM, SLEW_SEGMENT,
 } from '../src/audio/ctrl-handoff.js';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -96,9 +98,19 @@ console.log('\nwhat stays on the rAF path, and why');
   check('a param whose table cannot be resolved is NOT taken',
     describeController({ ...param(), table: 'sCurve' }, lfo(), entry, null) === null,
     'the sweep would be shaped by a curve the worklet has never seen');
-  check('a param with slew is NOT taken',
-    describeController({ ...param(), slew: 0.2 }, lfo(), entry) === null,
-    'the slew curves are still client-side, so it would step');
+  // Slew no longer disqualifies either — but a slew nobody could describe
+  // still does, which is the same rule as for an unresolvable table.
+  const slewDesc = describeSlew({ slew: 0.2, slewShape: 'lag', min: 0, max: 1 });
+  check('a param with a DESCRIBED slew is taken',
+    !!describeController({ ...param(), slew: 0.2 }, lfo(), entry, null, slewDesc));
+  check('a param with an undescribed slew is NOT taken',
+    describeController({ ...param(), slew: 0.2 }, lfo(), entry, null, null) === null,
+    'the row would say one shape and the sound be another');
+  check('an unknown slew curve name cannot be described',
+    describeSlew({ slew: 0.2, slewShape: 'wobble', min: 0, max: 1 }) === null);
+  check('a segment curve with no sampled curve cannot be described',
+    describeSlew({ slew: 0.2, slewShape: 'bounce', min: 0, max: 1 }) === null,
+    'it would silently become no slew at all');
   check('an unknown shape is NOT taken',
     describeController(param(), lfo({ shape: 'wobble' }), entry) === null);
   check('a non-finite range is NOT taken',
@@ -179,6 +191,14 @@ console.log('\nthe reconcile sends only what changed');
   check('a replaced curve object DOES re-upload',
     descDiff({ ...base, table: t1 }, { ...base, table: t2 }).table,
     'editing a table replaces the object — a stale curve in the worklet is silent');
+
+  const s1 = { mode: 1, seconds: 0.1, damp: 0.45, strength: 1, curve: null, min: 0, max: 1, under: 0, over: 0, k0: 0 };
+  check('an unchanged slew sends nothing', !descDiff({ ...base, slew: s1 }, { ...base, slew: s1 }).slew);
+  check('a slew TIME change re-sends',
+    descDiff({ ...base, slew: s1 }, { ...base, slew: { ...s1, seconds: 0.3 } }).slew,
+    'dragging Slew in the popover would otherwise do nothing to the sound');
+  check('turning slew off re-sends',
+    descDiff({ ...base, slew: s1 }, { ...base, slew: null }).slew);
 }
 
 // ── 5. THE FALLBACK PATH: both evaluators agree ────────────────────────────
@@ -244,6 +264,141 @@ console.log('\nthe two code paths agree on the same description');
       `worst divergence ${worst.toFixed(5)} at quantum ${at}`);
     check(`${shape}: the comparison is live (the wave actually moved)`,
       Math.max(...a) - Math.min(...a) > 0.2, `range ${(Math.max(...a) - Math.min(...a)).toFixed(3)}`);
+  }
+}
+
+// ── 5b. SLEW: the one place the audio half reimplements client logic ───────
+//
+// §8.7 says *"sample the seven slew curves and transfer them as buffers"*. That
+// is true of four of them. `lag` is a one-pole filter, `ease` a critically
+// damped spring carrying velocity, `elastic` an underdamped spring that
+// collides with the parameter's rails — none is a function of normalized time,
+// so none can be a table. What travels for those is the mechanism, and the
+// worklet runs a second copy of the physics.
+//
+// A second copy is exactly what §8.7 warns against, so it is pinned the only
+// way that means anything: run `Parameter.tickSlew` and the worklet's
+// `_ctrlSlew` over the same description AT THE SAME dt and compare sample for
+// sample. A divergence is a failure, not a tolerance to widen.
+console.log('\nslew: both implementations, same description, same dt');
+{
+  const DT = 1 / SR;
+  const STEPS = 6000;                          // ~125 ms of audio
+
+  /** The client: one Parameter, slewed, driven by a moving target. */
+  const clientRun = (shape, target) => {
+    const p = new Parameter({
+      id: 'test', label: 'test', min: 0, max: 1, value: 0.5, step: 0.001,
+    });
+    p.slew = 0.02;
+    p.slewShape = shape;
+    p._value = 0.5;
+    p._target = 0.5;
+    p._slewFrom = 0.5;
+    p._slewK = 1;
+    const out = new Float32Array(STEPS);
+    for (let i = 0; i < STEPS; i++) {
+      const t = target(i);
+      if (t !== p._target) {
+        if (SLEW_CURVES[shape] && p._slewK >= 1) { p._slewFrom = p._value; p._slewK = 0; }
+        p._target = t;
+      }
+      p.tickSlew(DT);
+      out[i] = p._value;
+    }
+    return out;
+  };
+
+  /** The engine: the same slew, fed the same targets through _ctrlSlew. */
+  const engineRun = (shape, target) => {
+    const proc = new Processor();
+    const send = (a, ...v) => proc.port.onmessage({ data: { a, t: '', v } });
+    send('/engine/hello', 1);
+    const slew = describeSlew(
+      { slew: 0.02, slewShape: shape, min: 0, max: 1, slewDamp: 0.45, slewStrength: 1 },
+      SLEW_MECHANISM[shape] === SLEW_SEGMENT ? sampleSlewCurve(SLEW_CURVES[shape], 1) : null,
+      SLEW_MECHANISM[shape] === SLEW_SEGMENT ? slewExcursion(shape, 1) : null);
+    if (slew.curve) send('/table/0/data', slew.curve.buffer);
+    send('/ctrl/0/slewfit', slew.curve ? 0 : -1, slew.min, slew.max, slew.under, slew.over, slew.k0);
+    send('/ctrl/0/slew', slew.mode, slew.seconds, slew.damp, slew.strength);
+    const c = proc._ctrls[0];
+    // Seeded to the client's starting state, so the comparison is of the
+    // mechanism and not of where each happened to begin.
+    c.slewInit = 1; c.slewVal = 0.5; c.slewTgt = 0.5; c.slewFrom = 0.5; c.slewK = 1;
+    const out = new Float32Array(STEPS);
+    for (let i = 0; i < STEPS; i++) out[i] = proc._ctrlSlew(c, target(i), DT);
+    return out;
+  };
+
+  // Two target shapes, because they exercise different halves: a STEP is what a
+  // segment curve is designed for, and a SWEEP is what an LFO actually does —
+  // the case where a segment re-aims mid-flight rather than restarting.
+  const step = (i) => (i < 200 ? 0.5 : 0.9);
+  const sweep = (i) => 0.5 + 0.4 * Math.sin(2 * Math.PI * 3 * i * DT);
+  // Rail to rail. The excursion FITTING only engages when a lobe has no room —
+  // Back's dip needs space below the start, Bounce's overshoot needs space past
+  // the target — so a comfortable mid-range move never exercises it, and the
+  // first version of this test passed with the fitting deleted entirely.
+  // Elastic's rail COLLISION and its parking are only reached here too.
+  // The first phase must be long enough for the value to ARRIVE at the floor
+  // before the step: at 200 samples it was still at 0.45 when the target moved,
+  // so the move began mid-range and the fitting never engaged.
+  const rails = (i) => (i < 2000 ? 0.02 : 0.99);
+
+  for (const [name, target] of [
+    ['a step', step], ['a swept target', sweep], ['a rail-to-rail step', rails],
+  ]) {
+    for (const shape of ['lag', 'ease', 'elastic', 'ease2', 'expo', 'bounce', 'back']) {
+      const a = clientRun(shape, target);
+      const b = engineRun(shape, target);
+      let worst = 0, at = -1;
+      for (let i = 0; i < STEPS; i++) {
+        const d = Math.abs(a[i] - b[i]);
+        if (d > worst) { worst = d; at = i; }
+      }
+      check(`${shape} on ${name}: the two implementations agree`, worst < 1e-6,
+        `worst divergence ${worst.toExponential(2)} at step ${at}`);
+    }
+  }
+
+  // Calibration: the comparison must be capable of failing, and the slew must
+  // actually be doing something rather than passing the value through.
+  {
+    const a = clientRun('bounce', step);
+    const plain = step;
+    let moved = 0;
+    for (let i = 0; i < STEPS; i++) moved = Math.max(moved, Math.abs(a[i] - plain(i)));
+    check('the slew visibly lags the target (the comparison is live)', moved > 0.1,
+      `largest gap between value and target ${moved.toFixed(3)}`);
+    const wrong = clientRun('lag', step);
+    let diff = 0;
+    for (let i = 0; i < STEPS; i++) diff = Math.max(diff, Math.abs(a[i] - wrong[i]));
+    check('two different curves produce measurably different traces', diff > 0.05,
+      `lag vs bounce differ by ${diff.toFixed(3)} — a comparison that cannot tell them apart proves nothing`);
+
+    // And the rail case must actually reach the rails, or the fitting and the
+    // collision are still untested however many shapes are compared.
+    const railTrace = clientRun('back', rails);
+    let lowest = 1;
+    for (let i = 0; i < STEPS; i++) lowest = Math.min(lowest, railTrace[i]);
+    check('the rail case presses against a rail (the fitting is exercised)', lowest <= 0.02,
+      `lowest value ${lowest.toFixed(4)} — Back should try to dip below its start and be squeezed`);
+    const springTrace = clientRun('elastic', rails);
+    let highest = 0;
+    for (let i = 0; i < STEPS; i++) highest = Math.max(highest, springTrace[i]);
+    check('the spring reaches the ceiling (the collision is exercised)', highest >= 0.999,
+      `highest ${highest.toFixed(4)} — elastic should overshoot into the rail and bounce off it`);
+  }
+
+  // The rails a segment curve fits against are the PARAMETER's min/max, not the
+  // controller's range. Using the narrower range would give Back a different dip
+  // on the audio side than on the video side — the same shape, quietly rescaled.
+  {
+    const d = describeSlew(
+      { slew: 0.1, slewShape: 'back', min: -4, max: 4, ctrlMin: 0, ctrlMax: 1 },
+      sampleSlewCurve(SLEW_CURVES.back, 1), slewExcursion('back', 1));
+    check('the fitting rails are the parameter min/max, not the sweep range',
+      d.min === -4 && d.max === 4, `${d.min}..${d.max}`);
   }
 }
 

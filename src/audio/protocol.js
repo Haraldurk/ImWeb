@@ -163,6 +163,26 @@ export const CLIENT_TO_ENGINE = Object.freeze({
   // a curve that silently stops shaping is the failure this whole step exists
   // to prevent.
   '/ctrl/<n>/table': 'i',
+
+  // Slew (§8.7). mode, seconds, damp, strength.
+  //
+  // §8.7 says *"sample the seven slew curves the same way and transfer them as
+  // buffers"* and that is only true of four of them. The other three are not
+  // functions of normalized time at all: `lag` is a one-pole filter, `ease` is
+  // a critically damped spring carrying velocity between frames, and `elastic`
+  // is an underdamped spring that collides with the parameter's rails. A table
+  // cannot express any of those — there is no k to sample against — so the mode
+  // says WHICH MECHANISM, and only mode 4 carries a curve.
+  //
+  //   0 none · 1 lag (one-pole) · 2 ease (critically damped spring)
+  //   3 elastic (underdamped spring) · 4 segment curve, from a table
+  '/ctrl/<n>/slew': 'ifff',
+  // The rest of what a segment curve needs: its sampled curve, the rails it
+  // fits its excursions to, and the three measured excursion constants
+  // (`slewExcursion` in ParameterSystem). Sent as data for the same reason the
+  // curve itself is — measuring them again here would be a second definition of
+  // how far Back dips.
+  '/ctrl/<n>/slewfit': 'ifffff',   // curve slot, min, max, under, over, k0
   // Echo on/off. §8.7's inversion: for a controller feeding audio the worklet is
   // authoritative and echoes values back for the video side and the UI to read.
   // Off by default — an echo nobody reads is 60 messages a second of nothing.
@@ -224,7 +244,6 @@ export const DEFERRED = Object.freeze({
   // expression controllers (whose wire format already exists — ExprCompiler's
   // instruction list, c3b5b12).
   '/ctrl/<n>/random': 'ff',        // hz, slew seconds
-  '/ctrl/<n>/slew': 'if',          // curve id, seconds
   '/expr/<n>/code': 'b',
   '/job/<n>/progress': 'ii',
   '/job/<n>/done': '',

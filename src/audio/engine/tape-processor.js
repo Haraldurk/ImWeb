@@ -88,8 +88,18 @@ const MAX_CTRLS = 16;
  * consistent. 16384 floats each — the resolution `ResponseCurve` already uses —
  * so a full set is 1 MB, uploaded on change and never per frame.
  */
-const MAX_TABLES = MAX_CTRLS;
+const MAX_TABLES = MAX_CTRLS * 2;
 const TABLE_SIZE = 16384;
+
+/**
+ * Slew mechanisms (§8.7). NOT four flavours of one thing: a table can express
+ * only the segment curves, because the other three are functions of state
+ * rather than of normalized time.
+ */
+const SLEW_NONE = 0, SLEW_LAG = 1, SLEW_EASE = 2, SLEW_ELASTIC = 3, SLEW_SEGMENT = 4;
+
+/** Elastic's tuning, mirrored from ParameterSystem — the same spring. */
+const ELASTIC_OMEGA = 5;
 
 /** LFO shapes, in `src/controls/LFO.js` order — that order is the wire format. */
 const SHAPE_SINE = 0, SHAPE_TRI = 1, SHAPE_SAW = 2;
@@ -218,6 +228,15 @@ function makeCtrl(seed) {
     lo: 0, hi: 1, map: 0,          // output range in the target's units
     invert: 0,                     // applied to the sweep BEFORE the table
     table: -1,                     // response-curve slot, or -1 for none
+    // Slew, in the target's units — it acts on the mapped value, exactly where
+    // `Parameter.setNormalized` puts it (after the table and the range).
+    slewMode: SLEW_NONE,
+    slewSec: 0.1, slewDamp: 0.45, slewStrength: 1,
+    slewCurve: -1,                 // sampled f(k) for SLEW_SEGMENT
+    slewMin: 0, slewMax: 1,        // the rails excursions are fitted to
+    slewUnder: 0, slewOver: 0, slewK0: 0,
+    // Running state. All of it copyable, like everything else here (§8.9).
+    slewVal: 0, slewVel: 0, slewK: 1, slewFrom: 0, slewTgt: 0, slewInit: 0,
     t: 0,                          // running phase
     running: true,
     shValue: 0.5,
@@ -445,6 +464,9 @@ class TapeProcessor extends AudioWorkletProcessor {
       case '/ctrl/<n>/clear':     return this._ctrlClear(idx[0]);
       case '/table/<n>/data':     return this._tableData(idx[0], v[0]);
       case '/ctrl/<n>/table':     return this._ctrlTable(idx[0], v[0]);
+      case '/ctrl/<n>/slew':      return this._ctrlSlewSet(idx[0], v[0], v[1], v[2], v[3]);
+      case '/ctrl/<n>/slewfit':
+        return this._ctrlSlewFit(idx[0], v[0], v[1], v[2], v[3], v[4], v[5]);
       case '/ctrl/echo':          this._ctrlEcho = !!v[0]; return;
 
       case '/engine/glide':
@@ -701,6 +723,148 @@ class TapeProcessor extends AudioWorkletProcessor {
     c.table = id;
   }
 
+  _ctrlSlewSet(i, mode, seconds, damp, strength) {
+    const c = this._ctrl(i);
+    if (!c) return;
+    if (!(mode >= SLEW_NONE && mode <= SLEW_SEGMENT)) {
+      return this._refuse(REFUSE_BAD_RANGE, `slew mode ${mode} unknown`);
+    }
+    // A segment curve with no curve to read is refused for the same reason an
+    // empty response-table slot is: it would silently become no slew at all.
+    if (mode === SLEW_SEGMENT && c.slewCurve < 0) {
+      return this._refuse(REFUSE_BAD_RANGE, 'segment slew needs /ctrl/<n>/slewfit first');
+    }
+    c.slewMode = mode | 0;
+    c.slewSec = Math.max(0.001, seconds);
+    c.slewDamp = Math.max(0.05, Math.min(1, damp));
+    c.slewStrength = Math.max(0.25, Math.min(4, strength));
+  }
+
+  _ctrlSlewFit(i, curve, min, max, under, over, k0) {
+    const c = this._ctrl(i);
+    if (!c) return;
+    if (curve >= 0 && !(Number.isInteger(curve) && curve < MAX_TABLES && this._tables[curve])) {
+      return this._refuse(REFUSE_BAD_RANGE, `slew curve ${curve} is empty or out of range`);
+    }
+    c.slewCurve = curve < 0 ? -1 : curve | 0;
+    c.slewMin = min;
+    c.slewMax = max;
+    c.slewUnder = under;
+    c.slewOver = over;
+    c.slewK0 = k0;
+  }
+
+  /**
+   * One sample of slew, in the target's units. Mirrors `Parameter.tickSlew` —
+   * the same three mechanisms and the same excursion fitting — with dt fixed at
+   * one sample instead of one frame.
+   *
+   * **This is the one place in the audio half that is a second implementation
+   * of client logic**, and it is deliberate: a slew curve is a shape the
+   * performer chose, so "close enough" is not a defensible tolerance. Two things
+   * keep it from drifting. The curve itself is not reimplemented — it arrives
+   * sampled, with its excursion constants measured on the client side. And
+   * `tests/audit-audio-handoff.mjs` runs BOTH implementations over the same
+   * description at matched dt and compares them sample for sample; a divergence
+   * is a failure, not a tolerance to widen.
+   *
+   * Substepping is deliberately absent from the springs. The client substeps
+   * because a frame is up to 50 ms and stiffness can outrun it; here dt is
+   * 20 µs, so ω·dt is four orders of magnitude smaller than the 0.3 rad limit
+   * that triggers substepping there. One step is already finer than the client's
+   * finest.
+   */
+  _ctrlSlew(c, target, dt) {
+    if (!c.slewInit) { c.slewInit = 1; c.slewVal = target; c.slewTgt = target; c.slewK = 1; }
+    const lo = c.slewMin, hi = c.slewMax;
+    let next;
+
+    if (c.slewMode === SLEW_SEGMENT) {
+      // Arm a new segment only when the previous one LANDED. While one is in
+      // flight the target may move freely and the segment re-aims at it — the
+      // trap documented in tests/audit-modulation-resolution.mjs is restarting
+      // the clock per target change, under which a swept target freezes the
+      // value at k = 0 forever.
+      if (c.slewK >= 1 && target !== c.slewTgt) { c.slewFrom = c.slewVal; c.slewK = 0; }
+      c.slewTgt = target;
+      c.slewK = Math.min(1, c.slewK + dt / c.slewSec);
+
+      const d = target - c.slewFrom;
+      const mag = d < 0 ? -d : d;
+      let k = c.slewK;
+      let sUnder = 1;
+      if (c.slewUnder > 0 && mag > 0) {
+        // Room on the far side of the start — against the direction of travel.
+        const room = d > 0 ? c.slewFrom - lo : hi - c.slewFrom;
+        sUnder = Math.min(1, Math.max(0, room) / (mag * c.slewUnder));
+        const kA = c.slewK0 * sUnder;
+        // The opening dip is squeezed in TIME as well as in depth, so a move
+        // with no room leaves immediately instead of waiting out a dip it
+        // cannot make. Both ends stay pinned, so k=0 is still the start and
+        // k=1 still lands exactly on the target.
+        k = kA > 0 && k < kA
+          ? (k / kA) * c.slewK0
+          : c.slewK0 + ((k - kA) / (1 - kA)) * (1 - c.slewK0);
+      }
+      // The stored curve is f(k) as the client's function returns it —
+      // including values outside [0,1], which ARE the anticipation and the
+      // overshoot. `_tableApply` clamps its input, never its output, so no
+      // offset encoding is needed and Back's dip survives the round trip.
+      const f0 = this._tableApply(this._tables[c.slewCurve], k);
+      let f = f0;
+      if (f < 0) {
+        f *= sUnder;
+      } else if (f > 1 && c.slewOver > 0 && mag > 0) {
+        const room = d > 0 ? hi - target : target - lo;
+        f = 1 + (f - 1) * Math.min(1, Math.max(0, room) / (mag * c.slewOver));
+      }
+      next = c.slewFrom + d * f;
+    } else if (c.slewMode === SLEW_ELASTIC) {
+      const zeta = c.slewDamp;
+      const omega = (ELASTIC_OMEGA * c.slewStrength) / c.slewSec;
+      const rest = Math.max(0, 1 - zeta);
+      let x = c.slewVal, v = c.slewVel;
+      v += (-2 * zeta * omega * v - omega * omega * (x - target)) * dt;
+      x += v * dt;
+      // The spring COLLIDES with the rails rather than being clipped against
+      // them: overshoot is a fraction of the move, so a large move landing near
+      // a rail otherwise parks flat on it.
+      if (x > hi) { x = hi; if (v > 0) v = -v * rest; }
+      else if (x < lo) { x = lo; if (v < 0) v = -v * rest; }
+      c.slewVel = v;
+      next = x;
+      // Parked on arrival, with the client's own thresholds — otherwise the
+      // ring idles forever a hair off the target and the two implementations
+      // disagree in the tail, which is where a differential test looks.
+      const span = hi - lo;
+      if (Math.abs(next - target) < span * 1e-5 && Math.abs(c.slewVel) < span * 1e-3) {
+        next = target;
+        c.slewVel = 0;
+      }
+    } else if (c.slewMode === SLEW_EASE) {
+      // Critically damped spring, carrying velocity — which is what buys the
+      // ease-IN. A one-pole cannot: its velocity is largest on the first step.
+      const omega = 2 / c.slewSec;
+      const x = c.slewVal - target;
+      const od = omega * dt;
+      const exp = 1 / (1 + od + 0.48 * od * od + 0.235 * od * od * od);
+      const temp = (c.slewVel + omega * x) * dt;
+      c.slewVel = (c.slewVel - omega * temp) * exp;
+      next = target + (x + temp) * exp;
+      const span = hi - lo;
+      if (Math.abs(next - target) < span * 1e-5 && Math.abs(c.slewVel) < span * 1e-3) {
+        next = target;
+        c.slewVel = 0;
+      }
+    } else {
+      // Exponential lag: approach the target at 1/slew per second.
+      next = c.slewVal + (target - c.slewVal) * Math.min(1, dt / c.slewSec);
+    }
+
+    c.slewVal = next < lo ? lo : next > hi ? hi : next;
+    return c.slewVal;
+  }
+
   /** Linear-interpolated lookup — `ResponseCurve.apply`, sample for sample. */
   _tableApply(table, x) {
     const n = x < 0 ? 0 : x > 1 ? 1 : x;
@@ -807,9 +971,12 @@ class TapeProcessor extends AudioWorkletProcessor {
         // Exponential is a RATIO sweep: equal fractions of the range are equal
         // musical intervals, which is the same reason pitch is registered in
         // semitones on the client side (LEARNED 2026-08-08).
-        c.buf[i] = c.map === 1
+        const mapped = c.map === 1
           ? c.lo * Math.pow(c.hi / c.lo, x)
           : c.lo + (c.hi - c.lo) * x;
+        // Slew acts on the MAPPED value, which is where `setNormalized` puts
+        // it: after the table and after the range, in the target's own units.
+        c.buf[i] = c.slewMode === SLEW_NONE ? mapped : this._ctrlSlew(c, mapped, dt);
       }
       // Longer-than-128 blocks hold the last value rather than reading past the
       // end of the buffer — see RENDER_QUANTUM.

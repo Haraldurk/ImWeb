@@ -41,6 +41,45 @@ export const AUDIO_TARGETS = [
 export const CTRL_SHAPES = { sine: 0, triangle: 1, sawtooth: 2, rampdown: 3, square: 4, sh: 5 };
 
 /**
+ * Slew mechanisms — which one a `slewShape` name is, not which curve.
+ *
+ * §8.7 said *"sample the seven slew curves and transfer them as buffers"*, and
+ * that is true of four of them. The other three are not functions of normalized
+ * time at all: `lag` is a one-pole filter, `ease` a critically damped spring
+ * carrying velocity, `elastic` an underdamped spring that collides with the
+ * parameter's rails. There is no k to sample against, so what travels for those
+ * is the MECHANISM plus its constants; only the segment curves travel as data.
+ */
+export const SLEW_NONE = 0, SLEW_LAG = 1, SLEW_EASE = 2, SLEW_ELASTIC = 3, SLEW_SEGMENT = 4;
+export const SLEW_MECHANISM = {
+  lag: SLEW_LAG,
+  ease: SLEW_EASE,
+  elastic: SLEW_ELASTIC,
+  ease2: SLEW_SEGMENT,
+  expo: SLEW_SEGMENT,
+  bounce: SLEW_SEGMENT,
+  back: SLEW_SEGMENT,
+};
+
+/** How finely a segment curve is sampled for the wire. */
+export const SLEW_CURVE_POINTS = 16384;
+
+/**
+ * Sample a segment curve into the table the worklet reads.
+ *
+ * The client's own function is the source — `SLEW_CURVES[shape]` — so Back's
+ * anticipation is defined once and shipped, rather than defined twice and
+ * compared. Values outside [0,1] are stored as they come: they ARE the
+ * anticipation and the overshoot, and the lookup clamps its input, never its
+ * output.
+ */
+export function sampleSlewCurve(fn, strength = 1, n = SLEW_CURVE_POINTS) {
+  const out = new Float32Array(n);
+  for (let i = 0; i < n; i++) out[i] = fn(i / (n - 1), strength);
+  return out;
+}
+
+/**
  * Semitones → Hz. Pitch and cutoff are registered in semitones because rate and
  * frequency are heard as ratios (LEARNED 2026-08-08); the engine speaks Hz
  * because that is what a DSP kernel wants. One conversion site for both the
@@ -69,13 +108,16 @@ export function semitoneToHz(semitones) {
  *                        source of truth for what the controller is doing NOW
  * @param {object} entry  the AUDIO_TARGETS row
  */
-export function describeController(param, lfo, entry, table = null) {
+export function describeController(param, lfo, entry, table = null, slew = null) {
   if (!param || !lfo || !entry) return null;
   const shape = CTRL_SHAPES[lfo.shape];
   if (shape === undefined) return null;
   if (lfo.beatSync) return null;               // no beat clock in the worklet
   if (lfo.mode === 'xmap') return null;        // externally triggered, client-side
-  if (param.slew > 0) return null;             // the slew curves are still client-side
+  // A slew the caller could not describe — an unknown curve name, or a segment
+  // curve nobody sampled — disqualifies, for the same reason an unresolvable
+  // response table does: the row would say one shape and the sound be another.
+  if (param.slew > 0 && !slew) return null;
   // A table NAMED but not resolvable is the one case that must refuse rather
   // than proceed: the client would shape the sweep with a curve the worklet has
   // never seen, so what is heard would stop matching what the row says.
@@ -103,6 +145,39 @@ export function describeController(param, lfo, entry, table = null) {
     // the object rather than mutating it, so a reference change IS an edit —
     // which is what makes a per-frame identity comparison enough to catch one.
     table,
+    slew,
+  };
+}
+
+/**
+ * What the worklet needs in order to slew this parameter exactly as
+ * `Parameter.tickSlew` would, or `null` if it cannot.
+ *
+ * The rails are the PARAMETER's min/max, not the controller's range: that is
+ * what the client fits excursions against, and using the narrower range here
+ * would give Back a different dip on the audio side than on the video side.
+ *
+ * @param excursion  `slewExcursion(shape, strength)` — measured on the client,
+ *                   shipped rather than re-measured, so how far Back dips has
+ *                   one definition.
+ * @param curve      the sampled f(k), for segment curves only.
+ */
+export function describeSlew(param, curve = null, excursion = null) {
+  if (!(param.slew > 0)) return null;
+  const mode = SLEW_MECHANISM[param.slewShape ?? 'lag'];
+  if (mode === undefined) return null;
+  if (mode === SLEW_SEGMENT && !(curve && excursion)) return null;
+  return {
+    mode,
+    seconds: param.slew,
+    damp: param.slewDamp ?? 0.45,
+    strength: param.slewStrength ?? 1,
+    curve,
+    min: param.min,
+    max: param.max,
+    under: excursion?.under ?? 0,
+    over: excursion?.over ?? 0,
+    k0: excursion?.k0 ?? 0,
   };
 }
 
@@ -119,6 +194,14 @@ export function descDiff(had, want) {
     // curve object, so an edit changes the identity and a redraw of the same
     // curve does not.
     table: !had || had.table !== want.table,
+    slew: !had || slewChanged(had.slew, want.slew),
     bind: !had,
   };
+}
+
+function slewChanged(a, b) {
+  if (!a || !b) return a !== b;
+  return a.mode !== b.mode || a.seconds !== b.seconds || a.damp !== b.damp
+    || a.strength !== b.strength || a.curve !== b.curve || a.min !== b.min
+    || a.max !== b.max || a.under !== b.under || a.over !== b.over || a.k0 !== b.k0;
 }

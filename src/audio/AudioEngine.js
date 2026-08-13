@@ -301,6 +301,13 @@ export class AudioEngine {
   /** @param {Float32Array} points the 16384 a `ResponseCurve` already holds. */
   tableData(slot, points) { this._send(`/table/${slot}/data`, points); }
   ctrlTable(slot, id) { this._send(`/ctrl/${slot}/table`, id | 0); }
+  /** mode: 0 none, 1 lag, 2 ease, 3 elastic, 4 segment curve. */
+  ctrlSlew(slot, mode, seconds, damp = 0.45, strength = 1) {
+    this._send(`/ctrl/${slot}/slew`, mode | 0, seconds, damp, strength);
+  }
+  ctrlSlewFit(slot, curve, min, max, under, over, k0) {
+    this._send(`/ctrl/${slot}/slewfit`, curve | 0, min, max, under, over, k0);
+  }
   /** The ONLY restart. Everything else is an update (rule 4). */
   ctrlRetrigger(slot) { this._send(`/ctrl/${slot}/retrigger`); }
   ctrlClear(slot) { this._send(`/ctrl/${slot}/clear`); }
