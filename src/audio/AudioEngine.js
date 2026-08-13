@@ -26,6 +26,8 @@ export class AudioEngine {
     this.onRefuse = null;
     /** Called with (zoneIndex, lengthSamples) after a dynamic recording stops. */
     this.onRecLength = null;
+    /** Called with (type, zoneIndex, running) when the ENGINE changes a zone's state. */
+    this.onZoneState = null;
 
     this._mic = null;
     this._micStream = null;
@@ -190,6 +192,9 @@ export class AudioEngine {
     const recLen = /^\/zone\/rec\/(\d+)\/length$/.exec(m.a);
     if (recLen) return this.onRecLength?.(Number(recLen[1]), m.v[0]);
 
+    const zState = /^\/zone\/([a-z]+)\/(\d+)\/state$/.exec(m.a);
+    if (zState) return this.onZoneState?.(zState[1], Number(zState[2]), !!m.v[0]);
+
     switch (m.a) {
       case '/engine/ready': {
         const [proto, rate, maxSec] = m.v;
@@ -211,6 +216,21 @@ export class AudioEngine {
           if (cur.reqId !== reqId) continue;       // stale: the view moved on
           this._inflight.delete(view);
           cur.resolve({ reqId, start, end, columns, data: new Float32Array(blob) });
+          const next = this._queued.get(view);
+          if (next) {
+            this._queued.delete(view);
+            this._issue(view, ...next.args).then(next.resolve);
+          }
+          return;
+        }
+        return;
+      }
+      case '/tape/env/err': {
+        const [reqId] = m.v;
+        for (const [view, cur] of this._inflight) {
+          if (cur.reqId !== reqId) continue;
+          this._inflight.delete(view);
+          cur.resolve(null);
           const next = this._queued.get(view);
           if (next) {
             this._queued.delete(view);

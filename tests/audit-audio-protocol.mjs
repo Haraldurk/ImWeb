@@ -20,7 +20,7 @@ import { dirname, resolve } from 'node:path';
 import { sanitizeSource, calibrateSanitizer } from './lib/sanitize-source.mjs';
 import {
   PROTO_VERSION, TYPE_TAGS, CLIENT_TO_ENGINE, ENGINE_TO_CLIENT, DEFERRED,
-  allAddresses, isOscLegalAddress, encode,
+  allAddresses, isOscLegalAddress, encode, normalizeAddress,
 } from '../src/audio/protocol.js';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -110,8 +110,8 @@ const handled = new Set(
 const posted = new Set([
   ...[...procKeep.matchAll(/a:\s*'([^']+)'/g)].map((m) => m[1]),
   ...[...procKeep.matchAll(/a:\s*`([^`]+)`/g)]
-    .map((m) => m[1].replace(/\$\{[^}]*\}/g, '<n>')),
-]);
+    .map((m) => m[1].replace(/\$\{[^}]*\}/g, '0')),
+].map(normalizeAddress));   // collapse through the canonical function, not a copy
 
 const declaredIn = Object.keys(CLIENT_TO_ENGINE);
 const declaredOut = Object.keys(ENGINE_TO_CLIENT);

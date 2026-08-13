@@ -6570,9 +6570,12 @@ export function registerCoreParameters(ps) {
   // Regions are fractions of their partition, not sample counts, for the same
   // reason §4.3 makes zone positions partition-relative: a captured layout has
   // to mean the same thing on a machine whose tape is a different length.
+  // A TOGGLE, not a TRIGGER: a trigger can only ever start, so there was no way
+  // to release the audio device short of a reload. Still 'global' — a Display
+  // State must not be able to seize or drop the sound card.
   ps.register({
     id: "audio.enable", label: "Audio On", group: "global",
-    type: PARAM_TYPE.TRIGGER, value: 0,
+    type: PARAM_TYPE.TOGGLE, value: 0,
   });
   ps.register({
     id: "audio.tapeSec", label: "Tape", group: "global",

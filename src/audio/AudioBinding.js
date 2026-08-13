@@ -58,6 +58,15 @@ export class AudioBinding {
       const partLen = Math.floor(this.ps.get(`apart${slot}.len`).value * n);
       if (partLen > 0) this.ps.set('arec.len', lenSamples / partLen);
     };
+    // The engine stops a dynamic recording at the seam on its own. Reflect that
+    // in the param, with a guard: writing it fires onChange, which would send
+    // the state straight back and make an engine-side fact into a round trip.
+    this.engine.onZoneState = (type, i, running) => {
+      if (i !== 0) return;
+      const id = type === 'rec' ? 'arec.on' : 'aplay.on';
+      this._fromEngine = true;
+      try { this.ps.set(id, running ? 1 : 0); } finally { this._fromEngine = false; }
+    };
     this.engine.onProcessorError = () => this._say(
       'AUDIO ENGINE DIED — process() will not run again; reload to recover');
 
@@ -73,7 +82,10 @@ export class AudioBinding {
     // liveness proof — telling a performer the engine is up when it is silent
     // is the one status message that must never be wrong.
     const alive = new Promise((resolve) => {
-      const prev = this.onDirty;
+      // Save and restore the ENGINE's handler. Reading this.onDirty saved
+      // `undefined` from the binding and then installed that over whatever the
+      // real consumer (the waveform display) had registered.
+      const prev = this.engine.onDirty;
       this.engine.onDirty = (a, b) => { this.engine.onDirty = prev; resolve(true); };
       setTimeout(() => resolve(false), 3000);
     });
@@ -92,16 +104,33 @@ export class AudioBinding {
   }
 
   async stop() {
+    if (!this.running) return;
     this._unsubs.forEach((u) => u());
     this._unsubs = [];
     this.engine.closeMic();
     await this.engine.close();
     this.running = false;
+    // A fresh engine for the next start: AudioEngine holds a closed
+    // AudioContext and a resolved handshake promise, neither of which can be
+    // reused, and addModule() cannot be undone on a context anyway.
+    this.engine = new AudioEngine();
   }
 
   // ── translation ───────────────────────────────────────────────────────────
 
   get _tapeLen() { return Math.floor(this.ps.get('audio.tapeSec').value * this.engine.sampleRate); }
+
+  /**
+   * Is a zone bound to this partition running? Mirrors the engine's own refusal
+   * (§4.3, layout is a setup act). Checked HERE as well, because a refusal
+   * arrives after the param has already changed: the engine keeps the old
+   * layout, the param keeps the new one, and every subsequent region is
+   * converted against a partition length the engine does not have.
+   */
+  _slotBusy(slot) {
+    return [['arec', 'rec'], ['aplay', 'play']].some(([prefix]) =>
+      this.ps.get(`${prefix}.on`).value && this.ps.get(`${prefix}.part`).value === slot);
+  }
 
   /** Partition bounds, fractions of the tape → absolute samples. */
   _pushLayout() {
@@ -165,8 +194,21 @@ export class AudioBinding {
     });
 
     for (let i = 0; i < PARTITION_SLOTS; i++) {
-      this._on(`apart${i}.start`, () => this._pushLayout());
-      this._on(`apart${i}.len`, () => this._pushLayout());
+      for (const key of ['start', 'len']) {
+        const id = `apart${i}.${key}`;
+        let accepted = this.ps.get(id).value;
+        this._on(id, (v) => {
+          if (this._fromEngine) return;
+          if (this._slotBusy(i)) {
+            this._say(`P${i} layout is fixed while a zone on it runs (§4.3)`);
+            this._fromEngine = true;                 // revert without recursing
+            try { this.ps.set(id, accepted); } finally { this._fromEngine = false; }
+            return;
+          }
+          accepted = v;
+          this._pushLayout();
+        });
+      }
     }
 
     for (const [prefix, type] of [['arec', 'rec'], ['aplay', 'play']]) {

@@ -210,5 +210,56 @@ console.log('\n§4.11: the output ceiling');
   void out;
 }
 
+// ── 7. the engine refuses what it cannot safely do mid-performance ─────────
+console.log('\nrefusals that protect material');
+{
+  const { send, run, sent } = makeEngine();
+  send('/part/0/bounds', 0, SR);
+  send('/zone/play/0/part', 0);
+  send('/zone/play/0/region', 0, 12000);
+  send('/zone/play/0/on');
+  run(4);
+  const before = sent().filter((m) => m.a === '/engine/refuse').length;
+  send('/engine/tape/alloc', 2);
+  const refusals = sent().filter((m) => m.a === '/engine/refuse');
+  check('reallocating the tape while a zone runs is refused',
+    refusals.length > before,
+    'realloc discards every recording — refusing relayout but not this is backwards');
+  check('the refusal is LAYOUT_LOCKED',
+    refusals.at(-1)?.v[0] === 4, String(refusals.at(-1)?.v[0]));
+}
+
+// ── 8. a failed request settles its own promise ────────────────────────────
+console.log('\nrequest/reply correlation');
+{
+  const p = new Processor();
+  const sent = () => p.__sent;
+  const send = (a, ...v) => p.port.onmessage({ data: { a, t: '', v } });
+  send('/engine/hello', 1);
+  send('/tape/env/req', 0, 100, 8, 77);        // no tape allocated yet
+  const err = sent().find((m) => m.a === '/tape/env/err');
+  check('a refused envelope request replies with its reqId', !!err,
+    'an uncorrelated refusal cannot settle the promise, and the view gates on it');
+  check('the error carries the originating reqId', err?.v[0] === 77, String(err?.v[0]));
+}
+
+// ── 9. engine-initiated state changes are reported ─────────────────────────
+console.log('\nthe engine says when it stops a zone itself');
+{
+  const s = makeEngine({ fill: 0 });
+  s.send('/part/0/bounds', 0, 256);
+  s.send('/zone/rec/0/part', 0);
+  s.send('/zone/rec/0/region', 0, 256);
+  s.send('/zone/rec/0/dynamic', true);
+  const tone = new Float32Array(128).fill(0.4);
+  s.input.push(tone, tone);
+  s.send('/zone/rec/0/on');
+  s.run(10);
+  const st = s.sent().find((m) => m.a === '/zone/rec/0/state');
+  check('an auto-stop reports the zone state', !!st,
+    'without it the Run toggle stays on over a stopped zone');
+  check('the reported state is "stopped"', st?.v[0] === false, String(st?.v[0]));
+}
+
 console.log(failures ? `\n${failures} FAILURE(S)\n` : '\nAll audio DSP checks passed.\n');
 process.exit(failures ? 1 : 0);
