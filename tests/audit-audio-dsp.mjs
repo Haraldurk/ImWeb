@@ -261,5 +261,251 @@ console.log('\nthe engine says when it stops a zone itself');
   check('the reported state is "stopped"', st?.v[0] === false, String(st?.v[0]));
 }
 
+// ── 10. the tape reader's quality (§4.10 items 1 and 2) ────────────────────
+//
+// §4.10: "Get those right and a plain sine sounds good. Get them wrong and no
+// UGen set rescues it." Both claims are measurable on produced samples, so they
+// are measured rather than asserted about the source.
+console.log('\nthe tape reader — interpolation and rate-aware anti-aliasing');
+{
+  /** Energy at one normalized frequency (cycles/sample), by direct projection. */
+  const energyAt = (x, f) => {
+    let re = 0, im = 0;
+    const w = 2 * Math.PI * f;
+    for (let n = 0; n < x.length; n++) { re += x[n] * Math.cos(w * n); im += x[n] * Math.sin(w * n); }
+    return (re * re + im * im) / (x.length * x.length);
+  };
+  /** Fill a tape with a sine at `f` cycles/sample. */
+  const writeSine = (p, f, amp = 0.5) => {
+    for (const ch of p._tape) for (let n = 0; n < ch.length; n++) ch[n] = amp * Math.sin(2 * Math.PI * f * n);
+  };
+  /** Raw post-bus samples, after the gain ramp has settled. */
+  const collect = (s, quanta = 24, settle = 12) => {
+    s.run(settle);
+    const out = [];
+    for (let q = 0; q < quanta; q++) { s.p.process([s.input], [s.out]); out.push(...s.out[0]); }
+    return Float32Array.from(out);
+  };
+
+  // (a) Bit-transparency at integer phase. THE property that rejects B-spline:
+  // an approximating kernel lowpasses even at 1×, so the main path would be
+  // permanently dull and what you hear would stop matching the envelope you see.
+  {
+    const { p } = makeEngine({ fill: null });
+    writeSine(p, 0.01);
+    let worst = 0;
+    for (let i = 40; i < 120; i++) worst = Math.max(worst, Math.abs(p._cubic(0, i, 0, 4096) - p._tape[0][i]));
+    check('at integer phase the kernel returns the tape sample EXACTLY', worst === 0,
+      `worst deviation ${worst} — an approximating kernel (B-spline) fails here`);
+  }
+
+  // (a2) The same property END TO END, through _renderPlay rather than the
+  // kernel alone — which is what covers the sub-read CENTRING. Off-centre, the
+  // single tap at N = 1 would sit half a step late, so a 1× read would be
+  // interpolated rather than exact and this fails while (a) still passes.
+  // `rateCur` starts at exactly 1 and no rate message is sent, so the phase
+  // stays integral; a rate that slewed in would leave it fractional.
+  {
+    const s = makeEngine({ fill: null });
+    for (const ch of s.p._tape) for (let n = 0; n < ch.length; n++) ch[n] = Math.sin(n * 12.9898) * 0.5;
+    s.send('/part/0/bounds', 0, 8192);
+    s.send('/zone/play/0/part', 0);
+    s.send('/engine/glide', 0);
+    s.send('/bus/out/gain', 1);
+    s.send('/zone/play/0/region', 0, 8192);
+    s.send('/zone/play/0/on');
+    s.run(80);                                  // let gain snap to exactly 1
+    const z = s.p._zones('play')[0];
+    const phase0 = z.phase;
+    const x = [];
+    for (let q = 0; q < 2; q++) { s.p.process([s.input], [s.out]); x.push(...s.out[0]); }
+    let worst = 0;
+    for (let n = 0; n < x.length; n++) {
+      worst = Math.max(worst, Math.abs(x[n] - s.p._tape[0][(phase0 + n) % 8192]));
+    }
+    check('the preconditions hold: integral phase and unity gain', Number.isInteger(phase0) && z.gainCur === 1,
+      `phase ${phase0}, gain ${z.gainCur}`);
+    check('a 1× read is bit-transparent END TO END', worst === 0,
+      `worst deviation ${worst.toExponential(2)} — an off-centre tap reads between samples at 1×`);
+  }
+
+  // (b) Cubic beats linear on the thing the reader actually does: land between
+  // samples. Measured against the analytic sine the tape was filled from, so
+  // neither kernel is being compared to the other's idea of the truth.
+  {
+    const { p } = makeEngine({ fill: null });
+    const f = 0.05;
+    writeSine(p, f, 1);
+    const buf = p._tape[0];
+    let cub = 0, lin = 0;
+    for (let n = 100; n < 900; n++) {
+      for (const frac of [0.25, 0.5, 0.75]) {
+        const truth = Math.sin(2 * Math.PI * f * (n + frac));
+        cub = Math.max(cub, Math.abs(p._cubic(0, n + frac, 0, 4096) - truth));
+        lin = Math.max(lin, Math.abs(buf[n] * (1 - frac) + buf[n + 1] * frac - truth));
+      }
+    }
+    check('cubic interpolation beats linear against the analytic signal', cub < lin * 0.5,
+      `cubic ${cub.toExponential(2)} vs linear ${lin.toExponential(2)}`);
+    // Calibration: linear must be measurably wrong here, or "cubic is better"
+    // is a comparison against a kernel that happened to be exact.
+    check('the linear reference is measurably wrong (the test is live)', lin > 1e-3,
+      `linear error ${lin.toExponential(2)} — too small to distinguish kernels`);
+  }
+
+  // (c) The fold, measured as a RATIO of two tones through ONE path.
+  //
+  // The obvious test — alias energy against a naive read computed here — is
+  // invalid, and was believed for several iterations. Two reasons, both of
+  // which inflate the result: the engine's phase is fractional (the rate slews
+  // in, so reads land mid-sample) while a hand-computed reference at `n*rate`
+  // sits on exact integers, so the engine pays cubic droop the reference never
+  // does; and the box attenuates the offending content itself, which is its
+  // JOB but is indistinguishable from attenuating everything. Together they
+  // scored "16 dB of suppression" for a kernel that was mostly just quieter.
+  //
+  // So: put a tone that SURVIVES a 2× read (0.05 → 0.1) and one that cannot
+  // (0.35 → 0.7, folding to 0.3) on the same tape, and measure alias ÷ wanted.
+  // Both tones take the same path, so droop, gain and the limiter cancel out of
+  // the ratio, and only SELECTIVITY moves it.
+  // The rate SLEWS to its target (`_approach`, ~8 ms with a 1e-6 snap), and
+  // until it arrives the read is a chirp, which smears the alias off whatever
+  // bin you measure. At the first settle used here — 12 quanta — rateCur was
+  // still 1.963, and the engine scored 16 dB "suppression" that was really just
+  // the alias sitting next to the probe frequency rather than on it. Forcing
+  // N = 1 did not change that number, which is how the artefact was caught.
+  //
+  // So: settle past the snap, and PROVE the rate arrived rather than trusting
+  // the sample count (LEARNED 2026-08-04 — a run should prove its own
+  // preconditions).
+  // Both tones are an INTEGER number of cycles in the 8192-sample loop. With
+  // 0.05 and 0.35 they are not, so the region's wrap is a discontinuity that
+  // splatters broadband energy into the measurement bin — and forward and
+  // reverse meet that seam at different points, which made the direction test
+  // fail on correct code (ratio 0.591, stable). Loop-periodic tones remove the
+  // seam instead of widening the tolerance to hide it.
+  const LOOP = 8192;
+  const F_LO = 410 / LOOP;          // ≈ 0.0500 — survives a 2× read
+  const F_HI = 2867 / LOOP;         // ≈ 0.3501 — cannot; folds back
+  const BIN_WANTED = 2 * F_LO;                  // 0.1001
+  const BIN_ALIAS = Math.abs(1 - 2 * F_HI);     // 0.2999
+  const foldRatio = (rate) => {
+    const s = makeEngine({ fill: null });
+    for (const ch of s.p._tape) {
+      for (let n = 0; n < ch.length; n++) {
+        ch[n] = 0.4 * Math.sin(2 * Math.PI * F_LO * n) + 0.4 * Math.sin(2 * Math.PI * F_HI * n);
+      }
+    }
+    s.send('/part/0/bounds', 0, LOOP);
+    s.send('/zone/play/0/part', 0);
+    s.send('/engine/glide', 0);
+    s.send('/bus/out/gain', 1);
+    s.send('/zone/play/0/region', 0, LOOP);
+    s.send('/zone/play/0/rate', rate);
+    s.send('/zone/play/0/on');
+    const x = collect(s, 24, 80);
+    const wanted = energyAt(x, BIN_WANTED), alias = energyAt(x, BIN_ALIAS);
+    return { wanted, alias, ratio: alias / wanted, arrived: s.p._zones('play')[0].rateCur };
+  };
+  {
+    const e = foldRatio(2);
+    check('the read rate actually reached 2× before measuring', e.arrived === 2,
+      `rateCur ${e.arrived} — a still-slewing rate is a chirp, and smears the alias off the bin`);
+    check('the surviving tone is actually there (the test is live)', e.wanted > 1e-4,
+      `wanted energy ${e.wanted.toExponential(2)} — a ratio against silence proves nothing`);
+    // The threshold is set from MEASUREMENT, not taste, because the kernel is
+    // not the only thing here that discriminates: the cubic's own droop already
+    // attenuates 0.35 more than 0.05 when reads land off-sample. Measured
+    // alias/wanted — 0.209 with the kernel (6.8 dB), 0.398 with N forced to 1
+    // (4.0 dB). So the box contributes 2.8 dB and the interpolator 4.0, and a
+    // threshold above 0.398 would pass with the kernel deleted. 0.30 sits
+    // between them with ~30% margin either side; both states verified by
+    // mutation. The 6.8 dB also matches theory independently — a box of width
+    // rate/N has response |cos(πf)| here, i.e. −6.9 dB at 0.35 against −0.1 dB
+    // at 0.05.
+    check('the AA kernel suppresses the FOLDED tone and not the wanted one', e.ratio < 0.30,
+      `alias/wanted ${e.ratio.toFixed(3)} (${(10 * Math.log10(e.ratio)).toFixed(1)} dB)`);
+    console.log(`       selective alias suppression at 2×: ${(-10 * Math.log10(e.ratio)).toFixed(1)} dB`);
+  }
+
+  // (d) Reverse is the same read with a sign, so the |rate| the kernel keys on
+  // has to hold. Cheap, and it pins the absolute-value assumption.
+  {
+    const fwd = foldRatio(2), rev = foldRatio(-2);
+    const m = rev.ratio / fwd.ratio;
+    // Tight on purpose. At ±2 the two directions are the same read mirrored, so
+    // anything but ~1.0 means the kernel is not keying on |rate| — and keying
+    // on the SIGNED rate gives 1.90, which a lazy 0.5–2 window lets through.
+    check('alias suppression at −2× matches +2×', m > 0.85 && m < 1.18,
+      `reverse/forward alias-to-wanted ratio ${m.toFixed(3)}`);
+  }
+
+  // (e) The bypass boundary. `aplay.rate` is a controller target and will be
+  // swept through 1×, where N steps 1 → 2. "Subtle click at unison under an
+  // LFO" is precisely the bug class this engine keeps meeting, so the step is
+  // measured rather than assumed inaudible.
+  {
+    let prev = null, worstJump = 0;
+    for (let rate = 0.9; rate <= 1.1001; rate += 0.02) {
+      const s = makeEngine({ fill: null });
+      writeSine(s.p, 0.02);
+      s.send('/part/0/bounds', 0, 8192);
+      s.send('/zone/play/0/part', 0);
+      s.send('/engine/glide', 0);
+      s.send('/bus/out/gain', 1);
+      s.send('/zone/play/0/region', 0, 8192);
+      s.send('/zone/play/0/rate', rate);
+      s.send('/zone/play/0/on');
+      const x = collect(s, 8);
+      let sum = 0;
+      for (const v of x) sum += v * v;
+      const rms = Math.sqrt(sum / x.length);
+      if (prev !== null) worstJump = Math.max(worstJump, Math.abs(rms - prev) / prev);
+      prev = rms;
+    }
+    check('no RMS step crossing the N=1 → N=2 boundary at 1×', worstJump < 0.02,
+      `worst relative jump ${(worstJump * 100).toFixed(2)}% across a 0.9→1.1 rate sweep`);
+  }
+
+  // (f) Degenerate regions. A 4-point window in a region shorter than 4 samples
+  // wraps indices onto each other; modular arithmetic on a degenerate window is
+  // where sign errors live, and at length 1 all four taps are the same sample.
+  {
+    for (const len of [1, 2, 3]) {
+      const s = makeEngine({ fill: 0.25 });
+      s.send('/part/0/bounds', 0, 4096);
+      s.send('/zone/play/0/part', 0);
+      s.send('/engine/glide', 0);
+      s.send('/bus/out/gain', 1);
+      s.send('/zone/play/0/region', 0, len);
+      s.send('/zone/play/0/on');
+      // 40 quanta, not 12: the zone's gain approaches 1 exponentially, so at 12
+      // it is still ~0.982 and the peak below misses by 1.8% for a reason that
+      // has nothing to do with the reader. Run the ramp out rather than widen
+      // the tolerance, which would blunt the assertion it exists to make.
+      const res = s.run(40);
+      check(`a ${len}-sample region produces no NaN`, res.nan === 0, `${res.nan} NaN samples`);
+      if (len === 1) {
+        check('a 1-sample region reads that sample, not silence', Math.abs(res.peak - 0.25) < 1e-3,
+          `peak ${res.peak.toFixed(4)} — all four taps collapse onto one sample`);
+      }
+    }
+  }
+
+  // (g) The window's FIRST sample, where `i - 1` is negative. A Float32Array
+  // read at -1 is `undefined`, `undefined` in the polynomial is NaN, and NaN
+  // walks through §4.11's ceiling untouched because every comparison against
+  // NaN is false — the exact mechanism of the bug this whole file was written
+  // for, one index to the left. It gets its own check because no other test
+  // here happens to land on that sample, which is precisely how it would ship:
+  // a loop restart reads it on every pass.
+  {
+    const { p } = makeEngine({ fill: 0.3 });
+    const first = p._cubic(0, 0, 0, 8);
+    check('the first sample of the window wraps instead of reading off the front',
+      Number.isFinite(first) && Math.abs(first - 0.3) < 1e-6, `got ${first}`);
+  }
+}
+
 console.log(failures ? `\n${failures} FAILURE(S)\n` : '\nAll audio DSP checks passed.\n');
 process.exit(failures ? 1 : 0);

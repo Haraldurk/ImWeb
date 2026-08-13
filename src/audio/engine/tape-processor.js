@@ -40,6 +40,14 @@ const ZONES_PER_TYPE = 128;
  */
 const SLEW_MS = 8;
 
+/**
+ * Sub-reads averaged per output sample when reading faster than 1× (§4.10).
+ * `aplay.rate` runs to ±4, so 4 covers the whole range at one read per skipped
+ * sample; the cap is here so a future wider rate range cannot turn the inner
+ * loop into an unbounded one — the audio thread has no watchdog (§4.9).
+ */
+const MAX_SUBREADS = 4;
+
 /** Output ceiling (§4.11). Not reachable by any address — see protocol.js. */
 const LIMIT_THRESHOLD = 0.891;   // ≈ −1 dBFS
 const LIMIT_RELEASE_S = 0.15;
@@ -531,6 +539,43 @@ class TapeProcessor extends AudioWorkletProcessor {
     this._markDirty(base, base + z.recorded);
   }
 
+  /**
+   * One Catmull-Rom sample from channel `ch` at fractional position `pos`, with
+   * every index wrapped into the integer window `[lo, lo + count)`.
+   *
+   * §4.10 item 1 — reading between samples with LINEAR interpolation sounds
+   * dull and grainy, and this is the reader that runs constantly in a
+   * LiSa-lineage instrument, so it is the highest-value change in the set.
+   *
+   * Catmull-Rom specifically, because it INTERPOLATES: at `t == 0` it returns
+   * `p1` exactly, so a 1× read is bit-transparent and "the tape is what is
+   * seen" stays literally true — the envelope display shows what you hear. A
+   * B-spline only approximates, i.e. it lowpasses even at 1×, which would make
+   * heard ≠ seen permanently and dull the main path forever. It rings ~10–15%
+   * on hard transients; §4.11's non-bypassable ceiling means that can colour
+   * but cannot damage, and tensioned Hermite is a two-coefficient change if the
+   * ringing ever offends on real material.
+   *
+   * Allocation-free by construction: scalars, no array literal, no closure
+   * (§4.9 — one array per sample is 48000 a second, i.e. GC on the audio
+   * thread). `tests/audit-audio-protocol.mjs` scans this function for both.
+   */
+  _cubic(ch, pos, lo, count) {
+    const i = Math.floor(pos);
+    const t = pos - i;
+    const buf = this._tape[ch];
+    let w0 = (i - 1 - lo) % count; if (w0 < 0) w0 += count;
+    let w1 = (i - lo) % count;     if (w1 < 0) w1 += count;
+    let w2 = (i + 1 - lo) % count; if (w2 < 0) w2 += count;
+    let w3 = (i + 2 - lo) % count; if (w3 < 0) w3 += count;
+    const p0 = buf[lo + w0], p1 = buf[lo + w1];
+    const p2 = buf[lo + w2], p3 = buf[lo + w3];
+    // Horner form — 3 multiplies for the polynomial rather than 3 powers.
+    return p1 + 0.5 * t * (p2 - p0
+      + t * (2 * p0 - 5 * p1 + 4 * p2 - p3
+      + t * (3 * (p1 - p2) + p3 - p0)));
+  }
+
   _renderPlay(z, L, R, frames) {
     for (let i = 0; i < frames; i++) {
       z.gainTgt = z.on && !z.pend ? 1 : 0;
@@ -552,12 +597,15 @@ class TapeProcessor extends AudioWorkletProcessor {
       }
 
       // Recomputed per sample because the bounds are moving; it is what makes a
-      // modulated region a scrub rather than a sequence of jumps.
+      // modulated region a scrub rather than a sequence of jumps. ONCE per
+      // output sample, before the sub-reads below — they must share one
+      // coherent span, and recomputing inside that loop would give each tap a
+      // different region.
       this._computeSpan(z);
       const a = this._sa, b = this._sb;
       const room = b - a;
-      if (room <= 1) continue;
-      if (z.phase >= room) z.phase = room > 0 ? z.phase % room : 0;
+      if (!(room > 0)) continue;                   // also catches NaN
+      if (z.phase >= room) z.phase = z.phase % room;
 
       // INDICES MUST BE INTEGERS. `a` is fractional whenever the region start
       // is — which is always, under a controller: _modStep gives modulation
@@ -571,14 +619,56 @@ class TapeProcessor extends AudioWorkletProcessor {
       //
       // Folding it into `frac` rather than flooring `a` is the point: the
       // sub-sample part is what makes a slow scrub smooth instead of stepped.
-      const pos = a + z.phase;
-      let i0 = Math.floor(pos);
-      const frac = pos - i0;
-      let i1 = i0 + 1;
-      if (i1 >= b) i1 = Math.ceil(a);               // wrap inside the region
-      if (i0 < 0 || i1 < 0 || i0 >= this._length || i1 >= this._length) continue;
-      const l = this._tape[0][i0] * (1 - frac) + this._tape[0][i1] * frac;
-      const r = this._tape[1][i0] * (1 - frac) + this._tape[1][i1] * frac;
+      // The integer read window inside the region. A 4-point kernel reaches one
+      // sample either side of the pair linear interpolation used, so every index
+      // is wrapped into this window rather than bounds-checked — the region is
+      // fractional and moving, so "outside" is the normal case at both ends.
+      const lo = Math.ceil(a);
+      const count = Math.floor(b) - lo;
+      if (count < 1) continue;
+
+      // §4.10 item 2 — rate-aware anti-aliasing. Reading at rate r IS decimation
+      // by r: content above SR/2r folds down, and it folds AT THE READ. So the
+      // only filter that can help runs over the source material before samples
+      // are skipped; a lowpass on this loop's OUTPUT cannot work, because an
+      // alias sitting in the baseband is indistinguishable from a partial that
+      // belongs there.
+      //
+      // The kernel is therefore a box average over the decimation support — N
+      // reads across the step this sample is about to take. That IS §4.10's
+      // "rate-tracking lowpass before the read", computed on the fly instead of
+      // baked into mips, which do not fit a tape a Recording Zone is still
+      // writing: every level would need maintaining against a moving write head,
+      // and mip selection assumes a quasi-static rate while this one is a
+      // per-sample slew target.
+      //
+      // Deliberately STATELESS, and that is not incidental. Any filter with a
+      // delay line becomes voice state that §8.9's fork has to snapshot and its
+      // determinism test has to verify; an average of sub-reads snapshots to
+      // nothing.
+      //
+      // What it buys, stated honestly: a box of width r nulls at SR/r, an octave
+      // ABOVE the fold, so the danger band gets sinc rolloff rather than a
+      // stopband — a large improvement, not elimination. The upgrade path is a
+      // tent (this box convolved with itself, sidelobes ≈ −26 dB), which is a
+      // weight per tap and no restructuring. Not built now.
+      const ar = z.rateCur < 0 ? -z.rateCur : z.rateCur;
+      const N = ar > 1 ? (ar > MAX_SUBREADS ? MAX_SUBREADS : Math.ceil(ar)) : 1;
+      // MIDPOINT spacing: N cells of width rate/N tile the step exactly, one
+      // read at each cell's centre. Endpoint spacing (rate/(N-1)) spans the same
+      // step but shares its endpoints with the neighbouring output sample and
+      // over-weights the edges under uniform weights. Centred on `pos`, so the
+      // kernel is zero-phase and symmetric under reverse; at N = 1 the offset is
+      // exactly 0, which is what keeps a 1× read bit-transparent.
+      const h = z.rateCur / N;
+      const base = a + z.phase - h * (N * 0.5);
+      let l = 0, r = 0;
+      for (let k = 0; k < N; k++) {
+        const pos = base + (k + 0.5) * h;
+        l += this._cubic(0, pos, lo, count);
+        r += this._cubic(1, pos, lo, count);
+      }
+      if (N > 1) { l /= N; r /= N; }
       L[i] += l * z.gainCur;
       R[i] += r * z.gainCur;
 
