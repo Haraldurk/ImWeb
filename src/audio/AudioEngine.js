@@ -270,6 +270,20 @@ export class AudioEngine {
   playRate(i, rate) { this._send(`/zone/play/${i}/rate`, rate); }
   recDynamic(i, on) { this._send(`/zone/rec/${i}/dynamic`, !!on); }
 
+  // Voices (§4.4, §4.10). No buffer region, so they sound with no tape.
+  voiceOn(i) { this._send(`/voice/${i}/on`); }
+  voiceOff(i) { this._send(`/voice/${i}/off`); }
+  voiceSrc(i, src) { this._send(`/voice/${i}/src`, src | 0); }
+  voiceWave(i, wave) { this._send(`/voice/${i}/wave`, wave | 0); }
+  voiceFreq(i, hz) { this._send(`/voice/${i}/freq`, hz); }
+  voiceFm(i, ratio, index) { this._send(`/voice/${i}/fm`, ratio, index); }
+  voiceColour(i, c) { this._send(`/voice/${i}/colour`, c); }
+  voiceFilter(i, cutoffHz, res, type) {
+    this._send(`/voice/${i}/filter`, cutoffHz, res, type);
+  }
+  voiceDrive(i, d) { this._send(`/voice/${i}/drive`, d); }
+  voiceLevel(i, l) { this._send(`/voice/${i}/level`, l); }
+
   // Output bus (§4.11). Note the absence of a bypass — there is no address for
   // one, and that is the enforcement.
   outGain(g) { this._send('/bus/out/gain', g); }

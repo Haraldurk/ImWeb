@@ -507,5 +507,191 @@ console.log('\nthe tape reader — interpolation and rate-aware anti-aliasing');
   }
 }
 
+// ── 11. the generator set (§4.10) ──────────────────────────────────────────
+console.log('\nthe phase-one UGens — oscillator, noise, filter, saturator');
+{
+  const energyAt = (x, f) => {
+    let re = 0, im = 0;
+    const w = 2 * Math.PI * f;
+    for (let n = 0; n < x.length; n++) { re += x[n] * Math.cos(w * n); im += x[n] * Math.sin(w * n); }
+    return (re * re + im * im) / (x.length * x.length);
+  };
+  const rms = (x) => { let s = 0; for (const v of x) s += v * v; return Math.sqrt(s / x.length); };
+  /** A voice, configured, with the gain ramp run out. NO TAPE ALLOCATED. */
+  const voice = (cfg = {}, quanta = 32) => {
+    const p = new Processor();
+    const send = (a, ...v) => p.port.onmessage({ data: { a, t: '', v } });
+    send('/engine/hello', 1);
+    send('/bus/out/gain', 1);
+    send('/voice/0/level', cfg.level ?? 0.5);
+    send('/voice/0/src', cfg.src ?? 0);
+    send('/voice/0/wave', cfg.wave ?? 0);
+    send('/voice/0/freq', cfg.freq ?? 480);            // 0.01 cycles/sample
+    send('/voice/0/fm', cfg.fmRatio ?? 1, cfg.fmIndex ?? 0);
+    send('/voice/0/colour', cfg.colour ?? 0.5);
+    send('/voice/0/filter', cfg.cut ?? 20000, cfg.res ?? 0, cfg.ftype ?? 0);
+    send('/voice/0/drive', cfg.drive ?? 0);
+    send('/voice/0/on');
+    const out = [new Float32Array(128), new Float32Array(128)];
+    for (let q = 0; q < 80; q++) p.process([[]], [out]);   // settle every slew
+    const x = [];
+    for (let q = 0; q < quanta; q++) { p.process([[]], [out]); x.push(...out[0]); }
+    return { p, x: Float32Array.from(x), send, out };
+  };
+
+  // A Voice has NO buffer region (§4.4), so it must sound with no tape. If this
+  // ever fails the voice loop has drifted inside the `if (this._length)` guard,
+  // which would make every generator silent until someone allocated a tape.
+  {
+    const { p, x } = voice();
+    check('a voice sounds with NO tape allocated', rms(x) > 0.1 && p._length === 0,
+      `rms ${rms(x).toFixed(4)}, tape length ${p._length}`);
+    check('a voice produces no NaN', ![...x].some(Number.isNaN));
+  }
+
+  // The oscillator, at 0.01 cycles/sample. Each waveform's harmonic signature
+  // is asserted, not just "it makes noise": a saw has BOTH even and odd
+  // harmonics, a square only odd. Getting those backwards is the classic
+  // waveform-table bug and sounds merely "different", not broken.
+  {
+    const f = 0.01;
+    const saw = voice({ wave: 1 }).x;
+    const sq = voice({ wave: 2 }).x;
+    const sine = voice({ wave: 0 }).x;
+    const h = (x, n) => energyAt(x, f * n);
+    check('sine has a fundamental and negligible 2nd harmonic',
+      h(sine, 1) > 1e-3 && h(sine, 2) < h(sine, 1) * 1e-4,
+      `h1 ${h(sine, 1).toExponential(2)}, h2 ${h(sine, 2).toExponential(2)}`);
+    check('saw has a strong EVEN harmonic', h(saw, 2) > h(saw, 1) * 0.1,
+      `h2/h1 ${(h(saw, 2) / h(saw, 1)).toFixed(3)}`);
+    check('square suppresses the even harmonic', h(sq, 2) < h(sq, 1) * 0.01,
+      `h2/h1 ${(h(sq, 2) / h(sq, 1)).toExponential(2)} — a square is odd-only`);
+  }
+
+  // PolyBLEP. A naive saw steps by 2 once per cycle and that step has energy at
+  // every harmonic, all of it above Nyquist folding back. Measured where it
+  // hurts: a high fundamental, looking at a bin that no harmonic of the
+  // fundamental lands on, so anything there arrived by folding.
+  {
+    // The fundamental must NOT be a simple rational, or every folded partial
+    // lands back exactly on a harmonic bin and is unmeasurable. At 1/12 c/s —
+    // the first fixture used here — harmonics sit at k/12 and aliases fold to
+    // |k/12 − 1|, which are also multiples of 1/12: the test could not have
+    // failed, and removing PolyBLEP entirely left it green.
+    //
+    // At 0.11 c/s the 9th harmonic sits at 0.99 and folds to 0.01, where no
+    // real harmonic is (they are at 0.11, 0.22, …). That bin is alias or
+    // nothing.
+    const hi = voice({ wave: 1, freq: 0.11 * SR }).x;
+    const alias = energyAt(hi, 0.01);
+    const fund = energyAt(hi, 0.11);
+    // Threshold from measurement: 1.15e-6 with PolyBLEP, 1.27e-2 without — a
+    // factor of ~11,000. The first threshold here was 0.02, which sat ABOVE the
+    // naive value and so passed with the correction deleted; the 9th harmonic
+    // of a saw carries only 1/81 of the fundamental's energy, so "well under
+    // the fundamental" is satisfied by an unbanded oscillator too.
+    check('the band-limited saw keeps folded energy well under the fundamental',
+      alias < fund * 1e-4,
+      `alias(0.01)/fundamental ${(alias / fund).toExponential(2)}`);
+  }
+
+  // The phase input — §4.10's stated reason the oscillator has one at all.
+  // Index 0 must be exactly the unmodulated oscillator, or FM is not free.
+  {
+    const plain = voice({ wave: 0, fmIndex: 0 }).x;
+    const fm = voice({ wave: 0, fmIndex: 2, fmRatio: 2 }).x;
+    const f = 0.01;
+    const side = energyAt(fm, f * 3);
+    check('FM index 0 leaves the carrier spectrally clean',
+      energyAt(plain, f * 3) < energyAt(plain, f) * 1e-4,
+      'an always-on modulator would put sidebands here');
+    check('a non-zero FM index creates sidebands', side > energyAt(fm, f) * 0.05,
+      `sideband/carrier ${(side / energyAt(fm, f)).toExponential(2)}`);
+  }
+
+  // Noise, and its one colour control. Dark must actually be darker.
+  {
+    const dark = voice({ src: 1, colour: 0 }).x;
+    const bright = voice({ src: 1, colour: 1 }).x;
+    const hf = (x) => energyAt(x, 0.4) / (energyAt(x, 0.02) + 1e-12);
+    check('noise colour 0 is darker than colour 1', hf(dark) < hf(bright) * 0.5,
+      `hf ratio dark ${hf(dark).toExponential(2)} vs bright ${hf(bright).toExponential(2)}`);
+    // The RNG is explicit (§8.9 item 1) so a fork can copy it. Two engines with
+    // the same seed must produce the SAME noise, or freeze cannot be a fork.
+    const a = voice({ src: 1 }).x, b = voice({ src: 1 }).x;
+    let same = true;
+    for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) { same = false; break; }
+    check('noise is deterministic from its seed (§8.9 needs a copyable RNG)', same,
+      'Math.random() here would make a frozen render diverge from its parent');
+  }
+
+  // The filter. A lowpass well under a tone must remove it; the same structure
+  // at the same cutoff in highpass must not.
+  {
+    const f = 0.05;                                  // 2400 Hz at 48k
+    const lp = voice({ wave: 0, freq: 2400, cut: 300, ftype: 0 }).x;
+    const hp = voice({ wave: 0, freq: 2400, cut: 300, ftype: 2 }).x;
+    check('the SVF in lowpass attenuates a tone above its cutoff',
+      energyAt(lp, f) < energyAt(hp, f) * 0.05,
+      `lp ${energyAt(lp, f).toExponential(2)} vs hp ${energyAt(hp, f).toExponential(2)}`);
+    // Resonance must not run away. Asserted on the FILTER, not on the output:
+    // §4.11's ceiling bounds the bus unconditionally, so "peak ≤ 1" downstream
+    // is true whatever the filter does — the first version of this check was
+    // guaranteed to pass and stayed green with the damping term inverted into
+    // self-oscillation. Drive an impulse through `_svf` directly and require
+    // the ringing to DECAY.
+    const { p: fp } = voice({ res: 1, cut: 1000 });
+    const fv = fp._voices[0];
+    fv.ic1 = fv.ic2 = 0;
+    fv.resCur = 1; fv.cutCur = 1000; fv.ftypeCur = 0;
+    let early = 0, late = 0;
+    for (let n = 0; n < 20000; n++) {
+      const y = Math.abs(fp._svf(fv, n === 0 ? 1 : 0));
+      if (n > 100 && n < 1100) early = Math.max(early, y);
+      if (n > 18000) late = Math.max(late, y);
+    }
+    check('resonance at maximum decays instead of self-oscillating', late < early * 0.5,
+      `ring at 18k samples ${late.toExponential(2)} vs ${early.toExponential(2)} early`);
+  }
+
+  // The saturator. Drive must add harmonics rather than just volume — the
+  // makeup division is what stops it reading as a second level control.
+  {
+    const clean = voice({ wave: 0, drive: 0, level: 0.5 }).x;
+    const dirty = voice({ wave: 0, drive: 1, level: 0.5 }).x;
+    const f = 0.01;
+    const thd = (x) => energyAt(x, f * 3) / (energyAt(x, f) + 1e-12);
+    check('drive adds harmonic content', thd(dirty) > thd(clean) * 50,
+      `3rd/1st clean ${thd(clean).toExponential(2)} → driven ${thd(dirty).toExponential(2)}`);
+    // Measured on `_sat` DIRECTLY, not through the bus: the limiter compresses
+    // the very difference this asserts, and the end-to-end version stayed green
+    // with the makeup division deleted. At unit level the gain ratio is 0.885
+    // with makeup and 2.655 without, so the threshold has room either side.
+    const { p: sp } = voice();
+    let a = 0, b = 0;
+    const M = 2000;
+    for (let n = 0; n < M; n++) {
+      const x = 0.5 * Math.sin(n * 0.1);
+      a += x * x;
+      const s = sp._sat(x, 1);
+      b += s * s;
+    }
+    const gain = Math.sqrt(b / M) / Math.sqrt(a / M);
+    check('drive is not merely a volume control', gain < 1.5,
+      `saturator gain ×${gain.toFixed(3)} — makeup should hold it near 1`);
+  }
+
+  // Refusals. A voice index outside the set is refused, not clamped: silently
+  // starting voice 7 for /voice/9/on is a message that looks accepted and does
+  // something else, which is worse than one that is rejected.
+  {
+    const { p } = voice();
+    p.__sent.length = 0;
+    p.port.onmessage({ data: { a: '/voice/99/on', t: '', v: [] } });
+    const ref = p.__sent.find((m) => m.a === '/engine/refuse');
+    check('an out-of-range voice index is refused, not clamped', !!ref, 'no refusal sent');
+  }
+}
+
 console.log(failures ? `\n${failures} FAILURE(S)\n` : '\nAll audio DSP checks passed.\n');
 process.exit(failures ? 1 : 0);

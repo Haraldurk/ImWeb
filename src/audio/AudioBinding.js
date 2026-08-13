@@ -253,6 +253,29 @@ export class AudioBinding {
     this.engine.playRate(0, g('aplay.rate'));
     this.engine.recDynamic(0, !!g('arec.dynamic'));
     this.engine.setTap(g('audio.tapSrc'));
+    this._pushVoice();
+  }
+
+  /**
+   * Semitones → Hz. Pitch and cutoff are registered in semitones because rate
+   * and frequency are heard as ratios (LEARNED 2026-08-08), and the conversion
+   * lives HERE for the same reason the fractions→samples one does: one site,
+   * not one per call. The engine speaks Hz because that is what a DSP kernel
+   * wants; the UI speaks semitones because that is what an ear wants.
+   */
+  _hz(semitones) { return 440 * Math.pow(2, (semitones - 69) / 12); }
+
+  _pushVoice() {
+    const g = (id) => this.ps.get(id).value;
+    this.engine.voiceSrc(0, g('avoice.src'));
+    this.engine.voiceWave(0, g('avoice.wave'));
+    this.engine.voiceFreq(0, this._hz(g('avoice.pitch')));
+    this.engine.voiceFm(0, g('avoice.fmRatio'), g('avoice.fmIndex'));
+    this.engine.voiceColour(0, g('avoice.colour'));
+    this.engine.voiceFilter(0, this._hz(g('avoice.cut')), g('avoice.res'), g('avoice.ftype'));
+    this.engine.voiceDrive(0, g('avoice.drive'));
+    this.engine.voiceLevel(0, g('avoice.level'));
+    if (g('avoice.on')) this.engine.voiceOn(0); else this.engine.voiceOff(0);
   }
 
   // ── subscriptions ─────────────────────────────────────────────────────────
@@ -307,6 +330,28 @@ export class AudioBinding {
     });
 
     this._on('audio.tapSrc', () => this._applyTap());
+
+    // The Voice. Every one of these is an UPDATE, not a restart (§8.8 rule 4),
+    // and each lands as a slew target in the worklet — so a controller writing
+    // one every frame is the ordinary case and costs nothing extra.
+    this._on('avoice.on', (v) => { if (v) this.engine.voiceOn(0); else this.engine.voiceOff(0); });
+    this._on('avoice.src', (v) => this.engine.voiceSrc(0, v));
+    this._on('avoice.wave', (v) => this.engine.voiceWave(0, v));
+    this._on('avoice.pitch', (v) => this.engine.voiceFreq(0, this._hz(v)));
+    this._on('avoice.colour', (v) => this.engine.voiceColour(0, v));
+    this._on('avoice.drive', (v) => this.engine.voiceDrive(0, v));
+    this._on('avoice.level', (v) => this.engine.voiceLevel(0, v));
+    // Bundled addresses: re-send the whole tuple, since the protocol carries
+    // the group and the engine has no partial-update verb.
+    for (const id of ['avoice.fmRatio', 'avoice.fmIndex']) {
+      this._on(id, () => this.engine.voiceFm(
+        0, this.ps.get('avoice.fmRatio').value, this.ps.get('avoice.fmIndex').value));
+    }
+    for (const id of ['avoice.cut', 'avoice.res', 'avoice.ftype']) {
+      this._on(id, () => this.engine.voiceFilter(
+        0, this._hz(this.ps.get('avoice.cut').value),
+        this.ps.get('avoice.res').value, this.ps.get('avoice.ftype').value));
+    }
 
     for (let i = 0; i < PARTITION_SLOTS; i++) {
       for (const key of ['start', 'len']) {

@@ -6622,6 +6622,71 @@ export function registerCoreParameters(ps) {
     min: 0.01, max: 2, value: 0.15, step: 0.01, unit: "s",
   });
 
+  // The Voice (§4.4, §4.10) — the generator half of the phase-one UGen set.
+  // Group 'avoice', so it IS captured: this is performance state, and every
+  // index here points into a fixed code-side list, not a user-editable one.
+  //
+  // PITCH AND CUTOFF ARE IN SEMITONES, NOT Hz, and that is the LEARNED
+  // 2026-08-08 rule applied at the point where it is cheapest: rate and
+  // frequency are heard as ratios, so a linear Hz slider spends most of its
+  // travel above the useful range and crushes the bottom three octaves into a
+  // few pixels. Semitones make the control linear in what the ear does.
+  // AudioBinding converts to Hz — the same one-conversion-site rule as the
+  // fractions→samples translation beside it.
+  ps.register({
+    id: "avoice.on", label: "Voice", group: "avoice",
+    type: PARAM_TYPE.TOGGLE, value: 0,
+  });
+  ps.register({
+    id: "avoice.src", label: "Source", group: "avoice",
+    type: PARAM_TYPE.SELECT, value: 0, options: ["Osc", "Noise"],
+  });
+  ps.register({
+    id: "avoice.wave", label: "Wave", group: "avoice",
+    type: PARAM_TYPE.SELECT, value: 0, options: ["Sine", "Saw", "Square", "Tri"],
+  });
+  ps.register({
+    id: "avoice.pitch", label: "Pitch", group: "avoice",
+    min: 12, max: 120, value: 57, step: 1, unit: "st",   // 57 = A3, 220 Hz
+  });
+  // FM lives on the oscillator's PHASE input rather than in its own UGen
+  // (§4.10). Index 0 is the off state and costs nothing, so there is no enable.
+  ps.register({
+    id: "avoice.fmRatio", label: "FM Ratio", group: "avoice",
+    min: 0.25, max: 8, value: 1, step: 0.01,
+  });
+  ps.register({
+    id: "avoice.fmIndex", label: "FM Index", group: "avoice",
+    min: 0, max: 4, value: 0, step: 0.01,
+  });
+  ps.register({
+    id: "avoice.colour", label: "Colour", group: "avoice",
+    min: 0, max: 1, value: 0.5, step: 0.01,
+  });
+  ps.register({
+    id: "avoice.cut", label: "Cutoff", group: "avoice",
+    min: 20, max: 130, value: 84, step: 1, unit: "st",   // 84 ≈ 1046 Hz
+  });
+  ps.register({
+    id: "avoice.res", label: "Resonance", group: "avoice",
+    min: 0, max: 1, value: 0.2, step: 0.01,
+  });
+  // Continuous, not a SELECT: the SVF morphs LP→BP→HP→notch, and a discrete
+  // type switch under a controller is a click (§4.11 puts smoothing in the
+  // worklet, but only for values that are continuous in the first place).
+  ps.register({
+    id: "avoice.ftype", label: "Filter Type", group: "avoice",
+    min: 0, max: 3, value: 0, step: 0.01,
+  });
+  ps.register({
+    id: "avoice.drive", label: "Drive", group: "avoice",
+    min: 0, max: 1, value: 0, step: 0.01,
+  });
+  ps.register({
+    id: "avoice.level", label: "Level", group: "avoice",
+    min: 0, max: 1, value: 0.3, step: 0.01,
+  });
+
   // Partition layout. 'global' — see above; relayout is refused by the engine
   // while a zone bound to the slot is running, so a captured value would be
   // either ignored or destructive depending on what happened to be playing.

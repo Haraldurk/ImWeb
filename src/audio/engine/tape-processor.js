@@ -48,6 +48,9 @@ const SLEW_MS = 8;
  */
 const MAX_SUBREADS = 4;
 
+/** Voices (§4.4) — no buffer region, so they sound with no tape allocated. */
+const MAX_VOICES = 8;
+
 /** Output ceiling (§4.11). Not reachable by any address — see protocol.js. */
 const LIMIT_THRESHOLD = 0.891;   // ≈ −1 dBFS
 const LIMIT_RELEASE_S = 0.15;
@@ -61,6 +64,46 @@ const ZONE_SPECIFIC = new Set([
   '/zone/rec/<n>/dynamic',
   '/zone/rec/<n>/length',
 ]);
+
+/**
+ * A Voice (§4.4): the thing with NO buffer region. It runs live to the output
+ * and is invisible to the video half until frozen, which is exactly the rule —
+ * anything with a region is a Zone, anything without is a Voice.
+ *
+ * Fixed topology, not a graph: source → filter → saturator → level, where the
+ * source is an oscillator (with a phase input) or noise. §4.10 is explicit that
+ * voices should NOT have text authoring in the first pass, because the zone
+ * model plus a few parameterized generators is already playable and real use is
+ * what should decide the UGen set. A fixed graph is still a graph (§4.9); what
+ * it is not is a language invented around guesses.
+ *
+ * Every field is state a §8.9 freeze must be able to SNAPSHOT — that is why the
+ * RNG is here and explicit rather than `Math.random()`, which has no seed to
+ * copy and would make a fork diverge from its parent immediately.
+ */
+function makeVoice(seed) {
+  return {
+    on: false,
+    gainCur: 0, gainTgt: 0,
+    src: 0,                        // 0 = oscillator, 1 = noise
+    wave: 0,                       // 0 sine, 1 saw, 2 square, 3 triangle
+    freqCur: 220, freqTgt: 220,
+    fmRatio: 1, fmIndexCur: 0, fmIndexTgt: 0,
+    phase: 0, modPhase: 0,
+    colourCur: 0.5, colourTgt: 0.5,
+    noiseLp: 0,
+    cutCur: 2000, cutTgt: 2000,
+    resCur: 0.2, resTgt: 0.2,
+    ftypeCur: 0, ftypeTgt: 0,      // 0 LP → 1 BP → 2 HP → 3 notch, morphable
+    ic1: 0, ic2: 0,                // SVF integrator state (TPT form)
+    driveCur: 0, driveTgt: 0,
+    levelCur: 0.3, levelTgt: 0.3,
+    // xorshift32. Explicit and splittable per §8.9 item 1: a fork copies this
+    // integer and the two streams stay identical until they are deliberately
+    // split. Seeded off the voice index so two voices are not the same noise.
+    rng: (seed * 2654435761) >>> 0 || 1,
+  };
+}
 
 function makeZone() {
   return {
@@ -121,6 +164,8 @@ class TapeProcessor extends AudioWorkletProcessor {
       this._rec.push(makeZone());
       this._play.push(makeZone());
     }
+    this._voices = [];
+    for (let i = 0; i < MAX_VOICES; i++) this._voices.push(makeVoice(i + 1));
 
     this._slewCoef = 1 - Math.exp(-1 / ((SLEW_MS / 1000) * sampleRate));
     // Bounds glide, in samples. 3 ms is short enough to feel immediate and long
@@ -220,6 +265,20 @@ class TapeProcessor extends AudioWorkletProcessor {
       case '/zone/play/<n>/rate':     return this._zoneSet('play', idx[0], 'rateTgt', v[0]);
       case '/zone/rec/<n>/dynamic':   return this._zoneSet('rec', idx[0], 'dynamic', !!v[0]);
 
+      // Voices (§4.4, §4.10). Re-sending is an UPDATE, never a restart (rule 4)
+      // — every one of these lands as a slew target, so a controller writing
+      // the same address every frame is the normal case, not an edit.
+      case '/voice/<n>/on':     return this._voiceOn(idx[0], true);
+      case '/voice/<n>/off':    return this._voiceOn(idx[0], false);
+      case '/voice/<n>/src':    return this._voiceSet(idx[0], 'src', v[0] | 0);
+      case '/voice/<n>/wave':   return this._voiceSet(idx[0], 'wave', v[0] | 0);
+      case '/voice/<n>/freq':   return this._voiceSet(idx[0], 'freqTgt', v[0]);
+      case '/voice/<n>/fm':     return this._voiceFm(idx[0], v[0], v[1]);
+      case '/voice/<n>/colour': return this._voiceSet(idx[0], 'colourTgt', v[0]);
+      case '/voice/<n>/filter': return this._voiceFilter(idx[0], v[0], v[1], v[2]);
+      case '/voice/<n>/drive':  return this._voiceSet(idx[0], 'driveTgt', v[0]);
+      case '/voice/<n>/level':  return this._voiceSet(idx[0], 'levelTgt', v[0]);
+
       case '/engine/glide':
         this._glideSamples = Math.max(0, Math.round((v[0] / 1000) * sampleRate));
         return;
@@ -228,6 +287,35 @@ class TapeProcessor extends AudioWorkletProcessor {
 
       default: return this._refuse(REFUSE_PROTO_MISMATCH, `unknown address '${m.a}'`);
     }
+  }
+
+  /**
+   * A voice index outside the allocated set is refused, not clamped. Clamping
+   * would make `/voice/9/on` silently start voice 7 — a message that looks
+   * accepted and does something else is worse than one that is rejected.
+   */
+  _voice(i) {
+    if (!Number.isInteger(i) || i < 0 || i >= MAX_VOICES) {
+      this._refuse(REFUSE_BAD_RANGE, `voice ${i} outside 0..${MAX_VOICES - 1}`);
+      return null;
+    }
+    return this._voices[i];
+  }
+
+  _voiceOn(i, on) { const v = this._voice(i); if (v) v.on = !!on; }
+  _voiceSet(i, key, value) { const v = this._voice(i); if (v) v[key] = value; }
+  _voiceFm(i, ratio, index) {
+    const v = this._voice(i);
+    if (!v) return;
+    v.fmRatio = ratio;
+    v.fmIndexTgt = index;
+  }
+  _voiceFilter(i, cutoff, res, type) {
+    const v = this._voice(i);
+    if (!v) return;
+    v.cutTgt = cutoff;
+    v.resTgt = res;
+    v.ftypeTgt = type;
   }
 
   _hello(proto) {
@@ -539,6 +627,190 @@ class TapeProcessor extends AudioWorkletProcessor {
     this._markDirty(base, base + z.recorded);
   }
 
+  // ── the phase-one generator set (§4.10) ───────────────────────────────────
+  //
+  // The dividing rule, from §4.10: do NOT rebuild in UGens what the controller
+  // layer already does. LFOs, random-with-slew, seven slew curves, response
+  // tables, MIDI and device motion are already mapped to every parameter, so a
+  // control-rate LFO UGen would be a duplicate with worse ergonomics. What
+  // cannot come from frame-rate parameters is AUDIO-rate modulation — FM, AM,
+  // ring mod — and that is the only reason any of this is a UGen.
+  //
+  // Deliberately absent: envelope generators. SC needs them because it is
+  // note-based; this instrument has no note-on, and its envelope is a hand on a
+  // fader or slew on a parameter, both of which already exist. Also absent:
+  // reverb, delay, chorus, compression — downstream effects, not voice
+  // components, and the video half already has a pass architecture for them.
+
+  /** xorshift32 → [0,1). Explicit state, so §8.9's fork can copy it. */
+  _rand(v) {
+    let x = v.rng;
+    x ^= x << 13; x >>>= 0;
+    x ^= x >> 17;
+    x ^= x << 5;  x >>>= 0;
+    v.rng = x;
+    return x / 4294967296;
+  }
+
+  /**
+   * PolyBLEP correction at a discontinuity (§4.10: "a naive saw or pulse
+   * aliases badly up high; PolyBLEP is the cheap standard answer").
+   *
+   * A naive saw steps by 2 once per cycle, and a step has energy at every
+   * harmonic — all of it above Nyquist folding straight back down. This
+   * subtracts a polynomial approximation of the band-limited step across the
+   * one sample either side of the jump.
+   */
+  _blep(t, dt) {
+    if (t < dt) { const x = t / dt; return x + x - x * x - 1; }
+    if (t > 1 - dt) { const x = (t - 1) / dt; return x * x + x + x + 1; }
+    return 0;
+  }
+
+  /**
+   * The oscillator, with a PHASE INPUT — which is what makes FM and phase
+   * distortion free instead of needing their own UGens (§4.10). The modulator
+   * is a sine at `fmRatio` times the carrier; index 0 leaves the carrier
+   * untouched, so the feature costs nothing when unused.
+   */
+  _osc(v, dt) {
+    let mod = 0;
+    if (v.fmIndexCur !== 0) {
+      v.modPhase += dt * v.fmRatio;
+      if (v.modPhase >= 1) v.modPhase -= 1;
+      mod = Math.sin(2 * Math.PI * v.modPhase) * v.fmIndexCur;
+    }
+    // Phase modulation, not frequency modulation: modulating phase keeps the
+    // centre pitch stable as the index moves, which is the difference between
+    // an FM timbre and a wobbling one.
+    let p = v.phase + mod;
+    p -= Math.floor(p);
+    let y;
+    switch (v.wave) {
+      case 1:  y = 2 * p - 1 - this._blep(p, dt); break;                 // saw
+      case 2: {                                                          // square
+        y = p < 0.5 ? 1 : -1;
+        y += this._blep(p, dt);
+        let q = p + 0.5; q -= Math.floor(q);
+        y -= this._blep(q, dt);
+        break;
+      }
+      // Triangle is naive on purpose: its harmonics fall off as 1/n², so it
+      // aliases far less than saw or pulse and does not earn the correction.
+      case 3:  y = 1 - 4 * Math.abs(p - 0.5); break;
+      default: y = Math.sin(2 * Math.PI * p);                            // sine
+    }
+    v.phase += dt;
+    if (v.phase >= 1) v.phase -= 1;
+    return y;
+  }
+
+  /**
+   * Noise with one colour control (§4.10 asks for exactly one). 0.5 is white;
+   * below that a one-pole lowpass darkens it, above that the same pole is
+   * subtracted to brighten. Cheapest thing that spans the useful range, and
+   * noise is the fastest way to test the whole chain.
+   */
+  _noise(v) {
+    const w = this._rand(v) * 2 - 1;
+    v.noiseLp += 0.05 * (w - v.noiseLp);
+    const c = v.colourCur;
+    if (c < 0.5) return v.noiseLp + (w - v.noiseLp) * (c * 2);
+    return w + ((w - v.noiseLp) - w) * ((c - 0.5) * 2);
+  }
+
+  /**
+   * State-variable filter, TPT/zero-delay form — "one structure yields
+   * LP/BP/HP/notch with a morphable type. Worth ten mediocre oscillators."
+   *
+   * TPT rather than the classic Chamberlin form because Chamberlin's stability
+   * limit falls with cutoff: it blows up as the cutoff approaches a fifth of
+   * the sample rate, which on a filter that is a controller target is a matter
+   * of when, not if. This one is unconditionally stable across the whole range.
+   */
+  _svf(v, x) {
+    const fc = v.cutCur < 20 ? 20 : (v.cutCur > sampleRate * 0.45 ? sampleRate * 0.45 : v.cutCur);
+    const g = Math.tan(Math.PI * fc / sampleRate);
+    // Resonance as a damping term. Floored so the filter cannot self-oscillate
+    // into the limiter — §4.11's ceiling would catch it, but a filter that
+    // screams whenever a controller reaches the top of its travel is not a
+    // musical instrument, it is a hazard with a knob.
+    const k = 2 - 1.98 * (v.resCur < 0 ? 0 : v.resCur > 1 ? 1 : v.resCur);
+    const a1 = 1 / (1 + g * (g + k));
+    const a2 = g * a1;
+    const a3 = g * a2;
+    const v3 = x - v.ic2;
+    const v1 = a1 * v.ic1 + a2 * v3;
+    const v2 = v.ic2 + a2 * v.ic1 + a3 * v3;
+    v.ic1 = 2 * v1 - v.ic1;
+    v.ic2 = 2 * v2 - v.ic2;
+    const lp = v2, bp = v1, hp = x - k * v1 - v2;
+    // Morph across LP → BP → HP → notch. A blend rather than a switch, because
+    // a discrete type change under a controller is a click, and §4.11 says the
+    // worklet is where discontinuities get smoothed.
+    const t = v.ftypeCur < 0 ? 0 : v.ftypeCur > 3 ? 3 : v.ftypeCur;
+    const i = Math.floor(t);
+    const f = t - i;
+    // Scalars, not `[lo, hi]` — the first draft of this used an array literal,
+    // which is 48000 of them per second per voice: §4.9's inner-loop
+    // allocation, arriving through a line that reads as a lookup table.
+    const notch = lp + hp;
+    let lo, hi;
+    if (i === 0) { lo = lp; hi = bp; }
+    else if (i === 1) { lo = bp; hi = hp; }
+    else if (i === 2) { lo = hp; hi = notch; }
+    else { lo = notch; hi = notch; }
+    return lo + (hi - lo) * f;
+  }
+
+  /**
+   * Saturator. "Digital sums are brittle without one. Cheap, and it is most of
+   * what 'warmth' means" (§4.10). A Padé approximation of tanh, with the input
+   * clamped to the range where that approximation is actually tanh-shaped —
+   * beyond ±3 it diverges instead of saturating, which would turn the one stage
+   * whose job is to bound things into an amplifier.
+   *
+   * The makeup division keeps drive from reading as a volume control.
+   */
+  _sat(x, drive) {
+    if (drive <= 0) return x;
+    const d = 1 + drive * 9;
+    let y = x * d;
+    if (y > 3) y = 3; else if (y < -3) y = -3;
+    const y2 = y * y;
+    return (y * (27 + y2) / (27 + 9 * y2)) / (1 + drive * 2);
+  }
+
+  /**
+   * One voice, summed into the bus. Every parameter is slewed at audio rate on
+   * arrival (§4.11) — the protocol carries targets and the worklet decides how
+   * it gets there, because smoothing in the protocol would mean the transport
+   * carrying per-sample detail and that defeats §4.1.
+   */
+  _renderVoice(v, L, R, frames) {
+    for (let i = 0; i < frames; i++) {
+      v.gainTgt = v.on ? 1 : 0;
+      v.gainCur = this._approach(v.gainCur, v.gainTgt);
+      if (v.gainCur === 0 && !v.on) return;
+      v.freqCur = this._approach(v.freqCur, v.freqTgt);
+      v.fmIndexCur = this._approach(v.fmIndexCur, v.fmIndexTgt);
+      v.colourCur = this._approach(v.colourCur, v.colourTgt);
+      v.cutCur = this._approach(v.cutCur, v.cutTgt);
+      v.resCur = this._approach(v.resCur, v.resTgt);
+      v.ftypeCur = this._approach(v.ftypeCur, v.ftypeTgt);
+      v.driveCur = this._approach(v.driveCur, v.driveTgt);
+      v.levelCur = this._approach(v.levelCur, v.levelTgt);
+
+      const dt = v.freqCur / sampleRate;
+      let x = v.src === 1 ? this._noise(v) : this._osc(v, dt);
+      x = this._svf(v, x);
+      x = this._sat(x, v.driveCur);
+      x *= v.levelCur * v.gainCur;
+      L[i] += x;
+      if (R !== L) R[i] += x;
+    }
+  }
+
   /**
    * One Catmull-Rom sample from channel `ch` at fractional position `pos`, with
    * every index wrapped into the integer window `[lo, lo + count)`.
@@ -759,6 +1031,15 @@ class TapeProcessor extends AudioWorkletProcessor {
         const z = this._play[i];
         if (z.on || z.gainCur > 0) this._renderPlay(z, L, R, frames);
       }
+    }
+
+    // OUTSIDE the tape guard, deliberately. A Voice has no buffer region
+    // (§4.4), so it must sound with no tape allocated — putting this inside
+    // would make the generators silent until someone happened to allocate a
+    // tape, which is a dependency the architecture explicitly does not have.
+    for (let i = 0; i < this._voices.length; i++) {
+      const v = this._voices[i];
+      if (v.on || v.gainCur > 0) this._renderVoice(v, L, R, frames);
     }
 
     this._limit(L, R, frames);

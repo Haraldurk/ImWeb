@@ -286,17 +286,61 @@ function methodBody(src, name) {
 // a span helper called once per quantum was fine; the same helper called once
 // per sample was not, and this list is scoped to the methods where that
 // distinction bites.
-const HOT = ['process', '_renderPlay', '_renderRec', '_limit', '_computeSpan', '_approach'];
+// The list used to be written by hand, which is the second-registry failure
+// mode (LEARNED 2026-08-05): a new per-sample helper is invisible to the check
+// until someone remembers to add it, and the first four UGens added in step 5
+// — `_osc`, `_svf`, `_sat`, `_rand` — would all have escaped it. One of them
+// really did contain `[lp, bp]` in the per-sample path, caught by eye rather
+// than by this file, which is not a system.
+//
+// So it is a FIXPOINT now: start at the per-sample loops and close over every
+// `this._method(` they reach. A helper is covered the moment it is called from
+// a hot path, which is the property that actually matters.
+const HOT_ROOTS = ['process', '_renderPlay', '_renderRec', '_renderVoice', '_limit'];
+// `_flushDirty` allocates ON PURPOSE — it builds the message it posts — and it
+// runs once per N quanta, not per sample, which is the distinction this whole
+// check is scoped to. Exempted by name with the reason, rather than by leaving
+// it off a hand-written list where the omission looks like an oversight.
+const HOT_EXEMPT = new Set(['_flushDirty', '_send', '_refuse']);
+
+const HOT = (() => {
+  const seen = new Set(HOT_ROOTS);
+  for (let grew = true; grew;) {
+    grew = false;
+    for (const name of [...seen]) {
+      const body = methodBody(procCode, name);
+      if (!body) continue;
+      for (const m of body.matchAll(/this\.(_[A-Za-z0-9_]+)\s*\(/g)) {
+        if (!seen.has(m[1]) && !HOT_EXEMPT.has(m[1])) { seen.add(m[1]); grew = true; }
+      }
+    }
+  }
+  return [...seen];
+})();
 
 const ALLOCATORS = [
   /\bnew\s+[A-Z]/, /\.map\(/, /\.filter\(/, /\.slice\(/, /\.concat\(/, /JSON\./,
   /return\s*\[/,          // the pair-returning helper that started this
+  // An array literal ANYWHERE, not just in return position. The `return [`
+  // pattern was written for the one incident that motivated the check, and it
+  // is half a rule: step 5's SVF held `const band = [lp, bp]` in the per-sample
+  // path and this file passed it clean. Matching after `=`, `(` or `,` catches
+  // assignment, argument and element position while leaving destructuring
+  // (`const [a, b] = …`, where the bracket follows a keyword) alone.
+  /[=(,]\s*\[/,
+  /[=(,]\s*\{/,           // object literal, same argument
 ];
 
 for (const name of HOT) {
-  const body = methodBody(procCode, name);
-  check(`${name}() was located for scanning`, !!body,
+  const raw = methodBody(procCode, name);
+  check(`${name}() was located for scanning`, !!raw,
     'a rename here would silently skip the allocation check');
+  // Posting a message ALLOCATES — the payload object is the message — and that
+  // is deliberate and event-rate, not per-sample: `_finishDynamic` posts once
+  // when a recording resolves. Blank those calls rather than exempting the
+  // whole function, which would blind the check to a real per-sample
+  // allocation added beside them later.
+  const body = raw ? raw.replace(/postMessage\([^;]*\);/g, 'postMessage();') : raw;
   const found = body ? ALLOCATORS.filter((r) => r.test(body)).map(String) : [];
   check(`${name}() contains no allocating construct`, found.length === 0,
     `§4.9 — GC on the audio thread: ${found.join(', ')}`);
@@ -307,6 +351,13 @@ check('the allocation scanner is live',
   ALLOCATORS.some((r) => r.test('const x = new Float32Array(4);'))
   && ALLOCATORS.some((r) => r.test('  return [a, b];')),
   'a scanner that never matches makes every check above vacuous');
+// Calibration for the closure itself: it must have REACHED the UGens, not just
+// the roots. A traversal that silently found nothing would report a clean sweep
+// over five functions and call it coverage.
+for (const reached of ['_cubic', '_osc', '_svf', '_sat', '_rand']) {
+  check(`the hot-path closure reaches ${reached}()`, HOT.includes(reached),
+    `only found: ${HOT.join(', ')}`);
+}
 
 // ── 6. What is NOT checked here ────────────────────────────────────────────
 // Rule 2 (control vs bulk) and rule 7 (frame-cadence aggregation) are runtime

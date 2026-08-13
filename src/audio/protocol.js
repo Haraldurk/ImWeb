@@ -68,6 +68,29 @@ export const CLIENT_TO_ENGINE = Object.freeze({
   '/zone/play/<n>/rate': 'f',      // signed; negative reads backwards
   '/zone/rec/<n>/dynamic': 'T',    // length taken from where you stop
 
+  // Voices (§4.4, §4.10) — the things with no buffer region. Fixed topology in
+  // this pass: source → filter → saturator → level. There is deliberately no
+  // address here for an envelope generator: this instrument has no note-on, so
+  // the envelope is a hand on a fader or slew on a parameter, both of which
+  // already exist client-side. Importing SC's note model out of habit would add
+  // a whole verb set for a gesture that is not in the instrument.
+  '/voice/<n>/on': '',
+  '/voice/<n>/off': '',
+  '/voice/<n>/src': 'i',           // 0 oscillator, 1 noise
+  '/voice/<n>/wave': 'i',          // 0 sine, 1 saw, 2 square, 3 triangle
+  '/voice/<n>/freq': 'f',          // Hz
+  // ratio, index. The oscillator's PHASE input is what makes FM free rather
+  // than a UGen of its own (§4.10), so this is two numbers on the oscillator
+  // and not a separate node.
+  '/voice/<n>/fm': 'ff',
+  '/voice/<n>/colour': 'f',        // noise tilt: 0 dark, 0.5 white, 1 bright
+  // cutoff (Hz), resonance, type. Type is a FLOAT because the SVF morphs
+  // LP→BP→HP→notch continuously — an integer would make it a switch, and a
+  // discrete type change under a controller is a click.
+  '/voice/<n>/filter': 'fff',
+  '/voice/<n>/drive': 'f',
+  '/voice/<n>/level': 'f',
+
   // Output bus (§4.11). Note what is absent: there is no address that disables
   // the limiter. A feedback instrument without an output ceiling is one dialled
   // coupling away from damaging monitors and ears, so non-bypassable is

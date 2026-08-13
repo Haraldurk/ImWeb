@@ -347,6 +347,10 @@ export function buildMappingPanels(ps, contextMenu) {
     ]).filter(Boolean),
     'audio-rec-params':  pick('arec',  ['part', 'start', 'len', 'dynamic', 'unsafe', 'on']),
     'audio-play-params': pick('aplay', ['part', 'start', 'len', 'rate', 'unsafe', 'on']),
+    // Signal order, not registration order: source → its own controls → filter
+    // → saturator → level, so the row list reads as the chain it is.
+    'audio-voice-params': pick('avoice', ['on', 'src', 'wave', 'pitch', 'fmRatio',
+      'fmIndex', 'colour', 'cut', 'res', 'ftype', 'drive', 'level']),
   };
 
   Object.entries(sections).forEach(([elId, params]) => {
