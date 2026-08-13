@@ -90,7 +90,15 @@ export const ENGINE_TO_CLIENT = Object.freeze({
  */
 export const DEFERRED = Object.freeze({
   '/part/<n>/ring': 'T',
-  '/zone/<type>/<n>/render': 'iffi',
+  // graph, startRel, lengthSamples, jobId. `len` is a sample count, so `i` —
+  // it was 'iffi' when first written down, which would have typed a length as
+  // a float and let a fractional render span through validation.
+  '/zone/<type>/<n>/render': 'ifii',
+  // §8.9: freeze is render PLUS A STATE SEED, so it is a sibling verb rather
+  // than an argument on render. Cold state vs warm state are different musical
+  // acts, and one verb with an optional voice would frame the cold case as a
+  // degenerate freeze — it is the other way round.
+  '/voice/<n>/freeze': 'ifii',     // partition, startRel, lengthSamples, jobId
   '/graph/def': 'ib',
   '/graph/free': 'i',
   '/voice/<n>/graph': 'i',
