@@ -1082,9 +1082,66 @@ console.log('\nworklet-resident controllers');
     check('clearing the winner releases the target', s.p._voices[0].freqCtrl === -1);
   }
 
-  // The controller writes the TARGET and the existing slew smooths it — no
-  // special case, which is what keeps a controller-written value and a
-  // message-written one indistinguishable downstream.
+  // §4.11's slew must NOT filter a controller. It is an 8 ms one-pole meant to
+  // de-zipper CONTROL-rate messages; a per-sample controller has no zipper to
+  // remove, so leaving it in the path would round the edges off a square, drop
+  // the depth of anything fast, and phase-shift the rest — the audio-rate
+  // precision that justifies the whole section, filtered away by the mechanism
+  // it supersedes. The controller writes cur AND tgt, so the value lands
+  // exactly and the follower has nothing to chase.
+  {
+    const exact = (address, read) => {
+      const s = ctrlRig(address, { shape: 4, hz: 300, lo: 0.2, hi: 0.9 });  // square
+      s.send('/voice/0/on');
+      s.send('/part/0/bounds', 0, SR);
+      s.send('/zone/play/0/part', 0);
+      s.send('/zone/play/0/region', 0, 24000);
+      s.send('/zone/play/0/on');
+      s.run(8);
+      const want = buf0(s)[127];
+      const got = read(s.p);
+      return { want, got };
+    };
+    for (const [label, address, read] of [
+      ['voice level', '/voice/0/level', (p) => p._voices[0].levelCur],
+      ['voice freq', '/voice/0/freq', (p) => p._voices[0].freqCur],
+      ['zone rate', '/zone/play/0/rate', (p) => p._zones('play')[0].rateCur],
+      ['master gain', '/bus/out/gain', (p) => p._outGainCur],
+    ]) {
+      const { want, got } = exact(address, read);
+      check(`a controlled ${label} lands EXACTLY on the controller's value`,
+        Math.abs(got - want) < 1e-9,
+        `${got} vs ${want} — a lagging value means §4.11's slew is still filtering the LFO`);
+    }
+  }
+
+  // Ownership. A direct write to a controller-driven target is refused, not
+  // accepted and then overwritten a sample later — last-writer-wins with a 20 µs
+  // window presents as "the slider does nothing" and leaves no message to find.
+  {
+    const s = makeEngine();
+    s.send('/voice/0/level', 0.4);
+    check('an unbound target takes a direct write', s.p._voices[0].levelTgt === 0.4);
+    s.send('/ctrl/0/target', '/voice/0/level');
+    s.send('/ctrl/0/range', 0, 1, 0);
+    const before = s.p._voices[0].levelTgt;
+    s.send('/voice/0/level', 0.9);
+    const ref = refusals(s);
+    check('a direct write to an OWNED target is refused', ref.length === 1 && ref[0].v[0] === 6,
+      ref.length ? `code ${ref[0].v[0]}` : 'no refusal sent');
+    check('and the write does not land', s.p._voices[0].levelTgt === before,
+      `levelTgt ${s.p._voices[0].levelTgt}`);
+    // Owning a VALUE is not owning the voice.
+    s.send('/voice/0/on');
+    check('on/off is not refused by ownership',
+      s.p._voices[0].on === true && refusals(s).length === 1);
+    s.send('/ctrl/0/clear');
+    s.send('/voice/0/level', 0.9);
+    check('the target is writable again once the controller lets go',
+      s.p._voices[0].levelTgt === 0.9 && refusals(s).length === 1);
+  }
+
+  // A bound rate drives real audio, end to end.
   {
     const s = ctrlRig('/zone/play/0/rate', { shape: 0, hz: 2, lo: 0.5, hi: 2, map: 1 });
     s.send('/part/0/bounds', 0, SR);

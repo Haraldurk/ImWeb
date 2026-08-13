@@ -41,6 +41,12 @@ export const REFUSE = Object.freeze({
   // quanta, so the engine bounds how many may be outstanding rather than
   // absorbing an unbounded backlog on the audio thread.
   BUSY: 5,
+  // A direct write to a target a worklet-resident controller is driving (§8.7).
+  // Refused rather than accepted-then-overwritten-a-sample-later: the protocol
+  // does not enforce its rules by trusting the client anywhere else (layout
+  // lock, alloc refusal), and "my slider does nothing" with no message is the
+  // worst version of this to debug.
+  CTRL_OWNED: 6,
 });
 
 /**

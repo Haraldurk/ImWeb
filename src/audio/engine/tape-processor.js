@@ -21,6 +21,7 @@ const REFUSE_NO_TAPE = 2;
 const REFUSE_BAD_RANGE = 3;
 const REFUSE_LAYOUT_LOCKED = 4;
 const REFUSE_BUSY = 5;
+const REFUSE_CTRL_OWNED = 6;
 
 /** Ceiling on `/engine/tape/alloc`, so a typo cannot ask for 40 GB. */
 const MAX_TAPE_SECONDS = 600;
@@ -389,7 +390,8 @@ class TapeProcessor extends AudioWorkletProcessor {
       case '/zone/<type>/<n>/unsafe': return this._zoneSet(type, idx[0], 'unsafe', !!v[0]);
       case '/zone/<type>/<n>/on':     return this._zoneOn(type, idx[0], true);
       case '/zone/<type>/<n>/off':    return this._zoneOn(type, idx[0], false);
-      case '/zone/play/<n>/rate':     return this._zoneSet('play', idx[0], 'rateTgt', v[0]);
+      case '/zone/play/<n>/rate':
+        return this._zoneSet('play', idx[0], 'rateTgt', v[0], 'rateCtrl', m.a);
       case '/zone/rec/<n>/dynamic':   return this._zoneSet('rec', idx[0], 'dynamic', !!v[0]);
 
       // Voices (§4.4, §4.10). Re-sending is an UPDATE, never a restart (rule 4)
@@ -399,12 +401,15 @@ class TapeProcessor extends AudioWorkletProcessor {
       case '/voice/<n>/off':    return this._voiceOn(idx[0], false);
       case '/voice/<n>/src':    return this._voiceShape(idx[0], 'src', v[0] | 0);
       case '/voice/<n>/wave':   return this._voiceShape(idx[0], 'wave', v[0] | 0);
-      case '/voice/<n>/freq':   return this._voiceSet(idx[0], 'freqTgt', v[0]);
+      // The four bindable voice scalars go through the OWNERSHIP guard — a
+      // direct write to a controller-driven target is refused, not silently
+      // overwritten a sample later. See `_ctrlOwned`.
+      case '/voice/<n>/freq':   return this._voiceSet(idx[0], 'freqTgt', v[0], 'freqCtrl', m.a);
       case '/voice/<n>/fm':     return this._voiceFm(idx[0], v[0], v[1]);
-      case '/voice/<n>/colour': return this._voiceSet(idx[0], 'colourTgt', v[0]);
+      case '/voice/<n>/colour': return this._voiceSet(idx[0], 'colourTgt', v[0], 'colourCtrl', m.a);
       case '/voice/<n>/filter': return this._voiceFilter(idx[0], v[0], v[1], v[2]);
-      case '/voice/<n>/drive':  return this._voiceSet(idx[0], 'driveTgt', v[0]);
-      case '/voice/<n>/level':  return this._voiceSet(idx[0], 'levelTgt', v[0]);
+      case '/voice/<n>/drive':  return this._voiceSet(idx[0], 'driveTgt', v[0], 'driveCtrl', m.a);
+      case '/voice/<n>/level':  return this._voiceSet(idx[0], 'levelTgt', v[0], 'levelCtrl', m.a);
 
       // Worklet-resident controllers (§8.7). Every one of these is a
       // DESCRIPTION: rule 4 makes a re-send an update, and `/retrigger` is the
@@ -420,7 +425,10 @@ class TapeProcessor extends AudioWorkletProcessor {
       case '/engine/glide':
         this._glideSamples = Math.max(0, Math.round((v[0] / 1000) * sampleRate));
         return;
-      case '/bus/out/gain':      this._outGainTgt = v[0]; return;
+      case '/bus/out/gain':
+        if (this._ctrlOwned(m.a, this._outGainCtrl)) return;
+        this._outGainTgt = v[0];
+        return;
       case '/bus/out/limit':     return this._setLimit(v[0], v[1]);
 
       default: return this._refuse(REFUSE_PROTO_MISMATCH, `unknown address '${m.a}'`);
@@ -441,7 +449,12 @@ class TapeProcessor extends AudioWorkletProcessor {
   }
 
   _voiceOn(i, on) { const v = this._voice(i); if (v) v.on = !!on; }
-  _voiceSet(i, key, value) { const v = this._voice(i); if (v) v[key] = value; }
+  _voiceSet(i, key, value, ctrlField = null, address = '') {
+    const v = this._voice(i);
+    if (!v) return;
+    if (ctrlField && this._ctrlOwned(address, v[ctrlField])) return;
+    v[key] = value;
+  }
 
   /**
    * A discrete shape change — source or waveform — ducks the voice first, the
@@ -535,6 +548,26 @@ class TapeProcessor extends AudioWorkletProcessor {
     c.kind = kind;
     c.idx = index;
     this._ctrlAttach(i, c);
+  }
+
+  /**
+   * Is this target owned by a controller? If so, refuse the direct write.
+   *
+   * The alternative — accept it and let the controller overwrite it a sample
+   * later — is last-writer-wins with a 20 µs window, which presents as "the
+   * slider does nothing" and produces no message to find. 7b will teach the
+   * client not to write owned targets, but that is client discipline, and this
+   * protocol does not rely on client discipline anywhere else: `/part/<n>/bounds`
+   * is refused while a zone runs rather than trusted not to arrive. Ownership is
+   * the same shape of rule and gets the same treatment.
+   *
+   * Note what is NOT refused: `/ctrl/<n>/…` itself, and `/voice/<n>/on|off`.
+   * Owning a value is not owning the voice.
+   */
+  _ctrlOwned(address, owner) {
+    if (!(owner >= 0)) return false;
+    this._refuse(REFUSE_CTRL_OWNED, `'${address}' is driven by controller ${owner}`);
+    return true;
   }
 
   /** Write this slot into its target's back-pointer. */
@@ -974,9 +1007,11 @@ class TapeProcessor extends AudioWorkletProcessor {
     return list[i];
   }
 
-  _zoneSet(type, i, field, value) {
+  _zoneSet(type, i, field, value, ctrlField = null, address = '') {
     const z = this._zone(type, i);
-    if (z) z[field] = value;
+    if (!z) return;
+    if (ctrlField && this._ctrlOwned(address, z[ctrlField])) return;
+    z[field] = value;
   }
 
   /** Structural edits duck the zone first — see `pend` on makeZone(). */
@@ -1282,14 +1317,26 @@ class TapeProcessor extends AudioWorkletProcessor {
    */
   _renderVoice(v, L, R, frames) {
     for (let i = 0; i < frames; i++) {
-      // A worklet-resident controller writes the TARGET, per sample, and the
-      // existing slew smooths it exactly as it smooths a message-written one
-      // (§4.11). No special case: the controller replaced where the value comes
-      // from, not what happens to it afterwards.
-      if (v.freqCtrl >= 0) v.freqTgt = this._ctrls[v.freqCtrl].buf[i];
-      if (v.levelCtrl >= 0) v.levelTgt = this._ctrls[v.levelCtrl].buf[i];
-      if (v.colourCtrl >= 0) v.colourTgt = this._ctrls[v.colourCtrl].buf[i];
-      if (v.driveCtrl >= 0) v.driveTgt = this._ctrls[v.driveCtrl].buf[i];
+      // A worklet-resident controller writes BOTH the target and the current
+      // value, which lands its output exactly and leaves the follower below
+      // with nothing to chase (§8.7).
+      //
+      // Writing only the target was the first version and it is wrong. §4.11's
+      // slew is an 8 ms one-pole — a ~20 Hz lowpass — and it is there to
+      // de-zipper values arriving at CONTROL rate. A per-sample controller has
+      // no zipper to remove, so all that filter can do is round the edges off a
+      // square, drop the depth of anything fast, and phase-shift the rest:
+      // the audio-rate precision that justifies this whole section, filtered
+      // away by the mechanism it supersedes.
+      //
+      // Smoothing does not disappear, it MOVES: §8.7 puts slew curve and table
+      // in the controller's own description, so a controller that wants a
+      // rounded square asks for one. That set is deferred, so today a square
+      // arrives square — which is what was asked for.
+      if (v.freqCtrl >= 0) v.freqCur = v.freqTgt = this._ctrls[v.freqCtrl].buf[i];
+      if (v.levelCtrl >= 0) v.levelCur = v.levelTgt = this._ctrls[v.levelCtrl].buf[i];
+      if (v.colourCtrl >= 0) v.colourCur = v.colourTgt = this._ctrls[v.colourCtrl].buf[i];
+      if (v.driveCtrl >= 0) v.driveCur = v.driveTgt = this._ctrls[v.driveCtrl].buf[i];
       v.gainTgt = v.on && !v.pend ? 1 : 0;
       v.gainCur = this._approach(v.gainCur, v.gainTgt);
       if (v.gainCur === 0) {
@@ -1357,7 +1404,8 @@ class TapeProcessor extends AudioWorkletProcessor {
 
   _renderPlay(z, L, R, frames) {
     for (let i = 0; i < frames; i++) {
-      if (z.rateCtrl >= 0) z.rateTgt = this._ctrls[z.rateCtrl].buf[i];
+      // Both, so the value lands exactly — see the note in `_renderVoice`.
+      if (z.rateCtrl >= 0) z.rateCur = z.rateTgt = this._ctrls[z.rateCtrl].buf[i];
       z.gainTgt = z.on && !z.pend ? 1 : 0;
       z.gainCur = this._approach(z.gainCur, z.gainTgt);
       z.rateCur = this._approach(z.rateCur, z.rateTgt);
@@ -1480,7 +1528,9 @@ class TapeProcessor extends AudioWorkletProcessor {
    */
   _limit(L, R, frames) {
     for (let i = 0; i < frames; i++) {
-      if (this._outGainCtrl >= 0) this._outGainTgt = this._ctrls[this._outGainCtrl].buf[i];
+      if (this._outGainCtrl >= 0) {
+        this._outGainCur = this._outGainTgt = this._ctrls[this._outGainCtrl].buf[i];
+      }
       this._outGainCur = this._approach(this._outGainCur, this._outGainTgt);
       let l = L[i] * this._outGainCur;
       let r = R[i] * this._outGainCur;
