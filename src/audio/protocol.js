@@ -107,6 +107,46 @@ export const CLIENT_TO_ENGINE = Object.freeze({
   // enforced by the address space having no production for it.
   '/bus/out/gain': 'f',
   '/bus/out/limit': 'ff',          // threshold (linear), release (seconds)
+
+  // ── Worklet-resident controllers (§8.7) ─────────────────────────────────
+  //
+  // The client DESCRIBES the controller; the engine EVALUATES it, at audio
+  // rate, on the thread a hidden tab cannot suspend. §8.7's three problems —
+  // the freeze, a frame of jitter, and 60 Hz steps that are zipper noise on a
+  // fader — all come from evaluating on the rAF thread, and none of them are
+  // fixed by clocking that thread differently.
+  //
+  // This does NOT contradict §4.10's rule against rebuilding the controller
+  // layer in UGens. That rule forbids duplicating the AUTHORING; the badge
+  // popover, MIDI mapping and range fields do not move. What travels is a
+  // description, so there stays one definition of each curve.
+  //
+  // `<n>` is the opaque slot rule 3 requires: the client allocates it, the
+  // engine knows nothing else about the controller, and `aplay.rate` never
+  // travels. The TARGET is an engine-side address — the engine's own namespace,
+  // not ImWeb's — so binding needs no second registry to drift out of step.
+  '/ctrl/<n>/target': 's',         // engine address to drive, or '' to unbind
+  // shape (0 sine, 1 triangle, 2 saw, 3 ramp-down, 4 square, 5 sample-and-hold),
+  // hz, pulse width, mode (0 free-running, 1 one-shot).
+  '/ctrl/<n>/lfo': 'iffi',
+  // Phase OFFSET, slid relative — the same semantics as `LFO.setPhase`, which
+  // moves the wave under the playhead instead of jumping the playhead back to
+  // the start of the cycle. Setting it is not a retrigger (rule 4).
+  '/ctrl/<n>/phase': 'f',
+  // Output range in the TARGET's own units, and how the sweep is mapped onto
+  // it: 0 linear, 1 exponential. Exponential exists because frequency and rate
+  // are heard as ratios (LEARNED 2026-08-08) — a linear sweep between two
+  // frequencies spends most of its travel in the top octave. The mapping has to
+  // live here rather than in the client's semitone conversion, because the
+  // client would otherwise have to send a value per sample, which is the whole
+  // thing this section removes.
+  '/ctrl/<n>/range': 'ffi',        // lo, hi, map
+  '/ctrl/<n>/retrigger': '',       // explicit, and the ONLY thing that restarts
+  '/ctrl/<n>/clear': '',
+  // Echo on/off. §8.7's inversion: for a controller feeding audio the worklet is
+  // authoritative and echoes values back for the video side and the UI to read.
+  // Off by default — an echo nobody reads is 60 messages a second of nothing.
+  '/ctrl/echo': 'T',
 });
 
 /**
@@ -127,6 +167,13 @@ export const ENGINE_TO_CLIENT = Object.freeze({
   // partition seam). Without this the client's Run toggle stays on over a zone
   // that has already stopped — state the engine knows and nobody else does.
   '/zone/<type>/<n>/state': 'T',   // running
+  // §8.7's echo, aggregated to frame cadence (rule 7): ONE message carrying
+  // every live slot, never one per slot. Pairs of floats, [slot, value, …] —
+  // §8.8 drafted this as packed `[slot:u16, value:f32]`, and a single Float32Array
+  // is used instead because slots are small integers that a float carries
+  // exactly, and a mixed-width packing would need a DataView on both ends to
+  // save 2 bytes per slot on a message that is already under a kilobyte.
+  '/ctrl/echo/data': 'b',
 });
 
 /**
@@ -149,10 +196,14 @@ export const DEFERRED = Object.freeze({
   '/graph/def': 'ib',
   '/graph/free': 'i',
   '/voice/<n>/graph': 'i',
-  '/ctrl/<n>/target': 's',
-  '/ctrl/<n>/retrigger': '',
-  '/ctrl/<n>/clear': '',
-  '/ctrl/echo': 'b',
+  // The controller addresses moved up to CLIENT_TO_ENGINE in step 7a. What is
+  // still deferred is the rest of §8.7's description vocabulary: random-with-
+  // slew and the seven slew curves as sampled tables, response tables, and
+  // expression controllers (whose wire format already exists — ExprCompiler's
+  // instruction list, c3b5b12).
+  '/ctrl/<n>/random': 'ff',        // hz, slew seconds
+  '/ctrl/<n>/table': 'i',          // response table id, -1 for none
+  '/ctrl/<n>/slew': 'if',          // curve id, seconds
   '/table/<n>/data': 'b',
   '/expr/<n>/code': 'b',
   '/job/<n>/progress': 'ii',

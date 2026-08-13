@@ -284,6 +284,24 @@ export class AudioEngine {
   voiceDrive(i, d) { this._send(`/voice/${i}/drive`, d); }
   voiceLevel(i, l) { this._send(`/voice/${i}/level`, l); }
 
+  // Worklet-resident controllers (§8.7). The client describes; the engine
+  // evaluates, at audio rate, on the thread a hidden tab cannot suspend.
+  //
+  // `slot` is the opaque integer rule 3 requires and `address` is the ENGINE's
+  // own — `/zone/play/0/rate`, not `aplay.rate`. A target must be an address
+  // whose signature is exactly one float; the engine refuses anything else.
+  ctrlTarget(slot, address) { this._send(`/ctrl/${slot}/target`, address || ''); }
+  ctrlLfo(slot, shape, hz, width, mode) {
+    this._send(`/ctrl/${slot}/lfo`, shape | 0, hz, width, mode | 0);
+  }
+  ctrlPhase(slot, phase) { this._send(`/ctrl/${slot}/phase`, phase); }
+  ctrlRange(slot, lo, hi, map = 0) { this._send(`/ctrl/${slot}/range`, lo, hi, map | 0); }
+  /** The ONLY restart. Everything else is an update (rule 4). */
+  ctrlRetrigger(slot) { this._send(`/ctrl/${slot}/retrigger`); }
+  ctrlClear(slot) { this._send(`/ctrl/${slot}/clear`); }
+  /** Ask for values back — §8.7's inversion. Off by default. */
+  ctrlEcho(on) { this._send('/ctrl/echo', !!on); }
+
   // Output bus (§4.11). Note the absence of a bypass — there is no address for
   // one, and that is the enforcement.
   outGain(g) { this._send('/bus/out/gain', g); }
@@ -384,6 +402,14 @@ export class AudioEngine {
       case '/tape/env/dirty':
         this.onDirty?.(m.v[0], m.v[1]);
         return;
+      case '/ctrl/echo/data': {
+        // One message per frame carrying every live slot (rule 7). Handed over
+        // as the flat [slot, value, …] pairs it arrived as: the consumer knows
+        // which slots it allocated, and building a Map here would allocate one
+        // per frame for a caller that is about to iterate it once anyway.
+        if (this.onCtrlEcho) this.onCtrlEcho(new Float32Array(m.v[0]));
+        return;
+      }
       default:
         return;
     }

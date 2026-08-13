@@ -301,7 +301,11 @@ const HOT_ROOTS = ['process', '_renderPlay', '_renderRec', '_renderVoice', '_lim
 // runs once per N quanta, not per sample, which is the distinction this whole
 // check is scoped to. Exempted by name with the reason, rather than by leaving
 // it off a hand-written list where the omission looks like an oversight.
-const HOT_EXEMPT = new Set(['_flushDirty', '_send', '_refuse']);
+// `_ctrlFlush` is exempt for the same reason as `_flushDirty` and no other: it
+// BUILDS the message it posts, and it runs once per frame-cadence flush rather
+// than per sample. The per-sample controller work is `_ctrlStep`, which is not
+// exempt and must stay allocation-free like everything else in the render.
+const HOT_EXEMPT = new Set(['_flushDirty', '_ctrlFlush', '_send', '_refuse']);
 
 const HOT = (() => {
   const seen = new Set(HOT_ROOTS);
