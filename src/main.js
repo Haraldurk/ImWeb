@@ -1061,6 +1061,12 @@ async function main() {
   // a working one unless you look for it (LEARNED 2026-08-13). Making the user
   // ask also means ImWeb never grabs the audio device just by being open.
   const audio = new AudioBinding(ps);
+  // The §8.6 analyser tap, injected into its two consumers. They used to build
+  // an AudioContext each — three existed in total, counting the engine's — and
+  // three contexts are three clocks. Injection rather than import keeps
+  // AudioBinding the only module that sees both halves (§4.1).
+  ctrl.audioHost = audio;
+  vectorscope.audioHost = audio;
   {
     const statusEl = document.getElementById("audio-status");
     audio.onStatus = (msg) => { if (statusEl) statusEl.textContent = msg; };

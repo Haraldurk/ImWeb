@@ -14,7 +14,7 @@
  * adds a convenient import.
  */
 
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 import { sanitizeSource, calibrateSanitizer } from './lib/sanitize-source.mjs';
@@ -111,6 +111,44 @@ for (const f of ['src/audio/AudioEngine.js', 'src/audio/protocol.js',
     .map((m) => m[1]).filter((p) => !p.startsWith('./'));
   check(`${f.split('/').pop()} imports nothing outside src/audio`,
     bad.length === 0, bad.join(', '));
+}
+
+// ── 1c. §8.6 — ONE AudioContext, and it is the engine's ────────────────────
+//
+// The failure this prevents is not a crash. Two contexts run two clocks, so
+// what the instrument hears and what it plays drift apart by an amount nothing
+// reports — and §3's coupling claim is the casualty. It shipped that way twice:
+// ControllerManager and VectorscopeInput each built their own, which is how the
+// app could hold three contexts and open the microphone twice over.
+console.log('\n§8.6 — one AudioContext');
+
+const CTX_CTOR = /new\s+(?:window\.)?(?:webkit)?AudioContext\s*\(/g;
+const walk = (dir) => readdirSync(resolve(root, dir), { withFileTypes: true })
+  .flatMap((e) => (e.isDirectory() ? walk(`${dir}/${e.name}`)
+    : e.name.endsWith('.js') ? [`${dir}/${e.name}`] : []));
+
+const constructors = walk('src').filter((f) =>
+  CTX_CTOR.test(sanitizeSource(read(f))) && (CTX_CTOR.lastIndex = 0, true));
+
+check('exactly one file constructs an AudioContext',
+  constructors.length === 1, constructors.join(', ') || 'none found');
+check('and it is AudioEngine, which §8.6 makes the owner',
+  constructors[0] === 'src/audio/AudioEngine.js', constructors[0] ?? '—');
+
+// Calibration. A regex that matches nothing would pass both checks above by
+// finding zero constructors — the vacuous-scanner trap, so probe it directly.
+check('the AudioContext scanner is live',
+  ['new AudioContext()', 'new window.AudioContext()', 'new webkitAudioContext()']
+    .every((s) => (CTX_CTOR.lastIndex = 0, CTX_CTOR.test(s))),
+  'a scanner that never matches makes "exactly one" vacuous');
+
+// The consumers reach the tap by injection. An import here would work and would
+// be wrong: it puts a second module on the boundary AudioBinding is supposed to
+// be the whole of, and §4.1's test only means something while that is true.
+for (const f of ['src/controls/ControllerManager.js', 'src/inputs/VectorscopeInput.js']) {
+  check(`${f.split('/').pop()} does not import the audio half`,
+    !/from\s+['"][^'"]*audio\/(AudioEngine|AudioBinding|protocol)/.test(read(f)),
+    'the tap is injected as audioHost by main.js');
 }
 
 // ── 2. The fixpoint: protocol.js and the worklet agree on what exists ──────

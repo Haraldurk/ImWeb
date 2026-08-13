@@ -63,6 +63,15 @@ export class ControllerManager {
     this.randoms = new Map();   // paramId → { hz, lastTick, value }
     this.midi    = null;
     this.sound   = null;
+    /**
+     * The §8.6 analyser tap provider — `AudioBinding`, injected by main.js.
+     * INJECTED, not imported: `AudioBinding` is the one module allowed to see
+     * both halves (§4.1), and an `import` here would add a second seam and make
+     * the boundary test — *could you delete ImWeb's UI and still drive the
+     * engine?* — quietly false. main.js is the integration hub; this is one of
+     * the things it integrates.
+     */
+    this.audioHost = null;
     this.mouse   = { x: 0.5, y: 0.5 };
     // Device motion (iPad tilt/compass) — normalized like mouse.
     // Listener binds lazily: only with permission AND a mapped param.
@@ -851,12 +860,30 @@ export class ControllerManager {
     // or when explicitly enabled
   }
 
+  /**
+   * Attach the sound-reactive controllers to the engine's analyser tap.
+   *
+   * **This layer used to own an `AudioContext` and a `getUserMedia` call of its
+   * own** (§6 item 5b). It no longer does: §8.6 settled that there is one
+   * context, owned by the engine, because two contexts are two clocks and the
+   * relationship between what the instrument hears and what it plays drifts
+   * apart between them — which is the coupling claim in §3, lost to a detail.
+   *
+   * The consequence worth knowing: this layer now hears whatever the tap is
+   * pointed at, not just the mic. Tap the master bus and the sound controllers
+   * hear the instrument itself, which is the point — an AV instrument deaf to
+   * its own output can only be driven from the room.
+   */
   async enableSound() {
     if (this.sound) return;
+    if (!this.audioHost) {
+      // Not a fallback to a private context: that is the bug this replaced.
+      console.warn('[Sound] no audio host attached — sound controllers inactive');
+      return;
+    }
     try {
-      const ctx  = new AudioContext();
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-      const source  = ctx.createMediaStreamSource(stream);
+      const { ctx, tap } = await this.audioHost.ensureTap();
+      const source = tap;
       const analyser = ctx.createAnalyser();
       analyser.fftSize = 512; // 256 bins
       source.connect(analyser);

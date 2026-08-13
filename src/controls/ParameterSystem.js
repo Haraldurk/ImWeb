@@ -6585,6 +6585,20 @@ export function registerCoreParameters(ps) {
     id: "audio.mic", label: "Mic", group: "global",
     type: PARAM_TYPE.TOGGLE, value: 0,
   });
+  // What the analyser tap listens to (§8.6) — the input to the sound-reactive
+  // controllers and the vectorscope, which are consumers of the engine's one
+  // context rather than owners of their own.
+  //
+  // 'audio', so it IS captured, and that is deliberate: unlike `audio.mic` this
+  // opens no device and allocates nothing, and it is an index into a fixed
+  // enumerated set, not a user-editable list — so it cannot drift the way
+  // glsl.preset would. Mic-only is the default, because the safe state must
+  // require no selection: Master Out tapped through speakers is §8.1's loop.
+  ps.register({
+    id: "audio.tapSrc", label: "Tap", group: "audio",
+    type: PARAM_TYPE.SELECT, value: 0,
+    options: ["Mic", "Master Out"],
+  });
   ps.register({
     id: "audio.outGain", label: "Out Gain", group: "audio",
     min: 0, max: 1, value: 0.8, step: 0.01,
