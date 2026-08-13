@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<!-- Audio step 1: engine handshake, tape allocation, bulk write, envelope reply.
+
+     Driven by explicit awaits, not requestAnimationFrame — a backgrounded tab
+     suspends rAF and would make this pass vacuously (LEARNED 2026-07-12). The
+     worklet keeps running either way, which is precisely §8.7's point.
+
+     An AudioContext needs a user gesture, so this page has a button rather than
+     running on load. Nothing is audible: process() outputs silence until zones
+     arrive in step 2.
+
+     Needs the DEV server, not `vite preview`: this page imports /src/ directly
+     and tests/ is not a build input, so it does not exist in dist/. Share the
+     owner's :5173 rather than starting a second one — a different port is a
+     different origin (LEARNED 2026-07-12).
+
+     Run:  npx vite --port 5173
+           open http://localhost:5173/tests/audio-tape.html
+-->
+<meta charset="utf-8">
+<title>Audio tape / protocol test</title>
+<body style="background:#111;color:#ddd;font:12px monospace;white-space:pre">
+<button id="go" style="font:12px monospace;padding:6px 14px;margin-bottom:10px">Run test (needs a click — AudioContext)</button>
+<div id="out"></div>
+</body>
+<script type="module">
+import { AudioEngine } from '/src/audio/AudioEngine.js';
+
+const lines = [];
+const el = document.getElementById('out');
+const log = (s) => { lines.push(s); el.textContent = lines.join('\n'); };
+let failures = 0;
+const check = (label, cond, detail = '') => {
+  if (cond) log(`  ok   ${label}`);
+  else { log(`  FAIL ${label}${detail ? ` — ${detail}` : ''}`); failures++; }
+};
+const near = (a, b, eps = 1e-4) => Math.abs(a - b) <= eps;
+
+document.getElementById('go').onclick = async (e) => {
+  e.target.disabled = true;
+  lines.length = 0;
+
+  const eng = new AudioEngine();
+  eng.onRefuse = (code, msg) => log(`  !! refuse ${code}: ${msg}`);
+
+  log('handshake');
+  await eng.start();
+  check('engine answered /engine/hello', eng.sampleRate > 0,
+    'a hang here is the handshake, not the DSP');
+  check('sample rate is plausible', eng.sampleRate >= 8000 && eng.sampleRate <= 192000,
+    String(eng.sampleRate));
+  log(`       sampleRate=${eng.sampleRate} maxTape=${eng.maxTapeSeconds}s`);
+
+  log('\ntape allocation and bulk write');
+  const SECONDS = 2;
+  eng.allocTape(SECONDS);
+  const n = Math.floor(eng.sampleRate * SECONDS);
+
+  // A known shape: silence, then a full-scale ramp over the middle quarter, so
+  // the envelope has an unmistakable signature at a known column range. A flat
+  // fixture would hide a column-arithmetic bug (LEARNED 2026-07-30).
+  const from = Math.floor(n * 0.25), len = Math.floor(n * 0.25);
+  const buf = new Float32Array(len);
+  for (let i = 0; i < len; i++) buf[i] = (i / (len - 1)) * 2 - 1;   // -1 → +1
+  eng.write(from, 1, buf);
+
+  log('\nenvelope request/reply');
+  const COLS = 64;
+  const env = await eng.requestEnvelope(0, n, COLS);
+  check('reply arrived', !!env);
+  check('reply echoes the column count', env.columns === COLS, String(env.columns));
+  check('reply carries min/max pairs', env.data.length === COLS * 2, String(env.data.length));
+  check('reqId is echoed', env.reqId > 0);
+
+  // Columns 0-15 and 32-63 are untouched tape; 16-31 hold the ramp.
+  const col = (c) => [env.data[c * 2], env.data[c * 2 + 1]];
+  const [q0lo, q0hi] = col(4);
+  const [q1lo, q1hi] = col(24);
+  const [q3lo, q3hi] = col(48);
+  check('silence before the ramp reads as zero', near(q0lo, 0) && near(q0hi, 0),
+    `[${q0lo}, ${q0hi}]`);
+  check('silence after the ramp reads as zero', near(q3lo, 0) && near(q3hi, 0),
+    `[${q3lo}, ${q3hi}]`);
+  check('the ramp column is non-trivial', q1hi > q1lo, `[${q1lo}, ${q1hi}]`);
+  check('the ramp spans roughly full scale',
+    col(16)[0] < -0.9 && col(31)[1] > 0.9,
+    `first=${col(16)} last=${col(31)}`);
+  check('min never exceeds max in any column',
+    Array.from({ length: COLS }, (_, c) => col(c)).every(([lo, hi]) => lo <= hi));
+
+  log('\nzoom asks rather than resamples (§6 item 6)');
+  const zoom = await eng.requestEnvelope(from, from + len, COLS);
+  check('zoomed span is echoed back', zoom.start === from && zoom.end === from + len,
+    `${zoom.start}..${zoom.end}`);
+  const zLo = zoom.data[0], zHi = zoom.data[COLS * 2 - 1];
+  check('zoomed view resolves the ramp ends', zLo < -0.9 && zHi > 0.9,
+    `${zLo} .. ${zHi}`);
+
+  log('\ncoalescing: one outstanding request per view');
+  const a = eng.requestEnvelope(0, n, 32);
+  const b = eng.requestEnvelope(0, n, 48);
+  const c = eng.requestEnvelope(0, n, COLS);
+  const [ra, rb, rc] = await Promise.all([a, b, c]);
+  check('first request completes', !!ra && ra.columns === 32);
+  check('superseded request resolves null, not rejected', rb === null,
+    'being overtaken during a drag is normal, not an error');
+  check('newest request completes', !!rc && rc.columns === COLS);
+
+  log('\nrefusals');
+  let refused = null;
+  eng.onRefuse = (code, msg) => { refused = [code, msg]; };
+  eng.write(n - 4, 1, new Float32Array(1024));           // past the end
+  await new Promise((r) => setTimeout(r, 120));
+  check('an out-of-range write is refused, not silently clamped', !!refused,
+    refused ? `${refused[0]}: ${refused[1]}` : 'no /engine/refuse arrived');
+
+  log('\nprotocol enforcement on the client side');
+  let threw = false;
+  try { eng.allocTape('sixty'); } catch { threw = true; }
+  check('encode() refuses a non-OSC argument before it reaches the port', threw,
+    'rule 1 must bite where the developer meets it');
+
+  await eng.close();
+  log(failures ? `\n${failures} FAILURE(S)` : '\nAll audio step-1 checks passed.');
+  document.title = failures ? `${failures} FAIL` : 'PASS';
+};
+</script>
