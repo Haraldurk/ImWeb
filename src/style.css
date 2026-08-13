@@ -4920,3 +4920,17 @@ body.fullscreen-output #app {
     letter-spacing: 1px;
     margin-bottom: 2px;
 }
+
+/* ─── Tape display (audio §4.2) ───────────────────────────────────────────
+   Full panel width, fixed height. The canvas backing store is sized in JS
+   from the element's CSS box and the device pixel ratio — one envelope
+   column per device pixel — so the height here is the only place the
+   display's size is decided, and `height: auto` would make it zero. */
+.tape-view {
+    display: block;
+    width: 100%;
+    height: 84px;
+    background: var(--bg-0);
+    border-top: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+}

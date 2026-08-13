@@ -20,6 +20,7 @@ const REFUSE_PROTO_MISMATCH = 1;
 const REFUSE_NO_TAPE = 2;
 const REFUSE_BAD_RANGE = 3;
 const REFUSE_LAYOUT_LOCKED = 4;
+const REFUSE_BUSY = 5;
 
 /** Ceiling on `/engine/tape/alloc`, so a typo cannot ask for 40 GB. */
 const MAX_TAPE_SECONDS = 600;
@@ -40,6 +41,46 @@ const ZONES_PER_TYPE = 128;
  */
 const SLEW_MS = 8;
 
+/**
+ * Sub-reads averaged per output sample when reading faster than 1× (§4.10).
+ * `aplay.rate` runs to ±4, so 4 covers the whole range at one read per skipped
+ * sample; the cap is here so a future wider rate range cannot turn the inner
+ * loop into an unbounded one — the audio thread has no watchdog (§4.9).
+ */
+const MAX_SUBREADS = 4;
+
+/** Voices (§4.4) — no buffer region, so they sound with no tape allocated. */
+const MAX_VOICES = 8;
+
+/**
+ * Envelope scanning budget, in SAMPLE READS per quantum (§8.3 — the same
+ * chunking rule the render writers get, applied to the one bulk read that
+ * already exists).
+ *
+ * The whole point of the envelope is that video never touches the raw tape, and
+ * the request that draws the whole tape is the largest read in the instrument:
+ * a full 600 s stereo tape is 57.6 M reads. Done in the message handler — where
+ * it was — that is one `process()` call taking hundreds of milliseconds, i.e. a
+ * guaranteed dropout at exactly the moment the display first appears. The audio
+ * thread has no watchdog (§4.9), so a bulk read has to be paced by construction
+ * rather than by being small in practice.
+ *
+ * 2^17 reads is roughly 5% of a quantum's 2.67 ms at 48 kHz, which puts a
+ * 60-second tape a little over 100 ms away and a full 600-second one ~1.2 s.
+ * A displayed envelope that finishes a second late is a non-event; a dropout is
+ * the one thing the audio thread must not do.
+ */
+const ENV_READS_PER_QUANTUM = 1 << 17;
+
+/**
+ * Envelope requests may queue, because the display and any future mini-view are
+ * separate clients of the same engine. They may not queue WITHOUT BOUND — the
+ * client already coalesces one request per view (`AudioEngine.requestEnvelope`),
+ * so a queue deeper than this means the client is broken, and the honest answer
+ * is a correlated refusal rather than a growing backlog the tape outlives.
+ */
+const MAX_ENV_JOBS = 4;
+
 /** Output ceiling (§4.11). Not reachable by any address — see protocol.js. */
 const LIMIT_THRESHOLD = 0.891;   // ≈ −1 dBFS
 const LIMIT_RELEASE_S = 0.15;
@@ -53,6 +94,59 @@ const ZONE_SPECIFIC = new Set([
   '/zone/rec/<n>/dynamic',
   '/zone/rec/<n>/length',
 ]);
+
+/**
+ * A Voice (§4.4): the thing with NO buffer region. It runs live to the output
+ * and is invisible to the video half until frozen, which is exactly the rule —
+ * anything with a region is a Zone, anything without is a Voice.
+ *
+ * Fixed topology, not a graph: source → filter → saturator → level, where the
+ * source is an oscillator (with a phase input) or noise. §4.10 is explicit that
+ * voices should NOT have text authoring in the first pass, because the zone
+ * model plus a few parameterized generators is already playable and real use is
+ * what should decide the UGen set. A fixed graph is still a graph (§4.9); what
+ * it is not is a language invented around guesses.
+ *
+ * Every field is state a §8.9 freeze must be able to SNAPSHOT — that is why the
+ * RNG is here and explicit rather than `Math.random()`, which has no seed to
+ * copy and would make a fork diverge from its parent immediately.
+ */
+function makeVoice(seed) {
+  return {
+    on: false,
+    gainCur: 0, gainTgt: 0,
+    // Source and waveform are DISCRETE — there is no value between a sine and a
+    // square — so they duck instead of slewing, the same treatment a zone gives
+    // a partition change and for the same reason: the sample either side of the
+    // switch differs by up to full scale, and a step is a click. Ducked only on
+    // an actual CHANGE (see `_voiceShape`), because rule 4 makes a re-send an
+    // update: a controller parked on one waveform must not duck every frame,
+    // which is exactly how the zone-bounds version silenced itself (§4.11).
+    src: 0,                        // 0 = oscillator, 1 = noise
+    wave: 0,                       // 0 sine, 1 saw, 2 square, 3 triangle
+    pend: false, pendSrc: 0, pendWave: 0,
+    freqCur: 220, freqTgt: 220,
+    // FM ratio is slewed like every other continuous voice parameter (§4.11).
+    // It was set directly at first, which steps the modulator frequency at
+    // control rate — zipper noise on a registered controller target, the same
+    // class as the bounds ducking one level down.
+    fmRatioCur: 1, fmRatioTgt: 1,
+    fmIndexCur: 0, fmIndexTgt: 0,
+    phase: 0, modPhase: 0,
+    colourCur: 0.5, colourTgt: 0.5,
+    noiseLp: 0,
+    cutCur: 2000, cutTgt: 2000,
+    resCur: 0.2, resTgt: 0.2,
+    ftypeCur: 0, ftypeTgt: 0,      // 0 LP → 1 BP → 2 HP → 3 notch, morphable
+    ic1: 0, ic2: 0,                // SVF integrator state (TPT form)
+    driveCur: 0, driveTgt: 0,
+    levelCur: 0.3, levelTgt: 0.3,
+    // xorshift32. Explicit and splittable per §8.9 item 1: a fork copies this
+    // integer and the two streams stay identical until they are deliberately
+    // split. Seeded off the voice index so two voices are not the same noise.
+    rng: (seed * 2654435761) >>> 0 || 1,
+  };
+}
 
 function makeZone() {
   return {
@@ -102,6 +196,14 @@ class TapeProcessor extends AudioWorkletProcessor {
     this._quantaPerFlush = Math.max(1, Math.round(sampleRate / 128 / 60));
     this._quanta = 0;
 
+    /**
+     * Envelope requests accepted but not yet scanned. A queue rather than a
+     * single slot because views are independent clients; bounded by
+     * MAX_ENV_JOBS. Allocated here, pushed to from the message handler only —
+     * `_envStep` mutates cursors and never grows it.
+     */
+    this._envJobs = [];
+
     // Everything below is allocated ONCE, here. Nothing in process() may
     // allocate — one array literal per quantum puts GC on the audio thread,
     // which is §4.9's second hazard and is invisible until it is loud.
@@ -113,6 +215,8 @@ class TapeProcessor extends AudioWorkletProcessor {
       this._rec.push(makeZone());
       this._play.push(makeZone());
     }
+    this._voices = [];
+    for (let i = 0; i < MAX_VOICES; i++) this._voices.push(makeVoice(i + 1));
 
     this._slewCoef = 1 - Math.exp(-1 / ((SLEW_MS / 1000) * sampleRate));
     // Bounds glide, in samples. 3 ms is short enough to feel immediate and long
@@ -212,6 +316,20 @@ class TapeProcessor extends AudioWorkletProcessor {
       case '/zone/play/<n>/rate':     return this._zoneSet('play', idx[0], 'rateTgt', v[0]);
       case '/zone/rec/<n>/dynamic':   return this._zoneSet('rec', idx[0], 'dynamic', !!v[0]);
 
+      // Voices (§4.4, §4.10). Re-sending is an UPDATE, never a restart (rule 4)
+      // — every one of these lands as a slew target, so a controller writing
+      // the same address every frame is the normal case, not an edit.
+      case '/voice/<n>/on':     return this._voiceOn(idx[0], true);
+      case '/voice/<n>/off':    return this._voiceOn(idx[0], false);
+      case '/voice/<n>/src':    return this._voiceShape(idx[0], 'src', v[0] | 0);
+      case '/voice/<n>/wave':   return this._voiceShape(idx[0], 'wave', v[0] | 0);
+      case '/voice/<n>/freq':   return this._voiceSet(idx[0], 'freqTgt', v[0]);
+      case '/voice/<n>/fm':     return this._voiceFm(idx[0], v[0], v[1]);
+      case '/voice/<n>/colour': return this._voiceSet(idx[0], 'colourTgt', v[0]);
+      case '/voice/<n>/filter': return this._voiceFilter(idx[0], v[0], v[1], v[2]);
+      case '/voice/<n>/drive':  return this._voiceSet(idx[0], 'driveTgt', v[0]);
+      case '/voice/<n>/level':  return this._voiceSet(idx[0], 'levelTgt', v[0]);
+
       case '/engine/glide':
         this._glideSamples = Math.max(0, Math.round((v[0] / 1000) * sampleRate));
         return;
@@ -220,6 +338,58 @@ class TapeProcessor extends AudioWorkletProcessor {
 
       default: return this._refuse(REFUSE_PROTO_MISMATCH, `unknown address '${m.a}'`);
     }
+  }
+
+  /**
+   * A voice index outside the allocated set is refused, not clamped. Clamping
+   * would make `/voice/9/on` silently start voice 7 — a message that looks
+   * accepted and does something else is worse than one that is rejected.
+   */
+  _voice(i) {
+    if (!Number.isInteger(i) || i < 0 || i >= MAX_VOICES) {
+      this._refuse(REFUSE_BAD_RANGE, `voice ${i} outside 0..${MAX_VOICES - 1}`);
+      return null;
+    }
+    return this._voices[i];
+  }
+
+  _voiceOn(i, on) { const v = this._voice(i); if (v) v.on = !!on; }
+  _voiceSet(i, key, value) { const v = this._voice(i); if (v) v[key] = value; }
+
+  /**
+   * A discrete shape change — source or waveform — ducks the voice first, the
+   * same structural treatment `_zonePart` gives a partition change.
+   *
+   * The `=== value` early-out is the load-bearing line, not an optimisation:
+   * without it a controller re-sending the same waveform every frame restarts
+   * the duck before it ever completes and the voice never speaks again. That is
+   * the failure the zone bounds shipped with once (§4.11); the difference here
+   * is that a shape genuinely IS structural, so the answer is to duck on change
+   * rather than to stop ducking.
+   */
+  _voiceShape(i, key, value) {
+    const v = this._voice(i);
+    if (!v) return;
+    if (v[key] === value && !v.pend) return;
+    if (!v.on && v.gainCur === 0) { v[key] = value; return; }
+    // Stack onto any duck already in flight, so src and wave arriving in the
+    // same frame cost one duck rather than two.
+    if (!v.pend) { v.pend = true; v.pendSrc = v.src; v.pendWave = v.wave; }
+    v[key === 'src' ? 'pendSrc' : 'pendWave'] = value;
+  }
+
+  _voiceFm(i, ratio, index) {
+    const v = this._voice(i);
+    if (!v) return;
+    v.fmRatioTgt = ratio;
+    v.fmIndexTgt = index;
+  }
+  _voiceFilter(i, cutoff, res, type) {
+    const v = this._voice(i);
+    if (!v) return;
+    v.cutTgt = cutoff;
+    v.resTgt = res;
+    v.ftypeTgt = type;
   }
 
   _hello(proto) {
@@ -250,6 +420,10 @@ class TapeProcessor extends AudioWorkletProcessor {
         }
       }
     }
+    // Every queued scan indexes the tape that is about to be replaced, so they
+    // are settled before it goes. Reusing the cursors against the new buffer
+    // would answer a question about material that no longer exists.
+    this._envCancel(REFUSE_NO_TAPE);
     this._length = Math.floor(seconds * sampleRate);
     this._tape = [new Float32Array(this._length), new Float32Array(this._length)];
     this._markDirty(0, this._length);
@@ -258,6 +432,7 @@ class TapeProcessor extends AudioWorkletProcessor {
   _panic() {
     this._tape = [];
     this._length = 0;
+    this._envCancel(REFUSE_NO_TAPE);
     this._dirtyLo = Infinity;
     this._dirtyHi = -Infinity;
     // Silence everything immediately. Panic is the one place a click is the
@@ -313,34 +488,101 @@ class TapeProcessor extends AudioWorkletProcessor {
         { a: '/tape/env/err', t: 'ii', v: [reqId, REFUSE_NO_TAPE] });
       return this._refuse(REFUSE_NO_TAPE, 'no tape allocated');
     }
+    if (this._envJobs.length >= MAX_ENV_JOBS) {
+      this.port.postMessage(
+        { a: '/tape/env/err', t: 'ii', v: [reqId, REFUSE_BUSY] });
+      return this._refuse(REFUSE_BUSY, `${MAX_ENV_JOBS} envelope requests already queued`);
+    }
     const a = Math.max(0, Math.min(start, this._length));
     const b = Math.max(a, Math.min(end, this._length));
     const cols = Math.max(1, Math.min(columns | 0, 8192));
-    const out = new Float32Array(cols * 2);
-    const span = b - a;
+    // Accepted here, SCANNED in `_envStep` across as many quanta as it takes.
+    // The reply is unchanged either way — chunking is invisible to the client,
+    // which already correlates by reqId and drops what it has moved past.
+    // `i: -1` means "this column has not been entered yet"; a column's first
+    // sample index is derived, never stored, so a job holds no span state that
+    // could disagree with `a`/`b`.
+    this._envJobs.push({
+      reqId, a, b, cols, span: b - a,
+      out: new Float32Array(cols * 2),
+      c: 0, i: -1, lo: Infinity, hi: -Infinity,
+    });
+  }
 
-    for (let c = 0; c < cols; c++) {
-      const i0 = a + Math.floor((c * span) / cols);
-      const i1 = c === cols - 1 ? b : a + Math.floor(((c + 1) * span) / cols);
-      let lo = 0, hi = 0;
-      if (i1 > i0) {
-        lo = Infinity; hi = -Infinity;
-        for (let ch = 0; ch < this._tape.length; ch++) {
-          const t = this._tape[ch];
-          for (let i = i0; i < i1; i++) {
-            const s = t[i];
-            if (s < lo) lo = s;
-            if (s > hi) hi = s;
-          }
+  /**
+   * One quantum's worth of envelope scanning, paced by `ENV_READS_PER_QUANTUM`.
+   * Resumes MID-COLUMN, not just between columns: at one column per screen pixel
+   * a 600-second tape puts ~28 k samples in each, and a 4000-pixel window on a
+   * short tape puts fractions of one — neither granularity may be assumed, and a
+   * budget that could only stop at a column boundary would be no budget at all
+   * on a long tape zoomed out, which is the exact case that motivates this.
+   */
+  _envStep() {
+    const job = this._envJobs[0];
+    if (!job) return;
+    const chans = this._tape.length;
+    let budget = ENV_READS_PER_QUANTUM;
+    while (job.c < job.cols) {
+      const i0 = job.a + Math.floor((job.c * job.span) / job.cols);
+      const i1 = job.c === job.cols - 1
+        ? job.b
+        : job.a + Math.floor(((job.c + 1) * job.span) / job.cols);
+      if (job.i < i0) job.i = i0;
+      // The budget counts READS, and every sample index costs one read per
+      // channel — so the number of indices this step may advance is the budget
+      // divided by the channel count. Spending it as if it were an index count
+      // made a stereo scan cost twice what the constant says, which is the kind
+      // of factor that only shows up as a dropout on someone else's machine.
+      const room = Math.floor(budget / chans);
+      const stop = i1 - job.i > room ? job.i + room : i1;
+      for (let ch = 0; ch < chans; ch++) {
+        const t = this._tape[ch];
+        for (let i = job.i; i < stop; i++) {
+          const s = t[i];
+          if (s < job.lo) job.lo = s;
+          if (s > job.hi) job.hi = s;
         }
       }
-      out[c * 2] = lo;
-      out[c * 2 + 1] = hi;
+      budget -= (stop - job.i) * chans;
+      job.i = stop;
+      if (job.i < i1) return;                    // budget ran out mid-column
+      // A column covering no whole sample reports 0/0 rather than ±Infinity:
+      // the client draws what it is sent, and Infinity draws as nothing at all
+      // on a canvas — a silent gap that looks like missing audio.
+      job.out[job.c * 2] = i1 > i0 ? job.lo : 0;
+      job.out[job.c * 2 + 1] = i1 > i0 ? job.hi : 0;
+      job.lo = Infinity; job.hi = -Infinity;
+      job.c++;
+      job.i = -1;
+      // Yield only if there is more to scan. A bare `if (budget <= 0) return`
+      // here spent the last column's overrun on an extra quantum that did
+      // nothing but call `_envDone`, which made every "did this take more than
+      // one quantum" check pass for an unpaced scanner too.
+      if (job.c < job.cols && budget <= 0) return;
     }
+    this._envDone(job);
+  }
+
+  /** Reply and retire. Separate from `_envStep` so the hot path holds no literal. */
+  _envDone(job) {
+    this._envJobs.shift();
     this.port.postMessage(
-      { a: '/tape/env/data', t: 'iiiib', v: [reqId, a, b, cols, out.buffer] },
-      [out.buffer],
+      { a: '/tape/env/data', t: 'iiiib', v: [job.reqId, job.a, job.b, job.cols, job.out.buffer] },
+      [job.out.buffer],
     );
+  }
+
+  /**
+   * Settle every queued request, because their sample indices refer to a tape
+   * that is about to stop existing. Silence here would leave `_inflight` in the
+   * client holding a promise that never resolves, and that view never asks
+   * again — the same wedge the NO_TAPE reply was correlated to avoid.
+   */
+  _envCancel(code) {
+    for (const job of this._envJobs) {
+      this.port.postMessage({ a: '/tape/env/err', t: 'ii', v: [job.reqId, code] });
+    }
+    this._envJobs.length = 0;
   }
 
   // ── partitions (§4.3) ─────────────────────────────────────────────────────
@@ -531,6 +773,243 @@ class TapeProcessor extends AudioWorkletProcessor {
     this._markDirty(base, base + z.recorded);
   }
 
+  // ── the phase-one generator set (§4.10) ───────────────────────────────────
+  //
+  // The dividing rule, from §4.10: do NOT rebuild in UGens what the controller
+  // layer already does. LFOs, random-with-slew, seven slew curves, response
+  // tables, MIDI and device motion are already mapped to every parameter, so a
+  // control-rate LFO UGen would be a duplicate with worse ergonomics. What
+  // cannot come from frame-rate parameters is AUDIO-rate modulation — FM, AM,
+  // ring mod — and that is the only reason any of this is a UGen.
+  //
+  // Deliberately absent: envelope generators. SC needs them because it is
+  // note-based; this instrument has no note-on, and its envelope is a hand on a
+  // fader or slew on a parameter, both of which already exist. Also absent:
+  // reverb, delay, chorus, compression — downstream effects, not voice
+  // components, and the video half already has a pass architecture for them.
+
+  /** xorshift32 → [0,1). Explicit state, so §8.9's fork can copy it. */
+  _rand(v) {
+    let x = v.rng;
+    x ^= x << 13; x >>>= 0;
+    x ^= x >> 17;
+    x ^= x << 5;  x >>>= 0;
+    v.rng = x;
+    return x / 4294967296;
+  }
+
+  /**
+   * PolyBLEP correction at a discontinuity (§4.10: "a naive saw or pulse
+   * aliases badly up high; PolyBLEP is the cheap standard answer").
+   *
+   * A naive saw steps by 2 once per cycle, and a step has energy at every
+   * harmonic — all of it above Nyquist folding straight back down. This
+   * subtracts a polynomial approximation of the band-limited step across the
+   * one sample either side of the jump.
+   */
+  _blep(t, dt) {
+    if (t < dt) { const x = t / dt; return x + x - x * x - 1; }
+    if (t > 1 - dt) { const x = (t - 1) / dt; return x * x + x + x + 1; }
+    return 0;
+  }
+
+  /**
+   * The oscillator, with a PHASE INPUT — which is what makes FM and phase
+   * distortion free instead of needing their own UGens (§4.10). The modulator
+   * is a sine at `fmRatio` times the carrier; index 0 leaves the carrier
+   * untouched, so the feature costs nothing when unused.
+   */
+  _osc(v, dt) {
+    // The modulator FREE-RUNS, and only the mod term is gated on the index.
+    // Gating the accumulation instead froze `modPhase` the moment the index hit
+    // exactly 0, so re-engaging FM resumed the modulator at a stale phase — a
+    // timbral jump, and worse, a state advance that depends on a parameter's
+    // history, which §8.9's fork would then have to reproduce to stay identical.
+    // Same cost either way: one add whether or not FM is engaged.
+    v.modPhase += dt * v.fmRatioCur;
+    // Floor rather than one subtraction: at the top of both ranges (pitch 120 st
+    // ≈ 8.4 kHz, ratio 8) the step exceeds a full cycle, and a single subtract
+    // leaves the phase above 1 for good — it then grows without bound and loses
+    // resolution to float error. The carrier below cannot reach that, but the
+    // invariant should hold by construction, not by range.
+    v.modPhase -= Math.floor(v.modPhase);
+    const mod = v.fmIndexCur !== 0
+      ? Math.sin(2 * Math.PI * v.modPhase) * v.fmIndexCur
+      : 0;
+    // Phase modulation, not frequency modulation: modulating phase keeps the
+    // centre pitch stable as the index moves, which is the difference between
+    // an FM timbre and a wobbling one.
+    let p = v.phase + mod;
+    p -= Math.floor(p);
+    let y;
+    switch (v.wave) {
+      case 1:  y = 2 * p - 1 - this._blep(p, dt); break;                 // saw
+      case 2: {                                                          // square
+        y = p < 0.5 ? 1 : -1;
+        y += this._blep(p, dt);
+        let q = p + 0.5; q -= Math.floor(q);
+        y -= this._blep(q, dt);
+        break;
+      }
+      // Triangle is naive on purpose: its harmonics fall off as 1/n², so it
+      // aliases far less than saw or pulse and does not earn the correction.
+      case 3:  y = 1 - 4 * Math.abs(p - 0.5); break;
+      default: y = Math.sin(2 * Math.PI * p);                            // sine
+    }
+    v.phase += dt;
+    if (v.phase >= 1) v.phase -= 1;
+    return y;
+  }
+
+  /**
+   * Noise with one colour control (§4.10 asks for exactly one). 0.5 is white;
+   * below that a one-pole lowpass darkens it, above that the same pole is
+   * subtracted to brighten. Cheapest thing that spans the useful range, and
+   * noise is the fastest way to test the whole chain.
+   */
+  _noise(v) {
+    const w = this._rand(v) * 2 - 1;
+    v.noiseLp += 0.05 * (w - v.noiseLp);
+    const c = v.colourCur;
+    if (c < 0.5) return v.noiseLp + (w - v.noiseLp) * (c * 2);
+    return w + ((w - v.noiseLp) - w) * ((c - 0.5) * 2);
+  }
+
+  /**
+   * State-variable filter, TPT/zero-delay form — "one structure yields
+   * LP/BP/HP/notch with a morphable type. Worth ten mediocre oscillators."
+   *
+   * TPT rather than the classic Chamberlin form because Chamberlin's stability
+   * limit falls with cutoff: it blows up as the cutoff approaches a fifth of
+   * the sample rate, which on a filter that is a controller target is a matter
+   * of when, not if. This one is unconditionally stable across the whole range.
+   */
+  _svf(v, x) {
+    const fc = v.cutCur < 20 ? 20 : (v.cutCur > sampleRate * 0.45 ? sampleRate * 0.45 : v.cutCur);
+    const g = Math.tan(Math.PI * fc / sampleRate);
+    // Resonance as a damping term. Floored so the filter cannot self-oscillate
+    // into the limiter — §4.11's ceiling would catch it, but a filter that
+    // screams whenever a controller reaches the top of its travel is not a
+    // musical instrument, it is a hazard with a knob.
+    const k = 2 - 1.98 * (v.resCur < 0 ? 0 : v.resCur > 1 ? 1 : v.resCur);
+    const a1 = 1 / (1 + g * (g + k));
+    const a2 = g * a1;
+    const a3 = g * a2;
+    const v3 = x - v.ic2;
+    const v1 = a1 * v.ic1 + a2 * v3;
+    const v2 = v.ic2 + a2 * v.ic1 + a3 * v3;
+    v.ic1 = 2 * v1 - v.ic1;
+    v.ic2 = 2 * v2 - v.ic2;
+    const lp = v2, bp = v1, hp = x - k * v1 - v2;
+    // Morph across LP → BP → HP → notch. A blend rather than a switch, because
+    // a discrete type change under a controller is a click, and §4.11 says the
+    // worklet is where discontinuities get smoothed.
+    const t = v.ftypeCur < 0 ? 0 : v.ftypeCur > 3 ? 3 : v.ftypeCur;
+    const i = Math.floor(t);
+    const f = t - i;
+    // Scalars, not `[lo, hi]` — the first draft of this used an array literal,
+    // which is 48000 of them per second per voice: §4.9's inner-loop
+    // allocation, arriving through a line that reads as a lookup table.
+    const notch = lp + hp;
+    let lo, hi;
+    if (i === 0) { lo = lp; hi = bp; }
+    else if (i === 1) { lo = bp; hi = hp; }
+    else if (i === 2) { lo = hp; hi = notch; }
+    else { lo = notch; hi = notch; }
+    return lo + (hi - lo) * f;
+  }
+
+  /**
+   * Saturator. "Digital sums are brittle without one. Cheap, and it is most of
+   * what 'warmth' means" (§4.10). A Padé approximation of tanh, with the input
+   * clamped to the range where that approximation is actually tanh-shaped —
+   * beyond ±3 it diverges instead of saturating, which would turn the one stage
+   * whose job is to bound things into an amplifier.
+   *
+   * The makeup division keeps drive from reading as a volume control.
+   */
+  _sat(x, drive) {
+    if (drive <= 0) return x;
+    const d = 1 + drive * 9;
+    let y = x * d;
+    if (y > 3) y = 3; else if (y < -3) y = -3;
+    const y2 = y * y;
+    return (y * (27 + y2) / (27 + 9 * y2)) / (1 + drive * 2);
+  }
+
+  /**
+   * One voice, summed into the bus. Every parameter is slewed at audio rate on
+   * arrival (§4.11) — the protocol carries targets and the worklet decides how
+   * it gets there, because smoothing in the protocol would mean the transport
+   * carrying per-sample detail and that defeats §4.1.
+   */
+  _renderVoice(v, L, R, frames) {
+    for (let i = 0; i < frames; i++) {
+      v.gainTgt = v.on && !v.pend ? 1 : 0;
+      v.gainCur = this._approach(v.gainCur, v.gainTgt);
+      if (v.gainCur === 0) {
+        if (v.pend) {                              // bottom of the duck: apply
+          v.src = v.pendSrc; v.wave = v.pendWave; v.pend = false;
+        }
+        if (!v.on) return;
+      }
+      v.freqCur = this._approach(v.freqCur, v.freqTgt);
+      v.fmRatioCur = this._approach(v.fmRatioCur, v.fmRatioTgt);
+      v.fmIndexCur = this._approach(v.fmIndexCur, v.fmIndexTgt);
+      v.colourCur = this._approach(v.colourCur, v.colourTgt);
+      v.cutCur = this._approach(v.cutCur, v.cutTgt);
+      v.resCur = this._approach(v.resCur, v.resTgt);
+      v.ftypeCur = this._approach(v.ftypeCur, v.ftypeTgt);
+      v.driveCur = this._approach(v.driveCur, v.driveTgt);
+      v.levelCur = this._approach(v.levelCur, v.levelTgt);
+
+      const dt = v.freqCur / sampleRate;
+      let x = v.src === 1 ? this._noise(v) : this._osc(v, dt);
+      x = this._svf(v, x);
+      x = this._sat(x, v.driveCur);
+      x *= v.levelCur * v.gainCur;
+      L[i] += x;
+      if (R !== L) R[i] += x;
+    }
+  }
+
+  /**
+   * One Catmull-Rom sample from channel `ch` at fractional position `pos`, with
+   * every index wrapped into the integer window `[lo, lo + count)`.
+   *
+   * §4.10 item 1 — reading between samples with LINEAR interpolation sounds
+   * dull and grainy, and this is the reader that runs constantly in a
+   * LiSa-lineage instrument, so it is the highest-value change in the set.
+   *
+   * Catmull-Rom specifically, because it INTERPOLATES: at `t == 0` it returns
+   * `p1` exactly, so a 1× read is bit-transparent and "the tape is what is
+   * seen" stays literally true — the envelope display shows what you hear. A
+   * B-spline only approximates, i.e. it lowpasses even at 1×, which would make
+   * heard ≠ seen permanently and dull the main path forever. It rings ~10–15%
+   * on hard transients; §4.11's non-bypassable ceiling means that can colour
+   * but cannot damage, and tensioned Hermite is a two-coefficient change if the
+   * ringing ever offends on real material.
+   *
+   * Allocation-free by construction: scalars, no array literal, no closure
+   * (§4.9 — one array per sample is 48000 a second, i.e. GC on the audio
+   * thread). `tests/audit-audio-protocol.mjs` scans this function for both.
+   */
+  _cubic(ch, pos, lo, count) {
+    const i = Math.floor(pos);
+    const t = pos - i;
+    const buf = this._tape[ch];
+    let w0 = (i - 1 - lo) % count; if (w0 < 0) w0 += count;
+    let w1 = (i - lo) % count;     if (w1 < 0) w1 += count;
+    let w2 = (i + 1 - lo) % count; if (w2 < 0) w2 += count;
+    let w3 = (i + 2 - lo) % count; if (w3 < 0) w3 += count;
+    const p0 = buf[lo + w0], p1 = buf[lo + w1];
+    const p2 = buf[lo + w2], p3 = buf[lo + w3];
+    // Horner form — 3 multiplies for the polynomial rather than 3 powers.
+    return p1 + 0.5 * t * (p2 - p0
+      + t * (2 * p0 - 5 * p1 + 4 * p2 - p3
+      + t * (3 * (p1 - p2) + p3 - p0)));
+  }
+
   _renderPlay(z, L, R, frames) {
     for (let i = 0; i < frames; i++) {
       z.gainTgt = z.on && !z.pend ? 1 : 0;
@@ -552,12 +1031,15 @@ class TapeProcessor extends AudioWorkletProcessor {
       }
 
       // Recomputed per sample because the bounds are moving; it is what makes a
-      // modulated region a scrub rather than a sequence of jumps.
+      // modulated region a scrub rather than a sequence of jumps. ONCE per
+      // output sample, before the sub-reads below — they must share one
+      // coherent span, and recomputing inside that loop would give each tap a
+      // different region.
       this._computeSpan(z);
       const a = this._sa, b = this._sb;
       const room = b - a;
-      if (room <= 1) continue;
-      if (z.phase >= room) z.phase = room > 0 ? z.phase % room : 0;
+      if (!(room > 0)) continue;                   // also catches NaN
+      if (z.phase >= room) z.phase = z.phase % room;
 
       // INDICES MUST BE INTEGERS. `a` is fractional whenever the region start
       // is — which is always, under a controller: _modStep gives modulation
@@ -571,20 +1053,72 @@ class TapeProcessor extends AudioWorkletProcessor {
       //
       // Folding it into `frac` rather than flooring `a` is the point: the
       // sub-sample part is what makes a slow scrub smooth instead of stepped.
-      const pos = a + z.phase;
-      let i0 = Math.floor(pos);
-      const frac = pos - i0;
-      let i1 = i0 + 1;
-      if (i1 >= b) i1 = Math.ceil(a);               // wrap inside the region
-      if (i0 < 0 || i1 < 0 || i0 >= this._length || i1 >= this._length) continue;
-      const l = this._tape[0][i0] * (1 - frac) + this._tape[0][i1] * frac;
-      const r = this._tape[1][i0] * (1 - frac) + this._tape[1][i1] * frac;
+      // The integer read window inside the region. A 4-point kernel reaches one
+      // sample either side of the pair linear interpolation used, so every index
+      // is wrapped into this window rather than bounds-checked — the region is
+      // fractional and moving, so "outside" is the normal case at both ends.
+      const lo = Math.ceil(a);
+      const count = Math.floor(b) - lo;
+      if (count < 1) continue;
+
+      // §4.10 item 2 — rate-aware anti-aliasing. Reading at rate r IS decimation
+      // by r: content above SR/2r folds down, and it folds AT THE READ. So the
+      // only filter that can help runs over the source material before samples
+      // are skipped; a lowpass on this loop's OUTPUT cannot work, because an
+      // alias sitting in the baseband is indistinguishable from a partial that
+      // belongs there.
+      //
+      // The kernel is therefore a box average over the decimation support — N
+      // reads across the step this sample is about to take. That IS §4.10's
+      // "rate-tracking lowpass before the read", computed on the fly instead of
+      // baked into mips, which do not fit a tape a Recording Zone is still
+      // writing: every level would need maintaining against a moving write head,
+      // and mip selection assumes a quasi-static rate while this one is a
+      // per-sample slew target.
+      //
+      // Deliberately STATELESS, and that is not incidental. Any filter with a
+      // delay line becomes voice state that §8.9's fork has to snapshot and its
+      // determinism test has to verify; an average of sub-reads snapshots to
+      // nothing.
+      //
+      // What it buys, stated honestly: a box of width r nulls at SR/r, an octave
+      // ABOVE the fold, so the danger band gets sinc rolloff rather than a
+      // stopband — a large improvement, not elimination. The upgrade path is a
+      // tent (this box convolved with itself, sidelobes ≈ −26 dB), which is a
+      // weight per tap and no restructuring. Not built now.
+      const ar = z.rateCur < 0 ? -z.rateCur : z.rateCur;
+      const N = ar > 1 ? (ar > MAX_SUBREADS ? MAX_SUBREADS : Math.ceil(ar)) : 1;
+      // MIDPOINT spacing: N cells of width rate/N tile the step exactly, one
+      // read at each cell's centre. Endpoint spacing (rate/(N-1)) spans the same
+      // step but shares its endpoints with the neighbouring output sample and
+      // over-weights the edges under uniform weights. Centred on `pos`, so the
+      // kernel is zero-phase and symmetric under reverse; at N = 1 the offset is
+      // exactly 0, which is what keeps a 1× read bit-transparent.
+      const h = z.rateCur / N;
+      const base = a + z.phase - h * (N * 0.5);
+      let l = 0, r = 0;
+      for (let k = 0; k < N; k++) {
+        const pos = base + (k + 0.5) * h;
+        l += this._cubic(0, pos, lo, count);
+        r += this._cubic(1, pos, lo, count);
+      }
+      if (N > 1) { l /= N; r /= N; }
       L[i] += l * z.gainCur;
       R[i] += r * z.gainCur;
 
+      // Wrap SYMMETRICALLY, and by modulo rather than by one subtraction. A
+      // single `+= room` bounds the negative side only while |rate| < room, so a
+      // fast reverse read of a region a couple of samples long walked the phase
+      // steadily negative — harmless in itself, since `_cubic` wraps every index
+      // it derives and doubles have the headroom, but it left the invariant
+      // `phase ∈ [0, room)` true only because the pre-check above happened to
+      // restore it on the positive side. Half an invariant is worse than none:
+      // the next reader trusts it here and is wrong.
       z.phase += z.rateCur;
-      if (z.phase >= room) z.phase -= room;
-      else if (z.phase < 0) z.phase += room;
+      if (z.phase >= room || z.phase < 0) {
+        z.phase %= room;
+        if (z.phase < 0) z.phase += room;
+      }
     }
   }
 
@@ -671,7 +1205,21 @@ class TapeProcessor extends AudioWorkletProcessor {
       }
     }
 
+    // OUTSIDE the tape guard, deliberately. A Voice has no buffer region
+    // (§4.4), so it must sound with no tape allocated — putting this inside
+    // would make the generators silent until someone happened to allocate a
+    // tape, which is a dependency the architecture explicitly does not have.
+    for (let i = 0; i < this._voices.length; i++) {
+      const v = this._voices[i];
+      if (v.on || v.gainCur > 0) this._renderVoice(v, L, R, frames);
+    }
+
     this._limit(L, R, frames);
+
+    // AFTER the audio work, and budgeted: an envelope scan is bulk reading for
+    // the display, so it may take as many quanta as it needs but may never make
+    // one of them late (§8.3).
+    if (this._envJobs.length) this._envStep();
 
     if (++this._quanta >= this._quantaPerFlush) {
       this._quanta = 0;

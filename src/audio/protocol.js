@@ -25,12 +25,22 @@ export const PROTO_VERSION = 1;
 /** The complete permitted argument-type set. Rule 1 — do not extend casually. */
 export const TYPE_TAGS = Object.freeze(['i', 'f', 's', 'b', 'T', 'F']);
 
-/** Refusal codes carried by `/engine/refuse`. */
+/**
+ * Refusal codes carried by `/engine/refuse`.
+ *
+ * The engine declares these again as its own constants — it has zero imports by
+ * construction (§4.1) — so the two lists are kept in step by an audit, not by
+ * memory. Append only: a code is a number on a wire.
+ */
 export const REFUSE = Object.freeze({
   PROTO_MISMATCH: 1,
   NO_TAPE: 2,
   BAD_RANGE: 3,
   LAYOUT_LOCKED: 4,
+  // Work already queued, not work that is wrong. Bulk reads are paced across
+  // quanta, so the engine bounds how many may be outstanding rather than
+  // absorbing an unbounded backlog on the audio thread.
+  BUSY: 5,
 });
 
 /**
@@ -67,6 +77,29 @@ export const CLIENT_TO_ENGINE = Object.freeze({
   '/zone/<type>/<n>/off': '',
   '/zone/play/<n>/rate': 'f',      // signed; negative reads backwards
   '/zone/rec/<n>/dynamic': 'T',    // length taken from where you stop
+
+  // Voices (§4.4, §4.10) — the things with no buffer region. Fixed topology in
+  // this pass: source → filter → saturator → level. There is deliberately no
+  // address here for an envelope generator: this instrument has no note-on, so
+  // the envelope is a hand on a fader or slew on a parameter, both of which
+  // already exist client-side. Importing SC's note model out of habit would add
+  // a whole verb set for a gesture that is not in the instrument.
+  '/voice/<n>/on': '',
+  '/voice/<n>/off': '',
+  '/voice/<n>/src': 'i',           // 0 oscillator, 1 noise
+  '/voice/<n>/wave': 'i',          // 0 sine, 1 saw, 2 square, 3 triangle
+  '/voice/<n>/freq': 'f',          // Hz
+  // ratio, index. The oscillator's PHASE input is what makes FM free rather
+  // than a UGen of its own (§4.10), so this is two numbers on the oscillator
+  // and not a separate node.
+  '/voice/<n>/fm': 'ff',
+  '/voice/<n>/colour': 'f',        // noise tilt: 0 dark, 0.5 white, 1 bright
+  // cutoff (Hz), resonance, type. Type is a FLOAT because the SVF morphs
+  // LP→BP→HP→notch continuously — an integer would make it a switch, and a
+  // discrete type change under a controller is a click.
+  '/voice/<n>/filter': 'fff',
+  '/voice/<n>/drive': 'f',
+  '/voice/<n>/level': 'f',
 
   // Output bus (§4.11). Note what is absent: there is no address that disables
   // the limiter. A feedback instrument without an output ceiling is one dialled

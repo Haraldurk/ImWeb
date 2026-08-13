@@ -22,6 +22,8 @@
  */
 
 import { AudioEngine, TAP } from './AudioEngine.js';
+import { TapeView } from './TapeView.js';
+import { partitionSpan, zoneSpan, clampToPartition } from './tape-geometry.js';
 
 const PARTITION_SLOTS = 4;
 
@@ -99,6 +101,13 @@ export class AudioBinding {
     this._pushAll();
     this._subscribe();
 
+    // The allocation's own dirty notification is consumed by the liveness proof
+    // above — it is the proof — so the first envelope has to be asked for here.
+    // Waiting for the next one would leave the display empty until something
+    // happened to write to the tape.
+    this._pushRegionsToView();
+    this._refreshEnvelope();
+
     if (await alive) {
       this._say(`audio running at ${this.engine.sampleRate} Hz`);
     } else {
@@ -118,6 +127,10 @@ export class AudioBinding {
     if (!this._tapConsumers) this.engine.closeMic();
     await this.engine.close();
     this.running = false;
+    // The tape survives a suspend, but nothing can be asked about it while the
+    // engine is stopped, so the waveform would silently go stale. Say which it
+    // is — the layout stays drawn, because that is still true.
+    this.view?.clearEnvelope('audio off');
     // NOT a fresh AudioEngine. It used to be one, because close() closed the
     // context and a closed context cannot be reused — but under §8.6 there is
     // exactly one context for the session and the engine suspends it instead.
@@ -187,6 +200,106 @@ export class AudioBinding {
     if (!this.ps.get('audio.mic').value) this._applyFromEngine('audio.mic', 1);
   }
 
+  // ── the tape display (§4.2's landscape, §8.6's "draw the loop") ───────────
+
+  /**
+   * Give the display a canvas. Everything it needs crosses HERE, because it is
+   * the binding's job to see both halves: the envelope comes from the engine,
+   * the partition layout and zone regions come from ParameterSystem, and
+   * `TapeView` is handed both without importing either.
+   *
+   * Wired OUTSIDE `_subscribe()` on purpose. Those subscriptions are torn down
+   * by `stop()`, and the display must survive Audio Off — the layout you set up
+   * with the engine stopped is exactly what you want to look at while setting it
+   * up. Only the envelope needs a running engine; the frame does not.
+   */
+  attachView(canvas) {
+    this.view = new TapeView(canvas);
+    // The whole tape, as a fraction of itself. Zoom becomes a narrower span
+    // here plus a request over the matching sample range — the view already
+    // places columns by position rather than by index, so it needs nothing new.
+    this.view.setSpan(0, 1);
+    // The dirty notification is the engine saying "the tape changed here". It
+    // arrives at frame cadence (rule 7) and `requestEnvelope` keeps one request
+    // per view in flight, so this self-throttles without a timer.
+    this.engine.onDirty = () => this._refreshEnvelope();
+    if (typeof ResizeObserver !== 'undefined') {
+      this._viewRO = new ResizeObserver(() => {
+        // Ask again at the new width rather than stretching what we hold: a
+        // min/max envelope resampled to another resolution invents peaks it
+        // never saw and loses the ones between columns (§6 item 6).
+        this.view.resize();
+        this._refreshEnvelope();
+        this._pushRegionsToView();
+      });
+      this._viewRO.observe(canvas);
+    }
+    for (const id of this._viewParamIds()) {
+      const p = this.ps.get(id);
+      // Not through `_on()`: that guard exists to stop engine-caused writes from
+      // being sent back, and there is nothing to send back here — a redraw is
+      // the right response to a change whoever caused it.
+      if (p) p.onChange(() => this._pushRegionsToView());
+    }
+    this._pushRegionsToView();
+    this._refreshEnvelope();
+  }
+
+  _viewParamIds() {
+    const ids = ['audio.tapeSec'];
+    for (let i = 0; i < PARTITION_SLOTS; i++) ids.push(`apart${i}.start`, `apart${i}.len`);
+    for (const prefix of ['arec', 'aplay']) {
+      ids.push(`${prefix}.part`, `${prefix}.start`, `${prefix}.len`, `${prefix}.unsafe`);
+    }
+    return ids;
+  }
+
+  _refreshEnvelope() {
+    if (!this.view || !this.running) return;
+    const n = this._tapeLen;
+    if (!(n > 0)) return;
+    this.view.setEmptyMessage('reading tape…');
+    this.engine.requestEnvelope(0, n, this.view.columns, 'main').then((r) => {
+      // `null` means superseded or refused — both normal during a drag. Keep
+      // what is on screen rather than blanking it, which would flicker the
+      // waveform away every time a request was overtaken.
+      if (r) this.view.setEnvelope({ ...r, start: r.start / n, end: r.end / n });
+    });
+  }
+
+  /**
+   * The overlay. Everything the view is given is a FRACTION OF THE TAPE, never
+   * a sample index — partitions are already fractions of the tape and zone
+   * regions are fractions of their partition (§4.3), so the conversion the view
+   * would otherwise need is one the params never made in the first place. It
+   * also means the display is correct before the engine has ever run, when the
+   * sample rate is not yet known: a layout drawn while the engine is off is
+   * exactly what you want while setting the layout up.
+   *
+   * The arithmetic mirrors `_pushLayout` and `_pushRegion` deliberately, and
+   * must keep mirroring them. A display that disagrees with the engine about
+   * where a zone is is worse than no display, because it will be believed.
+   */
+  _pushRegionsToView() {
+    if (!this.view) return;
+    const g = (id) => this.ps.get(id).value;
+    const regions = [];
+    for (let i = 0; i < PARTITION_SLOTS; i++) {
+      const p = this._part(i);
+      if (p.len > 0) regions.push({ kind: 'part', start: p.start, end: p.start + p.len, label: `P${i}` });
+    }
+    for (const [prefix, kind] of [['arec', 'rec'], ['aplay', 'play']]) {
+      const part = this._part(g(`${prefix}.part`));
+      // The SAME `zoneSpan` the engine push uses — that is the whole point of
+      // the helper. The clamp is the display's own step because the engine
+      // applies the seam itself, in `_computeSpan`.
+      const span = clampToPartition(
+        zoneSpan(part, g(`${prefix}.start`), g(`${prefix}.len`)), part, g(`${prefix}.unsafe`));
+      regions.push({ kind, ...span, label: kind.toUpperCase() });
+    }
+    this.view.setRegions(regions);
+  }
+
   // ── translation ───────────────────────────────────────────────────────────
 
   get _tapeLen() { return Math.floor(this.ps.get('audio.tapeSec').value * this.engine.sampleRate); }
@@ -217,13 +330,18 @@ export class AudioBinding {
       this.ps.get(`${prefix}.on`).value && this.ps.get(`${prefix}.part`).value === slot);
   }
 
+  /** One partition's span in fractions of the tape — the shared arithmetic. */
+  _part(slot) {
+    return partitionSpan(
+      this.ps.get(`apart${slot}.start`).value, this.ps.get(`apart${slot}.len`).value);
+  }
+
   /** Partition bounds, fractions of the tape → absolute samples. */
   _pushLayout() {
     const n = this._tapeLen;
     for (let i = 0; i < PARTITION_SLOTS; i++) {
-      const start = Math.floor(this.ps.get(`apart${i}.start`).value * n);
-      const len = Math.floor(this.ps.get(`apart${i}.len`).value * n);
-      this.engine.partBounds(i, start, Math.min(len, n - start));
+      const p = this._part(i);
+      this.engine.partBounds(i, Math.floor(p.start * n), Math.floor(p.len * n));
     }
   }
 
@@ -233,11 +351,13 @@ export class AudioBinding {
    */
   _pushRegion(prefix, type) {
     const n = this._tapeLen;
-    const slot = this.ps.get(`${prefix}.part`).value;
-    const partLen = Math.floor(this.ps.get(`apart${slot}.len`).value * n);
-    const start = this.ps.get(`${prefix}.start`).value * partLen;
-    const len = this.ps.get(`${prefix}.len`).value * partLen;
-    this.engine.zoneRegion(type, 0, start, len);
+    const part = this._part(this.ps.get(`${prefix}.part`).value);
+    // Through `zoneSpan` so the display cannot drift from this: the same
+    // function answers both, and the only difference is that the engine is told
+    // in partition-relative SAMPLES while the view is shown absolute fractions.
+    const span = zoneSpan(part, this.ps.get(`${prefix}.start`).value,
+      this.ps.get(`${prefix}.len`).value);
+    this.engine.zoneRegion(type, 0, (span.start - part.start) * n, (span.end - span.start) * n);
   }
 
   _pushAll() {
@@ -253,6 +373,29 @@ export class AudioBinding {
     this.engine.playRate(0, g('aplay.rate'));
     this.engine.recDynamic(0, !!g('arec.dynamic'));
     this.engine.setTap(g('audio.tapSrc'));
+    this._pushVoice();
+  }
+
+  /**
+   * Semitones → Hz. Pitch and cutoff are registered in semitones because rate
+   * and frequency are heard as ratios (LEARNED 2026-08-08), and the conversion
+   * lives HERE for the same reason the fractions→samples one does: one site,
+   * not one per call. The engine speaks Hz because that is what a DSP kernel
+   * wants; the UI speaks semitones because that is what an ear wants.
+   */
+  _hz(semitones) { return 440 * Math.pow(2, (semitones - 69) / 12); }
+
+  _pushVoice() {
+    const g = (id) => this.ps.get(id).value;
+    this.engine.voiceSrc(0, g('avoice.src'));
+    this.engine.voiceWave(0, g('avoice.wave'));
+    this.engine.voiceFreq(0, this._hz(g('avoice.pitch')));
+    this.engine.voiceFm(0, g('avoice.fmRatio'), g('avoice.fmIndex'));
+    this.engine.voiceColour(0, g('avoice.colour'));
+    this.engine.voiceFilter(0, this._hz(g('avoice.cut')), g('avoice.res'), g('avoice.ftype'));
+    this.engine.voiceDrive(0, g('avoice.drive'));
+    this.engine.voiceLevel(0, g('avoice.level'));
+    if (g('avoice.on')) this.engine.voiceOn(0); else this.engine.voiceOff(0);
   }
 
   // ── subscriptions ─────────────────────────────────────────────────────────
@@ -307,6 +450,28 @@ export class AudioBinding {
     });
 
     this._on('audio.tapSrc', () => this._applyTap());
+
+    // The Voice. Every one of these is an UPDATE, not a restart (§8.8 rule 4),
+    // and each lands as a slew target in the worklet — so a controller writing
+    // one every frame is the ordinary case and costs nothing extra.
+    this._on('avoice.on', (v) => { if (v) this.engine.voiceOn(0); else this.engine.voiceOff(0); });
+    this._on('avoice.src', (v) => this.engine.voiceSrc(0, v));
+    this._on('avoice.wave', (v) => this.engine.voiceWave(0, v));
+    this._on('avoice.pitch', (v) => this.engine.voiceFreq(0, this._hz(v)));
+    this._on('avoice.colour', (v) => this.engine.voiceColour(0, v));
+    this._on('avoice.drive', (v) => this.engine.voiceDrive(0, v));
+    this._on('avoice.level', (v) => this.engine.voiceLevel(0, v));
+    // Bundled addresses: re-send the whole tuple, since the protocol carries
+    // the group and the engine has no partial-update verb.
+    for (const id of ['avoice.fmRatio', 'avoice.fmIndex']) {
+      this._on(id, () => this.engine.voiceFm(
+        0, this.ps.get('avoice.fmRatio').value, this.ps.get('avoice.fmIndex').value));
+    }
+    for (const id of ['avoice.cut', 'avoice.res', 'avoice.ftype']) {
+      this._on(id, () => this.engine.voiceFilter(
+        0, this._hz(this.ps.get('avoice.cut').value),
+        this.ps.get('avoice.res').value, this.ps.get('avoice.ftype').value));
+    }
 
     for (let i = 0; i < PARTITION_SLOTS; i++) {
       for (const key of ['start', 'len']) {
