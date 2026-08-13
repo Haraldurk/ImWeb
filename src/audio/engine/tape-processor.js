@@ -68,7 +68,17 @@ function makeZone() {
     // never completes, and the zone only speaks at the LFO's turning points
     // where the value momentarily stops changing. A slewed base is also the
     // musically right answer — moving it smoothly IS scrubbing.
-    startCur: 0, startTgt: 0, lenCur: 0, lenTgt: 0,
+    // Bounds ramp LINEARLY to their target over `_glideSamples`, and they are
+    // deliberately not run through _approach(). An exponential follower lags by
+    // its time constant AND lowpasses the gesture, so a fast scrub comes out
+    // flattened — it feels like the instrument is not responding, because a
+    // filter on position is a filter on your hand. Scrubbing is index
+    // arithmetic (§4.2); the only reason to smooth it at all is that a 60 Hz
+    // control rate would otherwise deliver 60 discrete jumps a second (§8.7's
+    // resolution problem, whose real fix is worklet-resident controllers).
+    // A linear ramp ARRIVES, in a time the performer sets, and at 0 it is exact.
+    startCur: 0, startTgt: 0, startStep: 0, startRamp: 0,
+    lenCur: 0, lenTgt: 0, lenStep: 0, lenRamp: 0,
     // A PARTITION change still ducks. That one is genuinely structural: the
     // new region can be anywhere in the tape, and sliding a read position
     // across the gap would sweep through whatever material lies between.
@@ -105,6 +115,11 @@ class TapeProcessor extends AudioWorkletProcessor {
     }
 
     this._slewCoef = 1 - Math.exp(-1 / ((SLEW_MS / 1000) * sampleRate));
+    // Bounds glide, in samples. 3 ms is short enough to feel immediate and long
+    // enough to hide the 60 Hz staircase a frame-rate controller writes; 0 is
+    // exact tracking, which is the right setting for a hand on a value field
+    // and the wrong one under an LFO.
+    this._glideSamples = Math.round(0.003 * sampleRate);
     this._outGainCur = 1;
     this._outGainTgt = 1;
     this._limThresh = LIMIT_THRESHOLD;
@@ -197,6 +212,9 @@ class TapeProcessor extends AudioWorkletProcessor {
       case '/zone/play/<n>/rate':     return this._zoneSet('play', idx[0], 'rateTgt', v[0]);
       case '/zone/rec/<n>/dynamic':   return this._zoneSet('rec', idx[0], 'dynamic', !!v[0]);
 
+      case '/engine/glide':
+        this._glideSamples = Math.max(0, Math.round((v[0] / 1000) * sampleRate));
+        return;
       case '/bus/out/gain':      this._outGainTgt = v[0]; return;
       case '/bus/out/limit':     return this._setLimit(v[0], v[1]);
 
@@ -387,9 +405,32 @@ class TapeProcessor extends AudioWorkletProcessor {
     if (!z) return;
     z.startTgt = startRel;
     z.lenTgt = lenRel;
+    // Re-aim the ramp from wherever the value currently is, so a target that
+    // moves every frame is followed continuously rather than restarted.
+    const n = this._glideSamples;
+    z.startRamp = n;
+    z.lenRamp = n;
+    z.startStep = n > 0 ? (startRel - z.startCur) / n : 0;
+    z.lenStep = n > 0 ? (lenRel - z.lenCur) / n : 0;
     if (!z.on && z.gainCur === 0) {
       z.startCur = startRel; z.lenCur = lenRel; z.phase = 0; z.writePos = 0;
+      z.startRamp = z.lenRamp = 0;
     }
+  }
+
+  /**
+   * The single place a dynamic recording resolves. Both stop paths — the user
+   * releasing Run, and the head reaching the partition seam — must go through
+   * it, or one of them silently skips telling the client what it captured.
+   */
+  _finishDynamic(z, i) {
+    z.on = false;
+    // Snap BOTH, not just the target: a dynamic length is a fact about what
+    // was captured, and slewing into it would leave the zone briefly reading
+    // past the end of the material it just recorded.
+    z.lenCur = z.lenTgt = z.recorded;
+    z.lenRamp = 0;
+    this.port.postMessage({ a: `/zone/rec/${i}/length`, t: 'f', v: [z.recorded] });
   }
 
   _zoneOn(type, i, on) {
@@ -400,12 +441,7 @@ class TapeProcessor extends AudioWorkletProcessor {
       // LiSa's dynamic length: the recording runs to the end of the region and
       // the length is taken from where you stopped, so you capture a phrase
       // without having declared how long it would be first.
-      // Snap BOTH, not just the target: a dynamic length is a fact about what
-      // was captured, and slewing into it would leave the zone briefly reading
-      // past the end of the material it just recorded.
-      z.lenCur = z.lenTgt = z.recorded;
-      this.port.postMessage(
-        { a: `/zone/rec/${i}/length`, t: 'f', v: [z.recorded] });
+      return this._finishDynamic(z, i);
     }
     z.on = on;
   }
@@ -429,7 +465,7 @@ class TapeProcessor extends AudioWorkletProcessor {
     return Math.abs(tgt - next) < 1e-6 ? tgt : next;
   }
 
-  _renderRec(z, input, frames) {
+  _renderRec(z, zi, input, frames) {
     // An unconnected worklet input is an empty array, not silence — recording
     // nothing is correct here, and a test that cannot tell the two apart passes
     // while the recorder is dead.
@@ -442,10 +478,16 @@ class TapeProcessor extends AudioWorkletProcessor {
     const b = z.dynamic
       ? Math.min(z.unsafe ? this._length : p.start + p.len, this._length)
       : spanEnd;
-    const limit = b - a;
+    // A recording head lands ON samples — there is no sub-sample write, and a
+    // fractional subscript here is WORSE than on the read side: assigning to
+    // `Float32Array[1234.5]` is a silent no-op even in strict mode, so the
+    // recorder captures nothing and reports no error at all.
+    const base = Math.ceil(a);
+    const limit = Math.floor(b) - base;
     if (limit <= 0) return;
     for (let i = 0; i < frames; i++) {
-      const at = a + z.writePos;
+      const at = base + z.writePos;
+      if (at < 0 || at >= this._length) break;
       for (let ch = 0; ch < this._tape.length; ch++) {
         const src = input[Math.min(ch, input.length - 1)];
         this._tape[ch][at] = src ? src[i] : 0;
@@ -453,11 +495,19 @@ class TapeProcessor extends AudioWorkletProcessor {
       z.writePos++;
       if (z.writePos > z.recorded) z.recorded = z.writePos;
       if (z.writePos >= limit) {
-        if (z.dynamic) { z.on = false; break; }   // dynamic stops at the seam
+        if (z.dynamic) {
+          // Stopping at the seam must report the length the same way a manual
+          // stop does. Setting z.on = false here and returning silently left
+          // the client believing the zone was still running and never told it
+          // how long the capture was — the Run toggle stayed on over a zone
+          // that had already stopped.
+          this._finishDynamic(z, zi);
+          break;
+        }
         z.writePos = 0;                            // otherwise loop the region
       }
     }
-    this._markDirty(a, a + z.recorded);
+    this._markDirty(base, base + z.recorded);
   }
 
   _renderPlay(z, L, R, frames) {
@@ -467,8 +517,10 @@ class TapeProcessor extends AudioWorkletProcessor {
       z.rateCur = this._approach(z.rateCur, z.rateTgt);
       // Bounds slew per sample, so a controller sweeping Start slides the read
       // position continuously instead of restarting the zone.
-      z.startCur = this._approach(z.startCur, z.startTgt);
-      z.lenCur = this._approach(z.lenCur, z.lenTgt);
+      if (z.startRamp > 0) { z.startCur += z.startStep; z.startRamp--; }
+      else z.startCur = z.startTgt;
+      if (z.lenRamp > 0) { z.lenCur += z.lenStep; z.lenRamp--; }
+      else z.lenCur = z.lenTgt;
       if (z.gainCur === 0) {
         if (z.pend) {                              // bottom of the duck: apply
           z.part = z.pendPart;
@@ -486,10 +538,24 @@ class TapeProcessor extends AudioWorkletProcessor {
       if (room <= 1) continue;
       if (z.phase >= room) z.phase = room > 0 ? z.phase % room : 0;
 
-      const p = z.phase;
-      const i0 = a + Math.floor(p);
-      const frac = p - Math.floor(p);
-      const i1 = i0 + 1 >= b ? a : i0 + 1;         // wrap inside the region
+      // INDICES MUST BE INTEGERS. `a` is fractional whenever the region start
+      // is — which is always, under a controller: _modStep gives modulation
+      // full float resolution on purpose (ParameterSystem.js), so an LFO on
+      // Start produces a fractional span every frame. A fractional typed-array
+      // subscript reads `undefined`, `undefined * x` is NaN, and NaN is not
+      // silence — it propagates through the limiter (every comparison against
+      // NaN is false) all the way to the DAC. The old code computed
+      // `i0 = a + Math.floor(phase)`, keeping a's fraction in the SUBSCRIPT
+      // instead of in the interpolation where it belongs.
+      //
+      // Folding it into `frac` rather than flooring `a` is the point: the
+      // sub-sample part is what makes a slow scrub smooth instead of stepped.
+      const pos = a + z.phase;
+      let i0 = Math.floor(pos);
+      const frac = pos - i0;
+      let i1 = i0 + 1;
+      if (i1 >= b) i1 = Math.ceil(a);               // wrap inside the region
+      if (i0 < 0 || i1 < 0 || i0 >= this._length || i1 >= this._length) continue;
       const l = this._tape[0][i0] * (1 - frac) + this._tape[0][i1] * frac;
       const r = this._tape[1][i0] * (1 - frac) + this._tape[1][i1] * frac;
       L[i] += l * z.gainCur;
@@ -524,8 +590,14 @@ class TapeProcessor extends AudioWorkletProcessor {
 
       l *= this._limGain;
       r *= this._limGain;
-      L[i] = l < -1 ? -1 : l > 1 ? 1 : l;
-      R[i] = r < -1 ? -1 : r > 1 ? 1 : r;
+      // NaN passes a ternary ceiling untouched: every comparison against NaN is
+      // false, so `l < -1 ? -1 : l > 1 ? 1 : l` returns NaN. A ceiling that
+      // guarantees a bounded output except for the one value that is not a
+      // number is not a ceiling, and §4.11 makes this stage the thing that must
+      // never misbehave. The DSP bug that produced NaN is fixed upstream; this
+      // is the backstop that keeps the next one inaudible instead of ruinous.
+      L[i] = l >= -1 && l <= 1 ? l : (l > 1 ? 1 : (l < -1 ? -1 : 0));
+      R[i] = r >= -1 && r <= 1 ? r : (r > 1 ? 1 : (r < -1 ? -1 : 0));
     }
   }
 
@@ -570,7 +642,7 @@ class TapeProcessor extends AudioWorkletProcessor {
       const input = inputs[0];
       for (let i = 0; i < this._rec.length; i++) {
         const z = this._rec[i];
-        if (z.on) this._renderRec(z, input, frames);
+        if (z.on) this._renderRec(z, i, input, frames);
       }
       for (let i = 0; i < this._play.length; i++) {
         const z = this._play[i];

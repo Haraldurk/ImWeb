@@ -201,9 +201,16 @@ check('the limiter runs unconditionally in the callback',
   && !/if\s*\([^)]*\)\s*this\._limit/.test(procCode),
   'a guarded limiter is a bypassable limiter');
 
-// The clamp is the final backstop; without it a limiter bug is a loud one.
-check('a hard ceiling follows the limiter',
-  /L\[i\]\s*=\s*l\s*<\s*-1\s*\?\s*-1\s*:\s*l\s*>\s*1\s*\?\s*1\s*:\s*l/.test(procCode));
+// The ceiling's BEHAVIOUR — bounded output, and no NaN survivors — is asserted
+// against real samples in tests/audit-audio-dsp.mjs. This used to be a regex
+// matching the exact ternary, which is a check on the shape of a fix rather
+// than on the property, and it duly went red the moment the clamp was made
+// NaN-safe. What is worth asserting statically is that the behavioural test
+// cannot be quietly dropped from the suite.
+const pkg = read('package.json');
+check('the DSP audit runs in npm test',
+  /audit-audio-dsp\.mjs/.test(pkg),
+  'the ceiling, NaN handling and fractional-index regressions are checked there');
 
 // ── 5. §4.9 — process() does not allocate ──────────────────────────────────
 console.log('\n§4.9: the audio callback allocates nothing');

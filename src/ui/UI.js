@@ -340,7 +340,7 @@ export function buildMappingPanels(ps, contextMenu) {
     // audit entirely, which is worse than failing.
     'audio-engine-params': [
       ps.get('audio.enable'), ps.get('audio.tapeSec'), ps.get('audio.mic'),
-      ...pick('audio', ['outGain', 'limitThresh', 'limitRel']),
+      ...pick('audio', ['glide', 'outGain', 'limitThresh', 'limitRel']),
     ].filter(Boolean),
     'audio-partition-params': [0, 1, 2, 3].flatMap(i => [
       ps.get(`apart${i}.start`), ps.get(`apart${i}.len`),

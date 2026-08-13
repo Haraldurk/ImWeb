@@ -6586,6 +6586,14 @@ export function registerCoreParameters(ps) {
     id: "audio.outGain", label: "Out Gain", group: "audio",
     min: 0, max: 1, value: 0.8, step: 0.01,
   });
+  // How long a zone's Start/Length takes to reach a new value. 0 is exact —
+  // the right setting for scrubbing by hand, since any smoothing on position is
+  // smoothing on the gesture. A few ms hides the 60 Hz staircase a controller
+  // writes. Captured, because it is part of how a patch feels to play.
+  ps.register({
+    id: "audio.glide", label: "Glide", group: "audio",
+    min: 0, max: 50, value: 3, step: 0.1, unit: "ms",
+  });
   // The limiter's PARAMETERS are adjustable; the limiter is not (§4.11). There
   // is no enable here and no address for one — see protocol.js.
   ps.register({

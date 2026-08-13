@@ -48,6 +48,16 @@ export class AudioBinding {
   async start() {
     if (this.running) return;
     this.engine.onRefuse = (code, m) => this._say(`audio refused (${code}): ${m}`);
+    // A dynamic recording resolves its own length; without this the engine
+    // reports it and nobody listens, so arec.len keeps the length that was
+    // DECLARED and the next playback reads past the end of what was captured.
+    this.engine.onRecLength = (i, lenSamples) => {
+      if (i !== 0) return;                     // only zone 0 is exposed today
+      const n = this._tapeLen;
+      const slot = this.ps.get('arec.part').value;
+      const partLen = Math.floor(this.ps.get(`apart${slot}.len`).value * n);
+      if (partLen > 0) this.ps.set('arec.len', lenSamples / partLen);
+    };
     this.engine.onProcessorError = () => this._say(
       'AUDIO ENGINE DIED — process() will not run again; reload to recover');
 
@@ -118,6 +128,7 @@ export class AudioBinding {
 
   _pushAll() {
     const g = (id) => this.ps.get(id).value;
+    this.engine.glide(g('audio.glide'));
     this.engine.outGain(g('audio.outGain'));
     this.engine.outLimit(g('audio.limitThresh'), g('audio.limitRel'));
     for (const [prefix, type] of [['arec', 'rec'], ['aplay', 'play']]) {
@@ -137,6 +148,7 @@ export class AudioBinding {
   }
 
   _subscribe() {
+    this._on('audio.glide', (v) => this.engine.glide(v));
     this._on('audio.outGain', (v) => this.engine.outGain(v));
     this._on('audio.limitThresh',
       (v) => this.engine.outLimit(v, this.ps.get('audio.limitRel').value));

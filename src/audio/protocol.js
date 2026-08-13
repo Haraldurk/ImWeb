@@ -43,6 +43,12 @@ export const CLIENT_TO_ENGINE = Object.freeze({
   '/engine/hello': 'i',            // protoVersion
   '/engine/tape/alloc': 'f',       // seconds
   '/engine/panic': '',
+  // Milliseconds for a zone's bounds to reach a new target. 0 = exact tracking.
+  // Exposed rather than fixed because the right value depends on what is
+  // driving the parameter: a hand wants 0, a 60 Hz controller wants a few ms to
+  // hide the staircase (§8.7's resolution problem, until controllers move into
+  // the worklet and the staircase stops existing).
+  '/engine/glide': 'f',
   '/tape/write': 'iib',            // startSample, channels, float32 blob
   '/tape/env/req': 'iiii',         // start, end, columns, reqId
 
