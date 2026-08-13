@@ -72,8 +72,14 @@ console.log('\nprotocol.js and the worklet describe the same protocol');
 
 const handled = new Set(
   [...procKeep.matchAll(/case\s+'([^']+)'\s*:/g)].map((m) => m[1]));
-const posted = new Set(
-  [...procKeep.matchAll(/a:\s*'([^']+)'/g)].map((m) => m[1]));
+// Addresses are posted either as literals or as templates carrying an index —
+// `/zone/rec/${i}/length`. Missing the template form made this check pass for
+// the boring reason that it could not see half the send sites.
+const posted = new Set([
+  ...[...procKeep.matchAll(/a:\s*'([^']+)'/g)].map((m) => m[1]),
+  ...[...procKeep.matchAll(/a:\s*`([^`]+)`/g)]
+    .map((m) => m[1].replace(/\$\{[^}]*\}/g, '<n>')),
+]);
 
 const declaredIn = Object.keys(CLIENT_TO_ENGINE);
 const declaredOut = Object.keys(ENGINE_TO_CLIENT);
@@ -144,6 +150,28 @@ check('no address travels in both directions',
 check('no /tap/ address admits a partition',
   !allAddresses().some((a) => a.startsWith('/tap/') && /part/.test(a)),
   '§8.6: the analyser taps signals, never storage — enforced by grammar');
+
+// ── 4b. §4.11 — the output limiter is not bypassable ───────────────────────
+console.log('\n§4.11: the output ceiling cannot be switched off');
+
+// The rule is "not by effect.enable, not by a Display State, not by a loaded
+// project — the one control that must never be a controller target". The way to
+// make that true rather than merely intended is for the address space to have
+// no production for it, so this checks the grammar, not the implementation.
+const bypassy = allAddresses().filter(
+  (a) => /limit|ceiling|clip/.test(a) && /(bypass|enable|off|disable|on)$/.test(a));
+check('no address disables the limiter', bypassy.length === 0, bypassy.join(', '));
+check('/bus/out/limit sets parameters only, and takes no boolean',
+  (CLIENT_TO_ENGINE['/bus/out/limit'] ?? '') === 'ff',
+  'a T/F argument here would be a bypass in disguise');
+check('the limiter runs unconditionally in the callback',
+  /\n\s*this\._limit\(L, R, frames\);/.test(procCode)
+  && !/if\s*\([^)]*\)\s*this\._limit/.test(procCode),
+  'a guarded limiter is a bypassable limiter');
+
+// The clamp is the final backstop; without it a limiter bug is a loud one.
+check('a hard ceiling follows the limiter',
+  /L\[i\]\s*=\s*l\s*<\s*-1\s*\?\s*-1\s*:\s*l\s*>\s*1\s*\?\s*1\s*:\s*l/.test(procCode));
 
 // ── 5. §4.9 — process() does not allocate ──────────────────────────────────
 console.log('\n§4.9: the audio callback allocates nothing');

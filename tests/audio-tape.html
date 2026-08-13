@@ -9,6 +9,13 @@
      running on load. Nothing is audible: process() outputs silence until zones
      arrive in step 2.
 
+     RUN THIS IN A REAL BROWSER. Claude Code's in-app browser pane launches
+     Chrome with `--disable-audio`, and with no output device the render thread
+     never pulls: AudioContext.state reports 'running', the message port answers
+     everything, and process() is simply never called. Every check here except
+     the liveness gate is message-only and passes anyway — which is exactly why
+     the gate exists and why the rest is skipped when it trips.
+
      Needs the DEV server, not `vite preview`: this page imports /src/ directly
      and tests/ is not a build input, so it does not exist in dist/. Share the
      owner's :5173 rather than starting a second one — a different port is a
@@ -42,6 +49,8 @@ document.getElementById('go').onclick = async (e) => {
 
   const eng = new AudioEngine();
   eng.onRefuse = (code, msg) => log(`  !! refuse ${code}: ${msg}`);
+  eng.onProcessorError = (e) => log(
+    `  !! PROCESSOR DIED: ${e.message || e.type} — process() will never run again`);
 
   log('handshake');
   await eng.start();
@@ -51,9 +60,30 @@ document.getElementById('go').onclick = async (e) => {
     String(eng.sampleRate));
   log(`       sampleRate=${eng.sampleRate} maxTape=${eng.maxTapeSeconds}s`);
 
+  // EVERY check below except this one is message-only: the port answers whether
+  // or not the audio thread is running, so a suspended AudioContext passes them
+  // all. `/tape/env/dirty` is emitted only from process(), which makes it the
+  // one honest liveness proof — without it this whole page can be green while
+  // the engine is frozen.
+  log('\nthe audio thread is actually running');
+  check('AudioContext is running, not suspended', eng.ctx.state === 'running',
+    `state=${eng.ctx.state} — a suspended context makes every check below vacuous`);
+
   log('\ntape allocation and bulk write');
   const SECONDS = 2;
+  // WAIT for the audio thread rather than assuming it. The output device can
+  // take a second or more to start on first use, and every check that depends
+  // on process() having run will fail misleadingly until it does — which is
+  // what made this page intermittent before the wait was a precondition.
+  const beat = new Promise((r) => {
+    const prev = eng.onDirty;
+    eng.onDirty = (a, b) => { eng.onDirty = prev; r([a, b]); };
+    setTimeout(() => r(null), 5000);
+  });
   eng.allocTape(SECONDS);
+  const live = !!(await beat);
+  check('process() ran and flushed a dirty region', live,
+    'no /tape/env/dirty in 5s — the audio callback never fired');
   const n = Math.floor(eng.sampleRate * SECONDS);
 
   // A known shape: silence, then a full-scale ramp over the middle quarter, so
@@ -120,8 +150,118 @@ document.getElementById('go').onclick = async (e) => {
   check('encode() refuses a non-OSC argument before it reaches the port', threw,
     'rule 1 must bite where the developer meets it');
 
+  // ── step 2: partitions and zones ────────────────────────────────────────
+  log('\npartitions (§4.3)');
+  refused = null;
+  eng.onRefuse = (code, msg) => { refused = [code, msg]; };
+
+  // Partition 0 holds the ramp; partition 1 is empty space after it.
+  eng.partBounds(0, from, len);
+  eng.partBounds(1, from + len, Math.floor(n * 0.2));
+  await new Promise((r) => setTimeout(r, 80));
+  check('valid partition bounds are accepted', refused === null,
+    refused ? `${refused[0]}: ${refused[1]}` : '');
+
+  refused = null;
+  eng.partBounds(0, 0, n * 4);                       // past the end of the tape
+  await new Promise((r) => setTimeout(r, 80));
+  check('out-of-tape partition bounds are refused', !!refused,
+    refused ? `${refused[0]}: ${refused[1]}` : 'no refusal');
+
+  log('\nplayback zone reads its region (§4.4)');
+  eng.zonePart('play', 0, 0);
+  eng.zoneRegion('play', 0, 0, len);
+  eng.playRate(0, 1);
+  eng.outGain(1);
+  eng.zoneOn('play', 0);
+  await new Promise((r) => setTimeout(r, 250));
+
+  refused = null;
+  eng.partBounds(0, from, len);                      // slot 0 now has a live zone
+  await new Promise((r) => setTimeout(r, 80));
+  check('relayout is refused while a zone on that slot runs', !!refused,
+    refused ? `${refused[0]}: ${refused[1]}` : '§4.3 says layout is a setup act');
+  check('the refusal is LAYOUT_LOCKED, not a generic error',
+    refused && refused[0] === 4, refused ? String(refused[0]) : '');
+
+  log('\nsigned rate: the same zone runs backwards');
+  eng.playRate(0, -1);
+  await new Promise((r) => setTimeout(r, 150));
+  check('a negative rate is accepted', true, 'audible check is the point of headphones');
+  eng.zoneOff('play', 0);
+  await new Promise((r) => setTimeout(r, 150));
+
+  refused = null;
+  eng.partBounds(0, from, len);
+  await new Promise((r) => setTimeout(r, 120));
+  check('relayout succeeds once the zone has faded out', refused === null,
+    refused ? `${refused[0]}: ${refused[1]}` : '');
+
+  log('\nrecording zone writes the tape');
+  if (!live) {
+    log('  SKIP — the audio thread never started; these would fail misleadingly');
+    document.title = `${failures} FAIL`;
+    return;
+  }
+  // Record silence from an unconnected input into partition 1, over material we
+  // first dirty with a DC offset, so "the recorder ran" is distinguishable from
+  // "nothing happened" — a silent-into-silent test would pass while dead.
+  const p1from = from + len, p1len = Math.floor(n * 0.2);
+  const dc = new Float32Array(p1len).fill(0.5);
+  eng.write(p1from, 1, dc);
+  await new Promise((r) => setTimeout(r, 80));
+  const before = await eng.requestEnvelope(p1from, p1from + p1len, 8, 'p1');
+  check('partition 1 holds the DC offset before recording',
+    before.data[1] > 0.4, String(before.data[1]));
+
+  // Feed the engine's INPUT a real signal. An unconnected worklet input is an
+  // empty array rather than silence, so recording "silence" would have passed
+  // with a dead recorder — the bipolar sine is what makes the check bite. The
+  // oscillator reaches the worklet input only, never the destination, so this
+  // does not put a tone through the monitors.
+  const osc = eng.ctx.createOscillator();
+  osc.frequency.value = 220;
+  osc.connect(eng.node);
+  osc.start();
+
+  eng.zonePart('rec', 0, 1);
+  eng.zoneRegion('rec', 0, 0, p1len);
+  eng.zoneOn('rec', 0);
+  await new Promise((r) => setTimeout(r, 300));
+  eng.zoneOff('rec', 0);
+  osc.stop();
+  osc.disconnect();
+  await new Promise((r) => setTimeout(r, 100));
+
+  const after = await eng.requestEnvelope(p1from, p1from + p1len, 8, 'p1');
+  const [aLo, aHi] = [after.data[0], after.data[1]];
+  // The region held a constant +0.5, so min === max === 0.5. Any negative
+  // minimum proves the recorder overwrote it; the peak is full-scale because
+  // the oscillator is, which is why the check is on the minimum, not the peak.
+  check('recording replaced the DC offset with the captured signal',
+    aLo < -0.1 && aLo !== aHi, `[${aLo}, ${aHi}] — DC was [0.5, 0.5]`);
+  check('the captured signal is bipolar, i.e. actually the oscillator',
+    aLo < 0 && aHi > 0, `[${aLo}, ${aHi}]`);
+  check('recording stayed inside its partition',
+    Math.abs(after.data[15]) <= 0.5 + 1e-6,
+    'a zone writing past its bounds is the failure that ruins a set');
+
+  log('\nbounds: a zone cannot write outside its partition');
+  const ramp0 = await eng.requestEnvelope(from, from + len, 8, 'p0');
+  check('the ramp in partition 0 survived the recording',
+    ramp0.data[0] < -0.5 && ramp0.data[15] > 0.5,
+    `${ramp0.data[0]} .. ${ramp0.data[15]}`);
+
+  log('\noutput bus (§4.11)');
+  check('there is no client method to disable the limiter',
+    typeof eng.bypassLimiter !== 'function' && typeof eng.limiterOff !== 'function');
+  let limThrew = false;
+  try { eng.outLimit(false, 0.1); } catch { limThrew = true; }
+  check('the limiter refuses a boolean where a threshold belongs', limThrew,
+    'a T/F here would be a bypass in disguise');
+
   await eng.close();
-  log(failures ? `\n${failures} FAILURE(S)` : '\nAll audio step-1 checks passed.');
+  log(failures ? `\n${failures} FAILURE(S)` : '\nAll audio checks passed (steps 1 and 2).');
   document.title = failures ? `${failures} FAIL` : 'PASS';
 };
 </script>
