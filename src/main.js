@@ -1070,6 +1070,11 @@ async function main() {
   {
     const statusEl = document.getElementById("audio-status");
     audio.onStatus = (msg) => { if (statusEl) statusEl.textContent = msg; };
+    // The tape display. Attached BEFORE the engine ever starts, so the layout
+    // you are setting up is visible while you set it up — only the waveform
+    // needs a running engine.
+    const tapeEl = document.getElementById("audio-tape-view");
+    if (tapeEl) audio.attachView(tapeEl);
     ps.get("audio.enable")?.onChange(async (v) => {
       try {
         if (v) await audio.start();
