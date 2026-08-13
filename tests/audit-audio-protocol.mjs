@@ -222,19 +222,32 @@ function methodBody(src, name) {
   return null;
 }
 
-const body = methodBody(procCode, 'process');
-check('process() was located for scanning', !!body,
-  'a rename here would silently skip the allocation check');
+// Not just process(): the per-sample work lives in the helpers it calls, and a
+// PER-SAMPLE allocation is 48000 a second rather than 375. `return [a, b]` from
+// a span helper called once per quantum was fine; the same helper called once
+// per sample was not, and this list is scoped to the methods where that
+// distinction bites.
+const HOT = ['process', '_renderPlay', '_renderRec', '_limit', '_computeSpan', '_approach'];
 
-const ALLOCATORS = [/\bnew\s+[A-Z]/, /\.map\(/, /\.filter\(/, /\.slice\(/, /\.concat\(/, /JSON\./];
-const found = body ? ALLOCATORS.filter((r) => r.test(body)).map(String) : [];
-check('process() contains no allocating construct', found.length === 0,
-  `§4.9 — one array literal per quantum puts GC on the audio thread: ${found.join(', ')}`);
+const ALLOCATORS = [
+  /\bnew\s+[A-Z]/, /\.map\(/, /\.filter\(/, /\.slice\(/, /\.concat\(/, /JSON\./,
+  /return\s*\[/,          // the pair-returning helper that started this
+];
 
-// Calibration: the scanner must actually fire on an allocation.
+for (const name of HOT) {
+  const body = methodBody(procCode, name);
+  check(`${name}() was located for scanning`, !!body,
+    'a rename here would silently skip the allocation check');
+  const found = body ? ALLOCATORS.filter((r) => r.test(body)).map(String) : [];
+  check(`${name}() contains no allocating construct`, found.length === 0,
+    `§4.9 — GC on the audio thread: ${found.join(', ')}`);
+}
+
+// Calibration: the scanner must actually fire, on both shapes it looks for.
 check('the allocation scanner is live',
-  ALLOCATORS.some((r) => r.test('const x = new Float32Array(4);')),
-  'a scanner that never matches makes the check above vacuous');
+  ALLOCATORS.some((r) => r.test('const x = new Float32Array(4);'))
+  && ALLOCATORS.some((r) => r.test('  return [a, b];')),
+  'a scanner that never matches makes every check above vacuous');
 
 // ── 6. What is NOT checked here ────────────────────────────────────────────
 // Rule 2 (control vs bulk) and rule 7 (frame-cadence aggregation) are runtime
