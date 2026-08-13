@@ -34,6 +34,8 @@ export class AudioBinding {
     this.engine = new AudioEngine();
     this.running = false;
     this._unsubs = [];
+    // True while a param is being written BECAUSE the engine said so. See _on().
+    this._fromEngine = false;
     /** Set by main.js to surface refusals and errors in the UI. */
     this.onStatus = null;
   }
@@ -56,16 +58,14 @@ export class AudioBinding {
       const n = this._tapeLen;
       const slot = this.ps.get('arec.part').value;
       const partLen = Math.floor(this.ps.get(`apart${slot}.len`).value * n);
-      if (partLen > 0) this.ps.set('arec.len', lenSamples / partLen);
+      if (partLen > 0) this._applyFromEngine('arec.len', lenSamples / partLen);
     };
     // The engine stops a dynamic recording at the seam on its own. Reflect that
     // in the param, with a guard: writing it fires onChange, which would send
     // the state straight back and make an engine-side fact into a round trip.
     this.engine.onZoneState = (type, i, running) => {
       if (i !== 0) return;
-      const id = type === 'rec' ? 'arec.on' : 'aplay.on';
-      this._fromEngine = true;
-      try { this.ps.set(id, running ? 1 : 0); } finally { this._fromEngine = false; }
+      this._applyFromEngine(type === 'rec' ? 'arec.on' : 'aplay.on', running ? 1 : 0);
     };
     this.engine.onProcessorError = () => this._say(
       'AUDIO ENGINE DIED — process() will not run again; reload to recover');
@@ -127,6 +127,20 @@ export class AudioBinding {
    * layout, the param keeps the new one, and every subsequent region is
    * converted against a partition length the engine does not have.
    */
+  /**
+   * DELIBERATELY WEAKER THAN THE ENGINE'S RULE, and it must stay that way.
+   *
+   * The engine refuses while `z.on || z.gainCur > 0` — i.e. through the fade-out
+   * tail. The client can only see the `on` param, so there is an ~8 ms window
+   * after Run goes off in which a layout drag is accepted here and refused
+   * there. That is the desync this guard exists to prevent, in a window small
+   * enough not to be worth engineering around.
+   *
+   * The wrong repair is to relax the ENGINE to match the client: the engine's
+   * extra condition is what stops a relayout from yanking the buffer out from
+   * under a zone that is still audibly fading. If these two ever need to agree
+   * exactly, the client must learn about the tail, not the engine forget it.
+   */
   _slotBusy(slot) {
     return [['arec', 'rec'], ['aplay', 'play']].some(([prefix]) =>
       this.ps.get(`${prefix}.on`).value && this.ps.get(`${prefix}.part`).value === slot);
@@ -171,9 +185,30 @@ export class AudioBinding {
 
   // ── subscriptions ─────────────────────────────────────────────────────────
 
+  /**
+   * Subscribe, ignoring writes that the ENGINE caused.
+   *
+   * An engine-initiated write is the engine telling us something it already
+   * knows — sending it back is never right, and it is a command answering a
+   * fact. The guard lives HERE rather than in each handler because the first
+   * version put it in only one of them: the `.on` subscription, which is the
+   * one the echo actually travels through, was left open, and it was benign
+   * purely because stopping an already-stopped zone happens to be idempotent.
+   * A guard that depends on every future handler remembering it is not a guard.
+   */
   _on(id, fn) {
     const p = this.ps.get(id);
-    if (p) this._unsubs.push(p.onChange(fn));
+    if (!p) return;
+    this._unsubs.push(p.onChange((v, param) => {
+      if (this._fromEngine) return;
+      fn(v, param);
+    }));
+  }
+
+  /** Write a param as a consequence of an engine message, without echoing. */
+  _applyFromEngine(id, value) {
+    this._fromEngine = true;
+    try { this.ps.set(id, value); } finally { this._fromEngine = false; }
   }
 
   _subscribe() {
@@ -198,11 +233,9 @@ export class AudioBinding {
         const id = `apart${i}.${key}`;
         let accepted = this.ps.get(id).value;
         this._on(id, (v) => {
-          if (this._fromEngine) return;
           if (this._slotBusy(i)) {
             this._say(`P${i} layout is fixed while a zone on it runs (§4.3)`);
-            this._fromEngine = true;                 // revert without recursing
-            try { this.ps.set(id, accepted); } finally { this._fromEngine = false; }
+            this._applyFromEngine(id, accepted);      // revert without recursing
             return;
           }
           accepted = v;
