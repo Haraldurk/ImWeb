@@ -25,12 +25,22 @@ export const PROTO_VERSION = 1;
 /** The complete permitted argument-type set. Rule 1 — do not extend casually. */
 export const TYPE_TAGS = Object.freeze(['i', 'f', 's', 'b', 'T', 'F']);
 
-/** Refusal codes carried by `/engine/refuse`. */
+/**
+ * Refusal codes carried by `/engine/refuse`.
+ *
+ * The engine declares these again as its own constants — it has zero imports by
+ * construction (§4.1) — so the two lists are kept in step by an audit, not by
+ * memory. Append only: a code is a number on a wire.
+ */
 export const REFUSE = Object.freeze({
   PROTO_MISMATCH: 1,
   NO_TAPE: 2,
   BAD_RANGE: 3,
   LAYOUT_LOCKED: 4,
+  // Work already queued, not work that is wrong. Bulk reads are paced across
+  // quanta, so the engine bounds how many may be outstanding rather than
+  // absorbing an unbounded backlog on the audio thread.
+  BUSY: 5,
 });
 
 /**

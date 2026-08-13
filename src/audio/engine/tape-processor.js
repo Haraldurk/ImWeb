@@ -20,6 +20,7 @@ const REFUSE_PROTO_MISMATCH = 1;
 const REFUSE_NO_TAPE = 2;
 const REFUSE_BAD_RANGE = 3;
 const REFUSE_LAYOUT_LOCKED = 4;
+const REFUSE_BUSY = 5;
 
 /** Ceiling on `/engine/tape/alloc`, so a typo cannot ask for 40 GB. */
 const MAX_TAPE_SECONDS = 600;
@@ -50,6 +51,35 @@ const MAX_SUBREADS = 4;
 
 /** Voices (§4.4) — no buffer region, so they sound with no tape allocated. */
 const MAX_VOICES = 8;
+
+/**
+ * Envelope scanning budget, in SAMPLE READS per quantum (§8.3 — the same
+ * chunking rule the render writers get, applied to the one bulk read that
+ * already exists).
+ *
+ * The whole point of the envelope is that video never touches the raw tape, and
+ * the request that draws the whole tape is the largest read in the instrument:
+ * a full 600 s stereo tape is 57.6 M reads. Done in the message handler — where
+ * it was — that is one `process()` call taking hundreds of milliseconds, i.e. a
+ * guaranteed dropout at exactly the moment the display first appears. The audio
+ * thread has no watchdog (§4.9), so a bulk read has to be paced by construction
+ * rather than by being small in practice.
+ *
+ * 2^17 reads is roughly 5% of a quantum's 2.67 ms at 48 kHz, which puts a
+ * 60-second tape a little over 100 ms away and a full 600-second one ~1.2 s.
+ * A displayed envelope that finishes a second late is a non-event; a dropout is
+ * the one thing the audio thread must not do.
+ */
+const ENV_READS_PER_QUANTUM = 1 << 17;
+
+/**
+ * Envelope requests may queue, because the display and any future mini-view are
+ * separate clients of the same engine. They may not queue WITHOUT BOUND — the
+ * client already coalesces one request per view (`AudioEngine.requestEnvelope`),
+ * so a queue deeper than this means the client is broken, and the honest answer
+ * is a correlated refusal rather than a growing backlog the tape outlives.
+ */
+const MAX_ENV_JOBS = 4;
 
 /** Output ceiling (§4.11). Not reachable by any address — see protocol.js. */
 const LIMIT_THRESHOLD = 0.891;   // ≈ −1 dBFS
@@ -165,6 +195,14 @@ class TapeProcessor extends AudioWorkletProcessor {
     this._dirtyHi = -Infinity;
     this._quantaPerFlush = Math.max(1, Math.round(sampleRate / 128 / 60));
     this._quanta = 0;
+
+    /**
+     * Envelope requests accepted but not yet scanned. A queue rather than a
+     * single slot because views are independent clients; bounded by
+     * MAX_ENV_JOBS. Allocated here, pushed to from the message handler only —
+     * `_envStep` mutates cursors and never grows it.
+     */
+    this._envJobs = [];
 
     // Everything below is allocated ONCE, here. Nothing in process() may
     // allocate — one array literal per quantum puts GC on the audio thread,
@@ -382,6 +420,10 @@ class TapeProcessor extends AudioWorkletProcessor {
         }
       }
     }
+    // Every queued scan indexes the tape that is about to be replaced, so they
+    // are settled before it goes. Reusing the cursors against the new buffer
+    // would answer a question about material that no longer exists.
+    this._envCancel(REFUSE_NO_TAPE);
     this._length = Math.floor(seconds * sampleRate);
     this._tape = [new Float32Array(this._length), new Float32Array(this._length)];
     this._markDirty(0, this._length);
@@ -390,6 +432,7 @@ class TapeProcessor extends AudioWorkletProcessor {
   _panic() {
     this._tape = [];
     this._length = 0;
+    this._envCancel(REFUSE_NO_TAPE);
     this._dirtyLo = Infinity;
     this._dirtyHi = -Infinity;
     // Silence everything immediately. Panic is the one place a click is the
@@ -445,34 +488,101 @@ class TapeProcessor extends AudioWorkletProcessor {
         { a: '/tape/env/err', t: 'ii', v: [reqId, REFUSE_NO_TAPE] });
       return this._refuse(REFUSE_NO_TAPE, 'no tape allocated');
     }
+    if (this._envJobs.length >= MAX_ENV_JOBS) {
+      this.port.postMessage(
+        { a: '/tape/env/err', t: 'ii', v: [reqId, REFUSE_BUSY] });
+      return this._refuse(REFUSE_BUSY, `${MAX_ENV_JOBS} envelope requests already queued`);
+    }
     const a = Math.max(0, Math.min(start, this._length));
     const b = Math.max(a, Math.min(end, this._length));
     const cols = Math.max(1, Math.min(columns | 0, 8192));
-    const out = new Float32Array(cols * 2);
-    const span = b - a;
+    // Accepted here, SCANNED in `_envStep` across as many quanta as it takes.
+    // The reply is unchanged either way — chunking is invisible to the client,
+    // which already correlates by reqId and drops what it has moved past.
+    // `i: -1` means "this column has not been entered yet"; a column's first
+    // sample index is derived, never stored, so a job holds no span state that
+    // could disagree with `a`/`b`.
+    this._envJobs.push({
+      reqId, a, b, cols, span: b - a,
+      out: new Float32Array(cols * 2),
+      c: 0, i: -1, lo: Infinity, hi: -Infinity,
+    });
+  }
 
-    for (let c = 0; c < cols; c++) {
-      const i0 = a + Math.floor((c * span) / cols);
-      const i1 = c === cols - 1 ? b : a + Math.floor(((c + 1) * span) / cols);
-      let lo = 0, hi = 0;
-      if (i1 > i0) {
-        lo = Infinity; hi = -Infinity;
-        for (let ch = 0; ch < this._tape.length; ch++) {
-          const t = this._tape[ch];
-          for (let i = i0; i < i1; i++) {
-            const s = t[i];
-            if (s < lo) lo = s;
-            if (s > hi) hi = s;
-          }
+  /**
+   * One quantum's worth of envelope scanning, paced by `ENV_READS_PER_QUANTUM`.
+   * Resumes MID-COLUMN, not just between columns: at one column per screen pixel
+   * a 600-second tape puts ~28 k samples in each, and a 4000-pixel window on a
+   * short tape puts fractions of one — neither granularity may be assumed, and a
+   * budget that could only stop at a column boundary would be no budget at all
+   * on a long tape zoomed out, which is the exact case that motivates this.
+   */
+  _envStep() {
+    const job = this._envJobs[0];
+    if (!job) return;
+    const chans = this._tape.length;
+    let budget = ENV_READS_PER_QUANTUM;
+    while (job.c < job.cols) {
+      const i0 = job.a + Math.floor((job.c * job.span) / job.cols);
+      const i1 = job.c === job.cols - 1
+        ? job.b
+        : job.a + Math.floor(((job.c + 1) * job.span) / job.cols);
+      if (job.i < i0) job.i = i0;
+      // The budget counts READS, and every sample index costs one read per
+      // channel — so the number of indices this step may advance is the budget
+      // divided by the channel count. Spending it as if it were an index count
+      // made a stereo scan cost twice what the constant says, which is the kind
+      // of factor that only shows up as a dropout on someone else's machine.
+      const room = Math.floor(budget / chans);
+      const stop = i1 - job.i > room ? job.i + room : i1;
+      for (let ch = 0; ch < chans; ch++) {
+        const t = this._tape[ch];
+        for (let i = job.i; i < stop; i++) {
+          const s = t[i];
+          if (s < job.lo) job.lo = s;
+          if (s > job.hi) job.hi = s;
         }
       }
-      out[c * 2] = lo;
-      out[c * 2 + 1] = hi;
+      budget -= (stop - job.i) * chans;
+      job.i = stop;
+      if (job.i < i1) return;                    // budget ran out mid-column
+      // A column covering no whole sample reports 0/0 rather than ±Infinity:
+      // the client draws what it is sent, and Infinity draws as nothing at all
+      // on a canvas — a silent gap that looks like missing audio.
+      job.out[job.c * 2] = i1 > i0 ? job.lo : 0;
+      job.out[job.c * 2 + 1] = i1 > i0 ? job.hi : 0;
+      job.lo = Infinity; job.hi = -Infinity;
+      job.c++;
+      job.i = -1;
+      // Yield only if there is more to scan. A bare `if (budget <= 0) return`
+      // here spent the last column's overrun on an extra quantum that did
+      // nothing but call `_envDone`, which made every "did this take more than
+      // one quantum" check pass for an unpaced scanner too.
+      if (job.c < job.cols && budget <= 0) return;
     }
+    this._envDone(job);
+  }
+
+  /** Reply and retire. Separate from `_envStep` so the hot path holds no literal. */
+  _envDone(job) {
+    this._envJobs.shift();
     this.port.postMessage(
-      { a: '/tape/env/data', t: 'iiiib', v: [reqId, a, b, cols, out.buffer] },
-      [out.buffer],
+      { a: '/tape/env/data', t: 'iiiib', v: [job.reqId, job.a, job.b, job.cols, job.out.buffer] },
+      [job.out.buffer],
     );
+  }
+
+  /**
+   * Settle every queued request, because their sample indices refer to a tape
+   * that is about to stop existing. Silence here would leave `_inflight` in the
+   * client holding a promise that never resolves, and that view never asks
+   * again — the same wedge the NO_TAPE reply was correlated to avoid.
+   */
+  _envCancel(code) {
+    for (const job of this._envJobs) {
+      this.port.postMessage({ a: '/tape/env/err', t: 'ii', v: [job.reqId, code] });
+    }
+    this._envJobs.length = 0;
   }
 
   // ── partitions (§4.3) ─────────────────────────────────────────────────────
@@ -1105,6 +1215,11 @@ class TapeProcessor extends AudioWorkletProcessor {
     }
 
     this._limit(L, R, frames);
+
+    // AFTER the audio work, and budgeted: an envelope scan is bulk reading for
+    // the display, so it may take as many quanta as it needs but may never make
+    // one of them late (§8.3).
+    if (this._envJobs.length) this._envStep();
 
     if (++this._quanta >= this._quantaPerFlush) {
       this._quanta = 0;

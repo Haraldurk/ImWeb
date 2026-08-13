@@ -19,7 +19,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 import { sanitizeSource, calibrateSanitizer } from './lib/sanitize-source.mjs';
 import {
-  PROTO_VERSION, TYPE_TAGS, CLIENT_TO_ENGINE, ENGINE_TO_CLIENT, DEFERRED,
+  PROTO_VERSION, TYPE_TAGS, CLIENT_TO_ENGINE, ENGINE_TO_CLIENT, DEFERRED, REFUSE,
   allAddresses, isOscLegalAddress, encode, normalizeAddress,
 } from '../src/audio/protocol.js';
 
@@ -359,7 +359,31 @@ for (const reached of ['_cubic', '_osc', '_svf', '_sat', '_rand']) {
     `only found: ${HOT.join(', ')}`);
 }
 
-// ── 6. What is NOT checked here ────────────────────────────────────────────
+// ── 6. the two refusal-code lists agree ────────────────────────────────────
+//
+// The engine cannot import protocol.js (§4.1), so it declares the codes again.
+// That is a SECOND REGISTRY — the failure mode of LEARNED 2026-08-05 — and the
+// drift is silent in the worst way: the engine sends 5, the client's REFUSE has
+// no 5, and the refusal surfaces as an unlabelled number in a log nobody reads.
+console.log('\nthe refusal codes are one list, twice');
+{
+  const declared = new Map();
+  for (const m of procCode.matchAll(/const\s+REFUSE_([A-Z_]+)\s*=\s*(\d+)\s*;/g)) {
+    declared.set(m[1], Number(m[2]));
+  }
+  check('the engine declares refusal codes this check can see', declared.size > 0,
+    'the regex found none — a rename here would make every check below vacuous');
+  for (const [name, code] of Object.entries(REFUSE)) {
+    check(`REFUSE.${name} = ${code} matches the engine`, declared.get(name) === code,
+      `engine has ${declared.get(name) ?? 'no such constant'}`);
+  }
+  for (const [name, code] of declared) {
+    check(`the engine's REFUSE_${name} is declared in protocol.js`, REFUSE[name] === code,
+      `protocol.js has ${REFUSE[name] ?? 'no such code'} — a code the client cannot name`);
+  }
+}
+
+// ── 7. What is NOT checked here ────────────────────────────────────────────
 // Rule 2 (control vs bulk) and rule 7 (frame-cadence aggregation) are runtime
 // properties. Rule 7 has a static proxy — the flush is gated on a quanta
 // counter — but "aggregated to frame cadence" is only observable while running,

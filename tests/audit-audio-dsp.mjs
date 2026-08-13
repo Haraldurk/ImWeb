@@ -803,5 +803,135 @@ console.log('\nthe read phase wraps symmetrically');
   }
 }
 
+// ── 13. the envelope scan is paced, and says the same thing ────────────────
+//
+// §8.3 says bulk work is chunked across quanta, and the envelope is the biggest
+// bulk read there is: a full 600-second stereo tape is 57.6 M sample reads. Done
+// in the message handler — where it was — that is one `process()` call of
+// hundreds of milliseconds, which on the audio thread is a dropout at exactly
+// the moment the display first appears. Chunked, it is invisible to the client:
+// same reply, same correlation, later.
+console.log('\nthe envelope scan is paced across quanta');
+{
+  /** min/max per column, computed the obvious way, as the thing to match. */
+  const reference = (p, a, b, cols) => {
+    const out = new Float32Array(cols * 2);
+    const span = b - a;
+    for (let c = 0; c < cols; c++) {
+      const i0 = a + Math.floor((c * span) / cols);
+      const i1 = c === cols - 1 ? b : a + Math.floor(((c + 1) * span) / cols);
+      let lo = 0, hi = 0;
+      if (i1 > i0) {
+        lo = Infinity; hi = -Infinity;
+        for (const ch of p._tape) {
+          for (let i = i0; i < i1; i++) { if (ch[i] < lo) lo = ch[i]; if (ch[i] > hi) hi = ch[i]; }
+        }
+      }
+      out[c * 2] = lo; out[c * 2 + 1] = hi;
+    }
+    return out;
+  };
+  const dataFor = (s, reqId) =>
+    s.sent().find((m) => m.a === '/tape/env/data' && m.v[0] === reqId);
+  const errFor = (s, reqId) =>
+    s.sent().find((m) => m.a === '/tape/env/err' && m.v[0] === reqId);
+
+  // 8 seconds stereo = 768 k reads against a 131 k budget, so this MUST take
+  // more than one quantum. A tape short enough to finish in one would let the
+  // unchunked version pass every check below.
+  {
+    const s = makeEngine({ tapeSeconds: 8, fill: null });
+    for (const ch of s.p._tape) for (let n = 0; n < ch.length; n++) ch[n] = Math.sin(n * 0.001) * 0.7;
+    const cols = 512;
+    s.send('/tape/env/req', 0, s.p._length, cols, 7);
+    check('the reply does NOT arrive in the message handler', !dataFor(s, 7),
+      'an unchunked scan answers before process() has run — and blocks it when it does');
+    let quanta = 0;
+    while (!dataFor(s, 7) && quanta < 200) { s.run(1); quanta++; }
+    const msg = dataFor(s, 7);
+    check('the scan finishes, across several quanta', !!msg && quanta > 1,
+      `finished after ${quanta} quanta`);
+    // The pacing has to be real, not just "more than one": 768 k reads over a
+    // 131 k budget is 6 quanta, and anything far below that means the budget is
+    // being ignored somewhere.
+    check('the pacing matches the declared budget', quanta >= 5 && quanta <= 12,
+      `${quanta} quanta for 768 k reads at 131 k/quantum`);
+    const got = msg ? new Float32Array(msg.v[4]) : new Float32Array(0);
+    const want = reference(s.p, 0, s.p._length, cols);
+    let worst = 0;
+    for (let i = 0; i < want.length; i++) worst = Math.max(worst, Math.abs(got[i] - want[i]));
+    check('a chunked scan produces exactly the unchunked answer', got.length === want.length && worst === 0,
+      `worst column deviation ${worst} — resuming mid-column must not lose a peak`);
+  }
+
+  // Resuming MID-COLUMN. One column over the whole tape puts 768 k reads in a
+  // single column, so a scanner that could only stop at column boundaries would
+  // have to blow the budget to answer at all.
+  {
+    const s = makeEngine({ tapeSeconds: 8, fill: null });
+    const peakAt = 300000;
+    for (const ch of s.p._tape) ch.fill(0.1);
+    s.p._tape[0][peakAt] = 0.95;                 // one peak, deep inside the column
+    s.send('/tape/env/req', 0, s.p._length, 1, 11);
+    let quanta = 0;
+    while (!dataFor(s, 11) && quanta < 200) { s.run(1); quanta++; }
+    const got = new Float32Array(dataFor(s, 11).v[4]);
+    // 768 k reads at 131 k/quantum is 6 — and the count is asserted, not just
+    // "more than one", because a scanner that yields only between columns still
+    // takes two quanta here (one to overrun, one to notice it had finished).
+    check('a single column spanning the tape still resumes and keeps its peak',
+      quanta >= 5 && Math.abs(got[1] - 0.95) < 1e-7,
+      `${quanta} quanta, hi ${got[1]}`);
+  }
+
+  // Degenerate the other way: more columns than samples. Columns covering no
+  // whole sample must report 0/0 — ±Infinity draws as NOTHING on a canvas, a
+  // gap that reads as missing audio rather than as an empty column.
+  {
+    const s = makeEngine({ tapeSeconds: 1, fill: 0.25 });
+    s.send('/tape/env/req', 0, 40, 200, 13);
+    let quanta = 0;
+    while (!dataFor(s, 13) && quanta < 50) { s.run(1); quanta++; }
+    const got = new Float32Array(dataFor(s, 13).v[4]);
+    check('columns finer than one sample are finite, not ±Infinity',
+      [...got].every(Number.isFinite),
+      'a canvas draws Infinity as a hole in the waveform');
+  }
+
+  // The queue is bounded. The client already coalesces one request per view, so
+  // a deeper queue means the client is broken — and the honest answer is a
+  // CORRELATED refusal, because an uncorrelated one leaves that view's promise
+  // unresolved and it never asks again.
+  {
+    const s = makeEngine({ tapeSeconds: 8, fill: 0.5 });
+    for (let i = 0; i < 4; i++) s.send('/tape/env/req', 0, s.p._length, 256, 100 + i);
+    s.send('/tape/env/req', 0, s.p._length, 256, 104);
+    const err = errFor(s, 104);
+    check('a fifth queued request is refused, correlated by reqId', !!err && err.v[1] === 5,
+      err ? `code ${err.v[1]}` : 'no /tape/env/err sent');
+    check('the four accepted requests all still answer', (() => {
+      for (let q = 0; q < 400; q++) s.run(1);
+      return [100, 101, 102, 103].every((id) => !!dataFor(s, id));
+    })(), 'a bounded queue must still drain');
+  }
+
+  // Reallocation retires what is queued. Those cursors index a tape that is
+  // about to stop existing, and silence would leave the client holding a promise
+  // that never settles — the same wedge the NO_TAPE reply is correlated to avoid.
+  {
+    const s = makeEngine({ tapeSeconds: 8, fill: 0.5 });
+    s.send('/tape/env/req', 0, s.p._length, 256, 21);
+    s.run(1);
+    s.send('/engine/tape/alloc', 2);
+    const err = errFor(s, 21);
+    check('reallocating the tape settles a queued scan instead of dropping it',
+      !!err && err.v[1] === 2 && s.p._envJobs.length === 0,
+      err ? `code ${err.v[1]}, ${s.p._envJobs.length} left queued` : 'no error reply');
+    s.run(20);
+    check('and no stale reply arrives afterwards', !dataFor(s, 21),
+      'a scan resumed against the new tape answers a question about material that is gone');
+  }
+}
+
 console.log(failures ? `\n${failures} FAILURE(S)\n` : '\nAll audio DSP checks passed.\n');
 process.exit(failures ? 1 : 0);
