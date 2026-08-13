@@ -1159,7 +1159,10 @@ console.log('\nworklet-resident controllers');
   // The echo (§8.7's inversion). Off by default — an echo nobody reads is 60
   // messages a second of nothing — and aggregated to frame cadence (rule 7).
   {
-    const s = ctrlRig('/voice/0/level', { hz: 5 });
+    // A range where raw and mapped DIFFER, so the two numbers in the echo
+    // cannot be confused for each other — with 0..1 they are equal and the
+    // check would pass whichever was sent twice.
+    const s = ctrlRig('/voice/0/freq', { hz: 5, lo: 100, hi: 200 });
     s.run(20);
     check('no echo until it is asked for',
       s.sent().every((m) => m.a !== '/ctrl/echo/data'), 'the engine offered it unasked');
@@ -1170,10 +1173,17 @@ console.log('\nworklet-resident controllers');
     // 20 quanta at 48 kHz is ~53 ms — about three frames, never twenty.
     check('the echo is aggregated to frame cadence, not per quantum',
       echoes.length <= 5, `${echoes.length} messages in 20 quanta`);
-    const pairs = new Float32Array(echoes[echoes.length - 1].v[0]);
-    check('the echo carries [slot, value] pairs for live slots only',
-      pairs.length === 2 && pairs[0] === 0 && pairs[1] >= 0 && pairs[1] <= 1,
-      `[${[...pairs].join(', ')}]`);
+    const t = new Float32Array(echoes[echoes.length - 1].v[0]);
+    check('the echo carries [slot, raw, mapped] for live slots only',
+      t.length === 3 && t[0] === 0, `[${[...t].join(', ')}]`);
+    // Both numbers travel because the two consumers want different ones: a
+    // remote client wants the mapped value, ImWeb wants the raw 0..1 so it can
+    // feed it back through setNormalized instead of inverting its own unit
+    // conversions on the way in.
+    check('the raw value is the shape output, in 0..1', t[1] >= 0 && t[1] <= 1, `${t[1]}`);
+    check('the mapped value is in the TARGET\'s units',
+      t[2] >= 100 && t[2] <= 200 && Math.abs(t[2] - (100 + 100 * t[1])) < 1e-3,
+      `${t[2]} Hz for raw ${t[1]}`);
   }
 }
 

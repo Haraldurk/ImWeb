@@ -209,7 +209,11 @@ function makeCtrl(seed) {
     t: 0,                          // running phase
     running: true,
     shValue: 0.5,
-    out: 0,                        // last value produced, for the echo
+    // Both halves of the echo. `raw` is the shape's own 0..1 output and `out`
+    // is that mapped onto the target's units — see `_ctrlFlush` for why both
+    // travel.
+    raw: 0,
+    out: 0,
     rng: (seed * 2246822519) >>> 0 || 1,
     // One value per sample, which is what makes §8.7's claim literal rather
     // than rhetorical. Evaluating once per QUANTUM would have been six times
@@ -733,6 +737,7 @@ class TapeProcessor extends AudioWorkletProcessor {
       // Longer-than-128 blocks hold the last value rather than reading past the
       // end of the buffer — see RENDER_QUANTUM.
       for (let i = n; i < frames; i++) c.buf[i] = c.buf[n - 1];
+      c.raw = this._ctrlShape(c, c.t);
       c.out = c.buf[n - 1];
     }
   }
@@ -742,21 +747,31 @@ class TapeProcessor extends AudioWorkletProcessor {
    * authoritative, and the video half and the UI read its value back. One
    * message per frame carrying every live slot (rule 7), never one per slot.
    *
-   * Pairs of floats rather than §8.8's drafted `[slot:u16, value:f32]` packing —
-   * a slot is a small integer a float carries exactly, and the mixed-width
-   * version would need a DataView at both ends to save two bytes per slot.
+   * Floats rather than §8.8's drafted `[slot:u16, value:f32]` packing — a slot
+   * is a small integer a float carries exactly, and the mixed-width version
+   * would need a DataView at both ends to save two bytes per slot.
+   *
+   * TRIPLES, `[slot, raw, mapped]`, because the two consumers want different
+   * numbers. A remote client wants the mapped value: 220 Hz, rate 1.5, the
+   * thing the engine is actually applying. ImWeb wants the raw 0..1 shape
+   * output, because it feeds it back through `setNormalized`, which re-applies
+   * the same range, invert and table the client already knows about — handing
+   * ImWeb the mapped value would mean inverting a semitone conversion on the
+   * way back in, and any disagreement between the two directions would show up
+   * as a parameter that drifts while an LFO runs.
    */
   _ctrlFlush() {
     if (!this._ctrlEcho) return;
     let live = 0;
     for (let i = 0; i < this._ctrls.length; i++) if (this._ctrls[i].kind !== TGT_NONE) live++;
     if (!live) return;
-    const out = new Float32Array(live * 2);
+    const out = new Float32Array(live * 3);
     let w = 0;
     for (let i = 0; i < this._ctrls.length; i++) {
       const c = this._ctrls[i];
       if (c.kind === TGT_NONE) continue;
       out[w++] = i;
+      out[w++] = c.raw;
       out[w++] = c.out;
     }
     this.port.postMessage({ a: '/ctrl/echo/data', t: 'b', v: [out.buffer] }, [out.buffer]);

@@ -128,8 +128,16 @@ export class ControllerManager {
   // ── Frame tick ────────────────────────────────────────────────────────────
 
   tick(dt, beatPhase = 0) {
-    // Tick all LFO controllers
+    // Tick all LFO controllers.
+    //
+    // §8.7: a parameter the AUDIO WORKLET drives is evaluated there, at audio
+    // rate, on the thread a hidden tab cannot suspend — and it echoes its value
+    // back, so ticking it here as well would fight that echo with a value one
+    // frame stale. This early-out is the whole client half of the hand-off, and
+    // the fallback it leaves behind (audio off ⇒ every LFO evaluated here, as
+    // always) is the second code path §8.7 warns bugs will live in.
     this.lfos.forEach((lfo, paramId) => {
+      if (this.audioHost?.ownsParam?.(paramId)) return;
       const v = lfo.tick(dt, beatPhase);
       this.ps.setNormalized(paramId, v);
     });
@@ -439,6 +447,12 @@ export class ControllerManager {
 
   retriggerLFOs() {
     this.lfos.forEach(lfo => lfo.retrigger());
+    // Worklet-resident controllers retrigger through their own explicit verb
+    // (§8.7 rule 4). Their descriptions are re-sent by a Display State recall
+    // too, and a re-send is an UPDATE — so without this line a recall would
+    // silently stop retriggering exactly the LFOs that moved to the worklet,
+    // which is behaviour the instrument has today.
+    this.audioHost?.retriggerOwned?.();
   }
 
   // ── BPM sync ──────────────────────────────────────────────────────────────

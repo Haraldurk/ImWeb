@@ -174,11 +174,13 @@ export const ENGINE_TO_CLIENT = Object.freeze({
   // that has already stopped — state the engine knows and nobody else does.
   '/zone/<type>/<n>/state': 'T',   // running
   // §8.7's echo, aggregated to frame cadence (rule 7): ONE message carrying
-  // every live slot, never one per slot. Pairs of floats, [slot, value, …] —
-  // §8.8 drafted this as packed `[slot:u16, value:f32]`, and a single Float32Array
-  // is used instead because slots are small integers that a float carries
-  // exactly, and a mixed-width packing would need a DataView on both ends to
-  // save 2 bytes per slot on a message that is already under a kilobyte.
+  // every live slot, never one per slot. Float TRIPLES, [slot, raw, mapped, …].
+  // §8.8 drafted packed `[slot:u16, value:f32]`; a single Float32Array is used
+  // instead because slots are small integers a float carries exactly, and the
+  // mixed-width version needs a DataView at both ends to save two bytes. The
+  // extra number is deliberate — see `_ctrlFlush`: a remote client wants the
+  // MAPPED value, ImWeb wants the RAW 0..1 so it can feed it back through
+  // `setNormalized` instead of inverting its own unit conversions.
   '/ctrl/echo/data': 'b',
 });
 

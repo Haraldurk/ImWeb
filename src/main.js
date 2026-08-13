@@ -1067,6 +1067,10 @@ async function main() {
   // AudioBinding the only module that sees both halves (§4.1).
   ctrl.audioHost = audio;
   vectorscope.audioHost = audio;
+  // The other direction, for §8.7: the binding reads the LIVE `LFO` objects to
+  // describe them to the worklet. Injected rather than imported, so
+  // AudioBinding stays the only module that sees both halves.
+  audio.controllers = ctrl;
   {
     const statusEl = document.getElementById("audio-status");
     audio.onStatus = (msg) => { if (statusEl) statusEl.textContent = msg; };
@@ -7113,6 +7117,13 @@ void main() {
 
     // Tick controllers (LFOs with beat phase, random, expression, etc.)
     ctrl.tick(dt, beatPhase);
+
+    // §8.7: hand audio-relevant LFOs to the worklet, or take them back. A diff
+    // against what was last sent, so an unchanged controller costs six number
+    // comparisons and no message. It runs AFTER ctrl.tick() because the tick is
+    // where xmap and BPM sync rewrite an LFO's rate, and this should see the
+    // value the frame actually used rather than the previous one's.
+    audio.syncControllers();
 
     // Tick preset morph animation
     presetMgr.tickMorph(dt);
