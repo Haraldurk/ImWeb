@@ -297,12 +297,30 @@ about this is therefore captured by default.
 
 | Thing | Decision | Why |
 |---|---|---|
-| Partition layout | captured, normal group | structural; means the same thing on any machine |
+| Partition layout | **`group: 'global'`, NOT captured** | see below — this row was reversed on 2026-08-13 |
 | Zone positions | captured, partition-relative | relative positions survive layout differences |
-| Zone → partition binding | captured, **by index** | safe only because slots are fixed (§4.3) |
+| Zone → partition binding | captured, **by index** | safe only because slots are fixed (§4.3) — but see the layout note below |
 | Zone/Voice levels, coupling faders | captured | this is performance state |
 | Snippet selection | **`group: 'global'`** | snippets live in per-origin localStorage, so an index drifts across ports and machines — the exact `glsl.preset` precedent |
 | Tape contents | **not a parameter at all** | tens of MB; belongs in the `.imweb` payload or nowhere |
+
+**Correction, 2026-08-13: partition layout is NOT captured.** The row above
+originally said "captured, normal group", and the implementation went the other way
+on purpose; two reviews agreed the doc is what should move. §4.3 fixes layout at
+session start, and the engine refuses a relayout while a zone bound to that slot is
+running — so a captured layout is one that recall can only *refuse* or *destroy*,
+depending on what happens to be playing. That is strictly worse than not capturing
+it, and it buys nothing: a project file already carries layout, which is the right
+granularity for a setup act.
+
+**The consequence has to be stated, because the table hides it.** Zone → partition
+bindings ARE captured, and they are captured *by index into a layout that is not*.
+Those two rows are not independent: recalling a state points zones at slot 2 without
+saying what slot 2 is. That is safe by the same argument that makes fixed slots safe
+at all — the index means "the third partition", not "the region 30 s in" — but it
+means **a Display State is only meaningful within a session whose layout has not
+changed**, and layout changes are a setup act precisely so that holds. Anything that
+lets layout move mid-session breaks every state captured before it.
 
 **Snippet text has the same exposure as snippet selection, and the same answer.**
 Marking the *selection* `group: 'global'` keeps a drifting index out of Display
@@ -562,6 +580,16 @@ list said nothing here was, which was wrong once §8.1 landed:
    surface is the existing draw surface or a separate one. They are deliberately two
    instruments sharing a gesture (§4.6); whether they share a *widget* is a UI
    question, not an architectural one.
+5b. **§8.6's single AudioContext is only half implemented, and that is a recorded
+   DEFERRAL rather than an open design question.** The engine owns its context, but
+   `ControllerManager.enableSound()` still creates its own — and its own mic capture
+   — so today the app can run two contexts and open the microphone twice. §8.6
+   settled that there is one context, owned by the engine, precisely to avoid the
+   two-clock drift that follows. Rewiring the sound-reactive controller layer as a
+   *consumer* of the engine's analyser tap blocks nothing until the recording path
+   meets the controller layer, which is why it has not been done. **It has to land
+   before anything is built on the second context**, because a tap added there
+   inherits the drift instead of exposing it.
 6. **ANSWERED in §8.8 — the protocol vocabulary itself.** This item said "pending the
    RoSa v2 Implementation manual (§2); do not invent one before reading it." **That
    precondition cannot be met and the item is unblocked by its own impossibility** —

@@ -88,6 +88,20 @@ check('the binding does not send raw param ids anywhere',
   !/_send\(|postMessage\(/.test(bindCode),
   'it must go through AudioEngine methods, which encode() validates');
 
+// An engine-initiated param write must not travel back as a command. The guard
+// lives in _on() so no handler has to remember it — the first version put it in
+// one handler and left open the very path the echo uses, which was benign only
+// because stopping a stopped zone is idempotent.
+check('_on() drops engine-initiated writes',
+  /_on\(id, fn\)[\s\S]{0,400}?if \(this\._fromEngine\) return;/.test(bindCode),
+  'without this every subscription must remember the guard individually');
+for (const cb of ['onZoneState', 'onRecLength']) {
+  const m = new RegExp(`engine\\.${cb}\\s*=\\s*\\([\\s\\S]*?\\n    \\};`).exec(bindCode);
+  check(`${cb} writes params only via _applyFromEngine`,
+    !!m && !/this\.ps\.set\(/.test(m[0]),
+    'a raw ps.set here sends the engine its own fact back as a command');
+}
+
 // The engine side must stay ImWeb-free. AudioBinding is the boundary, so it is
 // the one file allowed to import from controls/.
 for (const f of ['src/audio/AudioEngine.js', 'src/audio/protocol.js',
