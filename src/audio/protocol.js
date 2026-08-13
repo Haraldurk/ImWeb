@@ -86,6 +86,14 @@ export const ENGINE_TO_CLIENT = Object.freeze({
   '/tape/env/data': 'iiiib',       // reqId, start, end, columns, min/max blob
   '/tape/env/dirty': 'ii',         // start, end
   '/zone/rec/<n>/length': 'f',     // resolved length after a dynamic recording
+  // A request/reply pair needs a correlated ERROR reply, not just the shared
+  // /engine/refuse: a refusal carrying no reqId cannot settle the promise it
+  // belongs to, and with one-outstanding-per-view that wedges the view forever.
+  '/tape/env/err': 'ii',           // reqId, refusal code
+  // The engine can stop a zone on its own (a dynamic recording reaching the
+  // partition seam). Without this the client's Run toggle stays on over a zone
+  // that has already stopped — state the engine knows and nobody else does.
+  '/zone/<type>/<n>/state': 'T',   // running
 });
 
 /**

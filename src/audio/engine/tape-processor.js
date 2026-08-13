@@ -238,6 +238,18 @@ class TapeProcessor extends AudioWorkletProcessor {
     if (!(seconds > 0) || seconds > MAX_TAPE_SECONDS) {
       return this._refuse(REFUSE_BAD_RANGE, `tape seconds out of range: ${seconds}`);
     }
+    // Relayout is refused while a zone runs; reallocating the whole tape throws
+    // away every recording in it, so refusing that only when the smaller act is
+    // refused would be backwards. §8.8: the protocol enforces the rule rather
+    // than trusting the client to remember it.
+    for (const list of [this._rec, this._play]) {
+      for (let i = 0; i < list.length; i++) {
+        if (list[i].on || list[i].gainCur > 0) {
+          return this._refuse(REFUSE_LAYOUT_LOCKED,
+            'cannot reallocate the tape while a zone is running');
+        }
+      }
+    }
     this._length = Math.floor(seconds * sampleRate);
     this._tape = [new Float32Array(this._length), new Float32Array(this._length)];
     this._markDirty(0, this._length);
@@ -294,7 +306,13 @@ class TapeProcessor extends AudioWorkletProcessor {
    * a zoom drag, answers arrive for spans the user has already left.
    */
   _envReq(start, end, columns, reqId) {
-    if (!this._length) return this._refuse(REFUSE_NO_TAPE, 'no tape allocated');
+    if (!this._length) {
+      // Correlated, not just /engine/refuse: the client gates one request per
+      // view, so an uncorrelated failure wedges that view permanently.
+      this.port.postMessage(
+        { a: '/tape/env/err', t: 'ii', v: [reqId, REFUSE_NO_TAPE] });
+      return this._refuse(REFUSE_NO_TAPE, 'no tape allocated');
+    }
     const a = Math.max(0, Math.min(start, this._length));
     const b = Math.max(a, Math.min(end, this._length));
     const cols = Math.max(1, Math.min(columns | 0, 8192));
@@ -431,6 +449,9 @@ class TapeProcessor extends AudioWorkletProcessor {
     z.lenCur = z.lenTgt = z.recorded;
     z.lenRamp = 0;
     this.port.postMessage({ a: `/zone/rec/${i}/length`, t: 'f', v: [z.recorded] });
+    // The engine stopped this zone by itself. Say so, or the Run toggle keeps
+    // claiming it is running — the half of this the length reply does not cover.
+    this.port.postMessage({ a: `/zone/rec/${i}/state`, t: 'F', v: [false] });
   }
 
   _zoneOn(type, i, on) {

@@ -1064,9 +1064,13 @@ async function main() {
   {
     const statusEl = document.getElementById("audio-status");
     audio.onStatus = (msg) => { if (statusEl) statusEl.textContent = msg; };
-    ps.get("audio.enable")?.onTrigger(async () => {
-      try { await audio.start(); }
-      catch (e) { audio.onStatus?.(`audio failed to start: ${e.message}`); }
+    ps.get("audio.enable")?.onChange(async (v) => {
+      try {
+        if (v) await audio.start();
+        else { await audio.stop(); audio.onStatus?.("audio stopped"); }
+      } catch (e) {
+        audio.onStatus?.(`audio failed to ${v ? "start" : "stop"}: ${e.message}`);
+      }
     });
   }
 
