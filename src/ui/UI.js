@@ -325,6 +325,28 @@ export function buildMappingPanels(ps, contextMenu) {
     'analog-composite-params': ps.getGroup('analog').filter(p => p.id.includes('.composite.')),
     'analog-rf-params':     ps.getGroup('analog').filter(p => p.id.includes('.rf.')),
     'analog-tuner-params':  ps.getGroup('analog').filter(p => p.id.includes('.tuner.')),
+
+    // Audio. Engine params are deliberately split across two groups: 'global'
+    // for anything that allocates, opens a device or relayouts, so a Display
+    // State cannot recall it (see ParameterSystem's audio block for why each
+    // one would be destructive).
+    //
+    // `pick()` is therefore reserved for real group members and the 'global'
+    // ones are appended by id — the same stated exception warp-draw-params
+    // makes for displace.warpSlot. This is not cosmetic: audit-panel-coverage
+    // resolves pick(prefix, …) against ps.getGroup(prefix), so routing a
+    // 'global' param through pick() reports it as "placed but not registered"
+    // — and routing it through a TEMPLATE literal would hide it from that
+    // audit entirely, which is worse than failing.
+    'audio-engine-params': [
+      ps.get('audio.enable'), ps.get('audio.tapeSec'), ps.get('audio.mic'),
+      ...pick('audio', ['outGain', 'limitThresh', 'limitRel']),
+    ].filter(Boolean),
+    'audio-partition-params': [0, 1, 2, 3].flatMap(i => [
+      ps.get(`apart${i}.start`), ps.get(`apart${i}.len`),
+    ]).filter(Boolean),
+    'audio-rec-params':  pick('arec',  ['part', 'start', 'len', 'dynamic', 'unsafe', 'on']),
+    'audio-play-params': pick('aplay', ['part', 'start', 'len', 'rate', 'unsafe', 'on']),
   };
 
   Object.entries(sections).forEach(([elId, params]) => {

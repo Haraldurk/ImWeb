@@ -98,6 +98,7 @@ import { BUILTIN_PRESETS, captureAnalogState, applyAnalogPreset } from "./inputs
 import { TeletextSource } from "./inputs/TeletextSource.js";
 import { registerTeletextParams } from "./inputs/TeletextParams.js";
 import { buildTeletextUI } from "./inputs/TeletextUI.js";
+import { AudioBinding } from "./audio/AudioBinding.js";
 import { DrawLayer } from "./inputs/DrawLayer.js";
 import { StrokeLooper, LOOP_SLOTS } from "./inputs/StrokeLooper.js";
 import { TextLayer } from "./inputs/TextLayer.js";
@@ -1052,6 +1053,22 @@ async function main() {
   const contextMenu = new ContextMenu(ps, ctrl, presetMgr, tableManager);
   buildLayerButtons(ps, contextMenu);
   buildMappingPanels(ps, contextMenu);
+
+  // ── Audio engine ──────────────────────────────────────────────────────────
+  // Started by the audio.enable TRIGGER, never on load: an AudioContext created
+  // without a user gesture stays suspended, and a suspended engine answers
+  // every message normally while process() never runs — indistinguishable from
+  // a working one unless you look for it (LEARNED 2026-08-13). Making the user
+  // ask also means ImWeb never grabs the audio device just by being open.
+  const audio = new AudioBinding(ps);
+  {
+    const statusEl = document.getElementById("audio-status");
+    audio.onStatus = (msg) => { if (statusEl) statusEl.textContent = msg; };
+    ps.get("audio.enable")?.onTrigger(async () => {
+      try { await audio.start(); }
+      catch (e) { audio.onStatus?.(`audio failed to start: ${e.message}`); }
+    });
+  }
 
   // ── Palette section (FG/BG HSV pickers + named presets) ───────────────────
   {

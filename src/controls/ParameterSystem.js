@@ -6545,5 +6545,97 @@ export function registerCoreParameters(ps) {
     unit: "px",
   });
 
+  // ── Audio engine (docs/ImWeb-Audio-Blueprint.md) ──────────────────────────
+  //
+  // The client side of §4.1's split. These params describe the engine; they
+  // never travel to it — `src/audio/AudioBinding.js` translates each one into a
+  // §8.8 address locally, so no ImWeb identifier crosses the boundary (rule 3).
+  //
+  // GROUPS, and why they differ (§4.8 capture is opt-out — every param whose
+  // group is not 'global' IS captured by a Display State):
+  //
+  //   'global'  — anything that ALLOCATES, OPENS A DEVICE, or RELAYOUTS.
+  //               `audio.tapeSec` reallocates the tape, which throws away every
+  //               recording in it; `audio.mic` opens a permissioned device;
+  //               partition bounds are a setup act that §4.3 fixes at session
+  //               start. Capturing any of them means recalling a Display State
+  //               mid-set destroys material or reopens hardware — the loudest
+  //               possible version of the silent-reload failure §4.8 exists to
+  //               prevent.
+  //   'arec' /  — performance state. Region, rate, on/off ARE captured: they
+  //   'aplay'     are what a Display State is for, and every index here points
+  //   'audio'     into a FIXED slot table (8 partitions, 128 zones per type),
+  //               so unlike glsl.preset it cannot drift under a saved state.
+  //
+  // Regions are fractions of their partition, not sample counts, for the same
+  // reason §4.3 makes zone positions partition-relative: a captured layout has
+  // to mean the same thing on a machine whose tape is a different length.
+  ps.register({
+    id: "audio.enable", label: "Audio On", group: "global",
+    type: PARAM_TYPE.TRIGGER, value: 0,
+  });
+  ps.register({
+    id: "audio.tapeSec", label: "Tape", group: "global",
+    min: 5, max: 600, value: 60, step: 1, unit: "s",
+  });
+  ps.register({
+    id: "audio.mic", label: "Mic", group: "global",
+    type: PARAM_TYPE.TOGGLE, value: 0,
+  });
+  ps.register({
+    id: "audio.outGain", label: "Out Gain", group: "audio",
+    min: 0, max: 1, value: 0.8, step: 0.01,
+  });
+  // The limiter's PARAMETERS are adjustable; the limiter is not (§4.11). There
+  // is no enable here and no address for one — see protocol.js.
+  ps.register({
+    id: "audio.limitThresh", label: "Ceiling", group: "audio",
+    min: 0.1, max: 1, value: 0.891, step: 0.001,
+  });
+  ps.register({
+    id: "audio.limitRel", label: "Limit Rel", group: "audio",
+    min: 0.01, max: 2, value: 0.15, step: 0.01, unit: "s",
+  });
+
+  // Partition layout. 'global' — see above; relayout is refused by the engine
+  // while a zone bound to the slot is running, so a captured value would be
+  // either ignored or destructive depending on what happened to be playing.
+  const PARTITION_SLOTS = 4;   // of MAX_PARTITIONS in the engine; UI shows four
+  for (let i = 0; i < PARTITION_SLOTS; i++) {
+    ps.register({
+      id: `apart${i}.start`, label: `P${i} Start`, group: "global",
+      min: 0, max: 1, value: i / PARTITION_SLOTS, step: 0.001,
+    });
+    ps.register({
+      id: `apart${i}.len`, label: `P${i} Length`, group: "global",
+      min: 0, max: 1, value: 1 / PARTITION_SLOTS, step: 0.001,
+    });
+  }
+
+  // Zones. One of each type is exposed; the engine has 128 per type and the
+  // ids are prefixed so more can be added without renaming these (the mix-bus
+  // lesson: bus 1 kept the bare `mix.` prefix and its v0.12 ids for exactly
+  // this reason).
+  const ZONE_COMMON = [
+    { key: "part", label: "Partition", type: PARAM_TYPE.SELECT, value: 0,
+      options: Array.from({ length: PARTITION_SLOTS }, (_, i) => `P${i}`) },
+    { key: "start", label: "Start", min: 0, max: 1, value: 0, step: 0.001 },
+    { key: "len", label: "Length", min: 0, max: 1, value: 1, step: 0.001 },
+    { key: "unsafe", label: "Unsafe", type: PARAM_TYPE.TOGGLE, value: 0 },
+    { key: "on", label: "Run", type: PARAM_TYPE.TOGGLE, value: 0 },
+  ];
+  [
+    { prefix: "arec", suffix: " Rec", extra: [
+      { key: "dynamic", label: "Dynamic", type: PARAM_TYPE.TOGGLE, value: 0 },
+    ] },
+    { prefix: "aplay", suffix: " Play", extra: [
+      { key: "rate", label: "Rate", min: -4, max: 4, value: 1, step: 0.01 },
+    ] },
+  ].forEach(({ prefix, suffix, extra }) => {
+    [...ZONE_COMMON, ...extra].forEach(({ key, label, ...rest }) => {
+      ps.register({ id: `${prefix}.${key}`, label: label + suffix, group: prefix, ...rest });
+    });
+  });
+
   return ps;
 }

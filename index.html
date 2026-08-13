@@ -208,6 +208,12 @@
                     <button class="tab active" data-tab="mix">Mix</button>
                     <button class="tab" data-tab="effects">Effects</button>
                     <button class="tab" data-tab="output">Output</button>
+                    <!-- Audio is top-level for the same reason 3D/Analog/Draw
+                         are: it is a large editor for its own kind of material,
+                         not a stage in the video signal flow. Folding it into
+                         Sources would file the instrument's other half as a
+                         video input, which it is not. -->
+                    <button class="tab" data-tab="audio">Audio</button>
                     <button class="tab" data-tab="presets">Project</button>
                     <!-- Contextual workspace tab is injected here by Step 2. -->
                     <span id="tab-workspace-slot"></span>
@@ -1051,6 +1057,26 @@ ImWeb</textarea
                     <div class="panel-section">
                         <div class="section-header">Brush</div>
                         <div id="draw-params"></div>
+                    </div>
+                </div>
+                <!-- AUDIO TAB -->
+                <div id="tab-audio" class="tab-content">
+                    <div class="panel-section" >
+                        <div class="section-header">Engine</div>
+                        <div id="audio-engine-params"></div>
+                        <div id="audio-status" style="padding:4px 6px;opacity:.7;font-size:11px"></div>
+                    </div>
+                    <div class="panel-section">
+                        <div class="section-header">Partitions</div>
+                        <div id="audio-partition-params"></div>
+                    </div>
+                    <div class="panel-section">
+                        <div class="section-header">Recording Zone</div>
+                        <div id="audio-rec-params"></div>
+                    </div>
+                    <div class="panel-section">
+                        <div class="section-header">Playback Zone</div>
+                        <div id="audio-play-params"></div>
                     </div>
                 </div>
                 <!-- PROJECT TAB -->

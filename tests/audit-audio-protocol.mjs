@@ -67,6 +67,38 @@ check('AudioEngine does not reach into ParameterSystem',
   !/ParameterSystem|\bps\.get\(/.test(hostCode),
   'rule 3: binding happens a layer above, through opaque integer slots');
 
+// ── 1b. The binding is the ONLY place the two halves touch ─────────────────
+console.log('\nAudioBinding is the only module that sees both halves');
+
+const bindRaw = read('src/audio/AudioBinding.js');
+const bindCode = sanitizeSource(bindRaw);
+const bindKeep = sanitizeSource(bindRaw, { blankStrings: false });
+
+// Rule 3 in its concrete form: an ImWeb param id is `prefix.key`, and none may
+// appear in a string that becomes an address. Translation, not transport — the
+// literal 'aplay.rate' must never leave this file.
+const addressLiterals = [
+  ...[...bindKeep.matchAll(/'(\/[^']*)'/g)].map((m) => m[1]),
+  ...[...bindKeep.matchAll(/`(\/[^`]*)`/g)].map((m) => m[1]),
+];
+const leaked = addressLiterals.filter((a) => /\b(audio|arec|aplay|apart\d)\./.test(a));
+check('no ImWeb param id appears inside an address', leaked.length === 0,
+  `rule 3 — leaked: ${leaked.join(', ')}`);
+check('the binding does not send raw param ids anywhere',
+  !/_send\(|postMessage\(/.test(bindCode),
+  'it must go through AudioEngine methods, which encode() validates');
+
+// The engine side must stay ImWeb-free. AudioBinding is the boundary, so it is
+// the one file allowed to import from controls/.
+for (const f of ['src/audio/AudioEngine.js', 'src/audio/protocol.js',
+                 'src/audio/engine/tape-processor.js']) {
+  const src = sanitizeSource(read(f), { blankStrings: false });
+  const bad = [...src.matchAll(/from\s+'([^']+)'/g)]
+    .map((m) => m[1]).filter((p) => !p.startsWith('./'));
+  check(`${f.split('/').pop()} imports nothing outside src/audio`,
+    bad.length === 0, bad.join(', '));
+}
+
 // ── 2. The fixpoint: protocol.js and the worklet agree on what exists ──────
 console.log('\nprotocol.js and the worklet describe the same protocol');
 
