@@ -45,6 +45,29 @@ export const CLIENT_TO_ENGINE = Object.freeze({
   '/engine/panic': '',
   '/tape/write': 'iib',            // startSample, channels, float32 blob
   '/tape/env/req': 'iiii',         // start, end, columns, reqId
+
+  // Partitions (§4.3). Layout is a setup act: /bounds is refused while a zone
+  // bound to that slot is active, so the protocol enforces the rule instead of
+  // trusting the client to remember it.
+  '/part/<n>/bounds': 'ii',        // startSample, lengthSamples
+  '/part/<n>/clear': '',
+
+  // Zones (§4.4). Regions are partition-relative — that is what lets a layout
+  // differ between machines without every zone landing in the wrong material.
+  '/zone/<type>/<n>/part': 'i',    // partition slot
+  '/zone/<type>/<n>/region': 'ff', // startRel, lengthRel, in samples
+  '/zone/<type>/<n>/unsafe': 'T',  // opt-in crossing of the partition seam
+  '/zone/<type>/<n>/on': '',
+  '/zone/<type>/<n>/off': '',
+  '/zone/play/<n>/rate': 'f',      // signed; negative reads backwards
+  '/zone/rec/<n>/dynamic': 'T',    // length taken from where you stop
+
+  // Output bus (§4.11). Note what is absent: there is no address that disables
+  // the limiter. A feedback instrument without an output ceiling is one dialled
+  // coupling away from damaging monitors and ears, so non-bypassable is
+  // enforced by the address space having no production for it.
+  '/bus/out/gain': 'f',
+  '/bus/out/limit': 'ff',          // threshold (linear), release (seconds)
 });
 
 /**
@@ -56,6 +79,7 @@ export const ENGINE_TO_CLIENT = Object.freeze({
   '/engine/refuse': 'is',          // code, message
   '/tape/env/data': 'iiiib',       // reqId, start, end, columns, min/max blob
   '/tape/env/dirty': 'ii',         // start, end
+  '/zone/rec/<n>/length': 'f',     // resolved length after a dynamic recording
 });
 
 /**
@@ -65,17 +89,8 @@ export const ENGINE_TO_CLIENT = Object.freeze({
  * stays honest about what actually exists. Move an entry up as it lands.
  */
 export const DEFERRED = Object.freeze({
-  '/part/<n>/bounds': 'ii',
   '/part/<n>/ring': 'T',
-  '/part/<n>/clear': '',
-  '/zone/<type>/<n>/part': 'i',
-  '/zone/<type>/<n>/region': 'ff',
-  '/zone/<type>/<n>/unsafe': 'T',
-  '/zone/<type>/<n>/on': '',
-  '/zone/<type>/<n>/off': '',
-  '/zone/play/<n>/rate': 'f',
-  '/zone/rec/<n>/dynamic': 'T',
-  '/zone/synth/<n>/render': 'iffi',
+  '/zone/<type>/<n>/render': 'iffi',
   '/graph/def': 'ib',
   '/graph/free': 'i',
   '/voice/<n>/graph': 'i',
@@ -90,8 +105,6 @@ export const DEFERRED = Object.freeze({
   '/job/<n>/error': 'is',
   '/job/<n>/cancel': '',
   '/tap/src': 's',
-  '/bus/out/gain': 'f',
-  '/bus/out/limit': 'ff',
 });
 
 /** Every address the protocol knows about, implemented or not. */
@@ -118,15 +131,46 @@ export function isOscLegalAddress(a) {
     && !OSC_ILLEGAL.test(a.replace(/<[a-z]+>/g, 'x'));
 }
 
-/** Rule 1: an argument must be an OSC scalar or an ArrayBuffer-backed blob. */
+/** Zone type tokens. Fixed vocabulary — rule 5 forbids a free name here. */
+export const ZONE_TYPES = Object.freeze(['rec', 'play', 'load', 'spectral', 'synth']);
+
+/**
+ * Collapse a concrete address to its declared pattern: `/zone/play/3/rate`
+ * becomes `/zone/play/<n>/rate`, and `/zone/rec/0/on` becomes
+ * `/zone/<type>/<n>/on` when no type-specific pattern is declared.
+ *
+ * The worklet performs the same collapse before its switch, which is why its
+ * `case` labels read as patterns and the fixpoint audit can compare them to the
+ * tables above without either side knowing about the other.
+ */
+export function normalizeAddress(a) {
+  const byIndex = a.replace(/\/\d+(?=\/|$)/g, '/<n>');
+  if (byIndex in CLIENT_TO_ENGINE || byIndex in ENGINE_TO_CLIENT) return byIndex;
+  return byIndex.replace(
+    new RegExp(`^/zone/(?:${ZONE_TYPES.join('|')})/`), '/zone/<type>/');
+}
+
+/** The integer indices in a concrete address, left to right. */
+export function addressIndices(a) {
+  return [...a.matchAll(/\/(\d+)(?=\/|$)/g)].map((m) => Number(m[1]));
+}
+
+/**
+ * Rule 1: an argument must be an OSC scalar or an ArrayBuffer-backed blob.
+ *
+ * `T` in a table means "a boolean". OSC 1.0 encodes booleans as the type tag
+ * itself with no payload — `T` for true, `F` for false — so a settable flag is
+ * declared `T` and `encode()` emits whichever tag the value calls for. Reading
+ * `T` as "only ever true" would make every boolean address one-way, which is
+ * how a `/unsafe` you cannot turn back off would have shipped.
+ */
 function tagMatches(tag, v) {
   switch (tag) {
     case 'i': return Number.isInteger(v);
     case 'f': return typeof v === 'number' && Number.isFinite(v);
     case 's': return typeof v === 'string';
     case 'b': return v instanceof ArrayBuffer || ArrayBuffer.isView(v);
-    case 'T': return v === true;
-    case 'F': return v === false;
+    case 'T': case 'F': return typeof v === 'boolean';
     default: return false;
   }
 }
@@ -142,19 +186,22 @@ function tagMatches(tag, v) {
  * OSC blob and a copy — a stated cost, not a surprise.
  */
 export function encode(address, ...args) {
-  const tags = CLIENT_TO_ENGINE[address] ?? ENGINE_TO_CLIENT[address];
+  const pattern = normalizeAddress(address);
+  const tags = CLIENT_TO_ENGINE[pattern] ?? ENGINE_TO_CLIENT[pattern];
   if (tags === undefined) throw new Error(`unknown address '${address}'`);
   if (args.length !== tags.length) {
     throw new Error(`'${address}' takes ${tags.length} arg(s), got ${args.length}`);
   }
   const transfer = [];
+  let wire = '';
   for (let i = 0; i < tags.length; i++) {
     if (!tagMatches(tags[i], args[i])) {
       throw new Error(`'${address}' arg ${i} is not OSC type '${tags[i]}'`);
     }
+    wire += tags[i] === 'T' || tags[i] === 'F' ? (args[i] ? 'T' : 'F') : tags[i];
     if (tags[i] === 'b') {
       transfer.push(ArrayBuffer.isView(args[i]) ? args[i].buffer : args[i]);
     }
   }
-  return { msg: { a: address, t: tags, v: args }, transfer };
+  return { msg: { a: address, t: wire, v: args }, transfer };
 }
