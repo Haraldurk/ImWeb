@@ -47,7 +47,16 @@ export class AudioEngine {
 
     this.ctx = new AudioContext();
     if (this.ctx.state === 'suspended') await this.ctx.resume();
-    await this.ctx.audioWorklet.addModule(workletUrl);
+    // Cache-bust the processor in dev. `addModule()` fetches a stable URL and
+    // the browser caches worklet modules hard, so editing the processor and
+    // reloading can silently keep running the PREVIOUS one — and a worklet that
+    // is one version behind looks like a fix that did not work, not like a
+    // stale module. Cost an hour once already. Production keeps the plain URL:
+    // `vite build` gives it a content hash, which is the correct buster.
+    const url = import.meta.env?.DEV
+      ? `${workletUrl}${workletUrl.includes('?') ? '&' : '?'}v=${Date.now()}`
+      : workletUrl;
+    await this.ctx.audioWorklet.addModule(url);
 
     this.node = new AudioWorkletNode(this.ctx, 'imweb-tape', {
       numberOfInputs: 1,
