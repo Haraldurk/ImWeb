@@ -573,11 +573,14 @@ list said nothing here was, which was wrong once §8.1 landed:
    have added detail rather than direction. §8.8 drafts the vocabulary, including the
    two items this entry named: envelope refetch on zoom or resize, and render-writer
    progress across quanta (§8.3).
-7. **Freeze continuity.** §4.4 makes freezing a running Voice into a partition an
-   instrumental move, and §8.3 makes the render chunked. So while the graph renders
-   across quanta, does the live Voice keep sounding from its own state, and are the
-   two phases the same performance? Musically this is the whole point — you freeze
-   *this* moment, not a re-rendered one — and the answer is not obvious.
+7. **ANSWERED in §8.9 — freeze continuity.** Freezing is a **fork, not a capture**:
+   the Voice's state is snapshotted, the render runs forward from that snapshot
+   while the live Voice continues from the same instant, uninterrupted. The two
+   are the same performance in the only sense available — a shared origin — and
+   diverge only where the graph is nondeterministic. §8.9 draws out the three
+   consequences, two of which constrain work not yet started: every UGen needs
+   copyable state (item 1), the RNG must be explicit and splittable, and
+   controller state advances in the render's *virtual* clock.
 
 ---
 
@@ -1114,3 +1117,134 @@ same performance. Whatever item 7 concludes will add an argument or a sibling ve
 here (a phase-snapshot reference, or a `freeze` that is distinct from `render`). It is
 noted rather than guessed because the musical answer determines the message, not the
 other way round.
+
+### 8.9 Item 7 answered — freeze continuity
+
+**Freezing is a fork, not a capture. The live Voice never stops.**
+
+At the freeze instant the Voice's state is snapshotted. The render runs forward
+*from that snapshot*, filling spare budget across quanta (§8.3), while the live
+Voice continues from the same instant, uninterrupted, on the audio clock. Two
+timelines from one origin.
+
+#### Why a fork, and not the obvious alternative
+
+The tempting reading of "freeze *this* moment" is *record what I just heard* — but
+that mechanism already exists and is not new: a Recording Zone capturing a Voice is
+§4.4's stated route, it runs at 1×, and it is retrospective. If freezing meant
+capture, §4.4 would have named a synonym for something already built, and
+faster-than-realtime would buy nothing — you cannot record four seconds of the past
+in a fraction of a second.
+
+§4.4's own phrasing settles it: *"rendering the **next** four seconds into a
+partition"*. Forward-looking. So freeze is **render seeded by a live state**, and
+the material it produces is what the Voice *is about to play*, made scrubbable
+before it has played it. That is the move worth having: the sound you are hearing
+becomes material without you having to wait out its duration or stop making it.
+
+The two phases are the same performance in the only sense that is actually
+available — a shared origin. They are bit-identical wherever the graph is
+deterministic, and they diverge exactly where it is not. Which turns out to be the
+whole of the interesting content of this question.
+
+#### Three consequences, two of them constraints on work not yet started
+
+**1. Every UGen must have copyable state, and no hidden state.** A fork is a state
+copy. Any UGen holding state the snapshot cannot see — a module-level variable, a
+lazily-built table, a value closed over at construction — produces a frozen render
+that quietly does not match the live Voice. **This is a design constraint on §6
+item 1 that item 7 discovers**: it is nearly free if the UGen set is built under it
+and structural surgery if retrofitted, so it belongs in the set's definition rather
+than in a later bug report. State must be enumerable, not merely present.
+
+**2. The RNG must be explicit and splittable.** §8.7 already ruled that `noise()`
+cannot stay `Math.random()` once evaluation moves to the worklet. Freeze makes that
+doubly binding for a different reason: **a fork cannot share a stream.** The render
+runs *ahead* of the live Voice and both draw from the generator, so a shared stream
+would interleave two consumers at different points in time and make both
+irreproducible. The fork therefore derives a child seed deterministically from the
+parent's state at the fork instant. A welcome side effect: **freezing the same
+Voice state twice yields identical material**, which makes freeze a repeatable act
+rather than a lucky one.
+
+**3. Controller state advances in the render's VIRTUAL clock.** A Voice's
+parameters are driven by controllers that, per §8.7, are worklet-resident and
+evaluated at audio rate. A render running at 30× realtime must advance them at 30×
+too — against rendered sample position, not against `currentTime`. Freezing them at
+their snapshot values instead would mean **a Voice with an LFO freezes into material
+with no LFO movement**, which is obviously wrong and is the kind of thing that is
+only obvious once written down. This is also the clearest retrospective argument for
+§8.7's decision: a client-side, frame-rate controller could not be advanced at 30×
+at all, so the alternative design would have made freeze impossible rather than
+merely awkward.
+
+#### Determinism becomes testable, and should be tested
+
+Consequence 1 is an architectural rule, and this document's own standard is that
+such rules rot unless they are mechanical. This one has a real check available:
+
+> Freeze a noise-free graph into partition A. Record the live Voice into partition
+> B over the same span, at 1×. **The two must be sample-identical.**
+
+Any difference means some UGen holds state the snapshot did not copy — consequence 1
+violated, located, and named, without anyone having to reason about which UGen. It
+costs one harness page and it should be written the same day the first stateful
+UGen lands, not after the set is finished.
+
+#### Scheduling: the live signal has absolute priority
+
+§8.3 established that render writers fill spare budget across quanta. Item 7
+sharpens why that matters here specifically: during a freeze **the same graph is
+running twice** — once live at 1×, once ahead of itself as fast as budget allows.
+
+The rule: **a freeze that takes three seconds instead of one is a slower freeze; a
+freeze that drops a live buffer is a ruined take.** Never trade the second for the
+first. The render gets a per-quantum budget expressed as a fraction of the quantum
+and yields when it is spent.
+
+And the budget should be *computed*, not attempted-and-hoped: §4.9 already commits
+to a fixed-topology graph whose per-sample cost is known before it runs, so the
+engine can work out how many samples fit in the leftover rather than rendering until
+it overruns. That is the same property §4.9 used to justify refusing a snippet that
+would blow the budget, applied to the other end of the problem.
+
+#### Two smaller decisions, recorded rather than left implicit
+
+**A graph edit during a render does not affect that render.** The snapshot was taken
+at freeze time; a `/graph/def` update or a parameter change while the job runs
+applies to the live Voice only. Otherwise "what did I just freeze?" has no answer.
+Consistent with §8.8 rule 4 and with jobs being immutable once started.
+
+**Freeze does not stop the Voice.** It is additive. Freeze-and-stop is two explicit
+messages, for the same reason a re-sent controller description is not a restart: a
+compound gesture that one message performs silently is a gesture you cannot decline.
+
+#### The protocol consequence: a new verb, not an argument
+
+§8.8 left this hole open on purpose. It closes as a sibling verb:
+
+```
+/voice/<n>/freeze  <part:i> <startRel:f> <len:i> <job:i>
+```
+
+alongside the existing `/zone/<type>/<n>/render <graph:i> <startRel:f> <len:i>
+<job:i>`. Two verbs, because they are different musical acts:
+
+- **`render`** — *make material from this program.* Cold state, reproducible from
+  the graph alone.
+- **`freeze`** — *make material from this moment.* Warm state, reproducible only
+  from the state snapshot.
+
+Collapsing them into one verb with an optional voice argument would frame the cold
+case as a degenerate freeze. It is the other way round: **freeze is render plus a
+state seed**, and the seed is the entire content of the feature.
+
+#### What this deliberately does not settle
+
+Whether a partition is readable *while* a freeze fills it. §8.3 offered "unreadable
+until complete, or readable progressively if that turns out to be musically useful",
+and item 7 does not need to choose: it is a per-job flag, not a structural
+commitment. Progressive read is the more interesting default — it makes the freeze
+audible as it lands, which is very much this instrument's temperament — but it
+interacts with the `unsafe` flag and with a playback zone already reading the
+region, so it is a thing to try rather than a thing to specify. Left to use.
