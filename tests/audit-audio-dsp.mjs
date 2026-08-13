@@ -1156,6 +1156,65 @@ console.log('\nworklet-resident controllers');
       z.rateCur >= 0.5 - 1e-3 && z.rateCur <= 2 + 1e-3, `rateCur ${z.rateCur}`);
   }
 
+  // Response curves (§8.7). The 16384-point array `ResponseCurve` already holds
+  // is SHIPPED, not reimplemented, so "one definition of an S-curve" is literal.
+  {
+    const TABLE_N = 16384;
+    /** The same curve the client would hold: y = x². */
+    const squared = () => {
+      const t = new Float32Array(TABLE_N);
+      for (let i = 0; i < TABLE_N; i++) { const x = i / (TABLE_N - 1); t[i] = x * x; }
+      return t;
+    };
+    const rig = ({ table = null, invert = 0, tableId = 0 } = {}) => {
+      const s = makeEngine({ tapeSeconds: 1 });
+      if (table) s.send('/table/0/data', table.buffer);
+      s.send('/ctrl/0/lfo', 2, SR / 128, 0.5, 0);        // sawtooth, one cycle per quantum
+      s.send('/ctrl/0/range', 0, 1, 0, invert);
+      if (table || tableId >= 0) s.send('/ctrl/0/table', table ? tableId : -1);
+      s.send('/ctrl/0/target', '/voice/0/level');
+      s.run(1);
+      return s;
+    };
+
+    // Compared against the SAME engine with no curve attached, so the sweep's
+    // own phase convention cancels out. Against a hand-computed x = i/128 the
+    // expectation is a sample out — the phase advances before the value is
+    // taken — and the first version of this check was wrong in exactly that way.
+    const plain = rig({}).p._ctrls[0].buf;                 // x
+    const shaped = rig({ table: squared() }).p._ctrls[0].buf;   // f(x) = x²
+    const inverted = rig({ table: squared(), invert: 1 }).p._ctrls[0].buf;
+    {
+      let worst = 0, worstInv = 0;
+      for (let i = 8; i < 120; i++) {
+        worst = Math.max(worst, Math.abs(shaped[i] - plain[i] * plain[i]));
+        // Invert BEFORE the curve, as `setNormalized` does: f(1 − x), never
+        // 1 − f(x). With y = x² the two are plainly different shapes.
+        worstInv = Math.max(worstInv, Math.abs(inverted[i] - Math.pow(1 - plain[i], 2)));
+      }
+      check('an uploaded curve shapes the sweep', shaped[64] < plain[64] * 0.8,
+        `${shaped[64].toFixed(4)} vs ${plain[64].toFixed(4)} unshaped`);
+      check('the curve is the client\'s, sample for sample', worst < 1e-3,
+        `worst deviation ${worst.toExponential(2)}`);
+      check('invert is applied BEFORE the response curve', worstInv < 1e-3,
+        `worst deviation ${worstInv.toExponential(2)} — 1 − f(x) instead of f(1 − x)`);
+    }
+
+    // An unfilled slot is refused, not treated as identity. A curve that
+    // silently stops shaping is the failure the eligibility rule exists for.
+    {
+      const s = makeEngine();
+      s.send('/ctrl/0/table', 3);
+      check('binding an EMPTY table slot is refused', refusals(s).length === 1,
+        'identity-by-default is a response curve that quietly does nothing');
+      s.send('/table/0/data', new Float32Array(256).buffer);
+      check('a wrong-length upload is refused', refusals(s).length === 2,
+        'a 256-point table stretched over 16384 entries is not an error, just wrong');
+      s.send('/ctrl/0/table', -1);
+      check('-1 detaches the curve without complaint', refusals(s).length === 2);
+    }
+  }
+
   // The echo (§8.7's inversion). Off by default — an echo nobody reads is 60
   // messages a second of nothing — and aggregated to frame cadence (rule 7).
   {

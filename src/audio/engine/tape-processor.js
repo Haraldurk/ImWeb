@@ -81,6 +81,16 @@ const ENV_READS_PER_QUANTUM = 1 << 17;
  */
 const MAX_CTRLS = 16;
 
+/**
+ * Response-curve slots (§8.7). One per controller is the worst case and the
+ * simplest allocator: the client sends a table into the slot with the same
+ * number as the controller that uses it, so there is no sharing scheme to keep
+ * consistent. 16384 floats each — the resolution `ResponseCurve` already uses —
+ * so a full set is 1 MB, uploaded on change and never per frame.
+ */
+const MAX_TABLES = MAX_CTRLS;
+const TABLE_SIZE = 16384;
+
 /** LFO shapes, in `src/controls/LFO.js` order — that order is the wire format. */
 const SHAPE_SINE = 0, SHAPE_TRI = 1, SHAPE_SAW = 2;
 const SHAPE_RAMP = 3, SHAPE_SQUARE = 4, SHAPE_SH = 5;
@@ -206,6 +216,8 @@ function makeCtrl(seed) {
     mode: 0,                       // 0 free-running, 1 one-shot
     phase: 0,                      // offset, 0..1
     lo: 0, hi: 1, map: 0,          // output range in the target's units
+    invert: 0,                     // applied to the sweep BEFORE the table
+    table: -1,                     // response-curve slot, or -1 for none
     t: 0,                          // running phase
     running: true,
     shValue: 0.5,
@@ -295,6 +307,13 @@ class TapeProcessor extends AudioWorkletProcessor {
     for (let i = 0; i < MAX_VOICES; i++) this._voices.push(makeVoice(i + 1));
     this._ctrls = [];
     for (let i = 0; i < MAX_CTRLS; i++) this._ctrls.push(makeCtrl(i + 1));
+    /**
+     * Uploaded response curves, one slot per controller. Null until filled —
+     * and a controller pointing at a null slot is refused rather than run
+     * unshaped, because a curve that silently stops applying is exactly the
+     * silent-feature-loss failure the eligibility rule exists to prevent.
+     */
+    this._tables = new Array(MAX_TABLES).fill(null);
     /** Echo is opt-in (§8.7) — nobody reads it until the client asks. */
     this._ctrlEcho = false;
 
@@ -421,9 +440,11 @@ class TapeProcessor extends AudioWorkletProcessor {
       case '/ctrl/<n>/target':    return this._ctrlTarget(idx[0], v[0]);
       case '/ctrl/<n>/lfo':       return this._ctrlLfo(idx[0], v[0], v[1], v[2], v[3]);
       case '/ctrl/<n>/phase':     return this._ctrlPhase(idx[0], v[0]);
-      case '/ctrl/<n>/range':     return this._ctrlRange(idx[0], v[0], v[1], v[2]);
+      case '/ctrl/<n>/range':     return this._ctrlRange(idx[0], v[0], v[1], v[2], v[3]);
       case '/ctrl/<n>/retrigger': return this._ctrlRetrigger(idx[0]);
       case '/ctrl/<n>/clear':     return this._ctrlClear(idx[0]);
+      case '/table/<n>/data':     return this._tableData(idx[0], v[0]);
+      case '/ctrl/<n>/table':     return this._ctrlTable(idx[0], v[0]);
       case '/ctrl/echo':          this._ctrlEcho = !!v[0]; return;
 
       case '/engine/glide':
@@ -646,7 +667,50 @@ class TapeProcessor extends AudioWorkletProcessor {
     c.phase = next;
   }
 
-  _ctrlRange(i, lo, hi, map) {
+  /**
+   * Fill a response-curve slot. The blob is the same 16384-float array
+   * `ResponseCurve` holds client-side — shipped rather than reimplemented, so
+   * "one definition of an S-curve" is literal (§8.7).
+   *
+   * The size is checked because a wrong-length upload would otherwise read as a
+   * curve that is merely a strange shape: a 256-point table stretched over a
+   * 16384-entry lookup is not an error anywhere, it is just wrong.
+   */
+  _tableData(i, buffer) {
+    if (!Number.isInteger(i) || i < 0 || i >= MAX_TABLES) {
+      return this._refuse(REFUSE_BAD_RANGE, `table ${i} outside 0..${MAX_TABLES - 1}`);
+    }
+    const data = new Float32Array(buffer);
+    if (data.length !== TABLE_SIZE) {
+      return this._refuse(REFUSE_BAD_RANGE,
+        `table ${i} has ${data.length} points, expected ${TABLE_SIZE}`);
+    }
+    this._tables[i] = data;
+  }
+
+  _ctrlTable(i, id) {
+    const c = this._ctrl(i);
+    if (!c) return;
+    if (id < 0) { c.table = -1; return; }
+    if (!(Number.isInteger(id) && id < MAX_TABLES && this._tables[id])) {
+      // Refused, not ignored. An unfilled slot treated as identity is a
+      // response curve that silently stops shaping the sweep — the exact
+      // failure the client's eligibility rule refuses to risk.
+      return this._refuse(REFUSE_BAD_RANGE, `table ${id} is empty or out of range`);
+    }
+    c.table = id;
+  }
+
+  /** Linear-interpolated lookup — `ResponseCurve.apply`, sample for sample. */
+  _tableApply(table, x) {
+    const n = x < 0 ? 0 : x > 1 ? 1 : x;
+    const f = n * (TABLE_SIZE - 1);
+    const i0 = Math.floor(f);
+    const i1 = i0 + 1 < TABLE_SIZE ? i0 + 1 : TABLE_SIZE - 1;
+    return table[i0] + (table[i1] - table[i0]) * (f - i0);
+  }
+
+  _ctrlRange(i, lo, hi, map, invert) {
     const c = this._ctrl(i);
     if (!c) return;
     // Exponential mapping needs endpoints on the same side of zero — it is a
@@ -660,6 +724,7 @@ class TapeProcessor extends AudioWorkletProcessor {
     c.lo = lo;
     c.hi = hi;
     c.map = map === 1 ? 1 : 0;
+    c.invert = invert ? 1 : 0;
   }
 
   /**
@@ -726,7 +791,19 @@ class TapeProcessor extends AudioWorkletProcessor {
             c.t -= Math.floor(c.t);
           }
         }
-        const x = this._ctrlShape(c, c.t);
+        let x = this._ctrlShape(c, c.t);
+        // Invert FIRST, then the table, then the range — the order
+        // `Parameter.setNormalized` uses. It used to be folded into a swapped
+        // range instead, which is identical arithmetic while there is no table
+        // and wrong the moment there is one: `table(1 − x)` mapped over lo..hi
+        // is not `table(x)` mapped over hi..lo.
+        if (c.invert) x = 1 - x;
+        // The response curve shapes the SWEEP, before the range maps it onto
+        // the target's units — the same order as `Parameter.setNormalized`,
+        // where the table is applied to the normalized value and the range
+        // follows. Reversing the two would make an S-curve mean something
+        // different in audio than it does everywhere else in the instrument.
+        if (c.table >= 0) x = this._tableApply(this._tables[c.table], x);
         // Exponential is a RATIO sweep: equal fractions of the range are equal
         // musical intervals, which is the same reason pitch is registered in
         // semitones on the client side (LEARNED 2026-08-08).
@@ -737,6 +814,9 @@ class TapeProcessor extends AudioWorkletProcessor {
       // Longer-than-128 blocks hold the last value rather than reading past the
       // end of the buffer — see RENDER_QUANTUM.
       for (let i = n; i < frames; i++) c.buf[i] = c.buf[n - 1];
+      // PRE-invert and PRE-table, deliberately: the client feeds this straight
+      // back through `setNormalized`, which applies both itself. Echoing the
+      // shaped value would have them applied twice.
       c.raw = this._ctrlShape(c, c.t);
       c.out = c.buf[n - 1];
     }

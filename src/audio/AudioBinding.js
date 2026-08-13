@@ -27,6 +27,9 @@ import { partitionSpan, zoneSpan, clampToPartition } from './tape-geometry.js';
 import {
   AUDIO_TARGETS, describeController, descDiff, semitoneToHz,
 } from './ctrl-handoff.js';
+// The ONE table resolver (§8.7 needs the curve to upload it; ParameterSystem
+// applies it). See tests/audit-table-write-paths.mjs for both halves of that.
+import { resolveTable } from '../controls/ParameterSystem.js';
 
 const PARTITION_SLOTS = 4;
 
@@ -276,8 +279,17 @@ export class AudioBinding {
       // a quantum with defaults it was never given.
       const d = descDiff(had, want);
       if (d.lfo) this.engine.ctrlLfo(slot, want.shape, want.hz, want.width, want.mode);
-      if (d.range) this.engine.ctrlRange(slot, want.lo, want.hi, want.map);
+      if (d.range) this.engine.ctrlRange(slot, want.lo, want.hi, want.map, want.invert);
       if (d.phase) this.engine.ctrlPhase(slot, want.phase);
+      if (d.table) {
+        // The curve first, THEN the pointer to it — the engine refuses a
+        // controller bound to an empty slot, and it is right to: a table that
+        // silently stops shaping is the failure this whole step removes.
+        // A copy, because the send transfers the buffer and the client keeps
+        // using its own array.
+        if (want.table) this.engine.tableData(slot, Float32Array.from(want.table.points));
+        this.engine.ctrlTable(slot, want.table ? slot : -1);
+      }
       if (d.bind) {
         this.engine.ctrlTarget(slot, entry.address);
         this._owned.set(entry.id, slot);
@@ -310,7 +322,13 @@ export class AudioBinding {
    */
   _describe(p, entry) {
     const c = this.controllers?.lfos?.get(p.id);
-    return c?.lfo ? describeController(p, c.lfo, entry) : null;
+    if (!c?.lfo) return null;
+    // Resolved through ParameterSystem's own resolver, not re-derived: the
+    // `'global'` table slot is an indirection through another parameter, and a
+    // second copy of that lookup is how the display and the sound end up
+    // disagreeing about which curve is in force. Resolved here, APPLIED in the
+    // worklet — never both.
+    return describeController(p, c.lfo, entry, p.table ? resolveTable(p) : null);
   }
 
   /**

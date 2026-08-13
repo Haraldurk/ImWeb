@@ -87,12 +87,18 @@ console.log('\nwhat stays on the rAF path, and why');
     'the worklet has no beat clock — it would free-run at whatever Hz it last held');
   check('an xmap LFO is NOT taken', describeController(param(), lfo({ mode: 'xmap' }), entry) === null,
     'externally triggered, and the trigger is client-side');
-  check('a param with a response table is NOT taken',
-    describeController({ ...param(), table: 'sCurve' }, lfo(), entry) === null,
-    'the table would silently stop shaping the sweep');
+  // Response tables no longer disqualify — they travel as data. But a table
+  // NAMED and not resolvable still must, because the client would then be
+  // shaping the row's value with a curve the worklet has never seen.
+  const curve = { points: new Float32Array(16384) };
+  check('a param with a RESOLVED response table is taken',
+    !!describeController({ ...param(), table: 'sCurve' }, lfo(), entry, curve));
+  check('a param whose table cannot be resolved is NOT taken',
+    describeController({ ...param(), table: 'sCurve' }, lfo(), entry, null) === null,
+    'the sweep would be shaped by a curve the worklet has never seen');
   check('a param with slew is NOT taken',
     describeController({ ...param(), slew: 0.2 }, lfo(), entry) === null,
-    'the seven slew curves are not in the worklet yet, so it would step');
+    'the slew curves are still client-side, so it would step');
   check('an unknown shape is NOT taken',
     describeController(param(), lfo({ shape: 'wobble' }), entry) === null);
   check('a non-finite range is NOT taken',
@@ -111,11 +117,15 @@ console.log('\nthe description reproduces what the client would have done');
   check('phase travels as the OFFSET it is', d.phase === 0.25);
   check('ctrlMin/ctrlMax become the range', d.lo === 0.2 && d.hi === 0.8);
 
+  // Invert travels as a FLAG and the range keeps its order. Swapping the
+  // endpoints instead is identical arithmetic while there is no response curve
+  // and wrong the moment there is one, because `setNormalized` inverts BEFORE
+  // the table: `table(1 − x)` over lo..hi is not `table(x)` over hi..lo.
   const inv = describeController(
     { min: 0, max: 1, ctrlMin: 0.2, ctrlMax: 0.8, slew: 0, invert: true },
     new LFO({ shape: 'sine' }), AUDIO_TARGETS[2]);
-  check('invert is the range read backwards, not a flag on the wire',
-    inv.lo === 0.8 && inv.hi === 0.2, `${inv.lo}..${inv.hi}`);
+  check('invert travels as a flag, applied before the table',
+    inv.invert === 1 && inv.lo === 0.2 && inv.hi === 0.8, `${inv.lo}..${inv.hi}, invert ${inv.invert}`);
 
   // Pitch: semitones out, Hz in, exponential. The map is not an approximation
   // of the semitone sweep — a linear ramp in semitones IS a constant-ratio
@@ -152,6 +162,23 @@ console.log('\nthe reconcile sends only what changed');
   check('a phase change sends the phase message only',
     !phase.lfo && !phase.range && phase.phase && !phase.bind,
     'and NOT a retrigger — phase slides the wave, it does not restart it');
+  const inv = descDiff(base, { ...base, invert: 1 });
+  check('an invert change rides on the range message', inv.range && !inv.lfo);
+
+  // A curve upload is 64 KB, so it must fire on a real change and never on a
+  // re-send. Reference identity is exactly the right test: `TableManager.set()`
+  // replaces the curve object, so an edit changes it and a redraw does not.
+  const t1 = { points: new Float32Array(16384) };
+  const t2 = { points: new Float32Array(16384) };
+  check('no table, no upload', !descDiff({ ...base, table: null }, { ...base, table: null }).table);
+  check('attaching a curve uploads it',
+    descDiff({ ...base, table: null }, { ...base, table: t1 }).table);
+  check('the same curve object does not re-upload',
+    !descDiff({ ...base, table: t1 }, { ...base, table: t1 }).table,
+    '64 KB a frame for a curve nobody touched');
+  check('a replaced curve object DOES re-upload',
+    descDiff({ ...base, table: t1 }, { ...base, table: t2 }).table,
+    'editing a table replaces the object — a stale curve in the worklet is silent');
 }
 
 // ── 5. THE FALLBACK PATH: both evaluators agree ────────────────────────────

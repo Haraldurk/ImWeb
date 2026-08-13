@@ -146,9 +146,23 @@ export const CLIENT_TO_ENGINE = Object.freeze({
   // live here rather than in the client's semitone conversion, because the
   // client would otherwise have to send a value per sample, which is the whole
   // thing this section removes.
-  '/ctrl/<n>/range': 'ffi',        // lo, hi, map
+  // lo, hi, map, invert. Invert is here rather than folded into a swapped range
+  // because it must be applied to the normalized sweep BEFORE the response
+  // curve, exactly as `Parameter.setNormalized` does — the swap is identical
+  // arithmetic only while there is no table.
+  '/ctrl/<n>/range': 'ffii',
   '/ctrl/<n>/retrigger': '',       // explicit, and the ONLY thing that restarts
   '/ctrl/<n>/clear': '',
+  // A response curve, 16384 floats — the SAME array `ResponseCurve` holds, so
+  // there is one definition of an S-curve rather than a client one and a
+  // worklet one that drift (§8.7). Bulk (rule 2): announced by this control
+  // message and transferred at zero copy.
+  '/table/<n>/data': 'b',
+  // Which uploaded table shapes this controller's sweep, or -1 for none. A
+  // table id whose slot was never filled is REFUSED, not treated as identity:
+  // a curve that silently stops shaping is the failure this whole step exists
+  // to prevent.
+  '/ctrl/<n>/table': 'i',
   // Echo on/off. §8.7's inversion: for a controller feeding audio the worklet is
   // authoritative and echoes values back for the video side and the UI to read.
   // Off by default — an echo nobody reads is 60 messages a second of nothing.
@@ -210,9 +224,7 @@ export const DEFERRED = Object.freeze({
   // expression controllers (whose wire format already exists — ExprCompiler's
   // instruction list, c3b5b12).
   '/ctrl/<n>/random': 'ff',        // hz, slew seconds
-  '/ctrl/<n>/table': 'i',          // response table id, -1 for none
   '/ctrl/<n>/slew': 'if',          // curve id, seconds
-  '/table/<n>/data': 'b',
   '/expr/<n>/code': 'b',
   '/job/<n>/progress': 'ii',
   '/job/<n>/done': '',

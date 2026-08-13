@@ -295,7 +295,12 @@ export class AudioEngine {
     this._send(`/ctrl/${slot}/lfo`, shape | 0, hz, width, mode | 0);
   }
   ctrlPhase(slot, phase) { this._send(`/ctrl/${slot}/phase`, phase); }
-  ctrlRange(slot, lo, hi, map = 0) { this._send(`/ctrl/${slot}/range`, lo, hi, map | 0); }
+  ctrlRange(slot, lo, hi, map = 0, invert = 0) {
+    this._send(`/ctrl/${slot}/range`, lo, hi, map | 0, invert ? 1 : 0);
+  }
+  /** @param {Float32Array} points the 16384 a `ResponseCurve` already holds. */
+  tableData(slot, points) { this._send(`/table/${slot}/data`, points); }
+  ctrlTable(slot, id) { this._send(`/ctrl/${slot}/table`, id | 0); }
   /** The ONLY restart. Everything else is an update (rule 4). */
   ctrlRetrigger(slot) { this._send(`/ctrl/${slot}/retrigger`); }
   ctrlClear(slot) { this._send(`/ctrl/${slot}/clear`); }

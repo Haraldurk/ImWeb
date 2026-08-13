@@ -69,30 +69,40 @@ export function semitoneToHz(semitones) {
  *                        source of truth for what the controller is doing NOW
  * @param {object} entry  the AUDIO_TARGETS row
  */
-export function describeController(param, lfo, entry) {
+export function describeController(param, lfo, entry, table = null) {
   if (!param || !lfo || !entry) return null;
   const shape = CTRL_SHAPES[lfo.shape];
   if (shape === undefined) return null;
   if (lfo.beatSync) return null;               // no beat clock in the worklet
   if (lfo.mode === 'xmap') return null;        // externally triggered, client-side
-  if (param.table) return null;                // response tables are §8.7's next step
-  if (param.slew > 0) return null;             // so are the seven slew curves
-  let lo = param.ctrlMin ?? param.min;
-  let hi = param.ctrlMax ?? param.max;
+  if (param.slew > 0) return null;             // the slew curves are still client-side
+  // A table NAMED but not resolvable is the one case that must refuse rather
+  // than proceed: the client would shape the sweep with a curve the worklet has
+  // never seen, so what is heard would stop matching what the row says.
+  if (param.table && !table) return null;
+  const lo = param.ctrlMin ?? param.min;
+  const hi = param.ctrlMax ?? param.max;
   if (!(Number.isFinite(lo) && Number.isFinite(hi))) return null;
-  // `invert` is `1 - n`, which over a monotonic map is exactly the range read
-  // backwards — so it costs a swap here rather than a flag on the wire.
-  if (param.invert) { const t = lo; lo = hi; hi = t; }
-  if (entry.unit === 'semitone') { lo = semitoneToHz(lo); hi = semitoneToHz(hi); }
   return {
     shape,
     hz: lfo.hz,
     width: lfo.width,
     mode: lfo.mode === 'shot' ? 1 : 0,
     phase: lfo.phase,
-    lo,
-    hi,
+    // Endpoints in the TARGET's units, in the parameter's own order.
+    //
+    // `invert` travels as its own flag rather than as a swapped range. The swap
+    // is identical arithmetic while there is no response curve and wrong the
+    // moment there is one, because `setNormalized` inverts BEFORE the table:
+    // `table(1 − x)` mapped over lo..hi is not `table(x)` mapped over hi..lo.
+    lo: entry.unit === 'semitone' ? semitoneToHz(lo) : lo,
+    hi: entry.unit === 'semitone' ? semitoneToHz(hi) : hi,
     map: entry.map,
+    invert: param.invert ? 1 : 0,
+    // The resolved `ResponseCurve`, by reference. `TableManager.set()` replaces
+    // the object rather than mutating it, so a reference change IS an edit —
+    // which is what makes a per-frame identity comparison enough to catch one.
+    table,
   };
 }
 
@@ -101,8 +111,14 @@ export function descDiff(had, want) {
   return {
     lfo: !had || had.shape !== want.shape || had.hz !== want.hz
       || had.width !== want.width || had.mode !== want.mode,
-    range: !had || had.lo !== want.lo || had.hi !== want.hi || had.map !== want.map,
+    range: !had || had.lo !== want.lo || had.hi !== want.hi
+      || had.map !== want.map || had.invert !== want.invert,
     phase: !had || had.phase !== want.phase,
+    // 64 KB per upload, so this must be a real change and not a re-send. A
+    // reference comparison is exactly right: `TableManager.set()` replaces the
+    // curve object, so an edit changes the identity and a redraw of the same
+    // curve does not.
+    table: !had || had.table !== want.table,
     bind: !had,
   };
 }
