@@ -580,16 +580,18 @@ list said nothing here was, which was wrong once §8.1 landed:
    surface is the existing draw surface or a separate one. They are deliberately two
    instruments sharing a gesture (§4.6); whether they share a *widget* is a UI
    question, not an architectural one.
-5b. **§8.6's single AudioContext is only half implemented, and that is a recorded
-   DEFERRAL rather than an open design question.** The engine owns its context, but
-   `ControllerManager.enableSound()` still creates its own — and its own mic capture
-   — so today the app can run two contexts and open the microphone twice. §8.6
-   settled that there is one context, owned by the engine, precisely to avoid the
-   two-clock drift that follows. Rewiring the sound-reactive controller layer as a
-   *consumer* of the engine's analyser tap blocks nothing until the recording path
-   meets the controller layer, which is why it has not been done. **It has to land
-   before anything is built on the second context**, because a tap added there
-   inherits the drift instead of exposing it.
+5b. **CLOSED 2026-08-13 (step 4) — §8.6's single AudioContext is implemented.**
+   This was a recorded deferral, not an open design question: the engine owned its
+   context while `ControllerManager.enableSound()` still built its own, so the app
+   could run two contexts and open the microphone twice. It is now one, and the
+   count was wrong in this entry's favour — `VectorscopeInput.initMic()` held a
+   **third**. See the note in §8.6. What the closing actually turned on was not the
+   sharing but the teardown: `AudioEngine.close()` used to close the context, which
+   under one shared context takes down every consumer silently, so it suspends
+   instead and the engine restarts on the surviving context.
+   **Still open from §8.6, and deliberately not built here:** drawing the loop in
+   the signal path display, and the headphones/speakers monitoring switch (a setup
+   act, `group: 'global'`, never a controller target).
 6. **ANSWERED in §8.8 — the protocol vocabulary itself.** This item said "pending the
    RoSa v2 Implementation manual (§2); do not invent one before reading it." **That
    precondition cannot be met and the item is unblocked by its own impossibility** —
@@ -731,6 +733,16 @@ coupling claim dies with it. `ControllerManager.enableSound()`
 (`src/controls/ControllerManager.js:862`) currently constructs its own and becomes a
 *consumer* of the engine's instead.
 
+> **BUILT 2026-08-13 (step 4).** `AudioEngine.context()` is the only
+> `new AudioContext` in `src/`, and an audit check fails if a second appears.
+> There turned out to be **three**, not two: `VectorscopeInput.initMic()` held one
+> as well, with a second `getUserMedia` beside it. Both consumers now take the
+> context and the tap by **injection** (`audioHost`, set in main.js) rather than
+> by import, so `AudioBinding` stays the only module that sees both halves.
+> `close()` also had to change — it suspends now instead of closing, because
+> closing the shared context left every consumer reading zeros off a dead graph
+> with nothing thrown and nothing logged.
+
 State the cost rather than let it be discovered: **the audio half is not purely
 additive.** It reaches back into shipped code.
 
@@ -755,6 +767,14 @@ the grammar the project already speaks: free `srcA`/`srcB` on the mix buses,
 > zone or voice outputs** — equally enumerable, and it stays in the signal domain,
 > which is what keeps it consistent with `srcA`/`srcB` selecting things that produce
 > frames rather than buffers that store them.
+
+> **As built, `audio.tapSrc` offers Mic and Master Out only.** Zone and voice
+> outputs are absent because the worklet declares ONE output — every zone mixes
+> into the bus — so listing them today would be a menu of four names for the same
+> node, which is worse than a short menu. They join the list when per-zone outputs
+> do. The tap is also **not a protocol address**: both points are nodes on the
+> client's side of the port, so selecting between them is Web Audio routing and
+> never a message, and that stays true when the list grows.
 
 Three consequences:
 

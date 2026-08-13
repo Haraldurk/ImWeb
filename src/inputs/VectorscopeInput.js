@@ -110,14 +110,27 @@ export class VectorscopeInput {
 
   // ── Audio init ──────────────────────────────────────────────────────────────
 
+  /**
+   * Attach to the engine's analyser tap (§8.6).
+   *
+   * **This used to open a third `AudioContext` and a second microphone.** The
+   * blueprint's item 5b named two contexts; the third was found here. It is the
+   * same fix and the same reason: one context, owned by the engine, or the
+   * clocks drift.
+   *
+   * `this.audioHost` is injected by main.js — see the note on
+   * `ControllerManager.audioHost` for why this is not an import.
+   */
   async initMic(deviceId) {
     if (this._active) this.stop();
+    if (!this.audioHost) {
+      console.warn('[Vectorscope] no audio host attached');
+      return false;
+    }
     try {
-      const audioConstraints = deviceId ? { deviceId: { exact: deviceId } } : true;
-      const stream   = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints, video: false });
-      this._stream   = stream;
-      this._audioCtx = new AudioContext();
-      this._source   = this._audioCtx.createMediaStreamSource(stream);
+      const { ctx, tap } = await this.audioHost.ensureTap({ deviceId });
+      this._audioCtx = ctx;
+      this._source   = tap;
       this._setup();
       this._active   = true;
       return true;
@@ -127,11 +140,21 @@ export class VectorscopeInput {
     }
   }
 
+  /**
+   * Detach — **it does not stop the microphone or close the context**, because
+   * it no longer owns either. It used to do both, which under one shared context
+   * would take the audio engine and the sound controllers down with the
+   * vectorscope, silently: reading a closed context's analyser returns zeros
+   * rather than throwing.
+   *
+   * Only this node's own branch comes down. Disconnecting the SOURCE is what
+   * would reach outside it — the tap feeds other consumers — so the splitter is
+   * the thing that gets disconnected.
+   */
   stop() {
     if (!this._active) return;
-    this._stream?.getTracks().forEach(t => t.stop());
-    this._source?.disconnect();
-    try { this._audioCtx?.close(); } catch (_) {}
+    try { this._source?.disconnect(this._splitter); } catch (_) { /* already gone */ }
+    this._splitter?.disconnect();
     this._active   = false;
     this._stream   = null;
     this._source   = null;

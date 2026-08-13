@@ -21,7 +21,7 @@
  * site, not one per call.
  */
 
-import { AudioEngine } from './AudioEngine.js';
+import { AudioEngine, TAP } from './AudioEngine.js';
 
 const PARTITION_SLOTS = 4;
 
@@ -36,6 +36,10 @@ export class AudioBinding {
     this._unsubs = [];
     // True while a param is being written BECAUSE the engine said so. See _on().
     this._fromEngine = false;
+    /** How many analyser consumers hold the tap — see stop() and ensureTap(). */
+    this._tapConsumers = 0;
+    /** Selected input device for the one microphone, or null for the default. */
+    this._micDevice = null;
     /** Set by main.js to surface refusals and errors in the UI. */
     this.onStatus = null;
   }
@@ -107,13 +111,80 @@ export class AudioBinding {
     if (!this.running) return;
     this._unsubs.forEach((u) => u());
     this._unsubs = [];
-    this.engine.closeMic();
+    // The mic is a device and Audio Off releases it — but only if nothing else
+    // is listening. A sound-reactive controller tapping the mic is a consumer
+    // that never asked for the engine and must not be silenced by it (§8.6:
+    // the controller layer is a consumer of the tap, not a client of the tape).
+    if (!this._tapConsumers) this.engine.closeMic();
     await this.engine.close();
     this.running = false;
-    // A fresh engine for the next start: AudioEngine holds a closed
-    // AudioContext and a resolved handshake promise, neither of which can be
-    // reused, and addModule() cannot be undone on a context anyway.
-    this.engine = new AudioEngine();
+    // NOT a fresh AudioEngine. It used to be one, because close() closed the
+    // context and a closed context cannot be reused — but under §8.6 there is
+    // exactly one context for the session and the engine suspends it instead.
+    // Replacing the engine here would build a second one on the next start,
+    // which is the very thing this step exists to remove.
+  }
+
+  /**
+   * The §8.6 analyser tap, for consumers that analyse rather than drive —
+   * `ControllerManager`'s sound controllers, the vectorscope. Returns the one
+   * context and a node carrying the selected signal.
+   *
+   * Deliberately available **without** the engine running. These consumers
+   * predate the audio half and worked on their own contexts; making them wait
+   * for Audio On would be a regression, and §8.6's answer to the boot ordering
+   * is a context that exists while suspended, not a context that does not exist.
+   *
+   * @param {{deviceId?: string}} opts a specific input device, if the caller
+   *   has a picker for one (the vectorscope does). Selecting a device reopens
+   *   the shared mic, so it is the LAST caller that wins — one microphone, like
+   *   one context.
+   * @returns {Promise<{ctx: AudioContext, tap: GainNode}>}
+   */
+  async ensureTap(opts = {}) {
+    const ctx = this.engine.context();
+    this._tapConsumers = (this._tapConsumers || 0) + 1;
+    if (opts.deviceId && opts.deviceId !== this._micDevice) {
+      this._micDevice = opts.deviceId;
+      if (this.engine.micOpen) this.engine.closeMic();  // reopen on the new device
+    }
+    await this._applyTap();
+    return { ctx, tap: this.engine.tap };
+  }
+
+  /** Constraints for the one microphone (§8.1: no processing in the path). */
+  _micConstraints() {
+    return {
+      echoCancellation: false, noiseSuppression: false, autoGainControl: false,
+      ...(this._micDevice ? { deviceId: { exact: this._micDevice } } : {}),
+    };
+  }
+
+  /**
+   * Route the tap, opening the mic if that is what it now points at. Opening a
+   * device is a visible act, so it goes through the `audio.mic` param rather
+   * than round the back of it — otherwise the Mic toggle reads off while the
+   * light on the machine is on.
+   */
+  async _applyTap() {
+    const which = this.ps.get('audio.tapSrc').value;
+    this.engine.setTap(which);
+    if (which !== TAP.MIC) {
+      if (!this.running) this._say('tap is Master Out, which is silent until Audio On');
+      return;
+    }
+    // Open the device HERE rather than by writing the param and hoping. The
+    // param only reaches the engine while subscriptions are live — off, or
+    // when the value is already 1 because the device was reopened on another
+    // input, the write fires nothing and the mic stays shut.
+    if (!this.engine.micOpen) {
+      try { await this.engine.openMic(this._micConstraints()); }
+      catch (e) { this._say(`mic denied: ${e.message}`); this.ps.set('audio.mic', 0); return; }
+    }
+    // Reflect the open device in the toggle without asking the engine to open
+    // it again — the same "this is a fact, not a command" path the engine's own
+    // callbacks use.
+    if (!this.ps.get('audio.mic').value) this._applyFromEngine('audio.mic', 1);
   }
 
   // ── translation ───────────────────────────────────────────────────────────
@@ -181,6 +252,7 @@ export class AudioBinding {
     }
     this.engine.playRate(0, g('aplay.rate'));
     this.engine.recDynamic(0, !!g('arec.dynamic'));
+    this.engine.setTap(g('audio.tapSrc'));
   }
 
   // ── subscriptions ─────────────────────────────────────────────────────────
@@ -221,12 +293,20 @@ export class AudioBinding {
 
     this._on('audio.mic', async (v) => {
       if (v) {
-        try { await this.engine.openMic(); this._say('mic open — USE HEADPHONES'); }
+        try { await this.engine.openMic(this._micConstraints()); this._say('mic open — USE HEADPHONES'); }
         catch (e) { this._say(`mic denied: ${e.message}`); this.ps.set('audio.mic', 0); }
       } else {
         this.engine.closeMic();
+        // Closing the mic while the tap points at it deafens every analyser
+        // consumer — the sound controllers stop moving. Say so: a controller
+        // that has quietly stopped reads as a broken controller.
+        if (this._tapConsumers && this.ps.get('audio.tapSrc').value === TAP.MIC) {
+          this._say('mic closed — sound controllers have no input while the tap is Mic');
+        }
       }
     });
+
+    this._on('audio.tapSrc', () => this._applyTap());
 
     for (let i = 0; i < PARTITION_SLOTS; i++) {
       for (const key of ['start', 'len']) {

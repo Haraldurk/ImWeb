@@ -13,6 +13,18 @@
 import workletUrl from './engine/tape-processor.js?url';
 import { PROTO_VERSION, REFUSE, encode } from './protocol.js';
 
+/**
+ * Tap points (§8.6). **Signals, never storage** — you cannot tap a partition,
+ * because nothing flows out of one until a Playback Zone reads it.
+ *
+ * Deliberately NOT protocol addresses: both points are nodes on the client's
+ * side of the message port, so selecting between them is Web Audio routing and
+ * never a message. Zone and voice outputs join this list when the worklet grows
+ * per-zone outputs — it declares one today — and the selection stays client-side
+ * even then.
+ */
+export const TAP = { MIC: 0, MASTER: 1 };
+
 export class AudioEngine {
   constructor() {
     this.ctx = null;
@@ -32,6 +44,31 @@ export class AudioEngine {
     this._mic = null;
     this._micStream = null;
 
+    /**
+     * The §8.6 analyser tap: a signal, selected, that consumers hang their own
+     * analysers off. A GainNode rather than an AnalyserNode because the two
+     * consumers want different analysis — `ControllerManager` one 512-point
+     * FFT, `VectorscopeInput` a stereo splitter into two 2048-point ones — and
+     * an engine that owned one analyser would be dictating the resolution of
+     * every future reader.
+     *
+     * **It is never connected to `destination`, and that is load-bearing.**
+     * Tapping the mic must not make the mic audible: §8.1's loop is meant to
+     * close acoustically through the room, where the performer can hear it
+     * coming, not electrically inside the graph where nothing can be done about
+     * it. An AnalyserNode is pulled even with no downstream connection, which
+     * is what makes a terminal branch work at all.
+     */
+    this.tap = null;
+    this._tapSrc = TAP.MIC;
+    this._tapFrom = null;
+    /**
+     * `addModule()` cannot be undone (§4.9), and registering the same processor
+     * name twice throws — so a restart on a surviving context must not repeat
+     * it. This is that memory.
+     */
+    this._moduleAdded = false;
+
     this._nextReqId = 1;
     /** view key → { reqId, resolve } for the single outstanding request. */
     this._inflight = new Map();
@@ -41,13 +78,61 @@ export class AudioEngine {
   }
 
   /**
+   * **The one AudioContext (§8.6), and the only `new AudioContext` in the app.**
+   * Two contexts mean two clocks, so what the instrument hears and what it plays
+   * drift apart — and §3's coupling claim dies with them.
+   * `tests/audit-audio-protocol.mjs` fails if a second construction appears.
+   *
+   * Deliberately does NOT resume. §8.6 called this out as the boot-ordering
+   * detail the decision creates: a consumer may want the context before any user
+   * gesture has happened, and a context that exists but is suspended is a
+   * perfectly good thing to hand it — analysers attached now start reading the
+   * moment `start()` resumes. What is NOT safe is treating suspended as working,
+   * which is why `start()` is the only caller that resumes and why the liveness
+   * proof in `AudioBinding` exists.
+   */
+  context() {
+    if (!this.ctx) {
+      this.ctx = new AudioContext();
+      this.tap = this.ctx.createGain();
+    }
+    return this.ctx;
+  }
+
+  /** Is the one microphone open? Asked by consumers before they route to it. */
+  get micOpen() { return !!this._mic; }
+
+  /** Which signal the tap carries. @param {number} which a `TAP` value. */
+  setTap(which) {
+    this._tapSrc = which;
+    this._routeTap();
+  }
+
+  _routeTap() {
+    if (!this.tap) return;
+    // Disconnect only the edge INTO the tap. `this.tap.disconnect()` would drop
+    // the consumers hanging off it instead, which is the mistake that turns a
+    // tap change into permanently dead sound controllers.
+    try { this._tapFrom?.disconnect(this.tap); } catch { /* already gone */ }
+    this._tapFrom = this._tapSrc === TAP.MASTER ? this.node : this._mic;
+    // Post-limiter by choice (§8.6): the video response then visibly flattens
+    // when §4.11's ceiling engages, so the picture tells you the limiter is
+    // working. `this.node` IS the limiter's output — the bus is inside it.
+    this._tapFrom?.connect(this.tap);
+  }
+
+  /**
    * Must be called from a user gesture — browsers start an AudioContext
    * suspended otherwise, and the handshake below would never complete.
+   *
+   * Restartable: after `close()` the context and the registered module survive,
+   * so this builds a fresh worklet NODE on them. That is a fresh processor and
+   * therefore a fresh, empty tape — the same thing Audio Off has always meant.
    */
   async start() {
-    if (this.ctx) return this._ready;
+    if (this.node) return this._ready;
 
-    this.ctx = new AudioContext();
+    this.context();
     if (this.ctx.state === 'suspended') await this.ctx.resume();
     // Cache-bust the processor in dev. `addModule()` fetches a stable URL and
     // the browser caches worklet modules hard, so editing the processor and
@@ -55,10 +140,13 @@ export class AudioEngine {
     // is one version behind looks like a fix that did not work, not like a
     // stale module. Cost an hour once already. Production keeps the plain URL:
     // `vite build` gives it a content hash, which is the correct buster.
-    const url = import.meta.env?.DEV
-      ? `${workletUrl}${workletUrl.includes('?') ? '&' : '?'}v=${Date.now()}`
-      : workletUrl;
-    await this.ctx.audioWorklet.addModule(url);
+    if (!this._moduleAdded) {
+      const url = import.meta.env?.DEV
+        ? `${workletUrl}${workletUrl.includes('?') ? '&' : '?'}v=${Date.now()}`
+        : workletUrl;
+      await this.ctx.audioWorklet.addModule(url);
+      this._moduleAdded = true;
+    }
 
     this.node = new AudioWorkletNode(this.ctx, 'imweb-tape', {
       numberOfInputs: 1,
@@ -75,6 +163,11 @@ export class AudioEngine {
       this.onProcessorError?.(e);
     };
     this.node.connect(this.ctx.destination);
+    // A mic opened before the engine started has nowhere to record to until
+    // now. Without this, turning the mic on and THEN turning Audio on gives a
+    // recording zone that captures silence — with every status message green.
+    this._mic?.connect(this.node);
+    this._routeTap();
 
     this._ready = new Promise((resolve, reject) => {
       this._onReady = resolve;
@@ -86,13 +179,40 @@ export class AudioEngine {
     return this._ready;
   }
 
+  /**
+   * Release the sound card without destroying the context.
+   *
+   * **Suspend, not close** — and the difference is §8.6's whole point. Closing
+   * would take the one context down with the engine, leaving every consumer
+   * attached to a dead graph: sound-reactive controllers reading zeros, the
+   * vectorscope frozen, and no error anywhere, because reading a closed
+   * context's analyser does not throw. A suspended context renders nothing and
+   * holds no device callback, which is what Audio Off is actually asking for,
+   * and the consumers' nodes stay valid across it.
+   *
+   * The tape does not survive: the processor is discarded with the node, so the
+   * next `start()` gets an empty one. That is unchanged behaviour — Audio Off
+   * has always discarded recordings.
+   */
   async close() {
     if (!this.ctx) return;
-    this._send('/engine/panic');
-    this.node?.disconnect();
-    await this.ctx.close();
-    this.ctx = this.node = null;
+    if (this.node) {
+      this._send('/engine/panic');
+      this.node.disconnect();
+      this.node.port.onmessage = null;
+      this.node = null;
+    }
+    this._routeTap();          // a MASTER tap now has nothing upstream
     this._ready = null;
+    // Resolve rather than drop: an envelope request outstanding at Audio Off
+    // has no answer coming, and a Map.clear() here leaves the waveform display
+    // awaiting a promise that can never settle. `null` is already this API's
+    // word for "no envelope, not an error".
+    for (const [, cur] of this._inflight) cur.resolve(null);
+    for (const [, q] of this._queued) q.resolve(null);
+    this._inflight.clear();
+    this._queued.clear();
+    if (this.ctx.state === 'running') await this.ctx.suspend();
   }
 
   // ── commands (client → engine, imperative per rule 6) ─────────────────────
@@ -114,10 +234,16 @@ export class AudioEngine {
    * has a UI.
    */
   async openMic(constraints = { echoCancellation: false, noiseSuppression: false, autoGainControl: false }) {
+    if (this._mic) return this._micStream;
     const stream = await navigator.mediaDevices.getUserMedia({ audio: constraints });
     this._micStream = stream;
-    this._mic = this.ctx.createMediaStreamSource(stream);
-    this._mic.connect(this.node);
+    // `context()`, not `this.ctx`: the engine need not be running. A consumer
+    // that only wants to ANALYSE the mic (the sound-reactive controllers) has
+    // always been able to do that without an engine, and taking it away would
+    // be a regression dressed as a cleanup.
+    this._mic = this.context().createMediaStreamSource(stream);
+    if (this.node) this._mic.connect(this.node);
+    this._routeTap();
     return stream;
   }
 
@@ -125,6 +251,7 @@ export class AudioEngine {
     this._mic?.disconnect();
     this._micStream?.getTracks().forEach((t) => t.stop());
     this._mic = this._micStream = null;
+    this._routeTap();          // a MIC tap now has nothing upstream
   }
 
   // Partitions (§4.3) — layout is a setup act and is refused while a zone
