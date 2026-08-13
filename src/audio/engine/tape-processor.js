@@ -15,12 +15,13 @@
  * Zones are step 2 (§4.4).
  */
 
-const PROTO_VERSION = 1;
+const PROTO_VERSION = 2;
 const REFUSE_PROTO_MISMATCH = 1;
 const REFUSE_NO_TAPE = 2;
 const REFUSE_BAD_RANGE = 3;
 const REFUSE_LAYOUT_LOCKED = 4;
 const REFUSE_BUSY = 5;
+const REFUSE_CTRL_OWNED = 6;
 
 /** Ceiling on `/engine/tape/alloc`, so a typo cannot ask for 40 GB. */
 const MAX_TAPE_SECONDS = 600;
@@ -71,6 +72,56 @@ const MAX_VOICES = 8;
  * the one thing the audio thread must not do.
  */
 const ENV_READS_PER_QUANTUM = 1 << 17;
+
+/**
+ * Worklet-resident controllers (§8.7). Sixteen is a starting hypothesis like
+ * every other count here: it is more than the audio params that exist today and
+ * far less than the 128 RoSa gave zones, because a controller costs a per-sample
+ * evaluation while an unbound zone costs nothing.
+ */
+const MAX_CTRLS = 16;
+
+/**
+ * Response-curve slots (§8.7). One per controller is the worst case and the
+ * simplest allocator: the client sends a table into the slot with the same
+ * number as the controller that uses it, so there is no sharing scheme to keep
+ * consistent. 16384 floats each — the resolution `ResponseCurve` already uses —
+ * so a full set is 1 MB, uploaded on change and never per frame.
+ */
+const MAX_TABLES = MAX_CTRLS * 2;
+const TABLE_SIZE = 16384;
+
+/**
+ * Slew mechanisms (§8.7). NOT four flavours of one thing: a table can express
+ * only the segment curves, because the other three are functions of state
+ * rather than of normalized time.
+ */
+const SLEW_NONE = 0, SLEW_LAG = 1, SLEW_EASE = 2, SLEW_ELASTIC = 3, SLEW_SEGMENT = 4;
+
+/** Elastic's tuning, mirrored from ParameterSystem — the same spring. */
+const ELASTIC_OMEGA = 5;
+
+/** LFO shapes, in `src/controls/LFO.js` order — that order is the wire format. */
+const SHAPE_SINE = 0, SHAPE_TRI = 1, SHAPE_SAW = 2;
+const SHAPE_RAMP = 3, SHAPE_SQUARE = 4, SHAPE_SH = 5;
+
+/** Controller target kinds, resolved from an address ONCE at bind time. */
+const TGT_NONE = 0;
+const TGT_ZONE_RATE = 1;
+const TGT_VOICE_FREQ = 2;
+const TGT_VOICE_LEVEL = 3;
+const TGT_VOICE_COLOUR = 4;
+const TGT_VOICE_DRIVE = 5;
+const TGT_OUT_GAIN = 6;
+
+/**
+ * The render quantum. Fixed at 128 by the Web Audio spec, and allocated for
+ * ONCE here because a controller's per-sample output has to live somewhere that
+ * `process()` never allocates. If a future UA renders longer blocks the extra
+ * samples hold the last value rather than reading past the end — degraded, not
+ * broken, and stated rather than trusted.
+ */
+const RENDER_QUANTUM = 128;
 
 /**
  * Envelope requests may queue, because the display and any future mini-view are
@@ -126,6 +177,10 @@ function makeVoice(seed) {
     wave: 0,                       // 0 sine, 1 saw, 2 square, 3 triangle
     pend: false, pendSrc: 0, pendWave: 0,
     freqCur: 220, freqTgt: 220,
+    // Slot of the worklet-resident controller driving each field, or -1 (§8.7).
+    // A back-pointer rather than a list walked per sample: the render loop is
+    // the hot path and it should index, not search.
+    freqCtrl: -1, levelCtrl: -1, colourCtrl: -1, driveCtrl: -1,
     // FM ratio is slewed like every other continuous voice parameter (§4.11).
     // It was set directly at first, which steps the modulator frequency at
     // control rate — zipper noise on a registered controller target, the same
@@ -148,12 +203,64 @@ function makeVoice(seed) {
   };
 }
 
+/**
+ * One worklet-resident controller (§8.7).
+ *
+ * The client sends shape/rate/width/mode/phase/range; this evaluates them per
+ * sample and writes the target's own field. Every field here is state a §8.9
+ * fork would have to copy — hence the explicit RNG for sample-and-hold, for the
+ * same reason the voices have one.
+ *
+ * `t` is the running phase and `phase` is the OFFSET. They are different things
+ * and §8.7 is explicit about it: the offset is config and is captured, the
+ * running phase is ephemeral across captures and always has been (nothing has
+ * ever stored it), so the move into the worklet inherits that rather than
+ * causing it.
+ */
+function makeCtrl(seed) {
+  return {
+    kind: TGT_NONE, idx: 0,
+    shape: SHAPE_SINE,
+    hz: 0.5,
+    width: 0.5,
+    mode: 0,                       // 0 free-running, 1 one-shot
+    phase: 0,                      // offset, 0..1
+    lo: 0, hi: 1, map: 0,          // output range in the target's units
+    invert: 0,                     // applied to the sweep BEFORE the table
+    table: -1,                     // response-curve slot, or -1 for none
+    // Slew, in the target's units — it acts on the mapped value, exactly where
+    // `Parameter.setNormalized` puts it (after the table and the range).
+    slewMode: SLEW_NONE,
+    slewSec: 0.1, slewDamp: 0.45, slewStrength: 1,
+    slewCurve: -1,                 // sampled f(k) for SLEW_SEGMENT
+    slewMin: 0, slewMax: 1,        // the rails excursions are fitted to
+    slewUnder: 0, slewOver: 0, slewK0: 0,
+    // Running state. All of it copyable, like everything else here (§8.9).
+    slewVal: 0, slewVel: 0, slewK: 1, slewFrom: 0, slewTgt: 0, slewInit: 0,
+    t: 0,                          // running phase
+    running: true,
+    shValue: 0.5,
+    // Both halves of the echo. `raw` is the shape's own 0..1 output and `out`
+    // is that mapped onto the target's units — see `_ctrlFlush` for why both
+    // travel.
+    raw: 0,
+    out: 0,
+    rng: (seed * 2246822519) >>> 0 || 1,
+    // One value per sample, which is what makes §8.7's claim literal rather
+    // than rhetorical. Evaluating once per QUANTUM would have been six times
+    // better than the 60 Hz it replaces and much less code — but 375 Hz is
+    // still a staircase, and the whole reason this section exists is that a
+    // stepped parameter in audio is not a stutter, it is zipper noise.
+    buf: new Float32Array(RENDER_QUANTUM),
+  };
+}
+
 function makeZone() {
   return {
     part: 0, unsafe: false,
     on: false, dynamic: false,
     gainCur: 0, gainTgt: 0,
-    rateCur: 1, rateTgt: 1,
+    rateCur: 1, rateTgt: 1, rateCtrl: -1,
     phase: 0, writePos: 0, recorded: 0,
     // §4.11 says zone BOUNDS are slewed at audio rate, like rate and level.
     // They were briefly ducked-and-reapplied instead, which is fine for a hand
@@ -217,6 +324,17 @@ class TapeProcessor extends AudioWorkletProcessor {
     }
     this._voices = [];
     for (let i = 0; i < MAX_VOICES; i++) this._voices.push(makeVoice(i + 1));
+    this._ctrls = [];
+    for (let i = 0; i < MAX_CTRLS; i++) this._ctrls.push(makeCtrl(i + 1));
+    /**
+     * Uploaded response curves, one slot per controller. Null until filled —
+     * and a controller pointing at a null slot is refused rather than run
+     * unshaped, because a curve that silently stops applying is exactly the
+     * silent-feature-loss failure the eligibility rule exists to prevent.
+     */
+    this._tables = new Array(MAX_TABLES).fill(null);
+    /** Echo is opt-in (§8.7) — nobody reads it until the client asks. */
+    this._ctrlEcho = false;
 
     this._slewCoef = 1 - Math.exp(-1 / ((SLEW_MS / 1000) * sampleRate));
     // Bounds glide, in samples. 3 ms is short enough to feel immediate and long
@@ -226,6 +344,7 @@ class TapeProcessor extends AudioWorkletProcessor {
     this._glideSamples = Math.round(0.003 * sampleRate);
     this._outGainCur = 1;
     this._outGainTgt = 1;
+    this._outGainCtrl = -1;
     this._limThresh = LIMIT_THRESHOLD;
     this._limRelease = 1 - Math.exp(-1 / (LIMIT_RELEASE_S * sampleRate));
     this._limGain = 1;
@@ -313,7 +432,8 @@ class TapeProcessor extends AudioWorkletProcessor {
       case '/zone/<type>/<n>/unsafe': return this._zoneSet(type, idx[0], 'unsafe', !!v[0]);
       case '/zone/<type>/<n>/on':     return this._zoneOn(type, idx[0], true);
       case '/zone/<type>/<n>/off':    return this._zoneOn(type, idx[0], false);
-      case '/zone/play/<n>/rate':     return this._zoneSet('play', idx[0], 'rateTgt', v[0]);
+      case '/zone/play/<n>/rate':
+        return this._zoneSet('play', idx[0], 'rateTgt', v[0], 'rateCtrl', m.a);
       case '/zone/rec/<n>/dynamic':   return this._zoneSet('rec', idx[0], 'dynamic', !!v[0]);
 
       // Voices (§4.4, §4.10). Re-sending is an UPDATE, never a restart (rule 4)
@@ -323,17 +443,39 @@ class TapeProcessor extends AudioWorkletProcessor {
       case '/voice/<n>/off':    return this._voiceOn(idx[0], false);
       case '/voice/<n>/src':    return this._voiceShape(idx[0], 'src', v[0] | 0);
       case '/voice/<n>/wave':   return this._voiceShape(idx[0], 'wave', v[0] | 0);
-      case '/voice/<n>/freq':   return this._voiceSet(idx[0], 'freqTgt', v[0]);
+      // The four bindable voice scalars go through the OWNERSHIP guard — a
+      // direct write to a controller-driven target is refused, not silently
+      // overwritten a sample later. See `_ctrlOwned`.
+      case '/voice/<n>/freq':   return this._voiceSet(idx[0], 'freqTgt', v[0], 'freqCtrl', m.a);
       case '/voice/<n>/fm':     return this._voiceFm(idx[0], v[0], v[1]);
-      case '/voice/<n>/colour': return this._voiceSet(idx[0], 'colourTgt', v[0]);
+      case '/voice/<n>/colour': return this._voiceSet(idx[0], 'colourTgt', v[0], 'colourCtrl', m.a);
       case '/voice/<n>/filter': return this._voiceFilter(idx[0], v[0], v[1], v[2]);
-      case '/voice/<n>/drive':  return this._voiceSet(idx[0], 'driveTgt', v[0]);
-      case '/voice/<n>/level':  return this._voiceSet(idx[0], 'levelTgt', v[0]);
+      case '/voice/<n>/drive':  return this._voiceSet(idx[0], 'driveTgt', v[0], 'driveCtrl', m.a);
+      case '/voice/<n>/level':  return this._voiceSet(idx[0], 'levelTgt', v[0], 'levelCtrl', m.a);
+
+      // Worklet-resident controllers (§8.7). Every one of these is a
+      // DESCRIPTION: rule 4 makes a re-send an update, and `/retrigger` is the
+      // only thing that restarts a wave.
+      case '/ctrl/<n>/target':    return this._ctrlTarget(idx[0], v[0]);
+      case '/ctrl/<n>/lfo':       return this._ctrlLfo(idx[0], v[0], v[1], v[2], v[3]);
+      case '/ctrl/<n>/phase':     return this._ctrlPhase(idx[0], v[0]);
+      case '/ctrl/<n>/range':     return this._ctrlRange(idx[0], v[0], v[1], v[2], v[3]);
+      case '/ctrl/<n>/retrigger': return this._ctrlRetrigger(idx[0]);
+      case '/ctrl/<n>/clear':     return this._ctrlClear(idx[0]);
+      case '/table/<n>/data':     return this._tableData(idx[0], v[0]);
+      case '/ctrl/<n>/table':     return this._ctrlTable(idx[0], v[0]);
+      case '/ctrl/<n>/slew':      return this._ctrlSlewSet(idx[0], v[0], v[1], v[2], v[3]);
+      case '/ctrl/<n>/slewfit':
+        return this._ctrlSlewFit(idx[0], v[0], v[1], v[2], v[3], v[4], v[5]);
+      case '/ctrl/echo':          this._ctrlEcho = !!v[0]; return;
 
       case '/engine/glide':
         this._glideSamples = Math.max(0, Math.round((v[0] / 1000) * sampleRate));
         return;
-      case '/bus/out/gain':      this._outGainTgt = v[0]; return;
+      case '/bus/out/gain':
+        if (this._ctrlOwned(m.a, this._outGainCtrl)) return;
+        this._outGainTgt = v[0];
+        return;
       case '/bus/out/limit':     return this._setLimit(v[0], v[1]);
 
       default: return this._refuse(REFUSE_PROTO_MISMATCH, `unknown address '${m.a}'`);
@@ -354,7 +496,12 @@ class TapeProcessor extends AudioWorkletProcessor {
   }
 
   _voiceOn(i, on) { const v = this._voice(i); if (v) v.on = !!on; }
-  _voiceSet(i, key, value) { const v = this._voice(i); if (v) v[key] = value; }
+  _voiceSet(i, key, value, ctrlField = null, address = '') {
+    const v = this._voice(i);
+    if (!v) return;
+    if (ctrlField && this._ctrlOwned(address, v[ctrlField])) return;
+    v[key] = value;
+  }
 
   /**
    * A discrete shape change — source or waveform — ducks the voice first, the
@@ -390,6 +537,503 @@ class TapeProcessor extends AudioWorkletProcessor {
     v.cutTgt = cutoff;
     v.resTgt = res;
     v.ftypeTgt = type;
+  }
+
+  // ── worklet-resident controllers (§8.7) ───────────────────────────────────
+
+  _ctrl(i) {
+    if (!Number.isInteger(i) || i < 0 || i >= MAX_CTRLS) {
+      this._refuse(REFUSE_BAD_RANGE, `controller ${i} outside 0..${MAX_CTRLS - 1}`);
+      return null;
+    }
+    return this._ctrls[i];
+  }
+
+  /**
+   * Point a slot at an engine-side address.
+   *
+   * **A target is an address whose signature is exactly one float.** That is the
+   * whole rule, and it is why the cutoff is not bindable yet: it lives inside
+   * `/voice/<n>/filter <fff>`, and inventing a scalar alias for one of three
+   * arguments is a vocabulary decision that belongs with the rest of §8.7's
+   * description set rather than smuggled in beside it.
+   *
+   * The address is the ENGINE's own, so nothing about ImWeb travels (rule 3) and
+   * there is no slot⇄meaning registry to drift — the address list is the
+   * registry, and it is already validated as a whole.
+   */
+  _ctrlTarget(i, address) {
+    const c = this._ctrl(i);
+    if (!c) return;
+    this._ctrlDetach(i);
+    c.kind = TGT_NONE;
+    if (!address) return;                        // '' unbinds, and is not an error
+
+    const seg = String(address).split('/');      // '' , 'zone', 'play', '0', 'rate'
+    let kind = TGT_NONE, index = 0;
+    if (seg[1] === 'zone' && seg[2] === 'play' && seg[4] === 'rate') {
+      kind = TGT_ZONE_RATE; index = Number(seg[3]);
+    } else if (seg[1] === 'voice' && seg.length === 4) {
+      index = Number(seg[2]);
+      if (seg[3] === 'freq') kind = TGT_VOICE_FREQ;
+      else if (seg[3] === 'level') kind = TGT_VOICE_LEVEL;
+      else if (seg[3] === 'colour') kind = TGT_VOICE_COLOUR;
+      else if (seg[3] === 'drive') kind = TGT_VOICE_DRIVE;
+    } else if (address === '/bus/out/gain') {
+      kind = TGT_OUT_GAIN;
+    }
+    if (kind === TGT_NONE) {
+      return this._refuse(REFUSE_PROTO_MISMATCH, `'${address}' is not a controllable target`);
+    }
+    // Indices are checked HERE rather than at evaluation time: a controller that
+    // silently drives nothing is indistinguishable from one whose rate is wrong,
+    // and it would be diagnosed as a broken LFO for as long as it took to notice.
+    const limit = kind === TGT_ZONE_RATE ? ZONES_PER_TYPE : MAX_VOICES;
+    if (kind !== TGT_OUT_GAIN && !(Number.isInteger(index) && index >= 0 && index < limit)) {
+      return this._refuse(REFUSE_BAD_RANGE, `'${address}' index out of range`);
+    }
+    c.kind = kind;
+    c.idx = index;
+    this._ctrlAttach(i, c);
+  }
+
+  /**
+   * Is this target owned by a controller? If so, refuse the direct write.
+   *
+   * The alternative — accept it and let the controller overwrite it a sample
+   * later — is last-writer-wins with a 20 µs window, which presents as "the
+   * slider does nothing" and produces no message to find. 7b will teach the
+   * client not to write owned targets, but that is client discipline, and this
+   * protocol does not rely on client discipline anywhere else: `/part/<n>/bounds`
+   * is refused while a zone runs rather than trusted not to arrive. Ownership is
+   * the same shape of rule and gets the same treatment.
+   *
+   * Note what is NOT refused: `/ctrl/<n>/…` itself, and `/voice/<n>/on|off`.
+   * Owning a value is not owning the voice.
+   */
+  _ctrlOwned(address, owner) {
+    if (!(owner >= 0)) return false;
+    this._refuse(REFUSE_CTRL_OWNED, `'${address}' is driven by controller ${owner}`);
+    return true;
+  }
+
+  /** Write this slot into its target's back-pointer. */
+  _ctrlAttach(slot, c) {
+    if (c.kind === TGT_ZONE_RATE) this._play[c.idx].rateCtrl = slot;
+    else if (c.kind === TGT_VOICE_FREQ) this._voices[c.idx].freqCtrl = slot;
+    else if (c.kind === TGT_VOICE_LEVEL) this._voices[c.idx].levelCtrl = slot;
+    else if (c.kind === TGT_VOICE_COLOUR) this._voices[c.idx].colourCtrl = slot;
+    else if (c.kind === TGT_VOICE_DRIVE) this._voices[c.idx].driveCtrl = slot;
+    else if (c.kind === TGT_OUT_GAIN) this._outGainCtrl = slot;
+  }
+
+  /**
+   * Remove this slot from wherever it points, by SCANNING and matching the slot
+   * number rather than by undoing what the controller currently claims.
+   *
+   * Undoing from `c.kind`/`c.idx` is the tempting version and it is wrong in the
+   * one case that matters: bind slot 3 to a voice, then bind slot 5 to the SAME
+   * voice, then retarget slot 3. The field now holds 5, and clearing it because
+   * slot 3 used to be there silently kills slot 5's controller. Matching the
+   * slot cannot get that wrong. Bind time only, so the scan costs nothing where
+   * cost matters.
+   */
+  _ctrlDetach(slot) {
+    for (let i = 0; i < this._play.length; i++) {
+      if (this._play[i].rateCtrl === slot) this._play[i].rateCtrl = -1;
+    }
+    for (let i = 0; i < this._voices.length; i++) {
+      const v = this._voices[i];
+      if (v.freqCtrl === slot) v.freqCtrl = -1;
+      if (v.levelCtrl === slot) v.levelCtrl = -1;
+      if (v.colourCtrl === slot) v.colourCtrl = -1;
+      if (v.driveCtrl === slot) v.driveCtrl = -1;
+    }
+    if (this._outGainCtrl === slot) this._outGainCtrl = -1;
+  }
+
+  /**
+   * Shape, rate, width, mode — a DESCRIPTION. Rule 4: re-sending it is an
+   * update, so `t` is deliberately untouched here. A receiver that inferred
+   * "start over" from "received a description" would turn every unrelated field
+   * change into a hidden retrigger, and §8.7 spells out where that becomes
+   * audible: a Display State recall retriggers on purpose, and nothing else
+   * should.
+   */
+  _ctrlLfo(i, shape, hz, width, mode) {
+    const c = this._ctrl(i);
+    if (!c) return;
+    if (!(shape >= SHAPE_SINE && shape <= SHAPE_SH)) {
+      return this._refuse(REFUSE_BAD_RANGE, `LFO shape ${shape} unknown`);
+    }
+    c.shape = shape | 0;
+    // Clamped, not refused. Rate is a controller target itself one day, and an
+    // instrument that stops making sound because a modulated rate touched zero
+    // is worse than one that holds still there.
+    c.hz = Math.max(0, Math.min(hz, sampleRate * 0.5));
+    c.width = Math.max(0.001, Math.min(width, 0.999));
+    c.mode = mode === 1 ? 1 : 0;
+  }
+
+  /**
+   * The phase OFFSET, slid relative — `LFO.setPhase`'s semantics, which move the
+   * wave under the playhead rather than jumping the playhead to the start of the
+   * cycle. Dragging Phase must not sound like a retrigger; retriggering has its
+   * own verb.
+   */
+  _ctrlPhase(i, phase) {
+    const c = this._ctrl(i);
+    if (!c) return;
+    const next = ((phase % 1) + 1) % 1;
+    c.t = ((((c.t + (next - c.phase)) % 1) + 1) % 1);
+    c.phase = next;
+  }
+
+  /**
+   * Fill a response-curve slot. The blob is the same 16384-float array
+   * `ResponseCurve` holds client-side — shipped rather than reimplemented, so
+   * "one definition of an S-curve" is literal (§8.7).
+   *
+   * The size is checked because a wrong-length upload would otherwise read as a
+   * curve that is merely a strange shape: a 256-point table stretched over a
+   * 16384-entry lookup is not an error anywhere, it is just wrong.
+   */
+  _tableData(i, buffer) {
+    if (!Number.isInteger(i) || i < 0 || i >= MAX_TABLES) {
+      return this._refuse(REFUSE_BAD_RANGE, `table ${i} outside 0..${MAX_TABLES - 1}`);
+    }
+    const data = new Float32Array(buffer);
+    if (data.length !== TABLE_SIZE) {
+      return this._refuse(REFUSE_BAD_RANGE,
+        `table ${i} has ${data.length} points, expected ${TABLE_SIZE}`);
+    }
+    this._tables[i] = data;
+  }
+
+  _ctrlTable(i, id) {
+    const c = this._ctrl(i);
+    if (!c) return;
+    if (id < 0) { c.table = -1; return; }
+    if (!(Number.isInteger(id) && id < MAX_TABLES && this._tables[id])) {
+      // Refused, not ignored. An unfilled slot treated as identity is a
+      // response curve that silently stops shaping the sweep — the exact
+      // failure the client's eligibility rule refuses to risk.
+      return this._refuse(REFUSE_BAD_RANGE, `table ${id} is empty or out of range`);
+    }
+    c.table = id;
+  }
+
+  _ctrlSlewSet(i, mode, seconds, damp, strength) {
+    const c = this._ctrl(i);
+    if (!c) return;
+    if (!(mode >= SLEW_NONE && mode <= SLEW_SEGMENT)) {
+      return this._refuse(REFUSE_BAD_RANGE, `slew mode ${mode} unknown`);
+    }
+    // A segment curve with no curve to read is refused for the same reason an
+    // empty response-table slot is: it would silently become no slew at all.
+    if (mode === SLEW_SEGMENT && c.slewCurve < 0) {
+      return this._refuse(REFUSE_BAD_RANGE, 'segment slew needs /ctrl/<n>/slewfit first');
+    }
+    c.slewMode = mode | 0;
+    c.slewSec = Math.max(0.001, seconds);
+    c.slewDamp = Math.max(0.05, Math.min(1, damp));
+    c.slewStrength = Math.max(0.25, Math.min(4, strength));
+  }
+
+  _ctrlSlewFit(i, curve, min, max, under, over, k0) {
+    const c = this._ctrl(i);
+    if (!c) return;
+    if (curve >= 0 && !(Number.isInteger(curve) && curve < MAX_TABLES && this._tables[curve])) {
+      return this._refuse(REFUSE_BAD_RANGE, `slew curve ${curve} is empty or out of range`);
+    }
+    c.slewCurve = curve < 0 ? -1 : curve | 0;
+    c.slewMin = min;
+    c.slewMax = max;
+    c.slewUnder = under;
+    c.slewOver = over;
+    c.slewK0 = k0;
+  }
+
+  /**
+   * One sample of slew, in the target's units. Mirrors `Parameter.tickSlew` —
+   * the same three mechanisms and the same excursion fitting — with dt fixed at
+   * one sample instead of one frame.
+   *
+   * **This is the one place in the audio half that is a second implementation
+   * of client logic**, and it is deliberate: a slew curve is a shape the
+   * performer chose, so "close enough" is not a defensible tolerance. Two things
+   * keep it from drifting. The curve itself is not reimplemented — it arrives
+   * sampled, with its excursion constants measured on the client side. And
+   * `tests/audit-audio-handoff.mjs` runs BOTH implementations over the same
+   * description at matched dt and compares them sample for sample; a divergence
+   * is a failure, not a tolerance to widen.
+   *
+   * The elastic spring substeps on the client's own trigger. One sample is
+   * finer than a frame at every ordinary setting — `sub` is 1 — but the margin
+   * is not unconditional, and a comment claiming margin it does not have is
+   * worse than no comment: at Strength 4 against the 1 ms floor on Slew, ω·dt
+   * reaches 0.42 and the two implementations part company by 0.107.
+   */
+  _ctrlSlew(c, target, dt) {
+    if (!c.slewInit) { c.slewInit = 1; c.slewVal = target; c.slewTgt = target; c.slewK = 1; }
+    const lo = c.slewMin, hi = c.slewMax;
+    let next;
+
+    if (c.slewMode === SLEW_SEGMENT) {
+      // Arm a new segment only when the previous one LANDED. While one is in
+      // flight the target may move freely and the segment re-aims at it — the
+      // trap documented in tests/audit-modulation-resolution.mjs is restarting
+      // the clock per target change, under which a swept target freezes the
+      // value at k = 0 forever.
+      if (c.slewK >= 1 && target !== c.slewTgt) { c.slewFrom = c.slewVal; c.slewK = 0; }
+      c.slewTgt = target;
+      c.slewK = Math.min(1, c.slewK + dt / c.slewSec);
+
+      const d = target - c.slewFrom;
+      const mag = d < 0 ? -d : d;
+      let k = c.slewK;
+      let sUnder = 1;
+      if (c.slewUnder > 0 && mag > 0) {
+        // Room on the far side of the start — against the direction of travel.
+        const room = d > 0 ? c.slewFrom - lo : hi - c.slewFrom;
+        sUnder = Math.min(1, Math.max(0, room) / (mag * c.slewUnder));
+        const kA = c.slewK0 * sUnder;
+        // The opening dip is squeezed in TIME as well as in depth, so a move
+        // with no room leaves immediately instead of waiting out a dip it
+        // cannot make. Both ends stay pinned, so k=0 is still the start and
+        // k=1 still lands exactly on the target.
+        k = kA > 0 && k < kA
+          ? (k / kA) * c.slewK0
+          : c.slewK0 + ((k - kA) / (1 - kA)) * (1 - c.slewK0);
+      }
+      // The stored curve is f(k) as the client's function returns it —
+      // including values outside [0,1], which ARE the anticipation and the
+      // overshoot. `_tableApply` clamps its input, never its output, so no
+      // offset encoding is needed and Back's dip survives the round trip.
+      const f0 = this._tableApply(this._tables[c.slewCurve], k);
+      let f = f0;
+      if (f < 0) {
+        f *= sUnder;
+      } else if (f > 1 && c.slewOver > 0 && mag > 0) {
+        const room = d > 0 ? hi - target : target - lo;
+        f = 1 + (f - 1) * Math.min(1, Math.max(0, room) / (mag * c.slewOver));
+      }
+      next = c.slewFrom + d * f;
+    } else if (c.slewMode === SLEW_ELASTIC) {
+      const zeta = c.slewDamp;
+      const omega = (ELASTIC_OMEGA * c.slewStrength) / c.slewSec;
+      const rest = Math.max(0, 1 - zeta);
+      // Substepped on the SAME trigger the client uses, because the margin is
+      // not unconditional. At the corners of the clamps — Strength 4 against the
+      // 1 ms floor on Slew — ω reaches 20000 and ω·dt is 0.42 at 48 kHz, past
+      // the 0.3 rad limit, and the two implementations then diverge by up to
+      // 0.107. Those settings are absurd (a 1 ms elastic snap is a click either
+      // way) and the spring stays stable, so this could have been written down
+      // as a limit instead. It is fixed instead because the fix is the client's
+      // own formula and costs nothing: at every sane setting `sub` is 1.
+      const sub = Math.max(1, Math.ceil((dt * omega) / 0.3));
+      const h = dt / sub;
+      let x = c.slewVal, v = c.slewVel;
+      for (let s = 0; s < sub; s++) {
+        v += (-2 * zeta * omega * v - omega * omega * (x - target)) * h;
+        x += v * h;
+        // The spring COLLIDES with the rails rather than being clipped against
+        // them: overshoot is a fraction of the move, so a large move landing
+        // near a rail otherwise parks flat on it.
+        if (x > hi) { x = hi; if (v > 0) v = -v * rest; }
+        else if (x < lo) { x = lo; if (v < 0) v = -v * rest; }
+      }
+      c.slewVel = v;
+      next = x;
+      // Parked on arrival, with the client's own thresholds — otherwise the
+      // ring idles forever a hair off the target and the two implementations
+      // disagree in the tail, which is where a differential test looks.
+      const span = hi - lo;
+      if (Math.abs(next - target) < span * 1e-5 && Math.abs(c.slewVel) < span * 1e-3) {
+        next = target;
+        c.slewVel = 0;
+      }
+    } else if (c.slewMode === SLEW_EASE) {
+      // Critically damped spring, carrying velocity — which is what buys the
+      // ease-IN. A one-pole cannot: its velocity is largest on the first step.
+      const omega = 2 / c.slewSec;
+      const x = c.slewVal - target;
+      const od = omega * dt;
+      const exp = 1 / (1 + od + 0.48 * od * od + 0.235 * od * od * od);
+      const temp = (c.slewVel + omega * x) * dt;
+      c.slewVel = (c.slewVel - omega * temp) * exp;
+      next = target + (x + temp) * exp;
+      const span = hi - lo;
+      if (Math.abs(next - target) < span * 1e-5 && Math.abs(c.slewVel) < span * 1e-3) {
+        next = target;
+        c.slewVel = 0;
+      }
+    } else {
+      // Exponential lag: approach the target at 1/slew per second.
+      next = c.slewVal + (target - c.slewVal) * Math.min(1, dt / c.slewSec);
+    }
+
+    c.slewVal = next < lo ? lo : next > hi ? hi : next;
+    return c.slewVal;
+  }
+
+  /** Linear-interpolated lookup — `ResponseCurve.apply`, sample for sample. */
+  _tableApply(table, x) {
+    const n = x < 0 ? 0 : x > 1 ? 1 : x;
+    const f = n * (TABLE_SIZE - 1);
+    const i0 = Math.floor(f);
+    const i1 = i0 + 1 < TABLE_SIZE ? i0 + 1 : TABLE_SIZE - 1;
+    return table[i0] + (table[i1] - table[i0]) * (f - i0);
+  }
+
+  _ctrlRange(i, lo, hi, map, invert) {
+    const c = this._ctrl(i);
+    if (!c) return;
+    // Exponential mapping needs endpoints on the same side of zero — it is a
+    // ratio sweep, and a ratio through zero has no meaning. Refused rather than
+    // silently demoted to linear, because a rate range of -2..2 asking for
+    // exponential is a mistake in the client, and hiding it makes the LFO look
+    // merely wrong instead of misconfigured.
+    if (map === 1 && !(lo > 0 && hi > 0)) {
+      return this._refuse(REFUSE_BAD_RANGE, 'exponential range needs both endpoints > 0');
+    }
+    c.lo = lo;
+    c.hi = hi;
+    c.map = map === 1 ? 1 : 0;
+    c.invert = invert ? 1 : 0;
+  }
+
+  /**
+   * The one thing that restarts a wave (§8.7). Display State recall sends this
+   * explicitly alongside the re-sent descriptions, mirroring what
+   * `ControllerManager.retriggerLFOs()` does today — without it the
+   * update-not-restart rule would silently drop the recall-retriggers-LFOs
+   * behaviour the instrument already has.
+   */
+  _ctrlRetrigger(i) {
+    const c = this._ctrl(i);
+    if (!c) return;
+    c.t = c.phase;
+    c.running = true;
+  }
+
+  _ctrlClear(i) {
+    const c = this._ctrl(i);
+    if (!c) return;
+    this._ctrlDetach(i);
+    c.kind = TGT_NONE;
+    c.t = c.phase;
+    c.running = true;
+    c.out = 0;
+  }
+
+  /** One LFO shape, at phase `t`. Same six as `src/controls/LFO.js`, same order. */
+  _ctrlShape(c, t) {
+    switch (c.shape) {
+      case SHAPE_TRI:    return t < 0.5 ? t * 2 : 2 - t * 2;
+      case SHAPE_SAW:    return t;
+      case SHAPE_RAMP:   return 1 - t;
+      case SHAPE_SQUARE: return t < c.width ? 1 : 0;
+      case SHAPE_SH:     return c.shValue;
+      default:           return 0.5 + 0.5 * Math.sin(t * 2 * Math.PI);
+    }
+  }
+
+  /**
+   * Fill every live controller's per-sample buffer for this quantum. Runs BEFORE
+   * the render, so the values a zone or voice reads are this quantum's, not the
+   * previous one's — a one-quantum lag would be exactly the frame of jitter
+   * §8.7 exists to remove, just smaller.
+   */
+  _ctrlStep(frames) {
+    const dt = 1 / sampleRate;
+    const n = frames > RENDER_QUANTUM ? RENDER_QUANTUM : frames;
+    for (let k = 0; k < this._ctrls.length; k++) {
+      const c = this._ctrls[k];
+      if (c.kind === TGT_NONE) continue;
+      for (let i = 0; i < n; i++) {
+        if (c.running) {
+          const prev = c.t;
+          c.t += c.hz * dt;
+          if (c.mode === 1) {
+            // One-shot ends AT the end of the cycle and stays there — the value
+            // holds rather than snapping back, which is what makes it usable as
+            // an envelope-shaped gesture on a fader.
+            if (c.t >= 1) { c.t = 1; c.running = false; }
+          } else {
+            if (c.shape === SHAPE_SH && Math.floor(c.t) > Math.floor(prev)) {
+              c.shValue = this._rand(c);
+            }
+            c.t -= Math.floor(c.t);
+          }
+        }
+        let x = this._ctrlShape(c, c.t);
+        // Invert FIRST, then the table, then the range — the order
+        // `Parameter.setNormalized` uses. It used to be folded into a swapped
+        // range instead, which is identical arithmetic while there is no table
+        // and wrong the moment there is one: `table(1 − x)` mapped over lo..hi
+        // is not `table(x)` mapped over hi..lo.
+        if (c.invert) x = 1 - x;
+        // The response curve shapes the SWEEP, before the range maps it onto
+        // the target's units — the same order as `Parameter.setNormalized`,
+        // where the table is applied to the normalized value and the range
+        // follows. Reversing the two would make an S-curve mean something
+        // different in audio than it does everywhere else in the instrument.
+        if (c.table >= 0) x = this._tableApply(this._tables[c.table], x);
+        // Exponential is a RATIO sweep: equal fractions of the range are equal
+        // musical intervals, which is the same reason pitch is registered in
+        // semitones on the client side (LEARNED 2026-08-08).
+        const mapped = c.map === 1
+          ? c.lo * Math.pow(c.hi / c.lo, x)
+          : c.lo + (c.hi - c.lo) * x;
+        // Slew acts on the MAPPED value, which is where `setNormalized` puts
+        // it: after the table and after the range, in the target's own units.
+        c.buf[i] = c.slewMode === SLEW_NONE ? mapped : this._ctrlSlew(c, mapped, dt);
+      }
+      // Longer-than-128 blocks hold the last value rather than reading past the
+      // end of the buffer — see RENDER_QUANTUM.
+      for (let i = n; i < frames; i++) c.buf[i] = c.buf[n - 1];
+      // PRE-invert and PRE-table, deliberately: the client feeds this straight
+      // back through `setNormalized`, which applies both itself. Echoing the
+      // shaped value would have them applied twice.
+      c.raw = this._ctrlShape(c, c.t);
+      c.out = c.buf[n - 1];
+    }
+  }
+
+  /**
+   * The echo (§8.7's inversion): for a controller feeding audio the worklet is
+   * authoritative, and the video half and the UI read its value back. One
+   * message per frame carrying every live slot (rule 7), never one per slot.
+   *
+   * Floats rather than §8.8's drafted `[slot:u16, value:f32]` packing — a slot
+   * is a small integer a float carries exactly, and the mixed-width version
+   * would need a DataView at both ends to save two bytes per slot.
+   *
+   * TRIPLES, `[slot, raw, mapped]`, because the two consumers want different
+   * numbers. A remote client wants the mapped value: 220 Hz, rate 1.5, the
+   * thing the engine is actually applying. ImWeb wants the raw 0..1 shape
+   * output, because it feeds it back through `setNormalized`, which re-applies
+   * the same range, invert and table the client already knows about — handing
+   * ImWeb the mapped value would mean inverting a semitone conversion on the
+   * way back in, and any disagreement between the two directions would show up
+   * as a parameter that drifts while an LFO runs.
+   */
+  _ctrlFlush() {
+    if (!this._ctrlEcho) return;
+    let live = 0;
+    for (let i = 0; i < this._ctrls.length; i++) if (this._ctrls[i].kind !== TGT_NONE) live++;
+    if (!live) return;
+    const out = new Float32Array(live * 3);
+    let w = 0;
+    for (let i = 0; i < this._ctrls.length; i++) {
+      const c = this._ctrls[i];
+      if (c.kind === TGT_NONE) continue;
+      out[w++] = i;
+      out[w++] = c.raw;
+      out[w++] = c.out;
+    }
+    this.port.postMessage({ a: '/ctrl/echo/data', t: 'b', v: [out.buffer] }, [out.buffer]);
   }
 
   _hello(proto) {
@@ -637,9 +1281,11 @@ class TapeProcessor extends AudioWorkletProcessor {
     return list[i];
   }
 
-  _zoneSet(type, i, field, value) {
+  _zoneSet(type, i, field, value, ctrlField = null, address = '') {
     const z = this._zone(type, i);
-    if (z) z[field] = value;
+    if (!z) return;
+    if (ctrlField && this._ctrlOwned(address, z[ctrlField])) return;
+    z[field] = value;
   }
 
   /** Structural edits duck the zone first — see `pend` on makeZone(). */
@@ -945,6 +1591,26 @@ class TapeProcessor extends AudioWorkletProcessor {
    */
   _renderVoice(v, L, R, frames) {
     for (let i = 0; i < frames; i++) {
+      // A worklet-resident controller writes BOTH the target and the current
+      // value, which lands its output exactly and leaves the follower below
+      // with nothing to chase (§8.7).
+      //
+      // Writing only the target was the first version and it is wrong. §4.11's
+      // slew is an 8 ms one-pole — a ~20 Hz lowpass — and it is there to
+      // de-zipper values arriving at CONTROL rate. A per-sample controller has
+      // no zipper to remove, so all that filter can do is round the edges off a
+      // square, drop the depth of anything fast, and phase-shift the rest:
+      // the audio-rate precision that justifies this whole section, filtered
+      // away by the mechanism it supersedes.
+      //
+      // Smoothing does not disappear, it MOVES: §8.7 puts slew curve and table
+      // in the controller's own description, so a controller that wants a
+      // rounded square asks for one. That set is deferred, so today a square
+      // arrives square — which is what was asked for.
+      if (v.freqCtrl >= 0) v.freqCur = v.freqTgt = this._ctrls[v.freqCtrl].buf[i];
+      if (v.levelCtrl >= 0) v.levelCur = v.levelTgt = this._ctrls[v.levelCtrl].buf[i];
+      if (v.colourCtrl >= 0) v.colourCur = v.colourTgt = this._ctrls[v.colourCtrl].buf[i];
+      if (v.driveCtrl >= 0) v.driveCur = v.driveTgt = this._ctrls[v.driveCtrl].buf[i];
       v.gainTgt = v.on && !v.pend ? 1 : 0;
       v.gainCur = this._approach(v.gainCur, v.gainTgt);
       if (v.gainCur === 0) {
@@ -1012,6 +1678,8 @@ class TapeProcessor extends AudioWorkletProcessor {
 
   _renderPlay(z, L, R, frames) {
     for (let i = 0; i < frames; i++) {
+      // Both, so the value lands exactly — see the note in `_renderVoice`.
+      if (z.rateCtrl >= 0) z.rateCur = z.rateTgt = this._ctrls[z.rateCtrl].buf[i];
       z.gainTgt = z.on && !z.pend ? 1 : 0;
       z.gainCur = this._approach(z.gainCur, z.gainTgt);
       z.rateCur = this._approach(z.rateCur, z.rateTgt);
@@ -1134,6 +1802,9 @@ class TapeProcessor extends AudioWorkletProcessor {
    */
   _limit(L, R, frames) {
     for (let i = 0; i < frames; i++) {
+      if (this._outGainCtrl >= 0) {
+        this._outGainCur = this._outGainTgt = this._ctrls[this._outGainCtrl].buf[i];
+      }
       this._outGainCur = this._approach(this._outGainCur, this._outGainTgt);
       let l = L[i] * this._outGainCur;
       let r = R[i] * this._outGainCur;
@@ -1193,6 +1864,11 @@ class TapeProcessor extends AudioWorkletProcessor {
     if (R !== L) R.fill(0);
     const frames = L.length;
 
+    // Controllers first: everything below reads their buffers, and a value
+    // computed after the render would be a quantum late — the same jitter §8.7
+    // exists to remove, one order of magnitude down.
+    this._ctrlStep(frames);
+
     if (this._length) {
       const input = inputs[0];
       for (let i = 0; i < this._rec.length; i++) {
@@ -1224,6 +1900,7 @@ class TapeProcessor extends AudioWorkletProcessor {
     if (++this._quanta >= this._quantaPerFlush) {
       this._quanta = 0;
       this._flushDirty();
+      this._ctrlFlush();
     }
     return true;
   }

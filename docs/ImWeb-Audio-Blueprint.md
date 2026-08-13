@@ -848,6 +848,37 @@ rather than a reimplementation is what keeps one canonical definition of each cu
 seven slew curves the same way and transfer them as buffers, so there is one
 definition of "Elastic" rather than a client one and a worklet one that drift.
 
+> **CORRECTED 2026-08-13, building step 7d. That is true of four of the seven.**
+> Response tables travel as data exactly as written, and so do `ease2`, `expo`,
+> `bounce` and `back` — those are functions of normalized time `k`, and a table
+> is precisely what they are. **The other three are not curves at all.** `lag` is
+> a one-pole filter; `ease` is a critically damped spring carrying velocity
+> between steps; `elastic` is an underdamped spring that collides with the
+> parameter's rails and takes its restitution from Damp. None of them has a `k`
+> to sample against — their output depends on where the value and its velocity
+> already are, not on how far through a move it is. `tickSlew` says so in its own
+> header: filters "are handled inline, not from this table."
+>
+> So the wire carries a **mechanism** (`/ctrl/<n>/slew mode, seconds, damp,
+> strength`) and only the segment mode carries a sampled curve — taken from
+> `SLEW_CURVES[shape]` at the live Strength, with `slewExcursion`'s measured
+> constants alongside, so how far Back dips is still defined once.
+>
+> The goal this paragraph set is therefore met unevenly and should be read that
+> way. For the four segment curves there is genuinely one definition. For the
+> three filters the worklet runs a **second implementation of the physics**, which
+> is the thing this document warns against everywhere else — accepted here because
+> a slew curve is a shape the performer chose, so declining to move it would be a
+> silent feature loss, and "close enough" is not a defensible tolerance for a
+> shape. What makes it safe is not care, it is a test: `tests/audit-audio-handoff.mjs`
+> runs `Parameter.tickSlew` and the engine's `_ctrlSlew` over the same description
+> at matched dt and compares them sample for sample, across a step, a swept target,
+> a rail-to-rail move and the corners of both clamps. A divergence is a failure,
+> not a tolerance to widen — and that test has already caught two: the elastic
+> spring outrunning one sample at Strength 4 against the 1 ms floor (fixed by
+> substepping on the client's own trigger), and a segment curve sampled at
+> Strength 4 while the client clamps segment strength to 3.
+
 #### The inversion, stated plainly
 
 If one LFO drives both a shader uniform and a zone rate, two oscillators in two

@@ -48,10 +48,27 @@ const src = readFileSync(resolve(root, 'src/controls/ParameterSystem.js'), 'utf8
 
 console.log('\n_resolveTable');
 const defs  = [...src.matchAll(/function _resolveTable\s*\(/g)].length;
-const calls = [...src.matchAll(/_resolveTable\s*\(/g)].length - defs;
+// The exported pass-through is not a second resolution — it is the same one,
+// re-exported. §8.7 needs the resolved curve in order to UPLOAD it to the audio
+// worklet, which then applies it at audio rate; resolving it over there by hand
+// would duplicate the 'global' slot indirection, which is the thing this
+// function exists to prevent. So the rule tightens rather than loosens: one
+// resolver, and exactly one place that APPLIES what it returns (below).
+const wrapper = [...src.matchAll(/export function resolveTable\([^)]*\)\s*\{\s*return _resolveTable\(param\);\s*\}/g)].length;
+const calls = [...src.matchAll(/_resolveTable\s*\(/g)].length - defs - wrapper;
 check('is defined exactly once', defs === 1, `found ${defs}`);
+check('has at most the one exported pass-through', wrapper <= 1, `found ${wrapper}`);
 check('is called from exactly one site', calls === 1,
   `found ${calls} call(s) — a second site is how the two paths diverge`);
+
+// The upload path may RESOLVE a curve; it may not APPLY one. Applying it in the
+// binding as well would shape the value twice — once client-side on the way to
+// the engine and once inside the worklet — and the doubling is a curve that
+// merely looks wrong rather than an error.
+const binding = readFileSync(resolve(root, 'src/audio/AudioBinding.js'), 'utf8');
+check('AudioBinding resolves a table but never applies one',
+  !/\.apply\s*\(/.test(binding),
+  'the worklet applies it at audio rate; a client-side apply would double it');
 
 // The one call must sit inside Parameter.setNormalized, not somewhere upstream.
 const pSetStart = src.indexOf('  setNormalized(n, table = null) {');

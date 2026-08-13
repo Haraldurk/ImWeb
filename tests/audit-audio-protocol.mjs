@@ -20,6 +20,7 @@ import { dirname, resolve } from 'node:path';
 import { sanitizeSource, calibrateSanitizer } from './lib/sanitize-source.mjs';
 import {
   PROTO_VERSION, TYPE_TAGS, CLIENT_TO_ENGINE, ENGINE_TO_CLIENT, DEFERRED, REFUSE,
+  MAX_CONTROLLERS, SLEW_TABLE_BASE,
   allAddresses, isOscLegalAddress, encode, normalizeAddress,
 } from '../src/audio/protocol.js';
 
@@ -301,7 +302,11 @@ const HOT_ROOTS = ['process', '_renderPlay', '_renderRec', '_renderVoice', '_lim
 // runs once per N quanta, not per sample, which is the distinction this whole
 // check is scoped to. Exempted by name with the reason, rather than by leaving
 // it off a hand-written list where the omission looks like an oversight.
-const HOT_EXEMPT = new Set(['_flushDirty', '_send', '_refuse']);
+// `_ctrlFlush` is exempt for the same reason as `_flushDirty` and no other: it
+// BUILDS the message it posts, and it runs once per frame-cadence flush rather
+// than per sample. The per-sample controller work is `_ctrlStep`, which is not
+// exempt and must stay allocation-free like everything else in the render.
+const HOT_EXEMPT = new Set(['_flushDirty', '_ctrlFlush', '_send', '_refuse']);
 
 const HOT = (() => {
   const seen = new Set(HOT_ROOTS);
@@ -381,6 +386,20 @@ console.log('\nthe refusal codes are one list, twice');
     check(`the engine's REFUSE_${name} is declared in protocol.js`, REFUSE[name] === code,
       `protocol.js has ${REFUSE[name] ?? 'no such code'} — a code the client cannot name`);
   }
+
+  // The same second-registry problem, for the two counts that split the table
+  // space. If the client thinks slew curves start at 16 and the engine has room
+  // for fewer, an upload lands in nothing and the slew silently stops.
+  const capacity = /const MAX_CTRLS\s*=\s*(\d+)/.exec(procCode);
+  const tables = /const MAX_TABLES\s*=\s*MAX_CTRLS\s*\*\s*(\d+)/.exec(procCode);
+  check('the engine declares a controller count this check can see', !!capacity);
+  check('MAX_CONTROLLERS matches the engine', capacity && Number(capacity[1]) === MAX_CONTROLLERS,
+    `protocol.js says ${MAX_CONTROLLERS}, engine says ${capacity?.[1]}`);
+  check('SLEW_TABLE_BASE leaves a response slot per controller',
+    SLEW_TABLE_BASE === MAX_CONTROLLERS);
+  check('the engine has table slots for both halves',
+    tables && Number(tables[1]) >= 2,
+    'a controller may hold a response curve AND a slew curve at once');
 }
 
 // ── 7. What is NOT checked here ────────────────────────────────────────────

@@ -29,6 +29,15 @@ export function setTableManager(tm) {
 // paths shape values identically: ParameterSystem.setNormalized and direct
 // p.setNormalized() calls (MIDI, mouse, sound, tilt, gamepad, fixed…) —
 // the latter used to skip tables entirely.
+// Exported for ONE other caller, and for a use that is not application:
+// AudioBinding resolves the same curve in order to UPLOAD it to the worklet
+// (§8.7), which then applies it at audio rate. Resolving it there by hand would
+// be a second copy of the 'global' slot indirection — the thing this function
+// exists to prevent — while calling `.apply()` there would shape the value
+// twice. The audit in tests/audit-table-write-paths.mjs pins both halves of
+// that: one applier, and no `.apply(` anywhere in the binding.
+export function resolveTable(param) { return _resolveTable(param); }
+
 function _resolveTable(param) {
   if (!param.table || !_tableManager) return null;
   if (param.table === 'global') {

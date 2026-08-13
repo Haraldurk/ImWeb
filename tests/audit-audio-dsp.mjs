@@ -27,6 +27,9 @@
 
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
+// The handshake is version-gated, so the audit sends the CONSTANT — a literal
+// here would keep passing through a bump and stop testing the gate.
+import { PROTO_VERSION } from '../src/audio/protocol.js';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -58,7 +61,7 @@ function makeEngine({ tapeSeconds = 1, fill = 0.5 } = {}) {
   const p = new Processor();
   const sent = () => p.__sent;
   const send = (a, ...v) => p.port.onmessage({ data: { a, t: '', v } });
-  send('/engine/hello', 1);
+  send('/engine/hello', PROTO_VERSION);
   send('/engine/tape/alloc', tapeSeconds);
   // A constant, non-zero tape: silence and NaN are then distinguishable, which
   // a zero-filled tape would hide (a NaN read still reads as "not 0.5").
@@ -235,7 +238,7 @@ console.log('\nrequest/reply correlation');
   const p = new Processor();
   const sent = () => p.__sent;
   const send = (a, ...v) => p.port.onmessage({ data: { a, t: '', v } });
-  send('/engine/hello', 1);
+  send('/engine/hello', PROTO_VERSION);
   send('/tape/env/req', 0, 100, 8, 77);        // no tape allocated yet
   const err = sent().find((m) => m.a === '/tape/env/err');
   check('a refused envelope request replies with its reqId', !!err,
@@ -532,7 +535,7 @@ console.log('\nthe phase-one UGens — oscillator, noise, filter, saturator');
   const voice = (cfg = {}, quanta = 32) => {
     const p = new Processor();
     const send = (a, ...v) => p.port.onmessage({ data: { a, t: '', v } });
-    send('/engine/hello', 1);
+    send('/engine/hello', PROTO_VERSION);
     send('/bus/out/gain', 1);
     send('/voice/0/level', cfg.level ?? 0.5);
     send('/voice/0/src', cfg.src ?? 0);
@@ -930,6 +933,334 @@ console.log('\nthe envelope scan is paced across quanta');
     s.run(20);
     check('and no stale reply arrives afterwards', !dataFor(s, 21),
       'a scan resumed against the new tape answers a question about material that is gone');
+  }
+}
+
+// ── 14. worklet-resident controllers (§8.7) ────────────────────────────────
+//
+// The point of the section, restated as a test: evaluation happens on the audio
+// thread, per sample. §8.7 lists three faults of evaluating on the rAF thread —
+// the freeze in a hidden tab, a frame of jitter, and 60 Hz steps that are zipper
+// noise on a fader — and only the third is measurable here. The first two are
+// properties of WHERE the code runs, which the engine's zero-imports design
+// makes structurally true: nothing in this file can see rAF.
+console.log('\nworklet-resident controllers');
+{
+  /** An engine with one controller bound, its buffer filled for one quantum. */
+  const ctrlRig = (address, { shape = 0, hz = 100, width = 0.5, mode = 0,
+    lo = 0, hi = 1, map = 0 } = {}) => {
+    const s = makeEngine({ tapeSeconds: 1 });
+    s.send('/ctrl/0/target', address);
+    s.send('/ctrl/0/lfo', shape, hz, width, mode);
+    s.send('/ctrl/0/range', lo, hi, map);
+    return s;
+  };
+  const buf0 = (s) => s.p._ctrls[0].buf;
+  const refusals = (s) => s.sent().filter((m) => m.a === '/engine/refuse');
+
+  // Per SAMPLE, not per quantum. A once-per-quantum evaluation would be 375 Hz —
+  // six times better than the 60 Hz it replaces, much less code, and still a
+  // staircase, which in audio is zipper noise rather than a visible stutter.
+  {
+    // A SAWTOOTH, deliberately: it is monotonic across the cycle, so every
+    // sample is a new value. A sine at the same rate turns around inside the
+    // quantum and repeats its own values on the way down — 69 distinct out of
+    // 128, which says nothing about the evaluation rate.
+    const s = ctrlRig('/voice/0/level', { shape: 2, hz: 200 });
+    s.run(1);
+    const b = buf0(s);
+    const distinct = new Set([...b].map((v) => v.toFixed(9))).size;
+    check('a controller produces a distinct value per SAMPLE', distinct === 128,
+      `${distinct} distinct values across 128 samples — a per-quantum evaluation gives 1`);
+    check('the values move monotonically within the cycle',
+      b[1] > b[0] && b[2] > b[1], `${b[0]}, ${b[1]}, ${b[2]}`);
+  }
+
+  // Every shape, checked where it differs from the others rather than by name.
+  {
+    const at = (shape, t) => {
+      // hz chosen so one quantum is exactly one cycle: 128 samples at 48 kHz.
+      const s = ctrlRig('/voice/0/level', { shape, hz: SR / 128 });
+      s.run(1);
+      return buf0(s)[Math.round(t * 128)];
+    };
+    check('sine peaks at a quarter cycle', Math.abs(at(0, 0.25) - 1) < 0.02, `${at(0, 0.25)}`);
+    check('triangle peaks at the half cycle', Math.abs(at(1, 0.5) - 1) < 0.05, `${at(1, 0.5)}`);
+    check('sawtooth rises', at(2, 0.75) > at(2, 0.25), `${at(2, 0.25)} → ${at(2, 0.75)}`);
+    check('ramp-down falls', at(3, 0.75) < at(3, 0.25), `${at(3, 0.25)} → ${at(3, 0.75)}`);
+    check('square is two-valued', at(4, 0.25) === 1 && at(4, 0.75) === 0,
+      `${at(4, 0.25)} / ${at(4, 0.75)}`);
+    // Sample-and-hold must be flat WITHIN a cycle and different across cycles.
+    // One cycle per FOUR quanta, so the first quantum is safely inside a cycle:
+    // at exactly one cycle per quantum the boundary lands inside the block and
+    // the check would fail on correct code.
+    const sh = ctrlRig('/voice/0/level', { shape: 5, hz: SR / 512 });
+    sh.run(1);
+    const first = [...buf0(sh)];
+    sh.run(4);
+    check('sample-and-hold holds one value per cycle',
+      new Set(first).size === 1 && buf0(sh)[0] !== first[0],
+      `${new Set(first).size} values within a cycle, ${buf0(sh)[0]} vs ${first[0]} across one`);
+  }
+
+  // §8.7's rule 4: a re-sent description is an UPDATE. Nothing but /retrigger
+  // restarts the wave — otherwise every unrelated field change becomes a hidden
+  // retrigger, inaudible until the one recall where it matters.
+  {
+    const s = ctrlRig('/voice/0/level', { hz: 1 });
+    s.run(40);
+    const mid = s.p._ctrls[0].t;
+    check('the wave actually advanced before the test', mid > 0, `t ${mid}`);
+    s.send('/ctrl/0/lfo', 2, 3, 0.5, 0);          // shape AND rate change
+    check('a re-sent description does not restart the wave', s.p._ctrls[0].t === mid,
+      `t ${s.p._ctrls[0].t} after a description update`);
+    s.send('/ctrl/0/range', -1, 1, 0);
+    check('a range change does not restart it either', s.p._ctrls[0].t === mid);
+    s.send('/ctrl/0/retrigger');
+    check('retrigger, and only retrigger, restarts it', s.p._ctrls[0].t === 0,
+      `t ${s.p._ctrls[0].t}`);
+  }
+
+  // Phase is an OFFSET and slides the wave under the playhead — `LFO.setPhase`'s
+  // semantics. Setting it must not sound like a retrigger.
+  {
+    const s = ctrlRig('/voice/0/level', { hz: 1 });
+    s.run(40);
+    const before = s.p._ctrls[0].t;
+    s.send('/ctrl/0/phase', 0.25);
+    const after = s.p._ctrls[0].t;
+    check('a phase offset slides the wave, it does not reset it',
+      Math.abs(after - (before + 0.25)) < 1e-6 && after !== 0.25,
+      `${before} → ${after}`);
+    s.send('/ctrl/0/retrigger');
+    check('retrigger then lands ON the offset', Math.abs(s.p._ctrls[0].t - 0.25) < 1e-9,
+      `t ${s.p._ctrls[0].t}`);
+  }
+
+  // Range mapping. Exponential exists because rate and frequency are heard as
+  // ratios — the midpoint of an exponential sweep is the geometric mean, and of
+  // a linear one the arithmetic mean. That difference IS the feature.
+  {
+    const lin = ctrlRig('/voice/0/freq', { shape: 2, hz: SR / 128, lo: 100, hi: 1600, map: 0 });
+    lin.run(1);
+    const exp = ctrlRig('/voice/0/freq', { shape: 2, hz: SR / 128, lo: 100, hi: 1600, map: 1 });
+    exp.run(1);
+    check('a linear sweep passes through the arithmetic mean',
+      Math.abs(buf0(lin)[64] - 850) < 20, `${buf0(lin)[64].toFixed(1)} Hz at the midpoint`);
+    check('an exponential sweep passes through the GEOMETRIC mean',
+      Math.abs(buf0(exp)[64] - 400) < 20, `${buf0(exp)[64].toFixed(1)} Hz — 400 is two octaves up from 100`);
+    const bad = ctrlRig('/voice/0/level', { lo: -1, hi: 1, map: 1 });
+    check('an exponential range through zero is refused, not demoted to linear',
+      refusals(bad).length > 0, 'a ratio sweep across zero has no meaning');
+  }
+
+  // Binding. The rule is that a target is an address taking exactly one float,
+  // and the engine enforces it rather than driving nothing quietly.
+  {
+    const s = makeEngine();
+    s.send('/ctrl/0/target', '/voice/0/filter');   // three floats
+    check('a multi-argument address is refused as a target', refusals(s).length === 1,
+      'a controller that silently drives nothing reads as a broken LFO');
+    s.send('/ctrl/0/target', '/voice/99/freq');
+    check('an out-of-range target index is refused', refusals(s).length === 2);
+    s.send('/ctrl/0/target', '/voice/0/freq');
+    check('a valid target binds', s.p._voices[0].freqCtrl === 0 && refusals(s).length === 2);
+    s.send('/ctrl/0/target', '');
+    check('an empty address unbinds, and is not an error',
+      s.p._voices[0].freqCtrl === -1 && refusals(s).length === 2);
+  }
+
+  // The two-controllers-one-target case, which is where a "undo what I claimed"
+  // detach silently kills the wrong controller.
+  {
+    const s = makeEngine();
+    s.send('/ctrl/3/target', '/voice/0/freq');
+    s.send('/ctrl/5/target', '/voice/0/freq');
+    check('the later bind wins the target', s.p._voices[0].freqCtrl === 5);
+    s.send('/ctrl/3/target', '/voice/1/freq');
+    check('retargeting the EARLIER slot leaves the winner alone',
+      s.p._voices[0].freqCtrl === 5 && s.p._voices[1].freqCtrl === 3,
+      `voice0 ${s.p._voices[0].freqCtrl}, voice1 ${s.p._voices[1].freqCtrl}`);
+    s.send('/ctrl/5/clear');
+    check('clearing the winner releases the target', s.p._voices[0].freqCtrl === -1);
+  }
+
+  // §4.11's slew must NOT filter a controller. It is an 8 ms one-pole meant to
+  // de-zipper CONTROL-rate messages; a per-sample controller has no zipper to
+  // remove, so leaving it in the path would round the edges off a square, drop
+  // the depth of anything fast, and phase-shift the rest — the audio-rate
+  // precision that justifies the whole section, filtered away by the mechanism
+  // it supersedes. The controller writes cur AND tgt, so the value lands
+  // exactly and the follower has nothing to chase.
+  {
+    const exact = (address, read) => {
+      const s = ctrlRig(address, { shape: 4, hz: 300, lo: 0.2, hi: 0.9 });  // square
+      s.send('/voice/0/on');
+      s.send('/part/0/bounds', 0, SR);
+      s.send('/zone/play/0/part', 0);
+      s.send('/zone/play/0/region', 0, 24000);
+      s.send('/zone/play/0/on');
+      s.run(8);
+      const want = buf0(s)[127];
+      const got = read(s.p);
+      return { want, got };
+    };
+    for (const [label, address, read] of [
+      ['voice level', '/voice/0/level', (p) => p._voices[0].levelCur],
+      ['voice freq', '/voice/0/freq', (p) => p._voices[0].freqCur],
+      ['zone rate', '/zone/play/0/rate', (p) => p._zones('play')[0].rateCur],
+      ['master gain', '/bus/out/gain', (p) => p._outGainCur],
+    ]) {
+      const { want, got } = exact(address, read);
+      check(`a controlled ${label} lands EXACTLY on the controller's value`,
+        Math.abs(got - want) < 1e-9,
+        `${got} vs ${want} — a lagging value means §4.11's slew is still filtering the LFO`);
+    }
+  }
+
+  // Ownership. A direct write to a controller-driven target is refused, not
+  // accepted and then overwritten a sample later — last-writer-wins with a 20 µs
+  // window presents as "the slider does nothing" and leaves no message to find.
+  {
+    const s = makeEngine();
+    s.send('/voice/0/level', 0.4);
+    check('an unbound target takes a direct write', s.p._voices[0].levelTgt === 0.4);
+    s.send('/ctrl/0/target', '/voice/0/level');
+    s.send('/ctrl/0/range', 0, 1, 0);
+    const before = s.p._voices[0].levelTgt;
+    s.send('/voice/0/level', 0.9);
+    const ref = refusals(s);
+    check('a direct write to an OWNED target is refused', ref.length === 1 && ref[0].v[0] === 6,
+      ref.length ? `code ${ref[0].v[0]}` : 'no refusal sent');
+    check('and the write does not land', s.p._voices[0].levelTgt === before,
+      `levelTgt ${s.p._voices[0].levelTgt}`);
+    // Owning a VALUE is not owning the voice.
+    s.send('/voice/0/on');
+    check('on/off is not refused by ownership',
+      s.p._voices[0].on === true && refusals(s).length === 1);
+    s.send('/ctrl/0/clear');
+    s.send('/voice/0/level', 0.9);
+    check('the target is writable again once the controller lets go',
+      s.p._voices[0].levelTgt === 0.9 && refusals(s).length === 1);
+  }
+
+  // A bound rate drives real audio, end to end.
+  {
+    const s = ctrlRig('/zone/play/0/rate', { shape: 0, hz: 2, lo: 0.5, hi: 2, map: 1 });
+    s.send('/part/0/bounds', 0, SR);
+    s.send('/zone/play/0/part', 0);
+    s.send('/zone/play/0/region', 0, 24000);
+    s.send('/zone/play/0/on');
+    const r = s.run(60);
+    const z = s.p._zones('play')[0];
+    check('a bound zone rate is driven and produces sound', r.nan === 0 && r.rms > 0.05,
+      `rms ${r.rms.toFixed(4)}, ${r.nan} NaN`);
+    check('the rate landed inside the declared range',
+      z.rateCur >= 0.5 - 1e-3 && z.rateCur <= 2 + 1e-3, `rateCur ${z.rateCur}`);
+  }
+
+  // Response curves (§8.7). The 16384-point array `ResponseCurve` already holds
+  // is SHIPPED, not reimplemented, so "one definition of an S-curve" is literal.
+  {
+    const TABLE_N = 16384;
+    /** The same curve the client would hold: y = x². */
+    const squared = () => {
+      const t = new Float32Array(TABLE_N);
+      for (let i = 0; i < TABLE_N; i++) { const x = i / (TABLE_N - 1); t[i] = x * x; }
+      return t;
+    };
+    const rig = ({ table = null, invert = 0, tableId = 0 } = {}) => {
+      const s = makeEngine({ tapeSeconds: 1 });
+      if (table) s.send('/table/0/data', table.buffer);
+      s.send('/ctrl/0/lfo', 2, SR / 128, 0.5, 0);        // sawtooth, one cycle per quantum
+      s.send('/ctrl/0/range', 0, 1, 0, invert);
+      if (table || tableId >= 0) s.send('/ctrl/0/table', table ? tableId : -1);
+      s.send('/ctrl/0/target', '/voice/0/level');
+      s.run(1);
+      return s;
+    };
+
+    // Compared against the SAME engine with no curve attached, so the sweep's
+    // own phase convention cancels out. Against a hand-computed x = i/128 the
+    // expectation is a sample out — the phase advances before the value is
+    // taken — and the first version of this check was wrong in exactly that way.
+    const plain = rig({}).p._ctrls[0].buf;                 // x
+    const shaped = rig({ table: squared() }).p._ctrls[0].buf;   // f(x) = x²
+    const inverted = rig({ table: squared(), invert: 1 }).p._ctrls[0].buf;
+    {
+      let worst = 0, worstInv = 0;
+      for (let i = 8; i < 120; i++) {
+        worst = Math.max(worst, Math.abs(shaped[i] - plain[i] * plain[i]));
+        // Invert BEFORE the curve, as `setNormalized` does: f(1 − x), never
+        // 1 − f(x). With y = x² the two are plainly different shapes.
+        worstInv = Math.max(worstInv, Math.abs(inverted[i] - Math.pow(1 - plain[i], 2)));
+      }
+      check('an uploaded curve shapes the sweep', shaped[64] < plain[64] * 0.8,
+        `${shaped[64].toFixed(4)} vs ${plain[64].toFixed(4)} unshaped`);
+      check('the curve is the client\'s, sample for sample', worst < 1e-3,
+        `worst deviation ${worst.toExponential(2)}`);
+      check('invert is applied BEFORE the response curve', worstInv < 1e-3,
+        `worst deviation ${worstInv.toExponential(2)} — 1 − f(x) instead of f(1 − x)`);
+    }
+
+    // An unfilled slot is refused, not treated as identity. A curve that
+    // silently stops shaping is the failure the eligibility rule exists for.
+    {
+      const s = makeEngine();
+      s.send('/ctrl/0/table', 3);
+      check('binding an EMPTY table slot is refused', refusals(s).length === 1,
+        'identity-by-default is a response curve that quietly does nothing');
+      s.send('/table/0/data', new Float32Array(256).buffer);
+      check('a wrong-length upload is refused', refusals(s).length === 2,
+        'a 256-point table stretched over 16384 entries is not an error, just wrong');
+      s.send('/ctrl/0/table', -1);
+      check('-1 detaches the curve without complaint', refusals(s).length === 2);
+    }
+
+    // A segment slew with no curve to read is refused for the same reason: it
+    // would silently become no slew at all, which is a shape the performer
+    // chose quietly not happening.
+    {
+      const s = makeEngine();
+      s.send('/ctrl/0/slew', 4, 0.1, 0.45, 1);
+      check('a segment slew with no curve is refused', refusals(s).length === 1,
+        'it would degrade to no slew, silently');
+      s.send('/ctrl/0/slew', 9, 0.1, 0.45, 1);
+      check('an unknown slew mode is refused', refusals(s).length === 2);
+      s.send('/ctrl/0/slew', 1, 0.1, 0.45, 1);
+      check('a filter slew needs no curve', refusals(s).length === 2
+        && s.p._ctrls[0].slewMode === 1);
+    }
+  }
+
+  // The echo (§8.7's inversion). Off by default — an echo nobody reads is 60
+  // messages a second of nothing — and aggregated to frame cadence (rule 7).
+  {
+    // A range where raw and mapped DIFFER, so the two numbers in the echo
+    // cannot be confused for each other — with 0..1 they are equal and the
+    // check would pass whichever was sent twice.
+    const s = ctrlRig('/voice/0/freq', { hz: 5, lo: 100, hi: 200 });
+    s.run(20);
+    check('no echo until it is asked for',
+      s.sent().every((m) => m.a !== '/ctrl/echo/data'), 'the engine offered it unasked');
+    s.send('/ctrl/echo', true);
+    s.run(20);
+    const echoes = s.sent().filter((m) => m.a === '/ctrl/echo/data');
+    check('the echo arrives once asked for', echoes.length > 0);
+    // 20 quanta at 48 kHz is ~53 ms — about three frames, never twenty.
+    check('the echo is aggregated to frame cadence, not per quantum',
+      echoes.length <= 5, `${echoes.length} messages in 20 quanta`);
+    const t = new Float32Array(echoes[echoes.length - 1].v[0]);
+    check('the echo carries [slot, raw, mapped] for live slots only',
+      t.length === 3 && t[0] === 0, `[${[...t].join(', ')}]`);
+    // Both numbers travel because the two consumers want different ones: a
+    // remote client wants the mapped value, ImWeb wants the raw 0..1 so it can
+    // feed it back through setNormalized instead of inverting its own unit
+    // conversions on the way in.
+    check('the raw value is the shape output, in 0..1', t[1] >= 0 && t[1] <= 1, `${t[1]}`);
+    check('the mapped value is in the TARGET\'s units',
+      t[2] >= 100 && t[2] <= 200 && Math.abs(t[2] - (100 + 100 * t[1])) < 1e-3,
+      `${t[2]} Hz for raw ${t[1]}`);
   }
 }
 

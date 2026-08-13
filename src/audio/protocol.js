@@ -20,7 +20,11 @@
  * a message that could not survive a UDP hop cannot be constructed at all.
  */
 
-export const PROTO_VERSION = 1;
+// 2 since step 7: the controller vocabulary arrived (§8.7) and
+// `/ctrl/<n>/range` gained an argument. A signature that changes without a
+// bump is precisely the half-understood protocol `/engine/hello` exists to
+// refuse — the handshake can only protect what the number tracks.
+export const PROTO_VERSION = 2;
 
 /** The complete permitted argument-type set. Rule 1 — do not extend casually. */
 export const TYPE_TAGS = Object.freeze(['i', 'f', 's', 'b', 'T', 'F']);
@@ -41,6 +45,12 @@ export const REFUSE = Object.freeze({
   // quanta, so the engine bounds how many may be outstanding rather than
   // absorbing an unbounded backlog on the audio thread.
   BUSY: 5,
+  // A direct write to a target a worklet-resident controller is driving (§8.7).
+  // Refused rather than accepted-then-overwritten-a-sample-later: the protocol
+  // does not enforce its rules by trusting the client anywhere else (layout
+  // lock, alloc refusal), and "my slider does nothing" with no message is the
+  // worst version of this to debug.
+  CTRL_OWNED: 6,
 });
 
 /**
@@ -107,6 +117,80 @@ export const CLIENT_TO_ENGINE = Object.freeze({
   // enforced by the address space having no production for it.
   '/bus/out/gain': 'f',
   '/bus/out/limit': 'ff',          // threshold (linear), release (seconds)
+
+  // ── Worklet-resident controllers (§8.7) ─────────────────────────────────
+  //
+  // The client DESCRIBES the controller; the engine EVALUATES it, at audio
+  // rate, on the thread a hidden tab cannot suspend. §8.7's three problems —
+  // the freeze, a frame of jitter, and 60 Hz steps that are zipper noise on a
+  // fader — all come from evaluating on the rAF thread, and none of them are
+  // fixed by clocking that thread differently.
+  //
+  // This does NOT contradict §4.10's rule against rebuilding the controller
+  // layer in UGens. That rule forbids duplicating the AUTHORING; the badge
+  // popover, MIDI mapping and range fields do not move. What travels is a
+  // description, so there stays one definition of each curve.
+  //
+  // `<n>` is the opaque slot rule 3 requires: the client allocates it, the
+  // engine knows nothing else about the controller, and `aplay.rate` never
+  // travels. The TARGET is an engine-side address — the engine's own namespace,
+  // not ImWeb's — so binding needs no second registry to drift out of step.
+  '/ctrl/<n>/target': 's',         // engine address to drive, or '' to unbind
+  // shape (0 sine, 1 triangle, 2 saw, 3 ramp-down, 4 square, 5 sample-and-hold),
+  // hz, pulse width, mode (0 free-running, 1 one-shot).
+  '/ctrl/<n>/lfo': 'iffi',
+  // Phase OFFSET, slid relative — the same semantics as `LFO.setPhase`, which
+  // moves the wave under the playhead instead of jumping the playhead back to
+  // the start of the cycle. Setting it is not a retrigger (rule 4).
+  '/ctrl/<n>/phase': 'f',
+  // Output range in the TARGET's own units, and how the sweep is mapped onto
+  // it: 0 linear, 1 exponential. Exponential exists because frequency and rate
+  // are heard as ratios (LEARNED 2026-08-08) — a linear sweep between two
+  // frequencies spends most of its travel in the top octave. The mapping has to
+  // live here rather than in the client's semitone conversion, because the
+  // client would otherwise have to send a value per sample, which is the whole
+  // thing this section removes.
+  // lo, hi, map, invert. Invert is here rather than folded into a swapped range
+  // because it must be applied to the normalized sweep BEFORE the response
+  // curve, exactly as `Parameter.setNormalized` does — the swap is identical
+  // arithmetic only while there is no table.
+  '/ctrl/<n>/range': 'ffii',
+  '/ctrl/<n>/retrigger': '',       // explicit, and the ONLY thing that restarts
+  '/ctrl/<n>/clear': '',
+  // A response curve, 16384 floats — the SAME array `ResponseCurve` holds, so
+  // there is one definition of an S-curve rather than a client one and a
+  // worklet one that drift (§8.7). Bulk (rule 2): announced by this control
+  // message and transferred at zero copy.
+  '/table/<n>/data': 'b',
+  // Which uploaded table shapes this controller's sweep, or -1 for none. A
+  // table id whose slot was never filled is REFUSED, not treated as identity:
+  // a curve that silently stops shaping is the failure this whole step exists
+  // to prevent.
+  '/ctrl/<n>/table': 'i',
+
+  // Slew (§8.7). mode, seconds, damp, strength.
+  //
+  // §8.7 says *"sample the seven slew curves the same way and transfer them as
+  // buffers"* and that is only true of four of them. The other three are not
+  // functions of normalized time at all: `lag` is a one-pole filter, `ease` is
+  // a critically damped spring carrying velocity between frames, and `elastic`
+  // is an underdamped spring that collides with the parameter's rails. A table
+  // cannot express any of those — there is no k to sample against — so the mode
+  // says WHICH MECHANISM, and only mode 4 carries a curve.
+  //
+  //   0 none · 1 lag (one-pole) · 2 ease (critically damped spring)
+  //   3 elastic (underdamped spring) · 4 segment curve, from a table
+  '/ctrl/<n>/slew': 'ifff',
+  // The rest of what a segment curve needs: its sampled curve, the rails it
+  // fits its excursions to, and the three measured excursion constants
+  // (`slewExcursion` in ParameterSystem). Sent as data for the same reason the
+  // curve itself is — measuring them again here would be a second definition of
+  // how far Back dips.
+  '/ctrl/<n>/slewfit': 'ifffff',   // curve slot, min, max, under, over, k0
+  // Echo on/off. §8.7's inversion: for a controller feeding audio the worklet is
+  // authoritative and echoes values back for the video side and the UI to read.
+  // Off by default — an echo nobody reads is 60 messages a second of nothing.
+  '/ctrl/echo': 'T',
 });
 
 /**
@@ -127,6 +211,15 @@ export const ENGINE_TO_CLIENT = Object.freeze({
   // partition seam). Without this the client's Run toggle stays on over a zone
   // that has already stopped — state the engine knows and nobody else does.
   '/zone/<type>/<n>/state': 'T',   // running
+  // §8.7's echo, aggregated to frame cadence (rule 7): ONE message carrying
+  // every live slot, never one per slot. Float TRIPLES, [slot, raw, mapped, …].
+  // §8.8 drafted packed `[slot:u16, value:f32]`; a single Float32Array is used
+  // instead because slots are small integers a float carries exactly, and the
+  // mixed-width version needs a DataView at both ends to save two bytes. The
+  // extra number is deliberate — see `_ctrlFlush`: a remote client wants the
+  // MAPPED value, ImWeb wants the RAW 0..1 so it can feed it back through
+  // `setNormalized` instead of inverting its own unit conversions.
+  '/ctrl/echo/data': 'b',
 });
 
 /**
@@ -149,11 +242,12 @@ export const DEFERRED = Object.freeze({
   '/graph/def': 'ib',
   '/graph/free': 'i',
   '/voice/<n>/graph': 'i',
-  '/ctrl/<n>/target': 's',
-  '/ctrl/<n>/retrigger': '',
-  '/ctrl/<n>/clear': '',
-  '/ctrl/echo': 'b',
-  '/table/<n>/data': 'b',
+  // The controller addresses moved up to CLIENT_TO_ENGINE in step 7a. What is
+  // still deferred is the rest of §8.7's description vocabulary: random-with-
+  // slew and the seven slew curves as sampled tables, response tables, and
+  // expression controllers (whose wire format already exists — ExprCompiler's
+  // instruction list, c3b5b12).
+  '/ctrl/<n>/random': 'ff',        // hz, slew seconds
   '/expr/<n>/code': 'b',
   '/job/<n>/progress': 'ii',
   '/job/<n>/done': '',
@@ -185,6 +279,22 @@ export function isOscLegalAddress(a) {
     && !a.includes('//')
     && !OSC_ILLEGAL.test(a.replace(/<[a-z]+>/g, 'x'));
 }
+
+/**
+ * How many controller slots the engine has, and where slew curves live.
+ *
+ * Part of the contract rather than a client convenience: a controller may hold
+ * a response curve AND a slew curve at once, so the table space is two halves
+ * and the split has to mean the same thing on both sides. Offsetting by the
+ * number of audio targets instead — which is what this did first — is a soft
+ * contract that holds only while that list is shorter than the controller
+ * count, and breaks silently rather than loudly when it is not.
+ *
+ * The engine declares these again (it cannot import this file); the protocol
+ * audit checks the two agree.
+ */
+export const MAX_CONTROLLERS = 16;
+export const SLEW_TABLE_BASE = MAX_CONTROLLERS;
 
 /** Zone type tokens. Fixed vocabulary — rule 5 forbids a free name here. */
 export const ZONE_TYPES = Object.freeze(['rec', 'play', 'load', 'spectral', 'synth']);

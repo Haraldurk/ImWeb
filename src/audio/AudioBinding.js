@@ -22,8 +22,21 @@
  */
 
 import { AudioEngine, TAP } from './AudioEngine.js';
+import { SLEW_TABLE_BASE } from './protocol.js';
 import { TapeView } from './TapeView.js';
 import { partitionSpan, zoneSpan, clampToPartition } from './tape-geometry.js';
+import {
+  AUDIO_TARGETS, describeController, describeSlew, descDiff, semitoneToHz,
+  sampleSlewCurve, slewStrength, SLEW_MECHANISM, SLEW_SEGMENT,
+} from './ctrl-handoff.js';
+// The ONE table resolver (§8.7 needs the curve to upload it; ParameterSystem
+// applies it). See tests/audit-table-write-paths.mjs for both halves of that.
+// `SLEW_CURVES` and `slewExcursion` come from the same place for the same
+// reason: the curve the worklet runs is sampled from the client's function, and
+// the excursion constants are the client's measurements — neither is re-derived.
+import {
+  resolveTable, SLEW_CURVES, SLEW_CURVE_HAS_STRENGTH, slewExcursion,
+} from '../controls/ParameterSystem.js';
 
 const PARTITION_SLOTS = 4;
 
@@ -44,6 +57,24 @@ export class AudioBinding {
     this._micDevice = null;
     /** Set by main.js to surface refusals and errors in the UI. */
     this.onStatus = null;
+    /**
+     * ControllerManager, injected by main.js (§8.7). Read-only from here: the
+     * live `LFO` instance is the source of truth for a description because the
+     * badge popover mutates it in place and never re-calls `assign()`, and the
+     * BPM sync writes `lfo.hz` directly. Reconciling against the live object
+     * therefore catches every authoring path without hunting for mutation
+     * sites — which is what a diff each frame buys over an event.
+     */
+    this.controllers = null;
+    /** param id → slot, for the params the WORKLET is currently driving. */
+    this._owned = new Map();
+    /** Last description sent per slot, so only changes go over the port. */
+    this._sentDesc = new Map();
+    this._echoOn = false;
+    /** Sampled slew curves, keyed by shape:strength — 64 KB each. */
+    this._slewCurves = new Map();
+    /** Has `process()` been PROVEN to run? Gates the hand-off — see `start()`. */
+    this._alive = false;
   }
 
   _say(msg) { this.onStatus?.(msg); }
@@ -73,6 +104,10 @@ export class AudioBinding {
       if (i !== 0) return;
       this._applyFromEngine(type === 'rec' ? 'arec.on' : 'aplay.on', running ? 1 : 0);
     };
+    // §8.7's inversion, arriving: the worklet is authoritative for anything it
+    // drives, and ParameterSystem follows it a frame later. Display may lag a
+    // frame; display is allowed to.
+    this.engine.onCtrlEcho = (triples) => this._applyEcho(triples);
     this.engine.onProcessorError = () => this._say(
       'AUDIO ENGINE DIED — process() will not run again; reload to recover');
 
@@ -108,7 +143,15 @@ export class AudioBinding {
     this._pushRegionsToView();
     this._refreshEnvelope();
 
-    if (await alive) {
+    // §8.7's hand-off is gated on this, not on `running`. An engine that loaded
+    // but whose audio callback never fires answers every message normally while
+    // `process()` — where controllers are evaluated — never runs. Handing a
+    // parameter over in that state would take it off the rAF path and give it
+    // to something that never ticks: modulation would FREEZE, which is the
+    // exact fault §8.7 exists to remove, reintroduced by its own fix.
+    this._alive = await alive;
+
+    if (this._alive) {
       this._say(`audio running at ${this.engine.sampleRate} Hz`);
     } else {
       this._say('ENGINE LOADED BUT SILENT — the audio callback never ran. '
@@ -127,6 +170,15 @@ export class AudioBinding {
     if (!this._tapConsumers) this.engine.closeMic();
     await this.engine.close();
     this.running = false;
+    // Hand every controller back to the rAF path, and forget what was sent. The
+    // engine restarts by BUILDING A FRESH WORKLET NODE (step 4), so its
+    // controller state does not survive; a cache that did would leave slots
+    // looking bound to a node that has never heard of them, and those params
+    // would then be driven by nothing at all.
+    this._owned.clear();
+    this._sentDesc.clear();
+    this._echoOn = false;
+    this._alive = false;
     // The tape survives a suspend, but nothing can be asked about it while the
     // engine is stopped, so the waveform would silently go stale. Say which it
     // is — the layout stays drawn, because that is still true.
@@ -198,6 +250,189 @@ export class AudioBinding {
     // it again — the same "this is a fact, not a command" path the engine's own
     // callbacks use.
     if (!this.ps.get('audio.mic').value) this._applyFromEngine('audio.mic', 1);
+  }
+
+  // ── worklet-resident controllers, client half (§8.7) ─────────────────────
+
+  /**
+   * Is the worklet driving this parameter? ControllerManager asks once per LFO
+   * per frame, so it must stay a map lookup.
+   *
+   * This is the whole of the two-code-paths cost §8.7 warns about, in one
+   * predicate: true and the rAF loop leaves the parameter alone, false and it
+   * evaluates it as it always has.
+   */
+  ownsParam(id) { return this._owned.has(id); }
+
+  /**
+   * Reconcile every audio-relevant controller against the engine, once a frame.
+   *
+   * A DIFF rather than an event, deliberately. Controller settings are mutated
+   * in at least four places — the badge popover writes the live `LFO` object,
+   * BPM sync rewrites `hz`, xmap rewrites it per frame, and `assign()` replaces
+   * the whole thing — so an event-based hand-off would need a hook at each, and
+   * the one that got missed would present as an LFO that ignores its own rate
+   * field. Six params, a handful of number comparisons; it costs nothing.
+   */
+  syncControllers() {
+    for (let slot = 0; slot < AUDIO_TARGETS.length; slot++) {
+      const entry = AUDIO_TARGETS[slot];
+      const p = this.ps.get(entry.id);
+      const want = p && this.running && this._alive ? this._describe(p, entry) : null;
+      const had = this._sentDesc.get(slot) || null;
+      if (!want) {
+        if (had) this._release(slot, entry);
+        continue;
+      }
+      // Describe BEFORE binding, so the controller never drives the target for
+      // a quantum with defaults it was never given.
+      const d = descDiff(had, want);
+      if (d.lfo) this.engine.ctrlLfo(slot, want.shape, want.hz, want.width, want.mode);
+      if (d.range) this.engine.ctrlRange(slot, want.lo, want.hi, want.map, want.invert);
+      if (d.phase) this.engine.ctrlPhase(slot, want.phase);
+      if (d.table) {
+        // The curve first, THEN the pointer to it — the engine refuses a
+        // controller bound to an empty slot, and it is right to: a table that
+        // silently stops shaping is the failure this whole step removes.
+        // A copy, because the send transfers the buffer and the client keeps
+        // using its own array.
+        if (want.table) this.engine.tableData(slot, Float32Array.from(want.table.points));
+        this.engine.ctrlTable(slot, want.table ? slot : -1);
+      }
+      if (d.slew) this._pushSlew(slot, want.slew);
+      if (d.bind) {
+        this.engine.ctrlTarget(slot, entry.address);
+        this._owned.set(entry.id, slot);
+        this._updateEcho();
+      }
+      this._sentDesc.set(slot, want);
+    }
+  }
+
+  /**
+   * Slew, in the order the engine needs it: the curve, then the fit that points
+   * at it, then the mode. The engine refuses a segment mode with no curve —
+   * rightly, since that would silently become no slew at all — so the sequence
+   * is not cosmetic.
+   *
+   * Slew curves live in the upper half of the table slots, so a controller can
+   * hold a response curve AND a slew curve at once. The base is `SLEW_TABLE_BASE`
+   * from protocol.js, NOT `AUDIO_TARGETS.length`: the latter is a soft contract
+   * that holds only while the target list stays shorter than the controller
+   * count, and the day it does not, two controllers quietly share a slot.
+   */
+  _pushSlew(slot, slew) {
+    if (!slew) {
+      this.engine.ctrlSlew(slot, 0, 0.1);
+      return;
+    }
+    const curveSlot = slot + SLEW_TABLE_BASE;
+    if (slew.curve) this.engine.tableData(curveSlot, Float32Array.from(slew.curve));
+    this.engine.ctrlSlewFit(slot, slew.curve ? curveSlot : -1,
+      slew.min, slew.max, slew.under, slew.over, slew.k0);
+    this.engine.ctrlSlew(slot, slew.mode, slew.seconds, slew.damp, slew.strength);
+  }
+
+  _release(slot, entry) {
+    this.engine.ctrlClear(slot);
+    this._sentDesc.delete(slot);
+    this._owned.delete(entry.id);
+    this._updateEcho();
+  }
+
+  /** Every slot the worklet owns, retriggered — see `retriggerOwned`. */
+  _updateEcho() {
+    const want = this._owned.size > 0;
+    if (want === this._echoOn) return;
+    this._echoOn = want;
+    this.engine.ctrlEcho(want);
+  }
+
+  /**
+   * The live `LFO` for a parameter, described — or null to leave it on the rAF
+   * path. The decision itself is in `ctrl-handoff.js`, which imports nothing and
+   * is therefore drivable in Node; this only fetches the live object, because
+   * the badge popover mutates it in place and never re-calls `assign()`.
+   */
+  /**
+   * The slew half of a description. A segment curve is SAMPLED from the
+   * client's own function here, with the live Strength, so the shape the
+   * worklet runs is definitionally the shape the client would have run — and
+   * the excursion constants travel as the client's measurements rather than
+   * being measured again on the other side.
+   *
+   * The sampled array is cached per (shape, strength) because it is 64 KB and
+   * the reconcile asks every frame; the cache key is also what the diff
+   * compares, so an unchanged curve produces no upload.
+   */
+  _slewFor(p) {
+    if (!(p.slew > 0)) return null;
+    const shape = p.slewShape ?? 'lag';
+    const mode = SLEW_MECHANISM[shape];
+    if (mode === undefined) return null;
+    if (mode !== SLEW_SEGMENT) return describeSlew(p, null, null);
+    const strength = SLEW_CURVE_HAS_STRENGTH[shape]
+      ? slewStrength(SLEW_SEGMENT, p.slewStrength) : 1;
+    const key = `${shape}:${Math.round(strength * 100) / 100}`;
+    let curve = this._slewCurves.get(key);
+    if (!curve) {
+      const fn = SLEW_CURVES[shape];
+      if (!fn) return null;
+      curve = sampleSlewCurve(fn, strength);
+      if (this._slewCurves.size > 32) this._slewCurves.clear();
+      this._slewCurves.set(key, curve);
+    }
+    return describeSlew(p, curve, slewExcursion(shape, strength));
+  }
+
+  _describe(p, entry) {
+    const c = this.controllers?.lfos?.get(p.id);
+    if (!c?.lfo) return null;
+    // Resolved through ParameterSystem's own resolver, not re-derived: the
+    // `'global'` table slot is an indirection through another parameter, and a
+    // second copy of that lookup is how the display and the sound end up
+    // disagreeing about which curve is in force. Resolved here, APPLIED in the
+    // worklet — never both.
+    return describeController(
+      p, c.lfo, entry, p.table ? resolveTable(p) : null, this._slewFor(p));
+  }
+
+  /**
+   * Retrigger every worklet-owned controller. Display State recall calls
+   * `ControllerManager.retriggerLFOs()`, which resets the client-side LFOs;
+   * without this the worklet-owned ones would keep running, because §8.7's rule
+   * 4 makes the re-sent descriptions that accompany a recall an UPDATE. The
+   * retrigger has to travel as its own verb, and this is the caller.
+   */
+  retriggerOwned() {
+    for (const slot of this._owned.values()) this.engine.ctrlRetrigger(slot);
+  }
+
+  /**
+   * The echo (§8.7's inversion): for a controller feeding audio the worklet is
+   * authoritative, and ParameterSystem follows it.
+   *
+   * The RAW 0..1 is what comes back through `setNormalized`, so the client
+   * applies its own range, invert and table exactly as it does for a
+   * client-evaluated controller — the alternative, taking the mapped value and
+   * inverting the semitone conversion, would make the two directions two places
+   * to disagree, and the symptom would be a parameter drifting while an LFO runs.
+   *
+   * Guarded by `_fromEngine`: this write fires `onChange`, and unguarded it
+   * would send the value straight back to a target the engine already refuses
+   * to accept (`REFUSE.CTRL_OWNED`) — a message per frame per controller, all
+   * of them rejected.
+   */
+  _applyEcho(triples) {
+    for (let i = 0; i + 2 < triples.length; i += 3) {
+      const slot = triples[i] | 0;
+      const entry = AUDIO_TARGETS[slot];
+      if (!entry || !this._owned.has(entry.id)) continue;
+      const p = this.ps.get(entry.id);
+      if (!p) continue;
+      this._fromEngine = true;
+      try { p.setNormalized(triples[i + 1]); } finally { this._fromEngine = false; }
+    }
   }
 
   // ── the tape display (§4.2's landscape, §8.6's "draw the loop") ───────────
@@ -378,12 +613,14 @@ export class AudioBinding {
 
   /**
    * Semitones → Hz. Pitch and cutoff are registered in semitones because rate
-   * and frequency are heard as ratios (LEARNED 2026-08-08), and the conversion
-   * lives HERE for the same reason the fractions→samples one does: one site,
-   * not one per call. The engine speaks Hz because that is what a DSP kernel
-   * wants; the UI speaks semitones because that is what an ear wants.
+   * and frequency are heard as ratios (LEARNED 2026-08-08). The engine speaks Hz
+   * because that is what a DSP kernel wants; the UI speaks semitones because
+   * that is what an ear wants.
+   *
+   * The definition moved to `ctrl-handoff.js` when §8.7's controller ranges
+   * needed the same conversion — one site, still, just not this one.
    */
-  _hz(semitones) { return 440 * Math.pow(2, (semitones - 69) / 12); }
+  _hz(semitones) { return semitoneToHz(semitones); }
 
   _pushVoice() {
     const g = (id) => this.ps.get(id).value;
@@ -416,6 +653,13 @@ export class AudioBinding {
     if (!p) return;
     this._unsubs.push(p.onChange((v, param) => {
       if (this._fromEngine) return;
+      // A parameter the WORKLET drives is not written from here (§8.7). The
+      // engine refuses such a write (`REFUSE.CTRL_OWNED`) and the next echo
+      // would overwrite it regardless, so sending it would only fill the status
+      // line with refusals during ordinary use. Guarded here, in the one place
+      // every subscription passes through, for the same reason `_fromEngine` is
+      // — a guard each handler has to remember is not a guard.
+      if (this._owned.has(id)) return;
       fn(v, param);
     }));
   }
