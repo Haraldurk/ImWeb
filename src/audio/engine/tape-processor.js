@@ -85,10 +85,23 @@ function makeVoice(seed) {
   return {
     on: false,
     gainCur: 0, gainTgt: 0,
+    // Source and waveform are DISCRETE — there is no value between a sine and a
+    // square — so they duck instead of slewing, the same treatment a zone gives
+    // a partition change and for the same reason: the sample either side of the
+    // switch differs by up to full scale, and a step is a click. Ducked only on
+    // an actual CHANGE (see `_voiceShape`), because rule 4 makes a re-send an
+    // update: a controller parked on one waveform must not duck every frame,
+    // which is exactly how the zone-bounds version silenced itself (§4.11).
     src: 0,                        // 0 = oscillator, 1 = noise
     wave: 0,                       // 0 sine, 1 saw, 2 square, 3 triangle
+    pend: false, pendSrc: 0, pendWave: 0,
     freqCur: 220, freqTgt: 220,
-    fmRatio: 1, fmIndexCur: 0, fmIndexTgt: 0,
+    // FM ratio is slewed like every other continuous voice parameter (§4.11).
+    // It was set directly at first, which steps the modulator frequency at
+    // control rate — zipper noise on a registered controller target, the same
+    // class as the bounds ducking one level down.
+    fmRatioCur: 1, fmRatioTgt: 1,
+    fmIndexCur: 0, fmIndexTgt: 0,
     phase: 0, modPhase: 0,
     colourCur: 0.5, colourTgt: 0.5,
     noiseLp: 0,
@@ -270,8 +283,8 @@ class TapeProcessor extends AudioWorkletProcessor {
       // the same address every frame is the normal case, not an edit.
       case '/voice/<n>/on':     return this._voiceOn(idx[0], true);
       case '/voice/<n>/off':    return this._voiceOn(idx[0], false);
-      case '/voice/<n>/src':    return this._voiceSet(idx[0], 'src', v[0] | 0);
-      case '/voice/<n>/wave':   return this._voiceSet(idx[0], 'wave', v[0] | 0);
+      case '/voice/<n>/src':    return this._voiceShape(idx[0], 'src', v[0] | 0);
+      case '/voice/<n>/wave':   return this._voiceShape(idx[0], 'wave', v[0] | 0);
       case '/voice/<n>/freq':   return this._voiceSet(idx[0], 'freqTgt', v[0]);
       case '/voice/<n>/fm':     return this._voiceFm(idx[0], v[0], v[1]);
       case '/voice/<n>/colour': return this._voiceSet(idx[0], 'colourTgt', v[0]);
@@ -304,10 +317,33 @@ class TapeProcessor extends AudioWorkletProcessor {
 
   _voiceOn(i, on) { const v = this._voice(i); if (v) v.on = !!on; }
   _voiceSet(i, key, value) { const v = this._voice(i); if (v) v[key] = value; }
+
+  /**
+   * A discrete shape change — source or waveform — ducks the voice first, the
+   * same structural treatment `_zonePart` gives a partition change.
+   *
+   * The `=== value` early-out is the load-bearing line, not an optimisation:
+   * without it a controller re-sending the same waveform every frame restarts
+   * the duck before it ever completes and the voice never speaks again. That is
+   * the failure the zone bounds shipped with once (§4.11); the difference here
+   * is that a shape genuinely IS structural, so the answer is to duck on change
+   * rather than to stop ducking.
+   */
+  _voiceShape(i, key, value) {
+    const v = this._voice(i);
+    if (!v) return;
+    if (v[key] === value && !v.pend) return;
+    if (!v.on && v.gainCur === 0) { v[key] = value; return; }
+    // Stack onto any duck already in flight, so src and wave arriving in the
+    // same frame cost one duck rather than two.
+    if (!v.pend) { v.pend = true; v.pendSrc = v.src; v.pendWave = v.wave; }
+    v[key === 'src' ? 'pendSrc' : 'pendWave'] = value;
+  }
+
   _voiceFm(i, ratio, index) {
     const v = this._voice(i);
     if (!v) return;
-    v.fmRatio = ratio;
+    v.fmRatioTgt = ratio;
     v.fmIndexTgt = index;
   }
   _voiceFilter(i, cutoff, res, type) {
@@ -674,12 +710,22 @@ class TapeProcessor extends AudioWorkletProcessor {
    * untouched, so the feature costs nothing when unused.
    */
   _osc(v, dt) {
-    let mod = 0;
-    if (v.fmIndexCur !== 0) {
-      v.modPhase += dt * v.fmRatio;
-      if (v.modPhase >= 1) v.modPhase -= 1;
-      mod = Math.sin(2 * Math.PI * v.modPhase) * v.fmIndexCur;
-    }
+    // The modulator FREE-RUNS, and only the mod term is gated on the index.
+    // Gating the accumulation instead froze `modPhase` the moment the index hit
+    // exactly 0, so re-engaging FM resumed the modulator at a stale phase — a
+    // timbral jump, and worse, a state advance that depends on a parameter's
+    // history, which §8.9's fork would then have to reproduce to stay identical.
+    // Same cost either way: one add whether or not FM is engaged.
+    v.modPhase += dt * v.fmRatioCur;
+    // Floor rather than one subtraction: at the top of both ranges (pitch 120 st
+    // ≈ 8.4 kHz, ratio 8) the step exceeds a full cycle, and a single subtract
+    // leaves the phase above 1 for good — it then grows without bound and loses
+    // resolution to float error. The carrier below cannot reach that, but the
+    // invariant should hold by construction, not by range.
+    v.modPhase -= Math.floor(v.modPhase);
+    const mod = v.fmIndexCur !== 0
+      ? Math.sin(2 * Math.PI * v.modPhase) * v.fmIndexCur
+      : 0;
     // Phase modulation, not frequency modulation: modulating phase keeps the
     // centre pitch stable as the index moves, which is the difference between
     // an FM timbre and a wobbling one.
@@ -789,10 +835,16 @@ class TapeProcessor extends AudioWorkletProcessor {
    */
   _renderVoice(v, L, R, frames) {
     for (let i = 0; i < frames; i++) {
-      v.gainTgt = v.on ? 1 : 0;
+      v.gainTgt = v.on && !v.pend ? 1 : 0;
       v.gainCur = this._approach(v.gainCur, v.gainTgt);
-      if (v.gainCur === 0 && !v.on) return;
+      if (v.gainCur === 0) {
+        if (v.pend) {                              // bottom of the duck: apply
+          v.src = v.pendSrc; v.wave = v.pendWave; v.pend = false;
+        }
+        if (!v.on) return;
+      }
       v.freqCur = this._approach(v.freqCur, v.freqTgt);
+      v.fmRatioCur = this._approach(v.fmRatioCur, v.fmRatioTgt);
       v.fmIndexCur = this._approach(v.fmIndexCur, v.fmIndexTgt);
       v.colourCur = this._approach(v.colourCur, v.colourTgt);
       v.cutCur = this._approach(v.cutCur, v.cutTgt);
@@ -944,9 +996,19 @@ class TapeProcessor extends AudioWorkletProcessor {
       L[i] += l * z.gainCur;
       R[i] += r * z.gainCur;
 
+      // Wrap SYMMETRICALLY, and by modulo rather than by one subtraction. A
+      // single `+= room` bounds the negative side only while |rate| < room, so a
+      // fast reverse read of a region a couple of samples long walked the phase
+      // steadily negative — harmless in itself, since `_cubic` wraps every index
+      // it derives and doubles have the headroom, but it left the invariant
+      // `phase ∈ [0, room)` true only because the pre-check above happened to
+      // restore it on the positive side. Half an invariant is worse than none:
+      // the next reader trusts it here and is wrong.
       z.phase += z.rateCur;
-      if (z.phase >= room) z.phase -= room;
-      else if (z.phase < 0) z.phase += room;
+      if (z.phase >= room || z.phase < 0) {
+        z.phase %= room;
+        if (z.phase < 0) z.phase += room;
+      }
     }
   }
 

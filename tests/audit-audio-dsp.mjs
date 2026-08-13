@@ -420,9 +420,20 @@ console.log('\nthe tape reader — interpolation and rate-aware anti-aliasing');
     // (4.0 dB). So the box contributes 2.8 dB and the interpolator 4.0, and a
     // threshold above 0.398 would pass with the kernel deleted. 0.30 sits
     // between them with ~30% margin either side; both states verified by
-    // mutation. The 6.8 dB also matches theory independently — a box of width
-    // rate/N has response |cos(πf)| here, i.e. −6.9 dB at 0.35 against −0.1 dB
-    // at 0.05.
+    // mutation.
+    //
+    // DO NOT try to reconcile these numbers with theory — the arithmetic does
+    // not close, and it is the measurement that is limited, not the kernel. A
+    // box of width rate/N has response |cos(πf)| here: −6.9 dB at 0.35 against
+    // −0.1 dB at 0.05, which stacked on the 4.0 dB of cubic droop would predict
+    // ~10.7 dB end to end, not 6.8. The kernel meets that model exactly when
+    // measured in ISOLATION (−6.86 dB predicted, −6.86 dB measured at f =
+    // 0.3501, N = 2 — verified in review, 2026-08-13). The end-to-end figure is
+    // leakage-limited: this analysis window is not an integer number of alias
+    // cycles, so the bin sits on a noise floor that a deeper suppression cannot
+    // go below. What this check is for is SELECTIVITY, and mutation calibration
+    // in both directions is what establishes that; the absolute dB is a
+    // by-product with a floor under it.
     check('the AA kernel suppresses the FOLDED tone and not the wanted one', e.ratio < 0.30,
       `alias/wanted ${e.ratio.toFixed(3)} (${(10 * Math.log10(e.ratio)).toFixed(1)} dB)`);
     console.log(`       selective alias suppression at 2×: ${(-10 * Math.log10(e.ratio)).toFixed(1)} dB`);
@@ -690,6 +701,105 @@ console.log('\nthe phase-one UGens — oscillator, noise, filter, saturator');
     p.port.onmessage({ data: { a: '/voice/99/on', t: '', v: [] } });
     const ref = p.__sent.find((m) => m.a === '/engine/refuse');
     check('an out-of-range voice index is refused, not clamped', !!ref, 'no refusal sent');
+  }
+
+  // ── the four review findings on 5b (2026-08-13), each pinned ──────────────
+
+  // (1) FM Ratio is a registered controller target, so setting it directly
+  // stepped the modulator frequency at CONTROL rate — audible zipper noise, the
+  // same class as the bounds ducking one level down. §4.11: every continuous
+  // voice parameter is slewed inside the worklet.
+  {
+    const { p, send, out } = voice({ fmRatio: 1, fmIndex: 2 });
+    const v = p._voices[0];
+    send('/voice/0/fm', 8, 2);
+    check('an FM ratio change lands as a slew TARGET, not on the value',
+      v.fmRatioTgt === 8 && v.fmRatioCur < 8,
+      `tgt ${v.fmRatioTgt}, cur ${v.fmRatioCur} — equal means it was written straight through`);
+    for (let q = 0; q < 200; q++) p.process([[]], [out]);
+    check('the FM ratio then ARRIVES at its target', v.fmRatioCur === 8,
+      `cur ${v.fmRatioCur} — an exponential that never lands leaves the ratio permanently wrong`);
+  }
+
+  // (2) `modPhase` used to accumulate only while the index was non-zero, so
+  // dialling FM out froze the modulator and re-engaging resumed from a stale
+  // phase. Both voices here run the same number of samples, and the modulator
+  // advance does not depend on the index, so the two phases must be identical.
+  // Under the gated version the first is stuck at 0 and this fails.
+  {
+    const idle = voice({ fmIndex: 0 }).p._voices[0].modPhase;
+    const live = voice({ fmIndex: 2 }).p._voices[0].modPhase;
+    check('the modulator free-runs whether or not the index is engaged',
+      Math.abs(idle - live) < 1e-12 && live > 0,
+      `idle ${idle}, engaged ${live} — a frozen modulator jumps in timbre when FM returns`);
+  }
+
+  // (3) Source and waveform are discrete, so they duck rather than slew. Two
+  // properties, and the second is the one that bites: a re-send must NOT duck,
+  // or a controller parked on one waveform silences the voice forever.
+  {
+    const maxStep = (x) => {
+      let m = 0;
+      for (let i = 1; i < x.length; i++) m = Math.max(m, Math.abs(x[i] - x[i - 1]));
+      return m;
+    };
+    const across = (poke) => {
+      const { p, out } = voice({ wave: 0, level: 0.5 }, 1);
+      poke(p);
+      const x = [];
+      for (let q = 0; q < 60; q++) { p.process([[]], [out]); x.push(...out[0]); }
+      return { p, x: Float32Array.from(x) };
+    };
+    // Sine → TRIANGLE, deliberately: both are continuous waveforms whose own
+    // per-sample step is ~0.02 here, so the largest step in the run is the
+    // switch itself. Against a square the check is meaningless — its own edges
+    // step by ~0.5 twice a cycle and swamp the thing being measured (this test
+    // failed exactly that way first).
+    const ducked = across((p) => p.port.onmessage({ data: { a: '/voice/0/wave', t: '', v: [3] } }));
+    // The control: the same switch with the duck bypassed, which is what the
+    // code did before. Self-calibrating — the threshold is the naive version's
+    // own step, so this cannot pass by the signal being quiet.
+    const naive = across((p) => { p._voices[0].wave = 3; });
+    check('a waveform CHANGE ducks the voice, and the switch lands',
+      ducked.p._voices[0].wave === 3 && !ducked.p._voices[0].pend,
+      `wave ${ducked.p._voices[0].wave}, pend ${ducked.p._voices[0].pend}`);
+    check('ducking removes the switching click', maxStep(ducked.x) < maxStep(naive.x) * 0.5,
+      `max step ${maxStep(ducked.x).toFixed(4)} ducked vs ${maxStep(naive.x).toFixed(4)} naive`);
+    {
+      const { p, send, out } = voice({ wave: 2 });
+      const v = p._voices[0];
+      for (let q = 0; q < 20; q++) { send('/voice/0/wave', 2); p.process([[]], [out]); }
+      check('re-sending the SAME waveform never ducks (rule 4: re-send is an update)',
+        !v.pend && v.gainCur === 1,
+        `pend ${v.pend}, gain ${v.gainCur} — a re-ducking voice goes silent under any controller`);
+    }
+  }
+}
+
+// ── 12. the read phase stays inside its region, in BOTH directions ─────────
+//
+// The negative side used to get one `+= room`, which bounds it only while
+// |rate| < room. A fast reverse read of a two-sample region therefore walked the
+// phase steadily negative. `_cubic` wraps every index it derives, so nothing
+// misread — but the invariant `phase ∈ [0, room)` held on one side only, and a
+// half-true invariant is what the next change trips over.
+console.log('\nthe read phase wraps symmetrically');
+{
+  for (const rate of [-4, -3.7, 4]) {
+    const s = makeEngine({ tapeSeconds: 1 });
+    s.send('/part/0/bounds', 0, 4096);
+    s.send('/zone/play/0/part', 0);
+    s.send('/engine/glide', 0);
+    s.send('/zone/play/0/region', 100.5, 2.25);   // a region ~2 samples long
+    s.send('/zone/play/0/rate', rate);
+    s.send('/zone/play/0/on');
+    const r = s.run(200);
+    const z = s.p._zones('play')[0];
+    s.p._computeSpan(z);
+    const room = s.p._sb - s.p._sa;
+    check(`phase stays in [0, room) at rate ${rate}`, z.phase >= 0 && z.phase < room,
+      `phase ${z.phase.toFixed(3)}, room ${room.toFixed(3)} after 200 quanta`);
+    check(`no NaN reading a 2-sample region at rate ${rate}`, r.nan === 0, `${r.nan} NaN`);
   }
 }
 
