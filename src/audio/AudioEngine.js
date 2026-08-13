@@ -97,6 +97,9 @@ export class AudioEngine {
 
   allocTape(seconds) { this._send('/engine/tape/alloc', seconds); }
 
+  /** Milliseconds for a zone's bounds to reach a new target; 0 = exact. */
+  glide(ms) { this._send('/engine/glide', ms); }
+
   /**
    * Route the microphone into the engine's input.
    *

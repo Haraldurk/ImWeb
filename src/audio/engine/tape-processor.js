@@ -68,7 +68,17 @@ function makeZone() {
     // never completes, and the zone only speaks at the LFO's turning points
     // where the value momentarily stops changing. A slewed base is also the
     // musically right answer — moving it smoothly IS scrubbing.
-    startCur: 0, startTgt: 0, lenCur: 0, lenTgt: 0,
+    // Bounds ramp LINEARLY to their target over `_glideSamples`, and they are
+    // deliberately not run through _approach(). An exponential follower lags by
+    // its time constant AND lowpasses the gesture, so a fast scrub comes out
+    // flattened — it feels like the instrument is not responding, because a
+    // filter on position is a filter on your hand. Scrubbing is index
+    // arithmetic (§4.2); the only reason to smooth it at all is that a 60 Hz
+    // control rate would otherwise deliver 60 discrete jumps a second (§8.7's
+    // resolution problem, whose real fix is worklet-resident controllers).
+    // A linear ramp ARRIVES, in a time the performer sets, and at 0 it is exact.
+    startCur: 0, startTgt: 0, startStep: 0, startRamp: 0,
+    lenCur: 0, lenTgt: 0, lenStep: 0, lenRamp: 0,
     // A PARTITION change still ducks. That one is genuinely structural: the
     // new region can be anywhere in the tape, and sliding a read position
     // across the gap would sweep through whatever material lies between.
@@ -105,6 +115,11 @@ class TapeProcessor extends AudioWorkletProcessor {
     }
 
     this._slewCoef = 1 - Math.exp(-1 / ((SLEW_MS / 1000) * sampleRate));
+    // Bounds glide, in samples. 3 ms is short enough to feel immediate and long
+    // enough to hide the 60 Hz staircase a frame-rate controller writes; 0 is
+    // exact tracking, which is the right setting for a hand on a value field
+    // and the wrong one under an LFO.
+    this._glideSamples = Math.round(0.003 * sampleRate);
     this._outGainCur = 1;
     this._outGainTgt = 1;
     this._limThresh = LIMIT_THRESHOLD;
@@ -197,6 +212,9 @@ class TapeProcessor extends AudioWorkletProcessor {
       case '/zone/play/<n>/rate':     return this._zoneSet('play', idx[0], 'rateTgt', v[0]);
       case '/zone/rec/<n>/dynamic':   return this._zoneSet('rec', idx[0], 'dynamic', !!v[0]);
 
+      case '/engine/glide':
+        this._glideSamples = Math.max(0, Math.round((v[0] / 1000) * sampleRate));
+        return;
       case '/bus/out/gain':      this._outGainTgt = v[0]; return;
       case '/bus/out/limit':     return this._setLimit(v[0], v[1]);
 
@@ -387,8 +405,16 @@ class TapeProcessor extends AudioWorkletProcessor {
     if (!z) return;
     z.startTgt = startRel;
     z.lenTgt = lenRel;
+    // Re-aim the ramp from wherever the value currently is, so a target that
+    // moves every frame is followed continuously rather than restarted.
+    const n = this._glideSamples;
+    z.startRamp = n;
+    z.lenRamp = n;
+    z.startStep = n > 0 ? (startRel - z.startCur) / n : 0;
+    z.lenStep = n > 0 ? (lenRel - z.lenCur) / n : 0;
     if (!z.on && z.gainCur === 0) {
       z.startCur = startRel; z.lenCur = lenRel; z.phase = 0; z.writePos = 0;
+      z.startRamp = z.lenRamp = 0;
     }
   }
 
@@ -467,8 +493,10 @@ class TapeProcessor extends AudioWorkletProcessor {
       z.rateCur = this._approach(z.rateCur, z.rateTgt);
       // Bounds slew per sample, so a controller sweeping Start slides the read
       // position continuously instead of restarting the zone.
-      z.startCur = this._approach(z.startCur, z.startTgt);
-      z.lenCur = this._approach(z.lenCur, z.lenTgt);
+      if (z.startRamp > 0) { z.startCur += z.startStep; z.startRamp--; }
+      else z.startCur = z.startTgt;
+      if (z.lenRamp > 0) { z.lenCur += z.lenStep; z.lenRamp--; }
+      else z.lenCur = z.lenTgt;
       if (z.gainCur === 0) {
         if (z.pend) {                              // bottom of the duck: apply
           z.part = z.pendPart;

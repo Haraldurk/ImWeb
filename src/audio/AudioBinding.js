@@ -118,6 +118,7 @@ export class AudioBinding {
 
   _pushAll() {
     const g = (id) => this.ps.get(id).value;
+    this.engine.glide(g('audio.glide'));
     this.engine.outGain(g('audio.outGain'));
     this.engine.outLimit(g('audio.limitThresh'), g('audio.limitRel'));
     for (const [prefix, type] of [['arec', 'rec'], ['aplay', 'play']]) {
@@ -137,6 +138,7 @@ export class AudioBinding {
   }
 
   _subscribe() {
+    this._on('audio.glide', (v) => this.engine.glide(v));
     this._on('audio.outGain', (v) => this.engine.outGain(v));
     this._on('audio.limitThresh',
       (v) => this.engine.outLimit(v, this.ps.get('audio.limitRel').value));
