@@ -152,11 +152,115 @@ for (const src of reject) {
 // ── 3. The boundary itself: no `new Function` in the expression path ────────
 console.log('\nthe open grammar is gone from the source');
 
-const cm = readFileSync(resolve(root, 'src/controls/ControllerManager.js'), 'utf8');
+// A source-scanning audit reads prose as well as code, so a check for a
+// forbidden construct also matches the comment explaining why it is forbidden —
+// and it fails on CORRECT code (LEARNED 2026-08-12). Blank comments, and
+// optionally string bodies, before matching. Ranges are blanked in place so
+// offsets and line count survive: the multi-line structural check below still
+// means what it says.
+function sanitizeSource(src, { blankStrings = true } = {}) {
+  const out = src.split('');
+  const blank = (a, b) => { for (let k = a; k < b; k++) if (out[k] !== '\n') out[k] = ' '; };
+  const n = src.length;
+  let i = 0, prev = '';
+
+  while (i < n) {
+    const c = src[i], d = src[i + 1];
+
+    if (c === '/' && d === '/') {
+      let j = src.indexOf('\n', i); if (j < 0) j = n;
+      blank(i, j); i = j; continue;
+    }
+    if (c === '/' && d === '*') {
+      let j = src.indexOf('*/', i + 2); j = j < 0 ? n : j + 2;
+      blank(i, j); i = j; continue;
+    }
+    // `/` opens a regex unless the previous significant char could end a value.
+    if (c === '/' && !/[A-Za-z0-9_$)\]]/.test(prev)) {
+      let j = i + 1, inClass = false, closed = false;
+      while (j < n) {
+        const e = src[j];
+        if (e === '\\') { j += 2; continue; }
+        if (e === '\n') break;
+        if (e === '[') inClass = true;
+        else if (e === ']') inClass = false;
+        else if (e === '/' && !inClass) { j++; closed = true; break; }
+        j++;
+      }
+      if (closed) {
+        while (j < n && /[a-z]/.test(src[j])) j++;      // flags
+        if (blankStrings) blank(i + 1, j - 1);
+        i = j; prev = ')'; continue;
+      }
+    }
+    if (c === '"' || c === "'") {
+      let j = i + 1;
+      while (j < n) {
+        if (src[j] === '\\') { j += 2; continue; }
+        if (src[j] === c) { j++; break; }
+        if (src[j] === '\n') break;
+        j++;
+      }
+      if (blankStrings) blank(i + 1, j - 1);
+      i = j; prev = c; continue;
+    }
+    if (c === '`') {
+      let j = i + 1, segStart = j;
+      while (j < n) {
+        if (src[j] === '\\') { j += 2; continue; }
+        if (src[j] === '`') { if (blankStrings) blank(segStart, j); j++; break; }
+        if (src[j] === '$' && src[j + 1] === '{') {
+          if (blankStrings) blank(segStart, j);
+          let k = j + 2, depth = 1;                     // leave ${…} code intact
+          while (k < n && depth > 0) {
+            if (src[k] === '{') depth++;
+            else if (src[k] === '}') depth--;
+            k++;
+          }
+          j = k; segStart = j; continue;
+        }
+        j++;
+      }
+      i = j; prev = '`'; continue;
+    }
+
+    if (!/\s/.test(c)) prev = c;
+    i++;
+  }
+  return out.join('');
+}
+
+// Calibrate the sanitizer before trusting it. A sanitizer that blanks too much
+// makes every forbidden-construct check below vacuously true — the failure mode
+// is silence, so it has to be proven to hide prose AND expose code.
+const FIXTURE = [
+  '// a comment warning that new Function( must never come back',
+  '/* block comment: new Function( */',
+  "const s = 'new Function(';",
+  'const re = /new Function\\(/;',
+  'const t = `new Function(`;',
+  'const u = `${ realCall() }`;',
+  'legit();',
+].join('\n');
+const clean = sanitizeSource(FIXTURE);
+check('sanitizer hides new Function( in comments, strings, regex and templates',
+  !/new Function\s*\(/.test(clean), 'a live match here means prose still leaks in');
+check('sanitizer leaves real code intact',
+  /legit\(\)/.test(clean) && /realCall\(\)/.test(clean),
+  'blanking code would make every check below vacuous');
+check('sanitizer preserves line count',
+  clean.split('\n').length === FIXTURE.split('\n').length,
+  'the multi-line try/catch check depends on offsets surviving');
+
+const cmRaw = readFileSync(resolve(root, 'src/controls/ControllerManager.js'), 'utf8');
+const cm = sanitizeSource(cmRaw);                       // code only
+const cmCode = sanitizeSource(cmRaw, { blankStrings: false }); // comments gone, strings kept
+
 check('ControllerManager no longer uses new Function', !/new Function\s*\(/.test(cm),
   'if this fails the compile-time rejection above is bypassed');
+// This one needs the string literal, so it reads the strings-kept view.
 check('ControllerManager imports the bounded compiler',
-  /import\s*\{\s*compileExpression\s*\}\s*from\s*'\.\/ExprCompiler\.js'/.test(cm));
+  /import\s*\{\s*compileExpression\s*\}\s*from\s*'\.\/ExprCompiler\.js'/.test(cmCode));
 
 // Last-good behaviour: a failed compile must not clear the previous entry.
 // The guard lives in ControllerManager's catch — assert it still only writes
