@@ -15,13 +15,14 @@
  * Zones are step 2 (§4.4).
  */
 
-const PROTO_VERSION = 2;
+const PROTO_VERSION = 3;
 const REFUSE_PROTO_MISMATCH = 1;
 const REFUSE_NO_TAPE = 2;
 const REFUSE_BAD_RANGE = 3;
 const REFUSE_LAYOUT_LOCKED = 4;
 const REFUSE_BUSY = 5;
 const REFUSE_CTRL_OWNED = 6;
+const REFUSE_CANCELLED = 7;
 
 /** Ceiling on `/engine/tape/alloc`, so a typo cannot ask for 40 GB. */
 const MAX_TAPE_SECONDS = 600;
@@ -72,6 +73,71 @@ const MAX_VOICES = 8;
  * the one thing the audio thread must not do.
  */
 const ENV_READS_PER_QUANTUM = 1 << 17;
+
+/**
+ * The spectral writer (§4.5). Uploaded images, and the budget its render runs
+ * inside.
+ *
+ * **This is additive resynthesis, not an inverse FFT, and that is a deliberate
+ * correction to §4.5's wording.** The invariant §4.5 actually asserts is that
+ * the transform happens ONCE at write time and never in the read path, and
+ * additive honours that completely. What it does not honour is the word
+ * "inverse-transformed", and the reason is the sentence immediately after it:
+ * the vertical axis is quantized to a MUSICAL SCALE. A scale is log-spaced and
+ * FFT bins are linear, so resynthesising through an inverse FFT means rounding
+ * every scale degree onto the nearest bin centre — which un-quantizes the axis
+ * that the whole feature exists to quantize, and smears each partial across
+ * neighbours besides. A bank of oscillators puts the energy exactly where the
+ * scale says it is, and it is also what Metasynth and UPIC actually did.
+ *
+ * The cost argument §4.5 makes in the FFT's favour does not apply either way:
+ * this is a write-time render, paced (§8.3), so it may take as long as it takes.
+ */
+const MAX_SPEC_SLOTS = 4;
+/**
+ * Ceilings, so a malformed upload cannot ask the audio thread for an unbounded
+ * inner loop — §4.9's rule that the audio thread has no watchdog applies to a
+ * render writer more than to anything else here, because it is the one thing
+ * that deliberately runs for seconds.
+ */
+const MAX_SPEC_ROWS = 256;
+const MAX_SPEC_FRAMES = 4096;
+
+/**
+ * Render budget, in OSCILLATOR-SAMPLES per quantum — one row advanced by one
+ * output sample. The unit matters: a budget in output samples would make a
+ * 200-row image cost eight times a 25-row one for the same number, which is
+ * exactly the "twice what the constant says" mistake `_envStep` records.
+ *
+ * 2^16 with a table oscillator is roughly a tenth of a quantum's 2.67 ms, which
+ * puts a 32-row image at about 16× realtime — a ten-second render lands in well
+ * under a second. Deliberately larger than the envelope's share: a scan the
+ * display is waiting on can finish late and nobody notices, whereas a render is
+ * a performer standing still waiting to hear what they drew.
+ */
+const SPEC_OPS_PER_QUANTUM = 1 << 16;
+
+/**
+ * Sine table for the render bank. 4096 entries with linear interpolation puts
+ * the interpolation error near -90 dB, which is below the noise floor of
+ * anything this instrument will play, and it is what makes the budget above
+ * affordable — `Math.sin` per row per sample is an order of magnitude dearer
+ * and would buy nothing audible. One extra entry duplicating the first so the
+ * interpolation at the last index needs no wrap test in the inner loop.
+ */
+const SPEC_SINE_BITS = 12;
+const SPEC_SINE_SIZE = 1 << SPEC_SINE_BITS;
+
+/**
+ * Fixed seed for the render's initial phases. Random phases are needed — every
+ * row starting at zero puts one enormous impulse at sample 0 and makes a dense
+ * image sound like a click followed by the material — but they must be the SAME
+ * random phases every time, or the same image renders to different samples and
+ * §8.9's "determinism becomes testable" becomes untestable. Seeded per render,
+ * never per job id: a job id is a client counter, and keying on it would mean
+ * the second render of an unchanged image differed from the first.
+ */
+const SPEC_SEED = 0x9e3779b9;
 
 /**
  * Worklet-resident controllers (§8.7). Sixteen is a starting hypothesis like
@@ -322,6 +388,47 @@ class TapeProcessor extends AudioWorkletProcessor {
       this._rec.push(makeZone());
       this._play.push(makeZone());
     }
+    /**
+     * Spectral zones (§4.5). Deliberately NOT `makeZone()`: a render writer has
+     * no playhead, no gain ramp and no slewed bounds, and giving it those
+     * fields would leave a dozen of them permanently at their initial values —
+     * the dead-flag shape CLAUDE.md's guard rules say to stop and rethink at,
+     * rather than a harmless bit of uniformity.
+     */
+    this._spectral = [];
+    for (let i = 0; i < ZONES_PER_TYPE; i++) this._spectral.push({ part: 0, unsafe: false });
+
+    /** Uploaded frequency-time images. Null until `/spec/<n>/data` fills one. */
+    this._spec = [];
+    for (let i = 0; i < MAX_SPEC_SLOTS; i++) {
+      this._spec.push({ rows: 0, frames: 0, pitches: null, mag: null });
+    }
+    /**
+     * The one in-flight render, or null. ONE, globally — not a queue like
+     * `_envJobs`, and the difference is that an envelope is a read while a
+     * render is a destructive WRITE. Two queued renders whose regions overlap
+     * resolve by arrival order into whatever the second one leaves behind,
+     * seconds after both were asked for, which is not something a performer can
+     * reason about mid-set. A second render is refused BUSY with its own
+     * `/job/<n>/error`, so the client can say so and the first one keeps going.
+     */
+    this._specJob = null;
+    /**
+     * Per-row oscillator state for that one job, allocated ONCE at full size.
+     * A render accepts a message and must not allocate to do it — `_specStep`
+     * runs inside `process()`, and a fresh pair of arrays per render is GC on
+     * the audio thread at exactly the moment the performer is listening.
+     * Float64 because phase accumulates over millions of samples: at float32 a
+     * 20-second render drifts audibly in the top rows.
+     */
+    this._specPhase = new Float64Array(MAX_SPEC_ROWS);
+    this._specInc = new Float64Array(MAX_SPEC_ROWS);
+    this._sine = new Float32Array(SPEC_SINE_SIZE + 1);
+    for (let i = 0; i < SPEC_SINE_SIZE; i++) {
+      this._sine[i] = Math.sin((2 * Math.PI * i) / SPEC_SINE_SIZE);
+    }
+    this._sine[SPEC_SINE_SIZE] = this._sine[0];
+
     this._voices = [];
     for (let i = 0; i < MAX_VOICES; i++) this._voices.push(makeVoice(i + 1));
     this._ctrls = [];
@@ -357,7 +464,10 @@ class TapeProcessor extends AudioWorkletProcessor {
   }
 
   _zones(type) {
-    return type === 'rec' ? this._rec : type === 'play' ? this._play : null;
+    if (type === 'rec') return this._rec;
+    if (type === 'play') return this._play;
+    if (type === 'spectral') return this._spectral;
+    return null;
   }
 
   /**
@@ -435,6 +545,16 @@ class TapeProcessor extends AudioWorkletProcessor {
       case '/zone/play/<n>/rate':
         return this._zoneSet('play', idx[0], 'rateTgt', v[0], 'rateCtrl', m.a);
       case '/zone/rec/<n>/dynamic':   return this._zoneSet('rec', idx[0], 'dynamic', !!v[0]);
+
+      // The spectral writer (§4.5). `/render` is generic over zone type by
+      // grammar; only spectral zones exist to answer it today, and a synth zone
+      // is refused by `_zone` rather than by a second check here.
+      case '/spec/<n>/pitches':       return this._specPitches(idx[0], v[0]);
+      case '/spec/<n>/data':          return this._specData(idx[0], v[0], v[1], v[2]);
+      case '/spec/<n>/clear':         return this._specClear(idx[0]);
+      case '/zone/<type>/<n>/render':
+        return this._render(type, idx[0], v[0], v[1], v[2], v[3]);
+      case '/job/<n>/cancel':         return this._jobCancel(idx[0]);
 
       // Voices (§4.4, §4.10). Re-sending is an UPDATE, never a restart (rule 4)
       // — every one of these lands as a slew target, so a controller writing
@@ -1064,6 +1184,16 @@ class TapeProcessor extends AudioWorkletProcessor {
         }
       }
     }
+    // A render in flight is refused rather than cancelled, unlike the envelope
+    // scans below, and the asymmetry is the read/write one again: a scan asks a
+    // question about material that is going away and can simply be told so,
+    // whereas a render is unfinished WORK on this tape. Cancel it explicitly if
+    // that is what you meant — `/job/<n>/cancel` says so, and reallocating does
+    // not.
+    if (this._specJob) {
+      return this._refuse(REFUSE_LAYOUT_LOCKED,
+        `cannot reallocate the tape while job ${this._specJob.id} is rendering`);
+    }
     // Every queued scan indexes the tape that is about to be replaced, so they
     // are settled before it goes. Reusing the cursors against the new buffer
     // would answer a question about material that no longer exists.
@@ -1077,6 +1207,10 @@ class TapeProcessor extends AudioWorkletProcessor {
     this._tape = [];
     this._length = 0;
     this._envCancel(REFUSE_NO_TAPE);
+    // Panic IS the escape hatch, so unlike `_alloc` it does not refuse — it
+    // ends the render and says why. A job left pointing into a freed tape would
+    // index an empty array on the next quantum.
+    this._specCancel(REFUSE_NO_TAPE, 'the tape was cleared by panic');
     this._dirtyLo = Infinity;
     this._dirtyHi = -Infinity;
     // Silence everything immediately. Panic is the one place a click is the
@@ -1229,6 +1363,302 @@ class TapeProcessor extends AudioWorkletProcessor {
     this._envJobs.length = 0;
   }
 
+  // ── the spectral writer (§4.5) ────────────────────────────────────────────
+
+  _specSlot(i) {
+    if (!Number.isInteger(i) || i < 0 || i >= MAX_SPEC_SLOTS) {
+      this._refuse(REFUSE_BAD_RANGE, `spectral slot ${i} outside 0..${MAX_SPEC_SLOTS - 1}`);
+      return null;
+    }
+    return this._spec[i];
+  }
+
+  /**
+   * A render reads its slot straight out of the upload — there is no snapshot.
+   * That is a choice, and this is the guard that pays for it: editing a slot a
+   * render is reading is refused. Copying instead would mean allocating up to
+   * four megabytes on the audio thread the instant someone hits render, which
+   * is §4.9's second hazard at the worst possible moment; and rendering against
+   * an image being overwritten under it produces material that matches nothing
+   * anybody drew.
+   */
+  _specInUse(i) {
+    return !!this._specJob && this._specJob.slot === i;
+  }
+
+  _specPitches(i, blob) {
+    const s = this._specSlot(i);
+    if (!s) return;
+    if (this._specInUse(i)) {
+      return this._refuse(REFUSE_BUSY, `spectral slot ${i} is being rendered`);
+    }
+    const p = new Float32Array(blob);
+    if (p.length < 1 || p.length > MAX_SPEC_ROWS) {
+      return this._refuse(REFUSE_BAD_RANGE,
+        `${p.length} pitches, expected 1..${MAX_SPEC_ROWS}`);
+    }
+    const nyquist = sampleRate / 2;
+    for (let r = 0; r < p.length; r++) {
+      // Refused, not clamped or skipped. A row above Nyquist does not go
+      // missing — it FOLDS DOWN and lands on top of a pitch that is supposed to
+      // be there, so the failure presents as the scale being wrong rather than
+      // as a row being absent, and it presents that way only at some sample
+      // rates. The client builds a table that fits (`buildPitches` stops early);
+      // this is the engine refusing to render one that does not.
+      if (!(p[r] > 0) || !(p[r] < nyquist)) {
+        return this._refuse(REFUSE_BAD_RANGE,
+          `pitch ${p[r]} Hz at row ${r} is not inside (0, ${nyquist})`);
+      }
+    }
+    s.pitches = p;
+  }
+
+  _specData(i, rows, frames, blob) {
+    const s = this._specSlot(i);
+    if (!s) return;
+    if (this._specInUse(i)) {
+      return this._refuse(REFUSE_BUSY, `spectral slot ${i} is being rendered`);
+    }
+    if (!Number.isInteger(rows) || rows < 1 || rows > MAX_SPEC_ROWS) {
+      return this._refuse(REFUSE_BAD_RANGE, `rows ${rows} outside 1..${MAX_SPEC_ROWS}`);
+    }
+    if (!Number.isInteger(frames) || frames < 1 || frames > MAX_SPEC_FRAMES) {
+      return this._refuse(REFUSE_BAD_RANGE, `frames ${frames} outside 1..${MAX_SPEC_FRAMES}`);
+    }
+    if (!s.pitches) {
+      return this._refuse(REFUSE_BAD_RANGE, `spectral slot ${i} has no pitch table yet`);
+    }
+    if (s.pitches.length !== rows) {
+      return this._refuse(REFUSE_BAD_RANGE,
+        `image has ${rows} rows, pitch table has ${s.pitches.length}`);
+    }
+    const m = new Float32Array(blob);
+    if (m.length !== rows * frames) {
+      return this._refuse(REFUSE_BAD_RANGE,
+        `image blob is ${m.length} floats, expected ${rows * frames}`);
+    }
+    s.rows = rows; s.frames = frames; s.mag = m;
+  }
+
+  _specClear(i) {
+    const s = this._specSlot(i);
+    if (!s) return;
+    if (this._specInUse(i)) {
+      return this._refuse(REFUSE_BUSY, `spectral slot ${i} is being rendered`);
+    }
+    s.rows = 0; s.frames = 0; s.pitches = null; s.mag = null;
+  }
+
+  /**
+   * Accept a render (§8.3). Everything that can be wrong is decided HERE, in the
+   * message handler, so `_specStep` is arithmetic with no refusal path in it —
+   * a validity test inside the paced loop would be re-evaluated on every quantum
+   * of a multi-second render for an answer that cannot change.
+   *
+   * Every failure sends `/job/<id>/error` as well as `/engine/refuse`, for the
+   * reason `/tape/env/err` exists: the client is holding a promise keyed on this
+   * job id, and a refusal it cannot correlate settles nothing.
+   */
+  _render(type, i, slot, startRel, lenSamples, jobId) {
+    const id = Number.isInteger(jobId) ? jobId : -1;
+    const fail = (code, msg) => {
+      if (id >= 0) {
+        this.port.postMessage({ a: `/job/${id}/error`, t: 'is', v: [code, msg] });
+      }
+      this._refuse(code, msg);
+    };
+    const list = this._zones(type);
+    if (!list || type !== 'spectral') {
+      return fail(REFUSE_BAD_RANGE, `'${type}' zones cannot render`);
+    }
+    if (!(i >= 0 && i < list.length)) return fail(REFUSE_BAD_RANGE, `no ${type} zone ${i}`);
+    const z = list[i];
+    if (this._specJob) {
+      return fail(REFUSE_BUSY, `job ${this._specJob.id} is still rendering`);
+    }
+    if (!this._length) return fail(REFUSE_NO_TAPE, 'no tape allocated');
+    if (!Number.isInteger(slot) || slot < 0 || slot >= MAX_SPEC_SLOTS) {
+      return fail(REFUSE_BAD_RANGE, `spectral slot ${slot} out of range`);
+    }
+    const s = this._spec[slot];
+    if (!s.mag || !s.pitches) return fail(REFUSE_BAD_RANGE, `spectral slot ${slot} is empty`);
+    if (!Number.isInteger(lenSamples) || lenSamples < 1) {
+      return fail(REFUSE_BAD_RANGE, `render length ${lenSamples} is not a positive sample count`);
+    }
+
+    const p = this._parts[z.part];
+    const a = Math.round(p.start + startRel);
+    const b = a + lenSamples;
+    // REFUSED where a playback zone would be CLAMPED, and the difference is
+    // that a playback region is a continuously slewing target whose whole job
+    // is to stay inside the partition, while a render is a one-shot destructive
+    // write. Clamping here would silently render half of what was asked into a
+    // region the performer then plays back wondering why it stops early. The
+    // seam is still crossable — `unsafe` means the same thing it means
+    // everywhere else (§4.3).
+    if (!z.unsafe && (a < p.start || b > p.start + p.len)) {
+      return fail(REFUSE_BAD_RANGE,
+        `render ${a}..${b} leaves partition ${z.part} (${p.start}..${p.start + p.len})`);
+    }
+    if (a < 0 || b > this._length) {
+      return fail(REFUSE_BAD_RANGE, `render ${a}..${b} leaves the tape (0..${this._length})`);
+    }
+
+    // mulberry32, inlined. A seeded generator rather than `Math.random` so the
+    // same image renders to the same samples twice — see SPEC_SEED.
+    let seed = SPEC_SEED;
+    for (let r = 0; r < s.rows; r++) {
+      seed = (seed + 0x6d2b79f5) | 0;
+      let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      this._specPhase[r] = ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+      this._specInc[r] = s.pitches[r] / sampleRate;
+    }
+    this._specJob = {
+      // The PARTITION, kept beside the image slot because `_partBounds` has to
+      // be able to refuse a relayout of it — see the lock there. The render's
+      // span is fixed in absolute samples right here, so moving the partition
+      // afterwards does not move the writer with it.
+      id, slot, part: z.part, base: a, len: lenSamples, pos: 0,
+      rows: s.rows, frames: s.frames, mag: s.mag,
+      // Phase 0 is the normalization scan; phase 1 is the synthesis. Both are
+      // paced by the same budget, because a 256×4096 image is a million cells
+      // and scanning it in the message handler is the dropout `_envStep` exists
+      // to avoid, one subsystem over.
+      scanCol: 0, maxCol: 0, norm: 1, scanned: false, sent: -1,
+    };
+  }
+
+  /**
+   * One quantum's worth of rendering (§8.3), budgeted in oscillator-samples.
+   *
+   * Writes into the tape AS IT GOES rather than into scratch, so the region
+   * fills in visibly and audibly while the job runs. §8.3 left that open
+   * ("unreadable until complete, or readable progressively if that turns out to
+   * be musically useful") and progressive is both the simpler code — no second
+   * buffer to allocate, nothing to copy at the end — and the better behaviour:
+   * the tape display already draws the region filling, which is the feedback
+   * that tells a performer the render is alive rather than wedged.
+   */
+  _specStep() {
+    const job = this._specJob;
+    if (!job) return;
+    const { rows, frames, mag } = job;
+    let budget = SPEC_OPS_PER_QUANTUM;
+
+    // ── phase 0: the loudest column, which sets the render's scale ──────────
+    //
+    // Peak-normalizing the finished audio instead would mean going back over a
+    // region already written and audible, i.e. the render getting quieter after
+    // the fact. This is the worst-case instantaneous sum — every partial in a
+    // column aligned — so it cannot clip and does not depend on the phases.
+    // Conservative by a few dB on dense images, and deterministic, which is the
+    // trade worth making for something that writes to the tape.
+    while (!job.scanned) {
+      const room = Math.floor(budget / rows);
+      if (room < 1) return;
+      const stop = frames - job.scanCol > room ? job.scanCol + room : frames;
+      for (let c = job.scanCol; c < stop; c++) {
+        const base = c * rows;
+        let sum = 0;
+        for (let r = 0; r < rows; r++) sum += Math.abs(mag[base + r]);
+        if (sum > job.maxCol) job.maxCol = sum;
+      }
+      budget -= (stop - job.scanCol) * rows;
+      job.scanCol = stop;
+      if (job.scanCol >= frames) {
+        // Only scale DOWN. A faint image should render faint — normalizing it
+        // up to full scale would make the painted amplitude mean nothing and
+        // turn the silence between strokes into amplified floor noise.
+        job.norm = 1 / (job.maxCol > 1 ? job.maxCol : 1);
+        job.scanned = true;
+      }
+    }
+
+    // ── phase 1: the oscillator bank ────────────────────────────────────────
+    let n = Math.floor(budget / rows);
+    if (n < 1) return;
+    if (n > job.len - job.pos) n = job.len - job.pos;
+    const sine = this._sine;
+    const phase = this._specPhase;
+    const inc = this._specInc;
+    const norm = job.norm;
+    const chans = this._tape.length;
+    const end = job.pos + n;
+    for (let s = job.pos; s < end; s++) {
+      // Each column occupies an equal slice of the render, and neighbouring
+      // columns are crossfaded rather than switched. Without the interpolation
+      // a painted glide is a staircase of discrete pitches at the column rate,
+      // which is audible as a buzz sitting on top of the material.
+      const pos = (s * frames) / job.len;
+      const c = pos | 0;
+      const c1 = c + 1 < frames ? c + 1 : c;
+      const f = pos - c;
+      const b0 = c * rows;
+      const b1 = c1 * rows;
+      let acc = 0;
+      for (let r = 0; r < rows; r++) {
+        const m0 = mag[b0 + r];
+        const m = m0 + (mag[b1 + r] - m0) * f;
+        // Phase advances whether or not this row sounds, so a row that comes
+        // back after a gap is where a continuously running oscillator would be.
+        // Only the table lookup is skipped — that is the expensive half, and it
+        // is what makes a sparse painted image cheap.
+        let ph = phase[r] + inc[r];
+        if (ph >= 1) ph -= 1;
+        phase[r] = ph;
+        if (m > 0) {
+          const x = ph * SPEC_SINE_SIZE;
+          const xi = x | 0;
+          acc += m * (sine[xi] + (sine[xi + 1] - sine[xi]) * (x - xi));
+        }
+      }
+      // Mono into every channel, matching `/tape/write`'s mono payload rule.
+      // A per-row pan image is Metasynth's obvious next move and deliberately
+      // not in this pass — it is a second image with its own upload and its own
+      // meaning, not a flag on this one.
+      const v = acc * norm;
+      for (let ch = 0; ch < chans; ch++) this._tape[ch][job.base + s] = v;
+    }
+    this._markDirty(job.base + job.pos, job.base + end);
+    job.pos = end;
+    if (job.pos >= job.len) this._specDone();
+  }
+
+  _specDone() {
+    const id = this._specJob.id;
+    this._specJob = null;
+    this.port.postMessage({ a: `/job/${id}/done`, t: '', v: [] });
+  }
+
+  /**
+   * End a render that will not finish. The partially rendered material stays on
+   * the tape: it is what was actually asked for and actually written, and
+   * zeroing it would destroy a region the performer may have been recording
+   * into before this job ever started (`unsafe` renders can begin anywhere).
+   */
+  _specCancel(code, message) {
+    const job = this._specJob;
+    if (!job) return;
+    this._specJob = null;
+    this.port.postMessage({ a: `/job/${job.id}/error`, t: 'is', v: [code, message] });
+  }
+
+  _jobCancel(id) {
+    if (!this._specJob || this._specJob.id !== id) {
+      return this._refuse(REFUSE_BAD_RANGE, `job ${id} is not running`);
+    }
+    this._specCancel(REFUSE_CANCELLED, 'cancelled by the client');
+  }
+
+  /** Progress on the frame timer (rule 7), and only when it has moved. */
+  _specFlush() {
+    const job = this._specJob;
+    if (!job || job.pos === job.sent) return;
+    job.sent = job.pos;
+    this.port.postMessage({ a: `/job/${job.id}/progress`, t: 'ii', v: [job.pos, job.len] });
+  }
+
   // ── partitions (§4.3) ─────────────────────────────────────────────────────
 
   /**
@@ -1253,6 +1683,19 @@ class TapeProcessor extends AudioWorkletProcessor {
             `partition ${slot} has an active zone; layout is fixed while it runs`);
         }
       }
+    }
+    // A render counts as active on its partition, by the same rule and for a
+    // sharper reason than a playback zone does. `_render` resolved its span to
+    // ABSOLUTE samples at accept time, so moving the partition afterwards does
+    // not move the writer: it goes on filling where the partition used to be,
+    // which after a drag may be inside the NEXT partition's material. That is
+    // §4.3's one ruinous failure — a writer with the wrong bounds overwriting
+    // what you are playing — arriving through the layout rather than through
+    // the zone. The loop above cannot catch it because it counts `on` and
+    // `gainCur`, and a render writer has neither.
+    if (this._specJob && this._specJob.part === slot) {
+      return this._refuse(REFUSE_LAYOUT_LOCKED,
+        `partition ${slot} is being rendered by job ${this._specJob.id}`);
     }
     this._parts[slot].start = start;
     this._parts[slot].len = len;
@@ -1295,6 +1738,12 @@ class TapeProcessor extends AudioWorkletProcessor {
     if (!(slot >= 0 && slot < MAX_PARTITIONS)) {
       return this._refuse(REFUSE_BAD_RANGE, `partition ${slot} out of range`);
     }
+    // A spectral zone has no playhead to duck and no gain to ramp, so there is
+    // nothing to defer to: it takes the new slot immediately. Falling through
+    // to the ducking path below would read `z.gainCur === 0` as false on a
+    // field that does not exist, and quietly park the change in a `pend` flag
+    // that nothing on this zone ever consumes.
+    if (type === 'spectral') { z.part = slot; return; }
     if (!z.on && z.gainCur === 0) { z.part = slot; return; }
     z.pend = true; z.pendPart = slot;
   }
@@ -1309,6 +1758,7 @@ class TapeProcessor extends AudioWorkletProcessor {
   _zoneRegion(type, i, startRel, lenRel) {
     const z = this._zone(type, i);
     if (!z) return;
+    if (type === 'spectral') return this._refuseRenderZone(type, 'region');
     z.startTgt = startRel;
     z.lenTgt = lenRel;
     // Re-aim the ramp from wherever the value currently is, so a target that
@@ -1342,9 +1792,22 @@ class TapeProcessor extends AudioWorkletProcessor {
     this.port.postMessage({ a: `/zone/rec/${i}/state`, t: 'F', v: [false] });
   }
 
+  /**
+   * A render writer runs when it is told to render and is otherwise not a thing
+   * that is on or off, and its region travels with the verb. Refused rather
+   * than accepted-and-ignored: a `/zone/spectral/0/on` that returns quietly
+   * leaves a client believing it armed something, and the field it would have
+   * set is one nothing reads — dead by construction (CLAUDE.md's guard rules).
+   */
+  _refuseRenderZone(type, verb) {
+    this._refuse(REFUSE_BAD_RANGE,
+      `${type} zones render on request; '${verb}' does not apply to one`);
+  }
+
   _zoneOn(type, i, on) {
     const z = this._zone(type, i);
     if (!z) return;
+    if (type === 'spectral') return this._refuseRenderZone(type, on ? 'on' : 'off');
     if (on && !z.on) { z.phase = 0; z.writePos = 0; z.recorded = 0; }
     if (!on && z.on && type === 'rec' && z.dynamic) {
       // LiSa's dynamic length: the recording runs to the end of the region and
@@ -1897,10 +2360,17 @@ class TapeProcessor extends AudioWorkletProcessor {
     // one of them late (§8.3).
     if (this._envJobs.length) this._envStep();
 
+    // The spectral writer's render, on the same terms (§8.3). After the audio
+    // work for the same reason: it is a write into the tape, and a playback
+    // zone reading the region it is filling should see this quantum's picture
+    // consistently rather than half of it.
+    if (this._specJob) this._specStep();
+
     if (++this._quanta >= this._quantaPerFlush) {
       this._quanta = 0;
       this._flushDirty();
       this._ctrlFlush();
+      this._specFlush();
     }
     return true;
   }

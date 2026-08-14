@@ -24,7 +24,13 @@
 // `/ctrl/<n>/range` gained an argument. A signature that changes without a
 // bump is precisely the half-understood protocol `/engine/hello` exists to
 // refuse — the handshake can only protect what the number tracks.
-export const PROTO_VERSION = 2;
+//
+// 3 since step 8: the spectral writer (§4.5) brought the image slots, the
+// render verb and the job replies. New addresses count as much as changed
+// signatures here — an engine one version behind answers `/spec/0/data` with
+// `unknown address`, and a client that never learns that will sit waiting on a
+// `/job/<n>/done` nothing is going to send.
+export const PROTO_VERSION = 3;
 
 /** The complete permitted argument-type set. Rule 1 — do not extend casually. */
 export const TYPE_TAGS = Object.freeze(['i', 'f', 's', 'b', 'T', 'F']);
@@ -51,6 +57,12 @@ export const REFUSE = Object.freeze({
   // lock, alloc refusal), and "my slider does nothing" with no message is the
   // worst version of this to debug.
   CTRL_OWNED: 6,
+  // A paced job did not finish because something ended it: `/job/<n>/cancel`,
+  // a re-allocated tape, a panic. It is an ERROR code rather than a quiet
+  // `/job/<n>/done` because the region really did not get written, and a
+  // writer that reports success over a half-rendered partition is the same
+  // silent-failure class as an envelope reply that never arrives.
+  CANCELLED: 7,
 });
 
 /**
@@ -87,6 +99,43 @@ export const CLIENT_TO_ENGINE = Object.freeze({
   '/zone/<type>/<n>/off': '',
   '/zone/play/<n>/rate': 'f',      // signed; negative reads backwards
   '/zone/rec/<n>/dynamic': 'T',    // length taken from where you stop
+
+  // ── The spectral writer (§4.5) ──────────────────────────────────────────
+  //
+  // A frequency-time image is inverse-transformed ONCE, at write time, into an
+  // ordinary waveform in a partition. Nothing here appears in the realtime read
+  // path: after a render the material is tape like any other, scrubbed by index
+  // arithmetic forever after (§4.2).
+  //
+  // Note what the engine is NOT told: the scale. §4.5's load-bearing claim is
+  // that quantizing the vertical axis to a musical scale is what separates
+  // Metasynth and UPIC from noise — but a scale is a client-side musical idea,
+  // and putting a `/spec/<n>/scale 'i'` here would make the engine hold a
+  // vocabulary of tunings that rule 5 exists to keep out. The client sends
+  // FREQUENCIES, one per row, so the engine cannot express the concept and
+  // every tuning — equal, just, harmonic, microtonal, one somebody invents next
+  // year — costs the protocol nothing.
+  '/spec/<n>/pitches': 'b',        // float32 blob, Hz per row, defines row count
+  // rows, frames, float32 magnitude blob. FRAME-MAJOR: one whole column of
+  // `rows` magnitudes per frame, which is both how a spectrogram is thought
+  // about and the layout the renderer reads contiguously — row-major would
+  // stride by `frames` on every sample of the inner loop.
+  //
+  // `rows` travels even though `/pitches` already implies it, so a mismatch is
+  // refused loudly at upload instead of rendering an image against the wrong
+  // pitch table — which sounds like a broken instrument rather than a bad
+  // message.
+  '/spec/<n>/data': 'iib',
+  '/spec/<n>/clear': '',
+  // image slot, startRel, lengthSamples, jobId — the §8.8 render signature
+  // unchanged, where the leading id is "the thing to render from". Region
+  // travels with the VERB rather than being read off the zone: a render is a
+  // one-shot destructive act with an explicit destination, and taking its
+  // bounds from a slewing, controller-driven region would make where the audio
+  // landed depend on when the message happened to arrive.
+  '/zone/<type>/<n>/render': 'ifii',
+  // Stop a paced job (§8.3). The client already holds the id it minted.
+  '/job/<n>/cancel': '',
 
   // Voices (§4.4, §4.10) — the things with no buffer region. Fixed topology in
   // this pass: source → filter → saturator → level. There is deliberately no
@@ -220,6 +269,13 @@ export const ENGINE_TO_CLIENT = Object.freeze({
   // MAPPED value, ImWeb wants the RAW 0..1 so it can feed it back through
   // `setNormalized` instead of inverting its own unit conversions.
   '/ctrl/echo/data': 'b',
+  // Paced-job replies (§8.3). Exactly one terminal message per accepted job —
+  // `/done` or `/error`, never both and never neither — because the client
+  // holds a promise per job and an unterminated one wedges the surface that
+  // started it, the same way an uncorrelated envelope refusal wedges a view.
+  '/job/<n>/progress': 'ii',       // samples done, samples total
+  '/job/<n>/done': '',
+  '/job/<n>/error': 'is',          // refusal code, message
 });
 
 /**
@@ -230,10 +286,6 @@ export const ENGINE_TO_CLIENT = Object.freeze({
  */
 export const DEFERRED = Object.freeze({
   '/part/<n>/ring': 'T',
-  // graph, startRel, lengthSamples, jobId. `len` is a sample count, so `i` —
-  // it was 'iffi' when first written down, which would have typed a length as
-  // a float and let a fractional render span through validation.
-  '/zone/<type>/<n>/render': 'ifii',
   // §8.9: freeze is render PLUS A STATE SEED, so it is a sibling verb rather
   // than an argument on render. Cold state vs warm state are different musical
   // acts, and one verb with an optional voice would frame the cold case as a
@@ -249,10 +301,8 @@ export const DEFERRED = Object.freeze({
   // instruction list, c3b5b12).
   '/ctrl/<n>/random': 'ff',        // hz, slew seconds
   '/expr/<n>/code': 'b',
-  '/job/<n>/progress': 'ii',
-  '/job/<n>/done': '',
-  '/job/<n>/error': 'is',
-  '/job/<n>/cancel': '',
+  // The job vocabulary moved up in step 8 — the spectral writer is the first
+  // paced render, and it needed all four verbs to have one.
   '/tap/src': 's',
 });
 

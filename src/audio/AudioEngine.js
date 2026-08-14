@@ -74,6 +74,13 @@ export class AudioEngine {
     this._inflight = new Map();
     /** view key → pending args, collapsed to the newest while one is in flight. */
     this._queued = new Map();
+
+    this._nextJobId = 1;
+    /** job id → resolve, for paced renders (§8.3). */
+    this._jobs = new Map();
+    /** Called with (jobId, samplesDone, samplesTotal) at frame cadence. */
+    this.onJobProgress = null;
+
     this._ready = null;
   }
 
@@ -212,6 +219,14 @@ export class AudioEngine {
     for (const [, q] of this._queued) q.resolve(null);
     this._inflight.clear();
     this._queued.clear();
+    // Same rule for renders, and it matters more: a render promise is what a UI
+    // keeps its Render button disabled on, so one left unsettled at Audio Off
+    // is a control that never comes back. It resolves as a refusal rather than
+    // `null`, because unlike a superseded envelope this really did fail.
+    for (const [, settle] of this._jobs) {
+      settle({ ok: false, code: REFUSE.CANCELLED, message: 'the engine stopped' });
+    }
+    this._jobs.clear();
     if (this.ctx.state === 'running') await this.ctx.suspend();
   }
 
@@ -326,6 +341,39 @@ export class AudioEngine {
     this._send('/tape/write', startSample, channels, samples);
   }
 
+  // ── the spectral writer (§4.5) ────────────────────────────────────────────
+
+  /** @param {Float32Array} hz one frequency per image row, ascending. */
+  specPitches(slot, hz) { this._send(`/spec/${slot}/pitches`, hz); }
+  /** @param {Float32Array} mag frame-major: `rows` magnitudes per frame. */
+  specData(slot, rows, frames, mag) {
+    this._send(`/spec/${slot}/data`, rows | 0, frames | 0, mag);
+  }
+  specClear(slot) { this._send(`/spec/${slot}/clear`); }
+
+  /**
+   * Start a paced render (§8.3) and hand back a promise for its outcome.
+   *
+   * The job id is minted HERE rather than by the caller, for the reason the
+   * envelope path mints reqIds here: two callers picking their own would
+   * eventually pick the same one, and the correlated error that exists to stop
+   * a client wedging would then settle the wrong promise.
+   *
+   * Resolves `{ok:true}` on `/job/<n>/done` and `{ok:false, code, message}` on
+   * `/job/<n>/error` — never rejects. A refused render is an ordinary answer
+   * (the region left the partition, another render is running), not an
+   * exception, and making callers try/catch around a normal outcome is how a
+   * refusal ends up swallowed.
+   */
+  render(type, i, slot, startRel, lengthSamples) {
+    const jobId = this._nextJobId++;
+    const done = new Promise((resolve) => this._jobs.set(jobId, resolve));
+    this._send(`/zone/${type}/${i}/render`, slot | 0, startRel, lengthSamples | 0, jobId);
+    return { jobId, done };
+  }
+
+  cancelJob(jobId) { this._send(`/job/${jobId}/cancel`); }
+
   /**
    * Ask for an envelope over an explicit span. **Never resample a envelope you
    * already hold into a different resolution — ask** (§6 item 6): min/max is not
@@ -365,6 +413,21 @@ export class AudioEngine {
 
     const zState = /^\/zone\/([a-z]+)\/(\d+)\/state$/.exec(m.a);
     if (zState) return this.onZoneState?.(zState[1], Number(zState[2]), !!m.v[0]);
+
+    // Paced jobs (§8.3). Exactly one of done/error settles the promise, and the
+    // entry is deleted first so a duplicate terminal message cannot resolve a
+    // job id that has since been reused.
+    const job = /^\/job\/(\d+)\/(progress|done|error)$/.exec(m.a);
+    if (job) {
+      const id = Number(job[1]);
+      if (job[2] === 'progress') return this.onJobProgress?.(id, m.v[0], m.v[1]);
+      const settle = this._jobs.get(id);
+      this._jobs.delete(id);
+      settle?.(job[2] === 'done'
+        ? { ok: true }
+        : { ok: false, code: m.v[0], message: m.v[1] });
+      return;
+    }
 
     switch (m.a) {
       case '/engine/ready': {

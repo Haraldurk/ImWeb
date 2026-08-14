@@ -1327,3 +1327,97 @@ commitment. Progressive read is the more interesting default — it makes the fr
 audible as it lands, which is very much this instrument's temperament — but it
 interacts with the `unsafe` flag and with a playback zone already reading the
 region, so it is a thing to try rather than a thing to specify. Left to use.
+
+### 8.10 §4.5 built — additive, not an inverse FFT
+
+The spectral writer shipped in step 8. Building it forced one correction to §4.5
+and answered the four things §4.5 left open.
+
+#### The correction
+
+§4.5 says the painted image is **"inverse-transformed once, at write time"**. The
+load-bearing half of that sentence is *once, at write time* — the invariant is
+that no transform appears in the realtime read path, and the code honours it
+completely. The wrong half is *inverse-transformed*, and the sentence
+immediately after it is what makes it wrong:
+
+> The vertical axis is **quantized to a musical scale**. This is not decoration.
+
+A scale is log-spaced. FFT bins are linear. Resynthesising a scale-quantized
+image through an inverse FFT means rounding every degree onto the nearest bin
+centre — 23.4 Hz apart for a 2048-point transform at 48 kHz — which **un-quantizes
+the very axis the feature exists to quantize**, and smears each partial across its
+neighbours besides. At the bottom of a scale that is tens of cents of error; the
+audit measures 73 cents on one degree.
+
+So the writer is a **bank of oscillators, one per row**, which puts the energy
+exactly where the scale says it is. That is also what Metasynth and UPIC actually
+did — the FFT was an assumption about the mechanism, not a requirement of the
+design, and §4.5's own argument for it (that transform cost does not matter for a
+write-time render) is equally an argument for not using it.
+
+`tests/audit-audio-spectral.mjs` pins this as a measurement rather than a
+comment: a row is rendered, its frequency read back off the interpolated zero
+crossings, and required to be within 2 cents of the requested pitch. Rounding the
+oscillator increments onto a bin grid turns that check red.
+
+#### The four open questions, answered
+
+- **Scale vocabulary** — client-side, and *entirely*. The protocol carries a list
+  of **frequencies in Hz**, one per row (`/spec/<n>/pitches`). The engine holds no
+  vocabulary of tunings, cannot be taught one, and needs no version bump when a
+  scale is added. Ten scales ship in `src/audio/spectral-image.js`, including the
+  harmonic series, which is not an octave-repeating pattern and would have had to
+  be faked in semitones under any engine-side scheme.
+- **FFT size and overlap** — moot, and that is the point. The parameters that
+  replace them are rows (from the pitch table), frames (from the image) and the
+  render length, all of which are things a performer can see.
+- **Phase** — one continuous running phase per row for the whole render, seeded
+  from a **fixed constant**. Random initial phases are needed (every row starting
+  at zero puts one enormous impulse at sample 0), but they must be the *same*
+  random phases every time or §8.9's "determinism becomes testable" is untrue of
+  the first writer to exist. Phase advances whether or not a row sounds, so a row
+  returning after a gap lands where a continuously running oscillator would be —
+  measured by rendering the same row with and without a hole and comparing tails.
+- **Image source** — the engine takes a magnitude blob and does not care. That
+  keeps paint-surface and import as client-side questions, which is where the
+  §4.7 coupling wants them: a video frame is already a frequency-time picture if
+  you decide to read it as one.
+
+#### What §8.3 asked for, as built
+
+Two phases, one budget, both paced. Phase 0 scans the image for the loudest
+column; phase 1 runs the oscillator bank. The budget is counted in
+**oscillator-samples**, not output samples — a budget in output samples makes a
+200-row image cost eight times a 25-row one for the same constant, which is the
+same unit error `_envStep` records having made with channels.
+
+Three decisions §8.3 left open, taken and recorded:
+
+- **Progressive, not unreadable-until-complete.** The render writes into the tape
+  as it goes. It is the simpler code — no scratch buffer, nothing to copy at the
+  end — and the better behaviour, because the tape display already draws the
+  region filling, which is what tells a performer the render is alive.
+- **One render at a time, globally.** Not a bounded queue like the envelope
+  scans, and the difference is that an envelope is a read while a render is a
+  destructive **write**: two queued renders with overlapping regions resolve by
+  arrival order, seconds after both were asked for. A second render is refused
+  BUSY with its own `/job/<n>/error`.
+- **Refused where a playback zone would be clamped.** A playback region is a
+  continuously slewing target and clamping it to the partition is the point; a
+  render is one-shot, so clamping it would silently write half of what was asked
+  into a region the performer then plays back wondering why it stops early. The
+  seam is still crossable with `unsafe`; the end of the tape is not.
+
+Normalization is by the **worst-case column sum** — every partial in a column
+aligned — computed in phase 0 and only ever scaling down. It cannot clip and does
+not depend on the phases, which matters more than the few dB it gives away on
+dense images: the alternative, peak-normalizing the finished audio, means going
+back over a region that is already written and already audible.
+
+#### What is deliberately not in this pass
+
+A **pan image**. Metasynth's obvious next move is a second picture assigning each
+row a stereo position, and it is a second upload with its own meaning rather than
+a flag on this one. The render is mono into every channel, matching
+`/tape/write`'s mono payload rule.
