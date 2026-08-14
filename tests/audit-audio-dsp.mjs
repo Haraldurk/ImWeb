@@ -264,6 +264,89 @@ console.log('\nthe engine says when it stops a zone itself');
   check('the reported state is "stopped"', st?.v[0] === false, String(st?.v[0]));
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// A structural edit a zone cannot honour is REFUSED, never parked.
+//
+// Reported from a real listening session: "recording to P0, P1, P2, P3 — it all
+// goes to P0". `_zonePart`'s duck path parks the change in `pend` and lets the
+// zone's gain ramp apply it at the bottom — but `pend` is only ever drained in
+// `_renderPlay` and `_renderVoice`, so for a RECORDING zone it parked forever.
+// `Partition Rec` moved in the UI, the take went on landing in the old
+// partition, and nothing was reported. The click went nowhere.
+//
+// Third instance of the class: spectral and grain already have explicit
+// early-return branches. The lasting question for any new zone type is "what
+// drains `pend` for me?", and "nothing" must be answered here rather than
+// discovered by a performer.
+console.log('\na structural edit a running zone cannot honour is refused');
+{
+  const s = makeEngine({ fill: 0 });
+  s.send('/part/0/bounds', 0, 256);
+  s.send('/part/1/bounds', 256, 256);
+  s.send('/part/2/bounds', 512, 256);
+
+  s.send('/zone/rec/0/part', 2);
+  check('a STOPPED recorder takes a new partition immediately',
+    s.p._rec[0].part === 2, `part = ${s.p._rec[0].part}`);
+
+  s.send('/zone/rec/0/part', 0);
+  s.send('/zone/rec/0/region', 0, 256);
+  s.send('/zone/rec/0/on');
+  s.sent().length = 0;
+  s.send('/zone/rec/0/part', 1);
+
+  const ref = s.sent().filter((m) => m.a === '/engine/refuse');
+  check('a RUNNING one refuses, rather than accepting and ignoring',
+    ref.some((m) => /stop it to change partition/.test(m.v[1])),
+    JSON.stringify(ref.map((m) => m.v)));
+  check('and the partition is unchanged', s.p._rec[0].part === 0,
+    `part = ${s.p._rec[0].part}`);
+  // The specific defect: a parked flag nothing on this zone consumes. If a
+  // future change reintroduces the duck path here, `pend` goes true and the
+  // recording silently keeps writing where it was.
+  check('with nothing parked in pend', s.p._rec[0].pend === false,
+    'pend is only drained by _renderPlay/_renderVoice — a rec zone never clears it');
+  s.run(200);
+  check('and it stays unchanged however long it runs', s.p._rec[0].part === 0);
+
+  // ORDER, not just presence. The refusal sits AFTER the range check, so an
+  // impossible slot is reported as impossible rather than as "stop the zone" —
+  // advice that would not help, about a partition that does not exist. Found by
+  // a mutation that moved the branch one step earlier and survived: the section
+  // above proves the refusal fires, and proved nothing about which one.
+  s.sent().length = 0;
+  s.send('/zone/rec/0/part', 99);
+  const why = s.sent().filter((m) => m.a === '/engine/refuse').map((m) => m.v[1]);
+  check('an impossible slot on a running recorder reports the RANGE, not the zone',
+    why.some((t) => /out of range/.test(t)) && !why.some((t) => /stop it/.test(t)),
+    JSON.stringify(why));
+
+  s.send('/zone/rec/0/off');
+  s.send('/zone/rec/0/part', 1);
+  check('stopping it makes the change take, which is the documented way round',
+    s.p._rec[0].part === 1, `part = ${s.p._rec[0].part}`);
+
+  // A playback zone DOES duck, and must keep doing so — the fix is a branch for
+  // one type, not a new blanket rule.
+  const q = makeEngine({ fill: 0 });
+  q.send('/part/0/bounds', 0, 256);
+  q.send('/part/1/bounds', 256, 256);
+  q.send('/zone/play/0/part', 0);
+  q.send('/zone/play/0/region', 0, 256);
+  q.send('/zone/play/0/on');
+  q.run(2);
+  q.send('/zone/play/0/part', 1);
+  check('a running PLAYBACK zone still defers through the duck',
+    q.p._play[0].pend === true && q.p._play[0].pendPart === 1,
+    `pend = ${q.p._play[0].pend}, pendPart = ${q.p._play[0].pendPart}`);
+  q.send('/zone/play/0/off');
+  q.run(4000);
+  check('and applies it at the bottom of the ramp',
+    q.p._play[0].part === 1 && q.p._play[0].pend === false,
+    `part = ${q.p._play[0].part}, pend = ${q.p._play[0].pend}`);
+}
+
 // ── 10. the tape reader's quality (§4.10 items 1 and 2) ────────────────────
 //
 // §4.10: "Get those right and a plain sine sounds good. Get them wrong and no

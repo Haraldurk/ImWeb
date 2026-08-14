@@ -212,6 +212,22 @@ crossfaders.
 | Playback Zone | reader | forwards, backwards, spiralling, skipping |
 | **Voice** | **neither** | live code straight to output; touches no region |
 
+**Every zone type must state what happens to a structural edit while it runs.**
+`_zonePart` defers one by parking the new slot in `pend`, to be applied at the
+bottom of the zone's gain duck — and `pend` is drained in exactly two places,
+`_renderPlay` and `_renderVoice`. A type that reaches the duck path without a
+gain ramp parks its change **forever**, silently: the UI moves, the zone does
+not, nothing is reported. The duck is the default, so a new type inherits it by
+writing no code, and inherits it broken. Three of the types above have hit this;
+the third was found by a performer rather than a test. The three legitimate
+answers, each an explicit branch:
+
+| answer | types | because |
+|---|---|---|
+| the gain ramp drains it | Playback, Voice | they are the only ones that have one |
+| nothing to defer to — take it now | Spectral, Grain | no write state to split |
+| nothing can honour it — **refuse** | Recording | `writePos` would be reinterpreted against the new span mid-take, and `recorded` would describe material living in two partitions |
+
 **Render writers are the genuinely new capability.** A Synth Zone can produce ten
 seconds of material in a fraction of a second; you then scrub it. Write a snippet,
 render it, immediately play it backwards. SuperCollider in 2002 could not do this —

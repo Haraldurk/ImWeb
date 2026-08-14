@@ -25,6 +25,72 @@
 /** Ordinary quotes throughout: `${}` inside a single-quoted string is literal. */
 export const MUTATIONS = [
   // ═════════════════════════════════════════════════════════════════════════
+  // Structural edits a running zone cannot honour (§4.3 / §4.4)
+  // ═════════════════════════════════════════════════════════════════════════
+  {
+    name: 'rec: a running recorder parks the partition change again',
+    audit: 'audit-audio-dsp.mjs',
+    file: 'src/audio/engine/tape-processor.js',
+    why: 'FOUND BY A PERFORMER, not by a test — "recording to P0, P1, P2, P3, it all goes to P0". Nothing drains `pend` for a rec zone, so the change parks forever: the UI moves, the take does not, and nothing is reported',
+    find: '    if (type === \'rec\' && z.on) {\n      return this._refuse(REFUSE_LAYOUT_LOCKED,\n        `rec zone ${i} is recording; stop it to change partition`);\n    }\n',
+    replace: '',
+  },
+  {
+    name: 'rec: the refusal fires but the change is applied anyway',
+    audit: 'audit-audio-dsp.mjs',
+    file: 'src/audio/engine/tape-processor.js',
+    why: 'refusing and then doing it is worse than either — writePos would be reinterpreted against the new span mid-take, so the recording resumes in the MIDDLE of the new region',
+    find: '      return this._refuse(REFUSE_LAYOUT_LOCKED,\n        `rec zone ${i} is recording; stop it to change partition`);',
+    replace: '      this._refuse(REFUSE_LAYOUT_LOCKED,\n        `rec zone ${i} is recording; stop it to change partition`);\n      z.part = slot; return;',
+  },
+  {
+    name: 'rec: the branch swallows stopped zones too',
+    audit: 'audit-audio-dsp.mjs',
+    file: 'src/audio/engine/tape-processor.js',
+    why: 'refusing a change to a stopped recorder makes the documented workaround — stop it, move it, start it — stop working, so there would be no way to change partition at all',
+    find: 'if (type === \'rec\' && z.on) {',
+    replace: 'if (type === \'rec\') {',
+  },
+  {
+    name: 'rec: the branch is placed before the range check',
+    audit: 'audit-audio-dsp.mjs',
+    file: 'src/audio/engine/tape-processor.js',
+    why: 'an out-of-range slot on a running recorder would report the wrong reason — "stop it to change partition" for a partition that does not exist',
+    // Scoped to the METHOD, because the range check's text occurs three times in
+    // this file and a whole-file `String.replace` takes the first — which is how
+    // the first draft of this entry inserted the branch into `_render` instead,
+    // got caught anyway, and tested nothing. `expect` below is what noticed.
+    apply(src) {
+      const head = '  _zonePart(type, i, slot) {';
+      const a = src.indexOf(head);
+      if (a < 0) return src;
+      const b = src.indexOf('\n  }\n', a);
+      const body = src.slice(a, b);
+      const range = '    if (!(slot >= 0 && slot < MAX_PARTITIONS)) {\n';
+      const rec = '    if (type === \'rec\' && z.on) {\n      return this._refuse(REFUSE_LAYOUT_LOCKED,\n        `rec zone ${i} is recording; stop it to change partition`);\n    }\n';
+      if (!body.includes(range) || !body.includes(rec)) return src;
+      const moved = body.replace(rec, '').replace(range, rec + range);
+      return src.slice(0, a) + moved + src.slice(b);
+    },
+    expect(out) {
+      const a = out.indexOf('  _zonePart(type, i, slot) {');
+      const body = out.slice(a, out.indexOf('\n  }\n', a));
+      const iRec = body.indexOf('stop it to change partition');
+      const iRange = body.indexOf('MAX_PARTITIONS');
+      // Both still inside THIS method, and the rec branch now precedes the check.
+      return iRec > 0 && iRange > 0 && iRec < iRange;
+    },
+  },
+  {
+    name: 'rec: playback loses its duck as collateral',
+    audit: 'audit-audio-dsp.mjs',
+    file: 'src/audio/engine/tape-processor.js',
+    why: 'the fix is a branch for ONE type, not a blanket rule — a playback zone must still defer through the gain ramp rather than jumping mid-read',
+    find: 'if (type === \'rec\' && z.on) {',
+    replace: 'if (z.on) {',
+  },
+
+  // ═════════════════════════════════════════════════════════════════════════
   // The spectral writer's pan image (§8.14)
   // ═════════════════════════════════════════════════════════════════════════
   {
@@ -126,6 +192,11 @@ export const MUTATIONS = [
       const i = src.indexOf(data), j = src.indexOf(pan);
       if (i < 0 || j < 0 || i > j) return src;
       return src.slice(0, i) + pan + '\n' + data + src.slice(i + data.length, j) + src.slice(j + pan.length);
+    },
+    expect(out) {
+      const i = out.indexOf('this.engine.specData(0, rows, frames, mag)');
+      const j = out.indexOf('this.engine.specPan(0, rows, frames, pan)');
+      return i > 0 && j > 0 && j < i;   // pan now precedes data, which is the defect
     },
   },
   {
