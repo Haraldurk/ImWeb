@@ -36,7 +36,14 @@
 // `grain` joining ZONE_TYPES changes how `normalizeAddress` collapses an
 // address, so an older client and a newer engine disagree about what
 // `/zone/grain/0/on` even IS rather than merely one of them not knowing it.
-export const PROTO_VERSION = 4;
+// 5 since step 12: the spectral writer's PAN image (§8.14). A new address, so
+// the step-8 reason applies unchanged — but there is a second one that is worse
+// than a missing reply. `/spec/<n>/pan` carries positions an older engine drops
+// silently, and a dropped pan image is not a failure the performer can hear as a
+// failure: the render simply comes out mono, which is exactly what it did
+// before, so it reads as the feature not working rather than as the engine being
+// too old. Version mismatch is the only place that can say which.
+export const PROTO_VERSION = 5;
 
 /** The complete permitted argument-type set. Rule 1 — do not extend casually. */
 export const TYPE_TAGS = Object.freeze(['i', 'f', 's', 'b', 'T', 'F']);
@@ -132,6 +139,22 @@ export const CLIENT_TO_ENGINE = Object.freeze({
   // pitch table — which sounds like a broken instrument rather than a bad
   // message.
   '/spec/<n>/data': 'iib',
+  // The PAN image (§8.14) — rows, frames, float32 blob, the same shape and the
+  // same frame-major layout as `/spec/<n>/data`, because it is a second picture
+  // over the same grid and any other layout would need its own indexing in the
+  // one loop that must stay cheap.
+  //
+  // **Positions, in [-1, +1]. Not pixels, and not a "width".** The engine is
+  // told where each cell sits between the speakers and nothing about how that
+  // was decided — which colour meant which side, whether the spread runs low-to-
+  // high or high-to-low, how far a width control had opened. All of that is a
+  // client-side musical idea in exactly the sense §4.5's scale is, so it stays
+  // client-side for the same reason: the engine holds no vocabulary, and a
+  // fifth pan mode invented next year costs the protocol nothing.
+  //
+  // Optional by construction. A slot with no pan image renders mono into every
+  // channel, which is what every slot did before this address existed.
+  '/spec/<n>/pan': 'iib',
   '/spec/<n>/clear': '',
   // image slot, startRel, lengthSamples, jobId — the §8.8 render signature
   // unchanged, where the leading id is "the thing to render from". Region

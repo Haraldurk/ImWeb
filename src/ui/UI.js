@@ -359,8 +359,11 @@ export function buildMappingPanels(ps, contextMenu) {
     // cannot be captured by a Display State, and is therefore listed explicitly
     // rather than through pick(), exactly as `audio.enable` is above.
     'audio-spec-params': [
+      // `pan`/`panWidth` sit with gamma/floor/level — all four are "how the
+      // picture is read", and pan is the one that reads a channel the others
+      // throw away. Before the verb, because it changes what Render produces.
       ...pick('aspec', ['part', 'start', 'len', 'unsafe', 'scale', 'root', 'rows',
-        'frames', 'gamma', 'floor', 'level']),
+        'frames', 'gamma', 'floor', 'pan', 'panWidth', 'level']),
       ps.get('aspec.render'), ps.get('aspec.cancel'),
     ].filter(Boolean),
     // The corpus (§4.6). Axes first — they are what the pad above means — then

@@ -25,7 +25,7 @@ import { AudioEngine, TAP } from './AudioEngine.js';
 import { SLEW_TABLE_BASE } from './protocol.js';
 import { TapeView } from './TapeView.js';
 import { partitionSpan, zoneSpan, clampToPartition } from './tape-geometry.js';
-import { buildPitches, imageFromLuma } from './spectral-image.js';
+import { buildPitches, imageFromLuma, buildPan, PAN } from './spectral-image.js';
 import { CorpusView } from './CorpusView.js';
 import { DESCRIPTORS, buildIndex, nearest, grainTime } from './corpus-index.js';
 import { describeAudioGraph } from './graph-view.js';
@@ -832,13 +832,27 @@ export class AudioBinding {
     // harmless, because the box average absorbs it, but it made the comment
     // there one step ahead of the truth, and the next person to optimise the
     // grab would have been optimising against the wrong number.
-    const pic = this.imageSource?.(rows, frames);
+    // Colour is asked for only when the pan mode needs it (§8.14) — every other
+    // mode is geometry or off, and reading a second channel out of the frame to
+    // ignore it is a per-pixel pass for nothing.
+    const panMode = g('aspec.pan') | 0;
+    const panWidth = g('aspec.panWidth');
+    const wantChroma = panMode === PAN.COLOUR && panWidth > 0;
+    const pic = this.imageSource?.(rows, frames, wantChroma);
     if (!pic || !pic.width || !pic.height) {
       return this._say('spectral render: no picture to read');
     }
     const mag = imageFromLuma(pic.luma, pic.width, pic.height, rows, frames, {
       gamma: g('aspec.gamma'), floor: g('aspec.floor'), gain: g('aspec.level'),
     });
+    // Null for Off, for a width of 0, and for Colour with no colour to read.
+    // Null means the render goes mono, which is what it did before §8.14 — so
+    // the failure mode of every one of those is the previous behaviour rather
+    // than a refusal.
+    const pan = buildPan(panMode, rows, frames, panWidth, pic);
+    if (panMode === PAN.COLOUR && !pan && panWidth > 0) {
+      this._say('spectral: pan needs colour from the picture — rendering mono');
+    }
 
     const n = this._tapeLen;
     const part = this._part(g('aspec.part'));
@@ -853,6 +867,12 @@ export class AudioBinding {
     const secs = (lengthSamples / this.engine.sampleRate).toFixed(1);
     this.engine.specPitches(0, pitches);
     this.engine.specData(0, rows, frames, mag);
+    // AFTER the data, and the order is load-bearing rather than tidy: the engine
+    // refuses a pan image for a slot with no magnitudes, and `/spec/<n>/data`
+    // clears whatever pan was there. Sent before it, this would be refused; and
+    // if the refusal were ever relaxed it would be dropped instead, which is
+    // worse — a silent mono render.
+    if (pan) this.engine.specPan(0, rows, frames, pan);
     const { jobId, done } = this.engine.render('spectral', 0, 0, startRel, lengthSamples);
     this._specJobId = jobId;
     this._say(`spectral: rendering ${secs}s from ${rows}×${frames}…`);
