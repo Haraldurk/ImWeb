@@ -9,6 +9,20 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
 ## [Unreleased]
 
 ### Fixed
+- **Changing the recording partition while recording now says so instead of
+  doing nothing.** `Partition Rec` was silently ignored whenever `Run Rec` was
+  on: the button moved, the take went on landing in the old partition, and
+  nothing reported it — so recording to P0, P1, P2 and P3 in turn put everything
+  in P0. It refuses now, and names why: *"rec zone 0 is recording; stop it to
+  change partition."* Stop the recorder, move it, start it again.
+
+  Refused rather than applied, because a recorder mid-take has write state a
+  playback zone does not: the write head would be reinterpreted against the new
+  region and resume in the middle of it, and a dynamic recording's finish line
+  would move mid-capture. Punch-in — end this take, start one over there — is a
+  real thing to want and will be its own control, not a reinterpretation of this
+  one.
+
 - **The master Fade works.** Raising Fade above 0 — by the slider, by **`h`
   (Hold / fade to black)**, by a controller, by a Display State recall or by a
   loaded project — threw `ReferenceError: interlaced is not defined` inside the

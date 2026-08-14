@@ -2479,6 +2479,48 @@ class TapeProcessor extends AudioWorkletProcessor {
     // the new. There is no moment at which anything reads across the gap, which
     // is precisely what the duck exists to prevent on a continuous reader.
     if (type === 'grain') { z.part = slot; return; }
+    /**
+     * A RUNNING recorder refuses, and this is the one zone type that can neither
+     * duck nor take it immediately.
+     *
+     * **Nothing drains `pend` for a rec zone.** The flag is only ever consumed in
+     * `_renderPlay` and `_renderVoice`, so before this branch existed the change
+     * parked forever: `Partition Rec` moved in the UI, the take went on landing
+     * in the old partition, and no refusal was reported. The click went nowhere.
+     * That is the bug this replaces, and it is the third instance of the class —
+     * see the note above about what the spectral and grain branches are for.
+     *
+     * **Applying it immediately would be a design decision wearing a bugfix's
+     * clothes.** Spectral and grain can take a slot instantly because they hold
+     * no write state. A recorder holds two: `writePos` keeps counting and would
+     * be reinterpreted against the new partition's span on the next frame — so
+     * the take would resume somewhere in the MIDDLE of the new region rather
+     * than at its start — and `recorded` would end up describing material that
+     * physically lives in two partitions, a number `_finishDynamic` then reports
+     * as one length. For a dynamic recording it is worse still: the seam it runs
+     * to is derived from the partition, so this would move the finish line
+     * mid-capture.
+     *
+     * **Deferring until the zone stops would keep the lie, just shorter** — the
+     * UI showing P3 while the take lands in P0 is exactly the property that made
+     * this reportable, merely bounded by take length instead of forever. And
+     * `_alloc` clears `pend` outright, so a parked change can be dropped rather
+     * than delayed.
+     *
+     * So it is refused, which is the house rule for a message the engine cannot
+     * honour as the client means it — the same rule as `_refuseRenderZone`, the
+     * grain region, and §8.14's out-of-range pan. Stopping the zone is the
+     * documented interaction rather than folk knowledge.
+     *
+     * Punch-in — "end this take, start another over there" — is a legitimate
+     * thing to want and is NOT this verb. It would need `_finishDynamic`-grade
+     * reporting for the fragment it ends and a fresh `writePos`/`recorded` for
+     * the one it starts. It gets its own address if it ever earns one.
+     */
+    if (type === 'rec' && z.on) {
+      return this._refuse(REFUSE_LAYOUT_LOCKED,
+        `rec zone ${i} is recording; stop it to change partition`);
+    }
     if (!z.on && z.gainCur === 0) { z.part = slot; return; }
     z.pend = true; z.pendPart = slot;
   }

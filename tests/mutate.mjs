@@ -97,7 +97,18 @@ function auditPasses(audit) {
  * whole file and returns the whole file.
  */
 function mutate(src, m) {
-  if (m.apply) return m.apply(src);
+  if (m.apply) {
+    // An `apply` bypasses the uniqueness guard below, so it has to prove it did
+    // what it claims — "the string changed" is not that. One of these silently
+    // inserted its branch into a DIFFERENT METHOD, because the anchor it
+    // replaced occurs three times in the file and `String.replace` takes the
+    // first; the mutation was then caught, but for the wrong reason, which is a
+    // mutation lying about what it tests. `expect` is therefore mandatory here.
+    if (typeof m.expect !== 'function') return { unverifiable: true };
+    const out = m.apply(src);
+    if (out === src) return src;
+    return m.expect(out, src) ? out : { wrongEdit: true };
+  }
   // AMBIGUOUS IS AS BAD AS ABSENT, and less obvious. `String.replace` with a
   // string pattern hits the FIRST occurrence only, so a `find` whose context
   // gets duplicated by some later edit would quietly mutate the wrong copy —
@@ -140,9 +151,19 @@ try {
     const mutated = mutate(original, m);
 
     if (typeof mutated === 'object') {
-      console.error(`  AMBIGUOUS    ${m.name}`);
-      console.error(`               pattern matches ${mutated.ambiguous} places in ${m.file}`);
-      console.error('               — it must name exactly one, or it mutates the wrong copy');
+      if (mutated.unverifiable) {
+        console.error(`  UNVERIFIABLE ${m.name}`);
+        console.error('               an `apply` mutation must carry an `expect` that proves');
+        console.error('               it edited what it says it edited');
+      } else if (mutated.wrongEdit) {
+        console.error(`  WRONG EDIT   ${m.name}`);
+        console.error(`               it changed ${m.file}, but not in the way it claims —`);
+        console.error('               a mutation caught for the wrong reason tests nothing');
+      } else {
+        console.error(`  AMBIGUOUS    ${m.name}`);
+        console.error(`               pattern matches ${mutated.ambiguous} places in ${m.file}`);
+        console.error('               — it must name exactly one, or it mutates the wrong copy');
+      }
       notApplied++;
       continue;
     }
