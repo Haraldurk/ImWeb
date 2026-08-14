@@ -31,14 +31,34 @@ jobs:
 
       - name: Mutation-calibrate the audits this PR touches
         if: github.event_name == 'pull_request'
+        shell: bash
         run: |
-          CHANGED=$(git diff --name-only "origin/${{ github.base_ref }}...HEAD")
-          AFFECTED=$(node tests/mutate-affected.mjs $CHANGED)
-          if [ -z "$AFFECTED" ]; then
+          # Filenames and audit names go through ARRAYS, not word splitting.
+          # `node tests/mutate-affected.mjs $CHANGED` relied on the shell to
+          # split a newline-separated list into arguments, which silently does
+          # the wrong thing for any path containing a space — and does it by
+          # passing two half-paths that match no mutation, so the step reports
+          # "nothing to calibrate" and goes green. A calibration step that
+          # skips itself on a filename is worse than one that fails.
+          # `while read` rather than `mapfile`: mapfile is bash 4+, and the
+          # machine this was written on ships bash 3.2, so it could not be
+          # exercised locally before shipping. A fix nobody can run is a fix
+          # nobody has tested.
+          CHANGED=()
+          while IFS= read -r f; do CHANGED+=("$f"); done \
+            < <(git diff --name-only "origin/${{ github.base_ref }}...HEAD")
+          if [ ${#CHANGED[@]} -eq 0 ]; then
+            echo "no files changed — nothing to calibrate"
+            exit 0
+          fi
+          AFFECTED=()
+          while IFS= read -r a; do AFFECTED+=("$a"); done \
+            < <(node tests/mutate-affected.mjs "${CHANGED[@]}")
+          if [ ${#AFFECTED[@]} -eq 0 ]; then
             echo "no calibrated audit touched — nothing to calibrate"
             exit 0
           fi
-          for AUDIT in $AFFECTED; do
+          for AUDIT in "${AFFECTED[@]}"; do
             echo "── calibrating $AUDIT"
             node tests/mutate.mjs "$AUDIT"
           done

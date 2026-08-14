@@ -25,6 +25,30 @@
 /** Ordinary quotes throughout: `${}` inside a single-quoted string is literal. */
 export const MUTATIONS = [
   // ═════════════════════════════════════════════════════════════════════════
+  // Promotion pressure on LEARNED.md
+  //
+  // These mutate the DATA rather than the code, because the data is what this
+  // audit polices — and it means a PR touching LEARNED.md re-proves the audit
+  // that guards it, via `mutate-affected.mjs`.
+  // ═════════════════════════════════════════════════════════════════════════
+  {
+    name: 'advisory: an entry written without a date',
+    audit: 'audit-learned-advisory-age.mjs',
+    file: 'docs/LEARNED.md',
+    why: 'the easiest way to silence a promotion-pressure audit forever — the parser matches only dated entries, so an undated one is not exempt, it is INVISIBLE, and it ages without ever being counted',
+    find: '- 2026-07-12 [advisory]: Before writing any integration',
+    replace: '- [advisory]: Before writing any integration',
+  },
+  {
+    name: 'advisory: an entry that has aged past the boundary',
+    audit: 'audit-learned-advisory-age.mjs',
+    file: 'docs/LEARNED.md',
+    why: 'the whole point of the audit — a lesson carried in prose past 90 days is one the repo has agreed to keep re-learning, and it must go red rather than quietly persist',
+    find: '- 2026-07-12 [advisory]: Before writing any integration',
+    replace: '- 2020-01-01 [advisory]: Before writing any integration',
+  },
+
+  // ═════════════════════════════════════════════════════════════════════════
   // Structural edits a running zone cannot honour (§4.3 / §4.4)
   // ═════════════════════════════════════════════════════════════════════════
   {
