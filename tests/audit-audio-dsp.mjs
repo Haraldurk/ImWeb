@@ -27,6 +27,7 @@
 
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
+import { readFileSync } from 'node:fs';
 // The handshake is version-gated, so the audit sends the CONSTANT — a literal
 // here would keep passing through a bump and stop testing the gate.
 import { PROTO_VERSION } from '../src/audio/protocol.js';
@@ -345,6 +346,62 @@ console.log('\na structural edit a running zone cannot honour is refused');
   check('and applies it at the bottom of the ramp',
     q.p._play[0].part === 1 && q.p._play[0].pend === false,
     `part = ${q.p._play[0].part}, pend = ${q.p._play[0].pend}`);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// …and the CLIENT must not diverge from that refusal.
+//
+// The engine refusing keeps the audio right — the take goes on landing where it
+// was. It cannot fix that `arec.part` has already changed on the client, so the
+// button reads P1, the tape display draws the REC band over P1 (it reads the
+// PARAM, not the engine), and the recording is in P0. Every surface agrees with
+// every other surface and all of them are wrong. That is how this was reported
+// the second time, WITH the engine fix in place: "recording into P1, it still
+// goes into P0".
+//
+// Source text, because `AudioBinding` reaches `AudioEngine`'s Vite `?url` import
+// and will not load in Node — the same forced exception as the step-11 and
+// step-12 audits, and it is paired with the behavioural engine checks above,
+// which cover what the engine does. Comments are stripped first: a check that
+// matches the prose explaining it has now failed a correct file twice.
+console.log('\nthe client reverts a refused partition rather than showing a lie');
+{
+  const raw = readFileSync(resolve(root, 'src/audio/AudioBinding.js'), 'utf8');
+  const src = raw.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+
+  check('the guard asks whether the recorder is RUNNING',
+    /if \(type === 'rec' && this\.ps\.get\('arec\.on'\)\.value\) \{/.test(src));
+  check('and puts the parameter back',
+    /_applyFromEngine\('arec\.part', this\._recPart\)/.test(src));
+  check('through the echo-suppressing path, or the revert re-enters the handler',
+    /_applyFromEngine\(id, value\) \{[\s\S]{0,160}?_fromEngine = true/.test(src));
+  check('and says why, where the performer is looking',
+    /stop Run Rec to change its partition/.test(src));
+  // The revert must happen INSTEAD of the send, not alongside it.
+  const guard = src.indexOf("if (type === 'rec' && this.ps.get('arec.on').value)");
+  const send = src.indexOf('this._sendZonePart(type, v)');
+  check('and returns before sending, so a refused change is never transmitted',
+    guard > 0 && send > guard
+      && /return this\._say\('recording — stop Run Rec/.test(src));
+
+  // `_recPart` mirrors engine state, which is the shape of thing this project
+  // keeps paying for. Exactly two assignments: the declaration, and one writer
+  // sitting on the call that makes it true. A third is a second source of truth.
+  const writes = [...src.matchAll(/this\._recPart\s*=[^=]/g)].map((m) => m[0]);
+  check('_recPart is assigned exactly twice — a declaration and one writer',
+    writes.length === 2, `${writes.length} assignments`);
+  check('the declaration initialises it to a real slot',
+    /this\._recPart = 0;/.test(src),
+    'undefined would be reverted INTO the param before the first send');
+  check('and the writer sits on the call that sends the value',
+    /_sendZonePart\(type, slot\) \{\s*this\.engine\.zonePart\(type, 0, slot\);\s*if \(type === 'rec'\) this\._recPart = slot;/.test(src));
+  // A second rec/play send site would move the engine without the mirror.
+  const sends = [...src.matchAll(/this\.engine\.zonePart\((.+?),/g)].map((m) => m[1]);
+  check('every zonePart send is either the helper or an explicit render zone',
+    sends.every((a) => a === 'type' || a === "'spectral'" || a === "'grain'")
+      && sends.filter((a) => a === 'type').length === 1,
+    sends.join(' | '));
 }
 
 // ── 10. the tape reader's quality (§4.10 items 1 and 2) ────────────────────
