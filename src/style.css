@@ -1546,6 +1546,14 @@ body.dnd-active::after {
     overflow: hidden;
     z-index: 80;
 }
+/* The audio graph row (§8.6) needs its own space rather than being squeezed
+   into the video strip's — a bracket drawn under the row is a safety marking,
+   and `overflow: hidden` clipping it is exactly the failure it exists to
+   prevent. Same var-reclaim mechanism as --state-h, and deliberately placed
+   BEFORE body.signalpath-hidden so hiding the strip still wins. */
+body.sp-audio {
+    --signal-h: 84px;
+}
 /* When signal path is floating, its docked position collapses */
 body.sp-floating #signal-path-docked-space {
     height: 0;
@@ -1732,6 +1740,66 @@ body.sp-floating #signal-path-docked-space {
     color: var(--text-2);
     padding: 2px 0 0;
     text-align: right;
+}
+
+/* ── SIGNAL PATH AUDIO ROW (§8.6 — drawing the loop) ─────────────────────── */
+
+.sp-audio-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 3px;
+    padding-top: 3px;
+    /* Room underneath for the return bracket, which is absolutely positioned
+       and therefore contributes no height of its own. */
+    padding-bottom: 14px;
+    border-top: 1px solid var(--bg-4);
+    position: relative;
+}
+
+/* The loop, drawn: a bracket from the monitor node back to the mic node. Its
+   width is measured in JS from those two node centres — CSS cannot know where
+   they are, and guessing would put the safety marking in the wrong place. */
+.sp-loop-return {
+    position: absolute;
+    bottom: 2px;
+    height: 9px;
+    border-left: 1px solid;
+    border-right: 1px solid;
+    border-bottom: 1px solid;
+    pointer-events: auto;
+}
+.sp-loop-head {
+    position: absolute;
+    left: -3.5px;
+    top: -7px;
+    font-size: 8px;
+    line-height: 1;
+}
+/* Closed AND carrying — the mic reaches the monitors through the tape. */
+.sp-loop-return.live,
+.sp-loop-tag.live {
+    border-color: var(--red);
+    color: var(--red);
+}
+/* Closed but not carrying: the room is a wire, nothing is driving it yet.
+   Dashed rather than absent, because "one Run toggle away" is the state the
+   performer most needs to be able to see. */
+.sp-loop-return.idle,
+.sp-loop-tag.idle {
+    border-color: var(--text-2);
+    color: var(--text-2);
+    border-style: dashed;
+}
+.sp-loop-tag {
+    font-size: 10px;
+    letter-spacing: 0.04em;
+    padding: 1px 5px;
+    border: 1px solid;
+    border-radius: 3px;
+}
+.sp-loop-tag.live {
+    background: var(--red-dim);
 }
 
 /* ── SIGNAL PATH SEQ ROW ─────────────────────────────────────────────────── */

@@ -1062,6 +1062,12 @@ async function main() {
   // a working one unless you look for it (LEARNED 2026-08-13). Making the user
   // ask also means ImWeb never grabs the audio device just by being open.
   const audio = new AudioBinding(ps);
+  // Declared here rather than at its construction below because the audio block
+  // that follows has to notify it: the microphone DEVICE opening is not a param
+  // change, so the drawn loop (§8.6) has no other way to hear about it. Assigned
+  // long before any of these callbacks can fire — every one of them needs a user
+  // gesture, and the engine cannot start without one.
+  let signalPath = null;
   // The §8.6 analyser tap, injected into its two consumers. They used to build
   // an AudioContext each — three existed in total, counting the engine's — and
   // three contexts are three clocks. Injection rather than import keeps
@@ -1106,6 +1112,12 @@ async function main() {
     // WHICH path is closed and therefore which link to open.
     const loopEl = document.getElementById("audio-loop-warning");
     audio.onLoopState = (live, monitorLabel) => {
+      // Two surfaces, on purpose. The line lives beside the monitoring switch,
+      // in the panel where the decision is made; the drawn loop lives in the
+      // signal path, which the performer can HIDE (btn-signal-path, and it is
+      // hidden by default). A safety signal whose only surface is optional is a
+      // safety signal that is off for most people.
+      signalPath?._render();
       if (!loopEl) return;
       loopEl.classList.toggle("hidden", !live);
       loopEl.textContent = live
@@ -1776,9 +1788,12 @@ async function main() {
   // ≤900px / large-touch only (Phase 4)
   const mobileStatePad = new MobileStatePad(presetMgr, { onQuickSave: quickSaveState });
   void mobileStatePad;
-  const signalPath = new SignalPath({
+  signalPath = new SignalPath({
     ps,
     pipeline,
+    // §8.6's "draw the loop". The audio row asks the binding what the graph is;
+    // the binding asks `_loopLive()` whether the room closes it.
+    audioHost: audio,
     onOrderChange: (order) => {
       pipeline.setFxOrder(order);
       signalPath._fxOrder = [...order];
@@ -1857,6 +1872,11 @@ async function main() {
       });
       titleBar.addEventListener("pointerup", () => { _spDragging = false; });
       titleBar.addEventListener("pointercancel", () => { _spDragging = false; });
+      // The display just moved to a new parent, so every offset the loop
+      // bracket was measured from is stale (§8.6). _dockSP already re-renders
+      // for the same reason; this half was missing because nothing in the strip
+      // depended on its own geometry until now.
+      signalPath._render();
     }
 
     function _dockSP() {
@@ -1888,6 +1908,11 @@ async function main() {
       document.body.classList.toggle("signalpath-hidden", _spHidden);
       btn.classList.toggle("active", !_spHidden);
       localStorage.setItem("imweb-signalpath-hidden", _spHidden ? "1" : "0");
+      // A `display: none` strip measures zero, so the loop bracket cannot be
+      // drawn while hidden — and nothing else re-renders on the way back. Since
+      // the strip is hidden BY DEFAULT, without this the bracket would be
+      // missing on the first showing for every user, every session.
+      if (!_spHidden) signalPath?._render();
     };
     _applySPHidden();
 

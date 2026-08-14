@@ -1629,7 +1629,8 @@ What it changes is what can be *said*:
   is a log of the last thing that happened and scrolls away, whereas a loop is a
   condition that persists until something changes it. This is a first, minimal
   instalment of §8.6's "draw the loop"; putting the audio graph into the signal
-  path display proper is still unbuilt.
+  path display proper is still unbuilt. **Built in §8.13** — the line stays
+  alongside it, because the signal path strip can be hidden and is by default.
 
 **Speakers is the default, and it is the cautious direction.** The instrument
 assumes the loop is closed until told otherwise, the same principle that makes
@@ -1662,3 +1663,124 @@ setup where it matters.
 The live branch of the warning is unverified in this environment: it needs a real
 microphone, and the Claude Code browser pane blocks capture. Everything else was
 exercised end to end.
+
+### 8.13 §8.6's loop drawn — the audio graph in the signal path display
+
+§8.12 left one thing explicitly unbuilt: *"putting the audio graph into the
+signal path display proper is still unbuilt."* This is it, and it is the item
+§8.6 named as the mitigation worth building.
+
+#### What a drawing buys that a warning does not
+
+Step 10's line says *a loop is closed*. That is a message, and §8.6 asked for
+something else:
+
+> *"it is the only one that turns the hazard into an object the performer can
+> reason about"*
+
+An object, not a message. The difference is operational rather than aesthetic: a
+message tells you that you are in trouble, and a drawing tells you **which link
+to open**. So the row names them separately —
+
+```
+mic → rec P0 → tape 60s → play P0 → limit → ▶ speakers   ⚠ room
+└──────────────────────────────────────────────┘
+```
+
+— and the bracket underneath is the loop itself, returning from the monitors to
+the microphone. It is the one edge that cannot be drawn as a row of nodes,
+because it goes backwards.
+
+#### Closed is not the same question as carrying
+
+`_loopLive()` answers *is the room a wire*: engine running, mic open, speakers.
+It says nothing about whether anything is driving that wire, and the difference
+is exactly what the drawing is for.
+
+- **Dashed, grey — closed but not carrying.** The room is a wire; no recorder is
+  writing the mic, or no reader is reading it back. One Run toggle from a howl,
+  and the row says which toggle.
+- **Solid, red — closed and carrying.** A recording zone and a reader on the same
+  material. This is the state step 10 could not distinguish from the one above it.
+
+`carries()` is **partition-level, deliberately**. Two zones on one partition whose
+regions do not overlap carry nothing, and this still says they do — the cautious
+direction, the same one `audio.monitor` defaults to Speakers in, and a 60-pixel
+strip is the wrong surface on which to litigate region arithmetic. An `unsafe`
+zone ignores partition bounds entirely (§4.3), so any unsafe zone on either side
+counts as a match.
+
+#### One predicate, one answer
+
+`graph-view.js` takes `loopLive` as an **argument** and never re-derives it.
+The temptation is real — it has `running`, `micOpen` and the monitor label right
+there, and the conjunction is three terms long. It is also exactly how six copies
+of `SOURCE_DEFS` came to exist, and the copy that drifted here would be the one
+drawing a safety marking. `AudioBinding.describeGraph()` calls `_loopLive()` and
+passes the result down; the audit asserts that nothing in `graph-view.js` so much
+as names a monitoring mode, and that a `loopLive: true` snapshot whose other
+fields disagree still draws the loop.
+
+The module is zero-import for the same reason `spectral-image.js` and
+`corpus-index.js` are. `AudioBinding` cannot be imported in Node at all — it
+reaches `AudioEngine`, which has a Vite `?url` import — and that is how the step-10
+audit ended up censusing source text with regexes that were wrong twice. A pure
+function is driven directly instead.
+
+#### The first thing in the strip that depends on its own geometry
+
+The bracket spans two node centres, so it is **measured** from live offsets after
+the append. Nothing else in the signal path display had ever read its own layout,
+and three consequences followed:
+
+- **A hidden strip measures zero**, and the strip is hidden by default. Showing it
+  re-renders, or the bracket would be missing on its first showing for every user,
+  every session. Floating it (Shift+P) re-renders too — `_dockSP` already did,
+  `_floatSP` did not, because until now nothing cared.
+- **The label is not measured and the line is.** A degenerate measurement skips
+  the bracket and still prints `⚠ room`. A safety marking that vanishes because a
+  layout query returned zero is worse than one that was never drawn.
+- **The strip grows for the row** (`body.sp-audio`, the same `--signal-h`
+  var-reclaim the state bar uses) rather than squeezing it into 60 pixels, where
+  `overflow: hidden` would clip the bracket off the bottom. The rule is declared
+  *before* `body.signalpath-hidden` — both selectors have the same specificity, so
+  order decides, and getting it backwards means starting the audio engine un-hides
+  a strip the performer hid. The audit checks the ordering, with comments stripped
+  first: the first draft found `body.signalpath-hidden` inside the comment
+  explaining the ordering and failed a correct file.
+
+#### The step-10 warning line stays
+
+Two surfaces for one condition, on purpose. The line lives beside the monitoring
+switch, in the panel where the decision is made. The drawn loop lives in the
+signal path, **which the performer can hide, and which is hidden by default**. A
+safety signal whose only surface is optional is a safety signal that is off for
+most people.
+
+#### Row placement is not cosmetic
+
+The audio row goes directly under the main chain and above the sequence rows. The
+strip is small and three active sequencers already overflow it; the row that can
+be clipped without consequence is a sequencer's speed, and the row that must not
+be is the one saying the room is a wire.
+
+#### What is drawn and what is not
+
+The analyser tap (`audio.tapSrc`) is **not** in this row. It feeds the video
+controllers and the vectorscope and returns no audio to the bus, so it closes no
+acoustic path — drawing it would put a line in a feedback diagram that cannot
+feed back. The tape node is drawn even though it emits nothing (§8.6: *"you cannot
+tap a partition; you tap a zone's output"*) because it is a link the performer
+opens, not because it is a source. The limiter is drawn because in a feedback
+instrument the thing that bounds the damage belongs in the same picture as the
+thing that causes it.
+
+#### Verified
+
+Both branches were exercised in the built app. The not-carrying and carrying
+states, the partition-mismatch case, the measured bracket geometry and the strip
+growth were all observed directly. The **microphone device** was faked to do it —
+a one-line temporary override of `AudioEngine.micOpen`, reverted afterwards —
+because the browser pane blocks capture, so `_loopLive()` ran for real against a
+device that was not. That leaves the same debt §8.12 left: nobody has yet watched
+this appear with an actual microphone open.
