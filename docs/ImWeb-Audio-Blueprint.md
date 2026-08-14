@@ -1699,7 +1699,11 @@ is exactly what the drawing is for.
 
 - **Dashed, grey — closed but not carrying.** The room is a wire; no recorder is
   writing the mic, or no reader is reading it back. One Run toggle from a howl,
-  and the row says which toggle.
+  and the row says which toggle — the tooltip names the link that is open and the
+  control that closes it. It first said *"no reader is on the recorded
+  partition"* in every idle case, including the common one where the recorder is
+  simply off, which points at the wrong end of the chain in the one sentence
+  whose only job is pointing at the right one.
 - **Solid, red — closed and carrying.** A recording zone and a reader on the same
   material. This is the state step 10 could not distinguish from the one above it.
 
@@ -1709,6 +1713,26 @@ direction, the same one `audio.monitor` defaults to Speakers in, and a 60-pixel
 strip is the wrong surface on which to litigate region arithmetic. An `unsafe`
 zone ignores partition bounds entirely (§4.3), so any unsafe zone on either side
 counts as a match.
+
+> **Correction, found in review of this step.** The first draft compared slot
+> indices — `r.part === rec.part` — and that is not the same question.
+> **Nothing makes partitions disjoint.** `_partBounds` in the worklet validates
+> the range and refuses while a zone is running, and that is the whole of it, so
+> P0 and P1 can be dragged onto the same tape. A recorder on P0 and a reader on
+> P1 over identical material is a live howl, and an index comparison drew it
+> dashed-grey.
+>
+> That is not a missed corner. It is an **under**-claim in a test whose entire
+> justification is that it over-claims, which means the invariant written two
+> paragraphs above was false as built. `carries()` now overlaps the two
+> partitions' spans, which is the same question asked of the thing that actually
+> decides it. The spans reach it through the snapshot, so `graph-view.js` still
+> knows nothing about parameters.
+>
+> The general form is worth keeping: **a "cautious direction" claim is only
+> cautious if the thing it approximates really is a superset.** "Same slot" felt
+> like a coarsening of "same material" and was in fact a different set, neither
+> containing the other.
 
 #### One predicate, one answer
 
@@ -1736,7 +1760,11 @@ and three consequences followed:
 - **A hidden strip measures zero**, and the strip is hidden by default. Showing it
   re-renders, or the bracket would be missing on its first showing for every user,
   every session. Floating it (Shift+P) re-renders too — `_dockSP` already did,
-  `_floatSP` did not, because until now nothing cared.
+  `_floatSP` did not, because until now nothing cared. **A window resize is the
+  same class and was missed in the first draft**: `.sp-node` flex-shrinks, so a
+  resize leaves the bracket spanning the wrong two points until the next param
+  change. It rides its own listener rather than `_applyLayout`, which runs at
+  module scope before any of this exists.
 - **The label is not measured and the line is.** A degenerate measurement skips
   the bracket and still prints `⚠ room`. A safety marking that vanishes because a
   layout query returned zero is worse than one that was never drawn.

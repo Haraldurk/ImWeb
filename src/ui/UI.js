@@ -1401,9 +1401,20 @@ export class SignalPath {
       'aplay.on', 'aplay.part', 'aplay.unsafe',
       'agrain.on', 'agrain.part', 'agrain.unsafe',
       'avoice.on',
+      // Partition layout, because whether the loop is CARRYING is decided by
+      // whether the recorder's and the reader's partitions overlap on the tape
+      // — dragging a partition can close the loop without either zone moving.
+      'apart0.start', 'apart0.len', 'apart1.start', 'apart1.len',
+      'apart2.start', 'apart2.len', 'apart3.start', 'apart3.len',
     ].forEach(id => {
       ps.get(id)?.onChange(() => this._render());
     });
+
+    // The loop bracket is measured in pixels and `.sp-node` flex-shrinks, so a
+    // window resize leaves it spanning the wrong two points until the next param
+    // change. The layout handler in main.js runs at module scope, before this
+    // object exists, so this rides its own listener rather than that one.
+    window.addEventListener('resize', () => this._render());
   }
 
   /**

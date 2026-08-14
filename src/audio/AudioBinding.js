@@ -192,6 +192,14 @@ export class AudioBinding {
       loopLive: this._loopLive(),
       monitorLabel: MONITOR_MODES[v('audio.monitor')],
       tapeSec: v('audio.tapeSec', 60),
+      // The partition layout, so `carries()` can ask whether two zones' spans
+      // OVERLAP rather than whether their slot indices match. Nothing makes
+      // partitions disjoint — the worklet's `_partBounds` validates the range
+      // and refuses while a zone runs, and that is all — so two slots can cover
+      // the same tape and an index comparison would call that "not carrying".
+      partBounds: Array.from({ length: PARTITION_SLOTS }, (_, i) => ({
+        start: v(`apart${i}.start`), len: v(`apart${i}.len`),
+      })),
       rec: zone('arec'),
       play: zone('aplay'),
       grain: zone('agrain'),

@@ -36,16 +36,38 @@
  * closed but nothing carrying, the performer is one Run toggle away from a
  * howl and can see which toggle it is; with both, they are in it.
  *
- * **Partition-level, deliberately.** Two zones on one partition whose regions do
- * not overlap carry nothing, and this still says they do. That is the cautious
- * direction — the same direction `audio.monitor` defaults to Speakers in — and a
- * 60-pixel strip is the wrong surface on which to litigate region arithmetic.
- * An `unsafe` zone ignores partition bounds entirely (§4.3), so any unsafe zone
- * on either side counts as a match for the same reason.
+ * **Partition-level, deliberately** — the test asks whether the two zones'
+ * PARTITIONS overlap on the tape, not whether their regions within those
+ * partitions do. Two zones on one partition whose regions do not overlap carry
+ * nothing, and this still says they do. That is the cautious direction, the same
+ * one `audio.monitor` defaults to Speakers in, and a 60-pixel strip is the wrong
+ * surface on which to litigate region arithmetic. An `unsafe` zone ignores
+ * partition bounds entirely (§4.3), so any unsafe zone on either side counts.
+ *
+ * **It compares SPANS, not slot indices, and the first draft did not.** Nothing
+ * makes partitions disjoint — `_partBounds` in the worklet validates the range
+ * and refuses while a zone is running, and that is all — so P0 and P1 can be
+ * dragged onto the same tape. Comparing `r.part === rec.part` then reported a
+ * recorder and a reader over identical material as NOT carrying: a live howl
+ * drawn dashed-grey, and an under-claim in a test whose whole justification is
+ * that it over-claims. Overlap of the two spans is the same question asked of
+ * the thing that actually decides it.
+ *
+ * @param {Array<{start:number,len:number}>} bounds partition spans, as fractions
+ *   of the tape. A slot with no entry is treated as OVERLAPPING — the cautious
+ *   direction again, and it cannot arise today because the zone selectors offer
+ *   exactly the slots that are registered.
  */
-function carries(rec, readers) {
+function carries(rec, readers, bounds) {
   if (!rec.on) return false;
-  return readers.some(r => r.on && (r.unsafe || rec.unsafe || r.part === rec.part));
+  const span = (i) => bounds?.[i] ?? null;
+  const overlaps = (a, b) => {
+    const pa = span(a), pb = span(b);
+    if (!pa || !pb) return true;
+    return pa.start < pb.start + pb.len && pb.start < pa.start + pa.len;
+  };
+  return readers.some(r => r.on
+    && (r.unsafe || rec.unsafe || overlaps(r.part, rec.part)));
 }
 
 /**
@@ -53,7 +75,8 @@ function carries(rec, readers) {
  *
  * @param {object} s snapshot — all plain values, all supplied by the caller:
  *   `running`, `micOpen`, `loopLive`, `monitorLabel`, `tapeSec`,
- *   `rec`/`play`/`grain` as `{ on, part, unsafe }`, and `voiceOn`.
+ *   `rec`/`play`/`grain` as `{ on, part, unsafe }`, `partBounds` as an array of
+ *   `{ start, len }` fractions, and `voiceOn`.
  * @returns {{nodes: Array, loop: object|null}} `nodes` carry the same
  *   `{ label, type }` vocabulary the video chain already uses, plus a `key` on
  *   the two the return edge anchors to. `loop` is null when there is nothing to
@@ -108,13 +131,25 @@ export function describeAudioGraph(s) {
   const loop = !s.loopLive ? null : {
     from: 'out',
     to: 'mic',
-    carried: carries(s.rec, [s.play, s.grain]),
+    carried: carries(s.rec, [s.play, s.grain], s.partBounds),
   };
   if (loop) {
     loop.label = loop.carried ? '⚠ room' : 'room';
+    const mon = s.monitorLabel.toLowerCase();
+    // The idle tooltip names the link that is OPEN, which is the whole reason
+    // the loop is drawn rather than announced. It used to say "no reader is on
+    // the recorded partition" in every idle case, including the common one where
+    // the recorder is simply off — telling the performer to look at the wrong
+    // end of the chain, in the sentence whose only job is pointing at the right
+    // one.
+    const why = !s.rec.on
+      ? 'no recorder is writing the mic — Run Rec is off'
+      : !(s.play.on || s.grain.on)
+        ? 'nothing is reading the tape back — Run Play and Run Grain are both off'
+        : 'the reader is on material the recorder is not writing';
     loop.title = loop.carried
-      ? `acoustic loop closed AND carrying: mic → rec P${s.rec.part} → tape → reader → ${s.monitorLabel.toLowerCase()} → mic`
-      : `acoustic loop closed: mic → ${s.monitorLabel.toLowerCase()} → mic. The tape is not carrying it — no reader is on the recorded partition.`;
+      ? `acoustic loop closed AND carrying: mic → rec P${s.rec.part} → tape → reader → ${mon} → mic`
+      : `acoustic loop closed: mic → ${mon} → mic. The tape is not carrying it — ${why}.`;
   }
   return { nodes, loop };
 }

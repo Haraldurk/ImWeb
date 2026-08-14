@@ -128,6 +128,11 @@ const SNAP = {
   play:  { on: true,  part: 0, unsafe: false },
   grain: { on: false, part: 1, unsafe: false },
   voiceOn: false,
+  // The registered defaults: four equal, abutting quarters.
+  partBounds: [
+    { start: 0,    len: 0.25 }, { start: 0.25, len: 0.25 },
+    { start: 0.5,  len: 0.25 }, { start: 0.75, len: 0.25 },
+  ],
 };
 const snap = (o = {}) => ({ ...SNAP, ...o });
 
@@ -266,6 +271,65 @@ console.log('\ncarrying is a different question from closed');
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+console.log('\npartitions are not disjoint, so carrying compares SPANS not indices');
+{
+  // Nothing in the worklet makes partitions disjoint: `_partBounds` validates
+  // the range and refuses while a zone runs, and that is all. Two slots CAN
+  // cover the same tape, and an index comparison calls that "not carrying" —
+  // a live howl drawn dashed-grey, which is an under-claim in a test whose
+  // whole justification is that it over-claims.
+  const overlapped = [
+    { start: 0, len: 0.5 }, { start: 0.25, len: 0.5 },     // P0 and P1 share tape
+    { start: 0.5, len: 0.25 }, { start: 0.75, len: 0.25 },
+  ];
+  const carried = (o) => describeAudioGraph(snap(o)).loop.carried;
+  check('two DIFFERENT partitions covering the same tape ⇒ carrying',
+    carried({
+      partBounds: overlapped,
+      rec: { on: true, part: 0 }, play: { on: true, part: 1 },
+    }) === true,
+    'an index comparison reports this as idle — it is a howl');
+  check('and abutting partitions still do not touch',
+    carried({ rec: { on: true, part: 0 }, play: { on: true, part: 1 } }) === false,
+    'P0 ends exactly where P1 starts; a half-open interval does not overlap');
+  check('a zero-length partition carries nothing',
+    carried({
+      partBounds: [{ start: 0, len: 0 }, ...SNAP.partBounds.slice(1)],
+      rec: { on: true, part: 0 }, play: { on: true, part: 0 },
+    }) === false);
+  // Cautious direction when the layout is unknown, and it cannot arise today.
+  check('missing bounds are treated as overlapping, not as disjoint',
+    carried({ partBounds: undefined, rec: { on: true, part: 0 }, play: { on: true, part: 3 } }) === true);
+  check('the binding actually supplies the spans',
+    /partBounds: Array\.from\(\{ length: PARTITION_SLOTS \}/.test(read('src/audio/AudioBinding.js')));
+  check('and SignalPath re-renders when a partition is dragged',
+    ['apart0.start', 'apart0.len', 'apart3.start', 'apart3.len']
+      .every(id => read('src/ui/UI.js').includes(`'${id}'`)));
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+console.log('\nthe idle tooltip names the link that is actually open');
+{
+  const why = (o) => describeAudioGraph(snap(o)).loop.title;
+  check('recorder off ⇒ it says so, and names the toggle',
+    /Run Rec is off/.test(why({ rec: { on: false, part: 0 } })));
+  check('no reader ⇒ it names those toggles instead',
+    /Run Play and Run Grain/.test(why({
+      play: { on: false, part: 0 }, grain: { on: false, part: 0 },
+    })));
+  check('a reader on the wrong material ⇒ it says that, not "no reader"',
+    /not writing/.test(why({ rec: { on: true, part: 0 }, play: { on: true, part: 3 } })));
+  // The bug this replaces: one sentence for every idle case, pointing at the
+  // wrong end of the chain in the most common one.
+  check('the three reasons are genuinely different sentences',
+    new Set([
+      why({ rec: { on: false, part: 0 } }),
+      why({ play: { on: false, part: 0 }, grain: { on: false, part: 0 } }),
+      why({ rec: { on: true, part: 0 }, play: { on: true, part: 3 } }),
+    ]).size === 3);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 console.log('\nthe bracket is measured, and anchored to nodes that exist');
 {
   const g = describeAudioGraph(snap());
@@ -315,6 +379,10 @@ console.log('\nthe row is re-drawn on every edge that can change it');
     /audio\.onLoopState = \([\s\S]{0,600}?signalPath\?\._render\(\)/.test(main));
   check('the warning line still exists beside it — the strip can be hidden',
     /audio-loop-warning/.test(main) && /loopEl\.textContent = live/.test(main));
+  // The bracket is the only thing in the strip whose CORRECTNESS depends on
+  // pixel widths, and .sp-node flex-shrinks.
+  check('a window resize re-measures the bracket',
+    /window\.addEventListener\('resize', \(\) => this\._render\(\)\)/.test(ui));
   check('showing a hidden strip re-measures it',
     /_applySPHidden = \(\) => \{[\s\S]{0,700}?if \(!_spHidden\) signalPath\?\._render\(\)/.test(main));
   check('floating it re-measures it too',
