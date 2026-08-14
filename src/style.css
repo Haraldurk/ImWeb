@@ -4935,6 +4935,26 @@ body.fullscreen-output #app {
     border-bottom: 1px solid var(--border);
 }
 
+/* §8.6's loop, drawn. Deliberately louder than the status line beside it: this
+   is the one message in the audio panel that is about the performer's ears
+   rather than about the instrument's state. */
+.audio-loop-warning {
+    margin: 2px 6px 0;
+    padding: 4px 6px;
+    font-size: 11px;
+    line-height: 1.35;
+    color: #ffd166;
+    background: rgba(255, 160, 0, 0.09);
+    border-left: 2px solid #ffa000;
+}
+
+/* A setup act's inert controller badge (§8.6). Dimmer than an unassigned one so
+   "takes no controller" does not read as "nobody has mapped this yet". */
+.param-ctrl-setup {
+    opacity: 0.3;
+    cursor: default;
+}
+
 /* The corpus pad (§4.6). Square-ish rather than the tape's letterbox, because
    both of its axes are descriptors and neither is time — a wide strip would
    read as a timeline, which is the one thing this is not. */

@@ -1101,6 +1101,17 @@ async function main() {
   {
     const statusEl = document.getElementById("audio-status");
     audio.onStatus = (msg) => { if (statusEl) statusEl.textContent = msg; };
+    // §8.6's loop, made visible. Names the whole closed path rather than saying
+    // "feedback risk": the point of drawing a loop is that the performer can see
+    // WHICH path is closed and therefore which link to open.
+    const loopEl = document.getElementById("audio-loop-warning");
+    audio.onLoopState = (live, monitorLabel) => {
+      if (!loopEl) return;
+      loopEl.classList.toggle("hidden", !live);
+      loopEl.textContent = live
+        ? `⚠ acoustic loop closed: mic → tape → ${monitorLabel.toLowerCase()} → mic`
+        : "";
+    };
     // The tape display. Attached BEFORE the engine ever starts, so the layout
     // you are setting up is visible while you set it up — only the waveform
     // needs a running engine.

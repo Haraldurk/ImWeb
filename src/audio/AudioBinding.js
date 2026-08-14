@@ -39,6 +39,7 @@ import {
 // the excursion constants are the client's measurements — neither is re-derived.
 import {
   resolveTable, SLEW_CURVES, SLEW_CURVE_HAS_STRENGTH, slewExcursion,
+  MONITOR, MONITOR_MODES,
 } from '../controls/ParameterSystem.js';
 
 const PARTITION_SLOTS = 4;
@@ -60,6 +61,12 @@ export class AudioBinding {
     this._micDevice = null;
     /** Set by main.js to surface refusals and errors in the UI. */
     this.onStatus = null;
+    /**
+     * Called with (loopLive, monitorLabel) whenever the acoustic feedback path
+     * appears or disappears (§8.6). A separate channel from `onStatus` because a
+     * loop is a condition, not an event — see `_refreshLoop`.
+     */
+    this.onLoopState = null;
     /**
      * ControllerManager, injected by main.js (§8.7). Read-only from here: the
      * live `LFO` instance is the source of truth for a description because the
@@ -115,6 +122,44 @@ export class AudioBinding {
 
   _say(msg) { this.onStatus?.(msg); }
 
+  // ── the monitoring path (§8.6) ────────────────────────────────────────────
+
+  /**
+   * Is `mic → tape → monitors → mic` a real acoustic path right now?
+   *
+   * All three conjuncts are load-bearing, which is why this is a function and
+   * not a flag someone maintains:
+   *
+   * - **the engine is running** — nothing reaches the monitors otherwise, so an
+   *   open mic with the engine stopped is an input, not a loop;
+   *   `_tapConsumers` can hold the mic open for the video controllers with no
+   *   audio path in existence at all (§8.6's tap is a consumer, not a client);
+   * - **the mic is open** — asked of the DEVICE rather than of `audio.mic`,
+   *   because `_applyTap` opens it directly when the tap needs it and the param
+   *   catches up afterwards. Reading the param would miss exactly the window in
+   *   which the loop first exists;
+   * - **the performer is on speakers** — the only part a human tells us.
+   */
+  _loopLive() {
+    return this.running
+      && this.engine.micOpen
+      && this.ps.get('audio.monitor').value === MONITOR.SPEAKERS;
+  }
+
+  /**
+   * Publish the loop state to whatever is showing it.
+   *
+   * Separate from `_say` on purpose. A status line is a record of the last thing
+   * that happened and scrolls away; the loop is a CONDITION that persists until
+   * something changes it, and §8.6's whole argument for drawing the loop is that
+   * it should be an object the performer can see rather than an event they have
+   * to have caught. Called from every edge that can change the answer — the
+   * monitoring switch, the mic, engine start and stop.
+   */
+  _refreshLoop() {
+    this.onLoopState?.(this._loopLive(), MONITOR_MODES[this.ps.get('audio.monitor').value]);
+  }
+
   /**
    * Must be called from a user gesture — an AudioContext started without one
    * stays suspended, and a suspended context is indistinguishable from a
@@ -149,6 +194,10 @@ export class AudioBinding {
 
     await this.engine.start();
     this.running = true;
+    // Starting the engine can complete the loop on its own: a mic already open
+    // for the video controllers becomes an acoustic path the moment there is an
+    // output for it to return through.
+    this._refreshLoop();
 
     // Do not report "running" on faith. A handshake proves the message port
     // works, which is a much weaker claim than it looks: with no output device
@@ -204,8 +253,11 @@ export class AudioBinding {
     // that never asked for the engine and must not be silenced by it (§8.6:
     // the controller layer is a consumer of the tap, not a client of the tape).
     if (!this._tapConsumers) this.engine.closeMic();
+    // Stopping breaks the path whatever the mic is doing — refreshed after the
+    // flag flips below, since `_loopLive` reads it.
     await this.engine.close();
     this.running = false;
+    this._refreshLoop();
     // Hand every controller back to the rAF path, and forget what was sent. The
     // engine restarts by BUILDING A FRESH WORKLET NODE (step 4), so its
     // controller state does not survive; a cache that did would leave slots
@@ -290,6 +342,10 @@ export class AudioBinding {
     if (!this.engine.micOpen) {
       try { await this.engine.openMic(this._micConstraints()); }
       catch (e) { this._say(`mic denied: ${e.message}`); this.ps.set('audio.mic', 0); return; }
+      // This path opens the DEVICE without going through the mic param's
+      // subscription, so it has to publish the loop itself — the one place the
+      // path can appear with nobody having touched the Mic toggle.
+      this._refreshLoop();
     }
     // Reflect the open device in the toggle without asking the engine to open
     // it again — the same "this is a fact, not a command" path the engine's own
@@ -962,12 +1018,23 @@ export class AudioBinding {
     this._on('audio.limitRel',
       (v) => this.engine.outLimit(this.ps.get('audio.limitThresh').value, v));
 
+    this._on('audio.monitor', () => this._refreshLoop());
+
     this._on('audio.mic', async (v) => {
       if (v) {
-        try { await this.engine.openMic(this._micConstraints()); this._say('mic open — USE HEADPHONES'); }
-        catch (e) { this._say(`mic denied: ${e.message}`); this.ps.set('audio.mic', 0); }
+        try {
+          await this.engine.openMic(this._micConstraints());
+          // Was an unconditional "USE HEADPHONES", which is advice rather than
+          // information and is wrong half the time — it fired at someone
+          // already wearing them, and said the same thing to someone on
+          // speakers who had just closed a real loop. §8.6's switch is what
+          // lets this report the state instead of guessing at it.
+          this._say(this._loopLive() ? 'mic open — the room loop is LIVE' : 'mic open');
+        } catch (e) { this._say(`mic denied: ${e.message}`); this.ps.set('audio.mic', 0); }
+        this._refreshLoop();
       } else {
         this.engine.closeMic();
+        this._refreshLoop();
         // Closing the mic while the tap points at it deafens every analyser
         // consumer — the sound controllers stop moving. Say so: a controller
         // that has quietly stopped reads as a broken controller.

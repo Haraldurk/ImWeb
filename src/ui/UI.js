@@ -340,6 +340,10 @@ export function buildMappingPanels(ps, contextMenu) {
     // audit entirely, which is worse than failing.
     'audio-engine-params': [
       ps.get('audio.enable'), ps.get('audio.tapeSec'), ps.get('audio.mic'),
+      // Monitoring sits directly under Mic: they are the two halves of §8.6's
+      // loop, and the answer to "is this dangerous" is only meaningful as a
+      // pair. Group 'global', so it is listed explicitly rather than picked.
+      ps.get('audio.monitor'),
       ...pick('audio', ['tapSrc', 'glide', 'outGain', 'limitThresh', 'limitRel']),
     ].filter(Boolean),
     'audio-partition-params': [0, 1, 2, 3].flatMap(i => [
@@ -1596,6 +1600,11 @@ export class ContextMenu {
   }
 
   show(param, x, y) {
+    // A setup act takes no controller (§8.6), and this menu's whole purpose is
+    // assigning one. `assign()` refuses regardless, but offering a menu of
+    // controller types that all silently do nothing is worse than offering no
+    // menu — it reads as the feature being broken rather than absent.
+    if (param?.setup) return;
     this._currentParam = param;
     document.getElementById('ctx-param-label').textContent = param.label;
 

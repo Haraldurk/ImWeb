@@ -351,6 +351,21 @@ export class ControllerManager {
   assign(paramId, controllerConfig) {
     const p = this.ps.get(paramId);
     if (!p) { console.warn(`[ControllerManager] Unknown param: ${paramId}`); return; }
+    /**
+     * A setup act takes no controller (audio blueprint §8.6). Enforced HERE
+     * because this is the one function every assignment path reaches — the
+     * badge popover, the context menu, MIDI learn, a loaded project, a preset
+     * recall. Gating only the UI would leave a saved file able to reintroduce
+     * what the UI refuses, which is the shape of bug that survives a fix.
+     *
+     * Placed before `_removeController` rather than after: there is never
+     * anything to remove from a parameter nothing could attach to, so an early
+     * return is the whole behaviour rather than a shortcut past cleanup.
+     */
+    if (p.setup) {
+      console.warn(`[ControllerManager] ${paramId} is a setup act and takes no controller`);
+      return;
+    }
 
     // Clean up old controller
     this._removeController(paramId);

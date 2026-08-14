@@ -1556,3 +1556,86 @@ would soften every grain to fix an artefact audible in a narrow corner of the
 parameter space. Granular synthesis has accepted this since Truax. The sub-read
 loop drops in unchanged if it ever offends — a cost decision, not a structural
 one.
+
+### 8.12 §8.6's monitoring switch built — and the rule given teeth
+
+Step 10. `audio.monitor` (Headphones / Speakers) is the one thing that decides
+whether `mic → tape → monitors → mic` is a real acoustic path or just a diagram.
+
+#### The rule that had no way to be true
+
+§8.6 wrote down that the switch is a setup act, excluded from capture, and
+**never a controller target** — and said exactly why it bothered:
+
+> *"a switch that changes defaults is exactly the kind of control that drifts
+> into being controller-assignable when nobody records that it must not be"*
+
+The prediction was right and the mitigation was not enough. `group: 'global'`
+already covered capture, but **nothing in `ParameterSystem` could express "takes
+no controller"**: every parameter got a badge, every badge could be assigned, and
+the rule lived only in this document. Prose does not fail a build.
+
+So step 10 adds `setup: true`, enforced at **`ControllerManager.assign()`** —
+the one function every assignment path reaches: badge popover, context menu, MIDI
+learn, a loaded project, a preset recall. Gating the UI alone would have left a
+saved file able to reintroduce what the UI refuses, which is the shape of bug
+that survives its own fix.
+
+`setup` and `group: 'global'` answer different questions and the distinction is
+load-bearing, or the flag becomes a synonym applied by habit: 'global' keeps a
+VALUE out of a Display State, `setup` keeps a CONTROLLER off the parameter.
+`audio.tapeSec` is global because recalling it would discard a tape; it is not
+setup, because sweeping it is merely useless rather than a hazard to the
+performer's ears. Exactly one parameter is `setup` today, and the audit asserts
+that — a second one arriving by habit turns it red.
+
+#### What the switch changes: what the instrument knows
+
+No gain and no routing. Silently attenuating on Speakers was considered and
+rejected — a monitoring switch that quietly moves the level is one nobody can
+reason about, and §4.11's non-bypassable ceiling already bounds the damage.
+
+What it changes is what can be *said*:
+
+- **The mic message stopped guessing.** It was an unconditional
+  `"mic open — USE HEADPHONES"`: advice rather than information, wrong half the
+  time, and identical whether or not a loop had just closed.
+- **The loop gets its own persistent line**, naming the whole closed path rather
+  than warning about "feedback risk" — the point of drawing a loop is seeing
+  *which link to open*. Separate from the status line on purpose: a status line
+  is a log of the last thing that happened and scrolls away, whereas a loop is a
+  condition that persists until something changes it. This is a first, minimal
+  instalment of §8.6's "draw the loop"; putting the audio graph into the signal
+  path display proper is still unbuilt.
+
+**Speakers is the default, and it is the cautious direction.** The instrument
+assumes the loop is closed until told otherwise, the same principle that makes
+`audio.tapSrc` default to mic-only: the safe state must require no selection.
+Guessing headphones would suppress the one warning that matters on precisely the
+setup where it matters.
+
+#### `_loopLive()` has three conjuncts and all three earn their place
+
+- **the engine is running** — nothing reaches the monitors otherwise, and
+  `_tapConsumers` can hold the mic open for the video controllers with no audio
+  path in existence at all;
+- **the mic is open** — asked of the DEVICE, not of `audio.mic`, because
+  `_applyTap` opens it directly and the param catches up afterwards. Reading the
+  param would miss exactly the window in which the loop first exists;
+- **the performer is on speakers** — the only part a human tells us.
+
+#### Two things worth not rediscovering
+
+- **A class added beside `updateDisplay()` does not survive.** The inert badge
+  styling was first added with `classList.add` in the row builder; `updateDisplay`
+  rewrites `className` wholesale from `param.controllerClass`, so it lasted until
+  the first refresh and then vanished — visible in the browser, invisible in the
+  source. The dimming is part of that getter now.
+- **Audio params are only subscribed while the engine runs.** Changing the
+  monitoring mode with audio off publishes nothing, which is correct (no output,
+  no loop) but is easy to misread as broken wiring. Engine start publishes the
+  state, so nothing is missed.
+
+The live branch of the warning is unverified in this environment: it needs a real
+microphone, and the Claude Code browser pane blocks capture. Everything else was
+exercised end to end.
