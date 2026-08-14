@@ -29,7 +29,15 @@
  * against the small fake DOM below — so the row, the loop and the measured
  * bracket are all directly observable here.
  *
+ * **Calibrated by mutation, and the calibration is committed** — the 21 defects
+ * these checks are meant to catch live in `tests/mutations.mjs` and are re-run by
+ * `npm run mutate`. Two of them found real faults rather than confirming absent
+ * ones: `carries()` comparing slot indices where spans were meant, and this
+ * file's own hand-copied list of subscribed parameter ids going stale in the same
+ * commit that made it matter.
+ *
  * Run:  node tests/audit-audio-signalpath.mjs
+ *       npm run mutate audit-audio-signalpath
  */
 
 import { readFileSync } from 'node:fs';

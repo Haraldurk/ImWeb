@@ -9,6 +9,7 @@
     "sync-docs": "cp docs/ImWeb_Full_Manual.md docs/ImWeb_Quick_Reference.md docs/ImWeb_Quick_Start.md docs/ImWeb-Guide.md public/docs/",
     "build": "vite build",
     "preview": "vite preview",
+    "mutate": "node tests/mutate.mjs",
     "prep-video": "node imweb-prep.js",
     "push-master": "git add public/Projects/MasterProject.imweb && (git diff --cached --quiet || git commit -m 'chore: update MasterProject') && git push origin HEAD:$(git symbolic-ref --short HEAD)",
     "install-hooks": "bash scripts/install-hooks.sh",
