@@ -53,6 +53,14 @@
  * that it over-claims. Overlap of the two spans is the same question asked of
  * the thing that actually decides it.
  *
+ * **The one divergence from the engine, and its direction is checked.** The
+ * worklet's `_computeSpan` clamps a zone's region INTO its partition, so what a
+ * zone actually touches is a subset of the partition drawn here. Comparing whole
+ * partitions therefore over-claims relative to the engine — which is the safe
+ * direction, and is the same approximation as ignoring the regions within one
+ * partition. It is written down because the previous version of this comment
+ * asserted a direction it had not checked, and that was the bug.
+ *
  * @param {Array<{start:number,len:number}>} bounds partition spans, as fractions
  *   of the tape. A slot with no entry is treated as OVERLAPPING — the cautious
  *   direction again, and it cannot arise today because the zone selectors offer

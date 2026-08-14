@@ -232,6 +232,20 @@ console.log('\nONE answer to "is the loop closed" — loopLive is read, never re
   check('graph-view imports nothing at all', !/^\s*import\s/m.test(code));
   check('and never names a monitoring mode', !/Speakers|Headphones|MONITOR/.test(code));
 
+  // ── The one place this file reads SOURCE instead of behaviour, and why ──
+  // Everything else here is driven: graph-view is pure, UI.js imports in Node.
+  // `AudioBinding` does NOT — it reaches `AudioEngine`, which has a Vite `?url`
+  // import that Node cannot resolve — so there is no way to observe
+  // `describeGraph()` calling `_loopLive()` rather than rebuilding the three-term
+  // conjunction itself. That substitution is the single most consequential
+  // regression available in this feature (two answers to "is the loop closed",
+  // with the drifting copy drawing a safety marking), so it is worth a regex
+  // that could in principle be fooled by formatting over no check at all.
+  //
+  // Its weakness is stated rather than left to be discovered: it proves the
+  // TEXT is present, not that it is reached. The behavioural half is the
+  // `loopLive: true` snapshot above, which pins the direction of the dependency
+  // from the other side — graph-view honours the flag it is given.
   const ab = read('src/audio/AudioBinding.js');
   check('the binding asks _loopLive() rather than rebuilding the conjunction',
     /describeGraph\(\)[\s\S]{0,900}?loopLive: this\._loopLive\(\)/.test(ab));
@@ -389,14 +403,40 @@ console.log('\nthe row is re-drawn on every edge that can change it');
     /_floatSP\(\) \{[\s\S]{0,3000}?signalPath\._render\(\);\s*\n\s*\}/.test(main));
 
   ['audio.enable', 'audio.mic', 'audio.monitor', 'arec.on', 'arec.part',
-   'aplay.on', 'agrain.on', 'avoice.on'].forEach(id => {
+   'aplay.on', 'agrain.on', 'avoice.on', 'apart1.start'].forEach(id => {
     check(`SignalPath subscribes to ${id}`, ui.includes(`'${id}'`));
   });
-  check('every id it subscribes to is a real parameter',
-    ['audio.enable', 'audio.mic', 'audio.monitor', 'audio.tapeSec', 'arec.on',
-     'arec.part', 'arec.unsafe', 'aplay.on', 'aplay.part', 'aplay.unsafe',
-     'agrain.on', 'agrain.part', 'agrain.unsafe', 'avoice.on']
-      .every(id => !!ps.get(id)));
+
+  // ── Every id it asks for RESOLVES ─────────────────────────────────────────
+  // This used to be a hand-copied list of ids, which is the bug it was meant to
+  // catch wearing a different hat: the partition ids were added to UI.js and not
+  // to the list, so a typo in `apart2.len` would have subscribed to nothing,
+  // silently, exactly like the typo the check exists for. `ps.get(id)?.onChange`
+  // swallows a miss, so nothing else would have said a word.
+  //
+  // Recorded instead of enumerated. Every id SignalPath asks for during a full
+  // construct-and-render is observed, and any that does not resolve is named —
+  // so a new subscription is covered the moment it is written, and nobody has to
+  // remember this file exists.
+  {
+    const probe = new ParameterSystem();
+    registerCoreParameters(probe);
+    const missed = [];
+    const realGet = probe.get.bind(probe);
+    probe.get = (id) => {
+      const p = realGet(id);
+      if (!p) missed.push(id);
+      return p;
+    };
+    host.graph = describeAudioGraph(snap());
+    new SignalPath({ ps: probe, pipeline: null, audioHost: host });
+    check('every id SignalPath asks for resolves to a real parameter',
+      missed.length === 0, `unresolved: ${[...new Set(missed)].join(', ')}`);
+    // Guards the guard: if the probe stopped seeing anything, the check above
+    // would pass by asking nothing at all.
+    check('and the probe actually saw the subscriptions',
+      realGet('apart3.len') && ui.includes("'apart3.len'"));
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
