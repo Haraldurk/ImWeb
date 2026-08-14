@@ -1882,6 +1882,24 @@ class TapeProcessor extends AudioWorkletProcessor {
         const x = ph * SPEC_SINE_SIZE;
         const xi = x | 0;
         const w = 0.5 + 0.5 * (this._sine[xi] + (this._sine[xi + 1] - this._sine[xi]) * (x - xi));
+        /**
+         * NO RATE-AWARE ANTI-ALIASING HERE, and that is a recorded choice
+         * rather than an oversight.
+         *
+         * §4.10 named the rate-aware box filter in `_renderPlay` the main path
+         * for this instrument, and reading at rate r really is decimation by r
+         * wherever it happens — so a cloud pitched up two octaves over bright
+         * material folds, exactly as a playback zone would without it.
+         *
+         * It is left out because a grain is 5–500 ms of Hann-windowed material
+         * arriving among dozens of others: the window's own spectral skirt and
+         * the density of the cloud mask most of what the filter would remove,
+         * and the filter would soften every grain to fix an artefact that is
+         * audible in a narrow corner of the parameter space (high pitch, sparse
+         * cloud, bright source). Granular synthesis has accepted this since
+         * Truax. If it ever offends, the sub-read loop from `_renderPlay` drops
+         * in here unchanged — it is a cost decision, not a structural one.
+         */
         l += this._cubic(0, g.pos, g.lo, g.count) * w;
         r += this._cubic(1, g.pos, g.lo, g.count) * w;
         g.pos += g.inc;

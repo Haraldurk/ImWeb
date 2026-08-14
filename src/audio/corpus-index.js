@@ -66,12 +66,27 @@ function transform(scale, v) {
  * — the map is of this territory.
  *
  * **Grains with no detected pitch are DROPPED when pitch is an axis**, and
- * counted in `dropped`. The alternative is placing them somewhere, and there is
- * nowhere honest: an unpitched grain is not a low-pitched one, so parking the
- * noise along the bottom edge invents a reading of the axis that is false
- * exactly where a performer would go looking for noise.
+ * counted in `droppedPitchless`. The alternative is placing them somewhere, and
+ * there is nowhere honest: an unpitched grain is not a low-pitched one, so
+ * parking the noise along the bottom edge invents a reading of the axis that is
+ * false exactly where a performer would go looking for noise.
+ *
+ * **Grains the reader cannot reach are dropped too**, counted separately in
+ * `droppedUnreachable`. `reach` is the absolute sample span the grain player can
+ * actually read — its partition, or the whole tape when `unsafe`. The analysis
+ * covers the whole tape, so without this the map claims material the reader will
+ * not play: the position wraps into the partition and you hear a DIFFERENT grain
+ * from the one you touched. That is the one place a map can lie about its
+ * territory while looking like it works, so unreachable grains are removed from
+ * the map rather than silently redirected in the reader.
+ *
+ * Filtering here rather than at analysis time is what keeps changing the
+ * partition free — the measurements are still valid, only the projection
+ * changes, which is the same reason an axis change does not re-measure.
  */
-export function buildIndex(raw, count, startSample, hopSamples, xCol, yCol, gridSize = 32) {
+export function buildIndex(
+  raw, count, startSample, hopSamples, xCol, yCol, gridSize = 32, reach = null,
+) {
   const xd = DESCRIPTORS[xCol] ?? DESCRIPTORS[0];
   const yd = DESCRIPTORS[yCol] ?? DESCRIPTORS[1];
   const needsPitch = (c) => DESCRIPTORS[c]?.scale === 'logHz';
@@ -80,9 +95,15 @@ export function buildIndex(raw, count, startSample, hopSamples, xCol, yCol, grid
   const ids = [];
   const xs = [];
   const ys = [];
+  let droppedPitchless = 0;
+  let droppedUnreachable = 0;
   for (let i = 0; i < count; i++) {
     const base = i * CORPUS_COLS;
-    if (dropPitchless && !(raw[base + 2] > 0)) continue;
+    if (dropPitchless && !(raw[base + 2] > 0)) { droppedPitchless++; continue; }
+    if (reach) {
+      const t = startSample + i * hopSamples;
+      if (t < reach.lo || t >= reach.hi) { droppedUnreachable++; continue; }
+    }
     ids.push(i);
     xs.push(transform(xd.scale, raw[base + xCol]));
     ys.push(transform(yd.scale, raw[base + yCol]));
@@ -90,7 +111,8 @@ export function buildIndex(raw, count, startSample, hopSamples, xCol, yCol, grid
 
   const n = ids.length;
   const index = {
-    count: n, dropped: count - n, start: startSample, hop: hopSamples,
+    count: n, dropped: count - n, droppedPitchless, droppedUnreachable,
+    start: startSample, hop: hopSamples,
     ids: Int32Array.from(ids),
     x: new Float32Array(n), y: new Float32Array(n),
     xCol, yCol, gridSize,

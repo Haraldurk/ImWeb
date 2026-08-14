@@ -219,6 +219,15 @@ export class AudioBinding {
     // engine is stopped, so the waveform would silently go stale. Say which it
     // is — the layout stays drawn, because that is still true.
     this.view?.clearEnvelope('audio off');
+    // The corpus is tape-derived too, and it goes with the tape. `start()`
+    // re-allocates, which ZEROES it, so a cloud that survived the restart would
+    // sit there confidently plotting material that no longer exists and point
+    // the grain player into silence. The waveform already had this rule; two
+    // views of the same tape must not have two.
+    this._corpusRaw = null;
+    this._corpus = null;
+    this._corpusJobId = -1;
+    this._refreshCorpusLabels();
     // NOT a fresh AudioEngine. It used to be one, because close() closed the
     // context and a closed context cannot be reused — but under §8.6 there is
     // exactly one context for the session and the engine suspends it instead.
@@ -805,8 +814,11 @@ export class AudioBinding {
     if (!res.ok) return this._say(`corpus analysis refused (${res.code}): ${res.message}`);
     if (!res.data) return this._say('corpus: the analysis finished but sent no table');
     this._corpusRaw = res.data;
+    // `_rebuildCorpus` owns the reporting, and must be the LAST thing to speak.
+    // Saying the measured count here afterwards clobbered it — so the one number
+    // a performer needs, how many grains are actually reachable, was replaced by
+    // the raw total a millisecond later and never seen.
     this._rebuildCorpus();
-    this._say(`corpus: ${res.data.count} grains measured`);
     return res;
   }
 
@@ -827,10 +839,27 @@ export class AudioBinding {
     const d = this._corpusRaw;
     if (!d) return;
     const g = (id) => this.ps.get(id).value;
-    this._corpus = buildIndex(d.raw, d.count, d.start, d.hop, g('acorp.xAxis'), g('acorp.yAxis'));
-    if (this._corpus.dropped) {
-      this._say(`corpus: ${this._corpus.count} grains on this pair `
-        + `(${this._corpus.dropped} had no detected pitch)`);
+    // What the grain player can actually read: its partition, or the whole tape
+    // when `unsafe`. The same span `_grainSpan` computes engine-side, so the map
+    // shows exactly the grains the reader will play and no others.
+    const n = this._tapeLen;
+    const part = this._part(g('agrain.part'));
+    const reach = g('agrain.unsafe')
+      ? { lo: 0, hi: n }
+      : { lo: part.start * n, hi: (part.start + part.len) * n };
+    this._corpus = buildIndex(
+      d.raw, d.count, d.start, d.hop, g('acorp.xAxis'), g('acorp.yAxis'), 32, reach);
+    const c = this._corpus;
+    if (!c.dropped) {
+      this._say(`corpus: ${c.count} grains`);
+    } else {
+      // The two reasons are named separately because the fixes differ: one
+      // wants a different axis pair, the other a different partition.
+      const why = [];
+      if (c.droppedPitchless) why.push(`${c.droppedPitchless} unpitched`);
+      if (c.droppedUnreachable) why.push(`${c.droppedUnreachable} outside P${g('agrain.part')}`);
+      this._say(`corpus: ${c.count} of ${d.count} grains reachable `
+        + `(${why.join(', ')})`);
     }
     this._refreshCorpusLabels();
     this._navigate();
@@ -984,6 +1013,9 @@ export class AudioBinding {
           }
           accepted = v;
           this._pushLayout();
+          // Moving a partition moves what the grain player can reach, so the
+          // corpus is re-projected for the same reason `agrain.part` does it.
+          this._rebuildCorpus();
         });
       }
     }
@@ -1021,8 +1053,10 @@ export class AudioBinding {
     this._on('acorp.x', () => this._navigate());
     this._on('acorp.y', () => this._navigate());
 
-    this._on('agrain.part', (v) => { this.engine.grainPart(0, v); this._navigate(); });
-    this._on('agrain.unsafe', (v) => this.engine.grainUnsafe(0, !!v));
+    // Both of these change WHAT THE READER CAN REACH, so both re-project the
+    // map — the cloud must never show a grain the player would wrap away from.
+    this._on('agrain.part', (v) => { this.engine.grainPart(0, v); this._rebuildCorpus(); });
+    this._on('agrain.unsafe', (v) => { this.engine.grainUnsafe(0, !!v); this._rebuildCorpus(); });
     this._on('agrain.on', (v) => { if (v) this.engine.grainOn(0); else this.engine.grainOff(0); });
     this._on('agrain.size', (v) => this.engine.grainSize(0, this._ms(v)));
     this._on('agrain.rate', (v) => this.engine.grainRate(0, v));

@@ -25,6 +25,7 @@ export class CorpusView {
     this.labels = { x: '', y: '' };
     this._dpr = 1;
     this._dragging = false;
+    this._pending = false;
 
     canvas.style.touchAction = 'none';
     canvas.addEventListener('pointerdown', (e) => {
@@ -60,13 +61,13 @@ export class CorpusView {
     this.cursor.y = y;
     this.cursor.on = true;
     this.onNavigate?.(x, y);
-    this.draw();
+    this._schedule();
   }
 
   setIndex(index, xLabel, yLabel) {
     this.index = index;
     this.labels = { x: xLabel, y: yLabel };
-    this.draw();
+    this._schedule();
   }
 
   setCursor(x, y) {
@@ -75,7 +76,21 @@ export class CorpusView {
     if (this._dragging) return;
     this.cursor.x = x;
     this.cursor.y = y;
-    this.draw();
+    this._schedule();
+  }
+
+  /**
+   * Coalesce redraws to one per frame, the same way `TapeView` does.
+   *
+   * A pointermove can arrive several times per frame and a full repaint is up to
+   * 16384 fillRects, so painting per event does that work two or three times
+   * over for one visible result — which turns into drag lag on a large corpus
+   * before it turns into anything else.
+   */
+  _schedule() {
+    if (this._pending) return;
+    this._pending = true;
+    requestAnimationFrame(() => { this._pending = false; this.draw(); });
   }
 
   /** Size the backing store to the element. Cheap, and idempotent. */

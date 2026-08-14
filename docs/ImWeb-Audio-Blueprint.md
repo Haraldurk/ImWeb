@@ -1516,3 +1516,43 @@ held** and never re-measures the tape. On a 1332-grain corpus that is 3 ms
 against roughly twenty seconds. This is the practical content of "an index, not
 a second buffer": the expensive thing happened once, and the map is cheap to
 redraw.
+
+#### The map must not claim what the reader cannot reach
+
+A decision the first cut got wrong by omission. The analysis covers the whole
+tape; a grain zone reads its **partition**, and `_spawnGrain` wraps anything
+outside it. So a corpus measured over the whole tape plotted grains the player
+would never play: touch one, hear a different one, silently. That is the one
+failure mode where a map looks like it is working while lying about its
+territory — the sound is plausible, nothing is refused, and the gesture simply
+stops corresponding to the result.
+
+The fix is in the **map**, not the reader: `buildIndex` takes the reader's
+reachable span and drops grains outside it, counted separately from the
+pitchless ones because the two have different remedies — one wants a different
+axis pair, the other a different partition. `unsafe` widens the reach to the
+whole tape and every grain returns.
+
+Filtering at projection time rather than at analysis time is what keeps changing
+the partition free: the measurements are still valid, only the projection moves,
+which is the same reason an axis change does not re-measure. Verified live —
+1332 grains measured, 334 reachable in P0, 333 in P2, all 1332 with `unsafe`.
+
+**Corollary, and it applies to every future tape-derived view:** the corpus is
+discarded on Audio Off, because `start()` re-allocates the tape and zeroes it.
+The waveform display already had that rule; a second view of the same tape must
+not get a second rule, or it will confidently plot material that no longer
+exists.
+
+#### Recorded, not fixed: grains do not get the rate-aware anti-aliasing
+
+§4.10 named the rate-aware box filter in `_renderPlay` the main path for this
+instrument, and reading at rate r is decimation by r wherever it happens — so a
+cloud pitched up two octaves over bright material folds. The grain player is
+left without it deliberately: a grain is 5–500 ms of Hann-windowed material
+arriving among dozens of others, so the window's own spectral skirt and the
+density of the cloud mask most of what the filter would remove, and the filter
+would soften every grain to fix an artefact audible in a narrow corner of the
+parameter space. Granular synthesis has accepted this since Truax. The sub-read
+loop drops in unchanged if it ever offends — a cost decision, not a structural
+one.

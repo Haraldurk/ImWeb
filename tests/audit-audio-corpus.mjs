@@ -302,8 +302,8 @@ console.log('\nthe axes are scaled the way the ear is');
   const mixed = mk([[0.5, 0.2, 0, 0.1], [0.5, 0.8, 440, 0.9]]);
   const withPitch = buildIndex(mixed, 2, 0, 1000, 2, 1);
   check('a grain with no detected pitch is dropped from a pitch axis',
-    withPitch.count === 1 && withPitch.dropped === 1,
-    `${withPitch.count} kept, ${withPitch.dropped} dropped`);
+    withPitch.count === 1 && withPitch.droppedPitchless === 1,
+    `${withPitch.count} kept, ${withPitch.droppedPitchless} unpitched`);
   const noPitch = buildIndex(mixed, 2, 0, 1000, 0, 1);
   check('and kept when pitch is not an axis',
     noPitch.count === 2 && noPitch.dropped === 0,
@@ -311,6 +311,53 @@ console.log('\nthe axes are scaled the way the ear is');
   check('the surviving grain keeps its own identity, not its new position',
     grainTime(withPitch, 0) === 1000,
     `${grainTime(withPitch, 0)} — dropping must not renumber what is left`);
+
+  /**
+   * The map must not claim grains the reader cannot reach.
+   *
+   * The analysis covers the whole tape; a grain zone reads its partition and
+   * wraps anything outside it. Without the reach filter the pad plots material
+   * the player will not play — you touch a grain and hear a DIFFERENT one,
+   * silently. That is the one failure where a map looks like it is working while
+   * lying about its territory, so unreachable grains leave the map rather than
+   * being redirected in the reader.
+   */
+  const ten = new Float32Array(10 * CORPUS_COLS);
+  for (let i = 0; i < 10; i++) {
+    ten[i * CORPUS_COLS] = 0.1 + i * 0.05;
+    ten[i * CORPUS_COLS + 1] = i / 9;
+    ten[i * CORPUS_COLS + 2] = 200 + i * 30;
+    ten[i * CORPUS_COLS + 3] = 0.8;
+  }
+  // Grains at 0, 1000, …, 9000. A partition covering 3000..6999 reaches four.
+  const all = buildIndex(ten, 10, 0, 1000, 0, 1);
+  check('with no reach given, every grain is on the map', all.count === 10
+    && all.droppedUnreachable === 0, `${all.count} grains`);
+  const reached = buildIndex(ten, 10, 0, 1000, 0, 1, 32, { lo: 3000, hi: 7000 });
+  check('grains outside the reader\'s span are dropped',
+    reached.count === 4 && reached.droppedUnreachable === 6,
+    `${reached.count} reachable, ${reached.droppedUnreachable} outside`);
+  check('and the ones kept are exactly the reachable ones',
+    [0, 1, 2, 3].every((k) => {
+      const t = grainTime(reached, k);
+      return t >= 3000 && t < 7000;
+    }),
+    [0, 1, 2, 3].map((k) => grainTime(reached, k)).join(','));
+  check('every reachable grain is findable from somewhere on the pad',
+    new Set([0, 0.25, 0.5, 0.75, 1].flatMap((x) => [0, 0.5, 1]
+      .map((y) => nearest(reached, x, y)))).size === reached.count,
+    'a filtered index must still be fully navigable, not a cloud with holes');
+  const widened = buildIndex(ten, 10, 0, 1000, 0, 1, 32, { lo: 0, hi: 10000 });
+  check('widening the reach — what `unsafe` does — restores them',
+    widened.count === 10 && widened.droppedUnreachable === 0,
+    `${widened.count} grains`);
+  // The two drop reasons are reported separately, because the fixes differ:
+  // one wants a different axis, the other a different partition.
+  const both = buildIndex(mixed, 2, 0, 1000, 2, 1, 32, { lo: 1000, hi: 2000 });
+  check('the two reasons for dropping a grain are counted separately',
+    both.droppedPitchless === 1 && both.droppedUnreachable === 0
+      && both.dropped === 1,
+    `${both.droppedPitchless} unpitched, ${both.droppedUnreachable} unreachable`);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
