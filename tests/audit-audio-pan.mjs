@@ -462,9 +462,20 @@ console.log('\nthe client only asks for colour when it needs it');
     /chroma: wantChroma \? chromaFromRGBA\(rgba, w, h\) : null/.test(main));
   check('the binding asks only in Colour mode',
     /wantChroma = panMode === PAN\.COLOUR && panWidth > 0/.test(bind));
+  // ── Source text, because AudioBinding cannot be imported in Node ──────────
+  // It reaches AudioEngine, which has a Vite `?url` import. Same forced
+  // exception as the step-11 audit, and the same weakness: this proves the two
+  // calls are in that order in the FILE, not that the order is reached.
+  //
+  // The consequence is covered behaviourally beside it — "pan before an image is
+  // refused" drives the engine and observes the refusal — so what this adds is
+  // that the client is on the right side of that rule today. If the engine ever
+  // relaxed the refusal, THIS is the check that would stop meaning anything, and
+  // the reason to notice would be the render quietly coming out mono.
+  const iData = bind.indexOf('this.engine.specData(0, rows, frames, mag)');
+  const iPan = bind.indexOf('this.engine.specPan(0, rows, frames, pan)');
   check('and sends pan AFTER data, which is the only order that works',
-    bind.indexOf('this.engine.specData(0, rows, frames, mag)')
-      < bind.indexOf('this.engine.specPan(0, rows, frames, pan)'));
+    iData >= 0 && iPan >= 0 && iData < iPan, `data at ${iData}, pan at ${iPan}`);
 }
 
 console.log(failures === 0

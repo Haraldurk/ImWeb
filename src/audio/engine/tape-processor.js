@@ -614,8 +614,11 @@ class TapeProcessor extends AudioWorkletProcessor {
      *
      * **A table because the alternative is `cos` and `sin` per row per sample**
      * — a 256-row image over five seconds is 56 million of each, on the audio
-     * thread. Nearest-neighbour, no interpolation: at this size one step is
-     * 0.002 of the pan range, which is far below anything a listener can place.
+     * thread. TRUNCATED, not rounded and not interpolated: one step is 0.002 of
+     * the pan range, so the bias is at most half of that toward the left, which
+     * is three orders of magnitude below anything a listener can place. Said
+     * exactly rather than as "nearest-neighbour", which is what this said first
+     * and is a different operation with half the error.
      *
      * Equal power rather than linear because a linear pan dips 3 dB in the
      * middle, so a centred stroke would come out quieter than the same stroke

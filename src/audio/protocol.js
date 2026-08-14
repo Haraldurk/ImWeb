@@ -37,12 +37,18 @@
 // address, so an older client and a newer engine disagree about what
 // `/zone/grain/0/on` even IS rather than merely one of them not knowing it.
 // 5 since step 12: the spectral writer's PAN image (§8.14). A new address, so
-// the step-8 reason applies unchanged — but there is a second one that is worse
-// than a missing reply. `/spec/<n>/pan` carries positions an older engine drops
-// silently, and a dropped pan image is not a failure the performer can hear as a
-// failure: the render simply comes out mono, which is exactly what it did
-// before, so it reads as the feature not working rather than as the engine being
-// too old. Version mismatch is the only place that can say which.
+// the step-8 reason applies unchanged and needs no embellishment.
+//
+// An earlier version of this comment invented a second reason — that an older
+// engine would DROP a pan image silently and render mono — and it was wrong
+// twice: `/engine/hello` refuses a version mismatch outright, and an unrecognised
+// address is refused loudly as `unknown address` even if one ever got past it.
+// Nothing here fails quietly across versions.
+//
+// What IS new, and lives inside one version rather than between two: this is the
+// first OPTIONAL upload. A render with no pan image and a render whose pan image
+// was refused sound identical, because both are mono — so the refusal has to be
+// visible somewhere the performer looks, which is what the status line is for.
 export const PROTO_VERSION = 5;
 
 /** The complete permitted argument-type set. Rule 1 — do not extend casually. */
