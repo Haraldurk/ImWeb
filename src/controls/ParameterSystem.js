@@ -17,6 +17,9 @@
 // the SOURCE_DEFS lesson (CLAUDE.md) applied before there is a second copy to
 // regret. `spectral-image.js` imports nothing itself, so this adds no weight.
 import { SCALE_NAMES } from '../audio/spectral-image.js';
+// Same rule, same reason: a SELECT stores an INDEX, so the axis menus must be
+// built from the one list the index itself reads, never retyped beside it.
+import { DESCRIPTOR_LABELS } from '../audio/corpus-index.js';
 
 // Set by main.js after TableManager is initialised
 let _tableManager = null;
@@ -6823,6 +6826,90 @@ export function registerCoreParameters(ps) {
   ps.register({
     id: "aspec.cancel", label: "Cancel", group: "global",
     type: PARAM_TYPE.TRIGGER,
+  });
+
+  // ── The corpus index (§4.6) ───────────────────────────────────────────────
+  //
+  // Two halves that are deliberately not one panel's worth of the same thing:
+  // `acorp.*` is the MAP — how the tape is measured and which two measurements
+  // become the axes — and `agrain.*` is the READER that plays what the map
+  // points at. The map is rebuilt rarely and the reader is played continuously.
+  //
+  // Analysis settings are 'global': hop and window decide the SHAPE of a corpus
+  // that then has to be re-measured to change, so a Display State recall that
+  // silently invalidated the cloud under a performer's hand would be the same
+  // class of destruction as recalling a tape length. The AXES are 'acorp' and
+  // captured — they are indices into a fixed code-side list, cost nothing to
+  // change, and which pair you are navigating by is exactly the sort of thing a
+  // State should restore.
+  ps.register({
+    id: "acorp.hop", label: "Grain Hop", group: "global",
+    min: 5, max: 500, value: 45, step: 1, unit: "ms",
+  });
+  ps.register({
+    id: "acorp.window", label: "Analysis Window", group: "global",
+    min: 10, max: 300, value: 85, step: 1, unit: "ms",
+  });
+  ps.register({
+    id: "acorp.analyse", label: "Analyse", group: "global", type: PARAM_TYPE.TRIGGER,
+  });
+  ps.register({
+    id: "acorp.cancel", label: "Cancel Analysis", group: "global", type: PARAM_TYPE.TRIGGER,
+  });
+  // Which two of the four measurements are the pad's axes. Defaults are
+  // brightness against loudness — the pair that separates most material on most
+  // recordings, and the one that needs no pitch to have been found.
+  ps.register({
+    id: "acorp.xAxis", label: "X Axis", group: "acorp",
+    type: PARAM_TYPE.SELECT, value: 1, options: [...DESCRIPTOR_LABELS],
+  });
+  ps.register({
+    id: "acorp.yAxis", label: "Y Axis", group: "acorp",
+    type: PARAM_TYPE.SELECT, value: 0, options: [...DESCRIPTOR_LABELS],
+  });
+  // Where in the descriptor space the reader is pointed. Ordinary continuous
+  // params, so everything that can drive a parameter can drive the navigation —
+  // a hand on the pad, an LFO, a MIDI knob, the stroke looper (§4.6's claim
+  // that navigating a 2D space is a drawing gesture is only true if these are
+  // as drivable as anything else).
+  ps.register({ id: "acorp.x", label: "Corpus X", group: "acorp", min: 0, max: 1, value: 0.5, step: 0.001 });
+  ps.register({ id: "acorp.y", label: "Corpus Y", group: "acorp", min: 0, max: 1, value: 0.5, step: 0.001 });
+
+  // The grain player. 'agrain', captured — performance state, every value
+  // continuous or a fixed-slot index.
+  ps.register({
+    id: "agrain.part", label: "Partition Grain", group: "agrain",
+    type: PARAM_TYPE.SELECT, value: 0,
+    options: Array.from({ length: PARTITION_SLOTS }, (_, i) => `P${i}`),
+  });
+  ps.register({
+    id: "agrain.on", label: "Run Grain", group: "agrain", type: PARAM_TYPE.TOGGLE, value: 0,
+  });
+  ps.register({
+    id: "agrain.size", label: "Grain Size", group: "agrain",
+    min: 5, max: 500, value: 90, step: 1, unit: "ms",
+  });
+  ps.register({
+    id: "agrain.rate", label: "Density", group: "agrain",
+    min: 1, max: 200, value: 25, step: 1, unit: "/s",
+  });
+  // Semitones, converted in AudioBinding — the LEARNED 2026-08-08 rule, same as
+  // the voice's pitch and the spectral writer's root.
+  ps.register({
+    id: "agrain.pitch", label: "Grain Pitch", group: "agrain",
+    min: -24, max: 24, value: 0, step: 0.1, unit: "st",
+  });
+  ps.register({
+    id: "agrain.spray", label: "Spray", group: "agrain",
+    min: 0, max: 500, value: 20, step: 1, unit: "ms",
+  });
+  ps.register({
+    id: "agrain.level", label: "Level Grain", group: "agrain",
+    min: 0, max: 1, value: 0.6, step: 0.01,
+  });
+  ps.register({
+    id: "agrain.unsafe", label: "Unsafe Grain", group: "agrain",
+    type: PARAM_TYPE.TOGGLE, value: 0,
   });
 
   return ps;

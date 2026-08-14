@@ -26,6 +26,8 @@ import { SLEW_TABLE_BASE } from './protocol.js';
 import { TapeView } from './TapeView.js';
 import { partitionSpan, zoneSpan, clampToPartition } from './tape-geometry.js';
 import { buildPitches, imageFromLuma } from './spectral-image.js';
+import { CorpusView } from './CorpusView.js';
+import { DESCRIPTORS, buildIndex, nearest, grainTime } from './corpus-index.js';
 import {
   AUDIO_TARGETS, describeController, describeSlew, descDiff, semitoneToHz,
   sampleSlewCurve, slewStrength, SLEW_MECHANISM, SLEW_SEGMENT,
@@ -87,11 +89,27 @@ export class AudioBinding {
     this.imageSource = null;
     /** The render in flight, or -1. Held so `cancelSpectral` has an id to send. */
     this._specJobId = -1;
-    // Progress on a paced render (§8.3), at frame cadence. Straight to the
-    // status line: a multi-second render with no sign of life is
-    // indistinguishable from a wedged one.
-    this.engine.onJobProgress = (_id, doneSamples, total) => {
-      this._say(`spectral: rendering ${Math.round((doneSamples / total) * 100)}%`);
+    /** The corpus analysis in flight, or -1. */
+    this._corpusJobId = -1;
+    /** The last measurements received, kept so an axis change re-projects them. */
+    this._corpusRaw = null;
+    /** The 2D map built from them for the current axis pair. */
+    this._corpus = null;
+    this.corpusView = null;
+    /**
+     * Progress on any paced job (§8.3), at frame cadence. Straight to the
+     * status line: a multi-second job with no sign of life is indistinguishable
+     * from a wedged one.
+     *
+     * Keyed on the job id, because there is more than one kind of job now and
+     * the first version hardcoded "spectral" — so a corpus analysis reported
+     * itself as a render for twenty seconds, which is worse than saying nothing
+     * (it names a job that is not running over material it is not touching).
+     */
+    this.engine.onJobProgress = (id, done, total) => {
+      const pct = Math.round((done / total) * 100);
+      if (id === this._corpusJobId) this._say(`corpus: analysing ${pct}%`);
+      else if (id === this._specJobId) this._say(`spectral: rendering ${pct}%`);
     };
   }
 
@@ -627,6 +645,14 @@ export class AudioBinding {
     this.engine.recDynamic(0, !!g('arec.dynamic'));
     this.engine.zonePart('spectral', 0, g('aspec.part'));
     this.engine.zoneUnsafe('spectral', 0, !!g('aspec.unsafe'));
+    this.engine.grainPart(0, g('agrain.part'));
+    this.engine.grainUnsafe(0, !!g('agrain.unsafe'));
+    this.engine.grainSize(0, this._ms(g('agrain.size')));
+    this.engine.grainRate(0, g('agrain.rate'));
+    this.engine.grainPitch(0, Math.pow(2, g('agrain.pitch') / 12));
+    this.engine.grainSpray(0, this._ms(g('agrain.spray')));
+    this.engine.grainLevel(0, g('agrain.level'));
+    if (g('agrain.on')) this.engine.grainOn(0); else this.engine.grainOff(0);
     this.engine.setTap(g('audio.tapSrc'));
     this._pushVoice();
   }
@@ -748,6 +774,91 @@ export class AudioBinding {
     this.engine.cancelJob(this._specJobId);
   }
 
+  // ── the corpus index (§4.6) ───────────────────────────────────────────────
+
+  attachCorpusView(canvas) {
+    this.corpusView = new CorpusView(canvas);
+    // The pad writes the PARAMS, not the engine. That is what makes §4.6's
+    // "navigating a descriptor space is a drawing gesture" true rather than
+    // decorative: the same two values can be driven by a hand, an LFO, a MIDI
+    // knob or the stroke looper, and all four arrive by the same path.
+    this.corpusView.onNavigate = (x, y) => {
+      this.ps.set('acorp.x', x);
+      this.ps.set('acorp.y', y);
+    };
+    this._refreshCorpusLabels();
+  }
+
+  /** Measure the whole tape and build the map (§4.6). */
+  async analyseCorpus() {
+    if (!this.running) return this._say('corpus analysis needs the audio engine running');
+    if (this._corpusJobId >= 0) return this._say('corpus: already analysing');
+    const g = (id) => this.ps.get(id).value;
+    const sr = this.engine.sampleRate;
+    const hop = Math.max(1, Math.round((g('acorp.hop') / 1000) * sr));
+    const window = Math.max(1, Math.round((g('acorp.window') / 1000) * sr));
+    const { jobId, done } = this.engine.analyseCorpus(0, this._tapeLen, hop, window);
+    this._corpusJobId = jobId;
+    this._say('corpus: analysing the tape…');
+    const res = await done;
+    this._corpusJobId = -1;
+    if (!res.ok) return this._say(`corpus analysis refused (${res.code}): ${res.message}`);
+    if (!res.data) return this._say('corpus: the analysis finished but sent no table');
+    this._corpusRaw = res.data;
+    this._rebuildCorpus();
+    this._say(`corpus: ${res.data.count} grains measured`);
+    return res;
+  }
+
+  cancelCorpus() {
+    if (!(this._corpusJobId >= 0)) return this._say('corpus: nothing is analysing');
+    this.engine.cancelJob(this._corpusJobId);
+  }
+
+  /**
+   * Rebuild the 2D map from the measurements already held.
+   *
+   * Separate from the analysis, because changing which descriptors are the axes
+   * is a re-projection of the same measurements and must NOT re-measure the
+   * tape — that would turn a menu change into a multi-second job, and it is the
+   * whole reason the corpus is an index rather than a second buffer (§4.6).
+   */
+  _rebuildCorpus() {
+    const d = this._corpusRaw;
+    if (!d) return;
+    const g = (id) => this.ps.get(id).value;
+    this._corpus = buildIndex(d.raw, d.count, d.start, d.hop, g('acorp.xAxis'), g('acorp.yAxis'));
+    if (this._corpus.dropped) {
+      this._say(`corpus: ${this._corpus.count} grains on this pair `
+        + `(${this._corpus.dropped} had no detected pitch)`);
+    }
+    this._refreshCorpusLabels();
+    this._navigate();
+  }
+
+  _refreshCorpusLabels() {
+    if (!this.corpusView) return;
+    const label = (id) => DESCRIPTORS[this.ps.get(id).value]?.label ?? '';
+    this.corpusView.setIndex(this._corpus, label('acorp.xAxis'), label('acorp.yAxis'));
+  }
+
+  /** Resolve the current XY to a timestamp and point the grain player at it. */
+  _navigate() {
+    if (!this._corpus || !this._corpus.count) return;
+    const x = this.ps.get('acorp.x').value;
+    const y = this.ps.get('acorp.y').value;
+    this.corpusView?.setCursor(x, y);
+    const k = nearest(this._corpus, x, y);
+    if (k < 0) return;
+    const part = this._part(this.ps.get('agrain.part').value);
+    // The engine takes a position RELATIVE to the grain zone's partition, and
+    // the corpus holds absolute tape samples — the same fractions→samples seam
+    // every other zone parameter crosses, in the one direction that has to be
+    // undone rather than applied.
+    const abs = grainTime(this._corpus, k);
+    this.engine.grainPos(0, abs - part.start * this._tapeLen);
+  }
+
   /**
    * Semitones → Hz. Pitch and cutoff are registered in semitones because rate
    * and frequency are heard as ratios (LEARNED 2026-08-08). The engine speaks Hz
@@ -758,6 +869,13 @@ export class AudioBinding {
    * needed the same conversion — one site, still, just not this one.
    */
   _hz(semitones) { return semitoneToHz(semitones); }
+
+  /**
+   * Milliseconds → samples. The grain player's size and spray are authored in
+   * ms because that is the unit a granular gesture is actually thought in, and
+   * the engine speaks samples like every other position in the protocol.
+   */
+  _ms(milliseconds) { return (milliseconds / 1000) * this.engine.sampleRate; }
 
   _pushVoice() {
     const g = (id) => this.ps.get(id).value;
@@ -893,6 +1011,25 @@ export class AudioBinding {
     this._on('aspec.unsafe', (v) => this.engine.zoneUnsafe('spectral', 0, !!v));
     this._on('aspec.render', () => { this.renderSpectral(); });
     this._on('aspec.cancel', () => this.cancelSpectral());
+
+    // The corpus (§4.6). Axis changes RE-PROJECT the measurements already held;
+    // they never re-measure. That is the index paying for itself.
+    this._on('acorp.analyse', () => { this.analyseCorpus(); });
+    this._on('acorp.cancel', () => this.cancelCorpus());
+    this._on('acorp.xAxis', () => this._rebuildCorpus());
+    this._on('acorp.yAxis', () => this._rebuildCorpus());
+    this._on('acorp.x', () => this._navigate());
+    this._on('acorp.y', () => this._navigate());
+
+    this._on('agrain.part', (v) => { this.engine.grainPart(0, v); this._navigate(); });
+    this._on('agrain.unsafe', (v) => this.engine.grainUnsafe(0, !!v));
+    this._on('agrain.on', (v) => { if (v) this.engine.grainOn(0); else this.engine.grainOff(0); });
+    this._on('agrain.size', (v) => this.engine.grainSize(0, this._ms(v)));
+    this._on('agrain.rate', (v) => this.engine.grainRate(0, v));
+    // Semitones → a read-rate ratio. 0 st is 1×, twelve semitones is 2×.
+    this._on('agrain.pitch', (v) => this.engine.grainPitch(0, Math.pow(2, v / 12)));
+    this._on('agrain.spray', (v) => this.engine.grainSpray(0, this._ms(v)));
+    this._on('agrain.level', (v) => this.engine.grainLevel(0, v));
 
     // Reallocating throws away every recording, so it is not a live control:
     // it applies on the next enable. Reflected here rather than silently

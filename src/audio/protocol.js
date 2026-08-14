@@ -30,7 +30,13 @@
 // signatures here — an engine one version behind answers `/spec/0/data` with
 // `unknown address`, and a client that never learns that will sit waiting on a
 // `/job/<n>/done` nothing is going to send.
-export const PROTO_VERSION = 3;
+//
+// 4 since step 9: the corpus index (§4.6) brought `/corpus/analyse`, its reply,
+// and the grain player's zone type. A new ZONE TYPE is the sharper reason —
+// `grain` joining ZONE_TYPES changes how `normalizeAddress` collapses an
+// address, so an older client and a newer engine disagree about what
+// `/zone/grain/0/on` even IS rather than merely one of them not knowing it.
+export const PROTO_VERSION = 4;
 
 /** The complete permitted argument-type set. Rule 1 — do not extend casually. */
 export const TYPE_TAGS = Object.freeze(['i', 'f', 's', 'b', 'T', 'F']);
@@ -136,6 +142,45 @@ export const CLIENT_TO_ENGINE = Object.freeze({
   '/zone/<type>/<n>/render': 'ifii',
   // Stop a paced job (§8.3). The client already holds the id it minted.
   '/job/<n>/cancel': '',
+
+  // ── The corpus index (§4.6) ─────────────────────────────────────────────
+  //
+  // §4.6's claim is that the corpus is a MAP and the tape is the territory, and
+  // the split below is that sentence made structural: the engine measures the
+  // territory and plays positions in it, and never learns that a map exists.
+  //
+  // What crosses the boundary is a table of NUMBERS per grain. The engine does
+  // not know that column 1 is "brightness", does not know which two columns a
+  // performer is currently navigating by, and holds no 2D space — all of that is
+  // client-side, exactly as the musical scale is for the spectral writer (§4.5).
+  // The engine's whole half of §4.6 is "measure this span" and "read from here".
+  //
+  // start, end, hop, window, jobId. Hop and window are SEPARATE on purpose: hop
+  // is how densely the corpus is sampled, window is how much material each
+  // measurement describes. They are independent, and conflating them would fix
+  // the grain density to the descriptor resolution for no reason beyond having
+  // typed one number instead of two.
+  '/corpus/analyse': 'iiiii',
+
+  // The grain player (§4.6) — the reader that makes a descriptor space mean
+  // something. Navigating a corpus yields timestamps, and a single playhead
+  // jumping between them is a scrub, not corpus synthesis; overlapping windowed
+  // grains are what let a position in the space be HELD and heard as a texture.
+  //
+  // `pos` is deliberately its own address carrying exactly one float, which is
+  // §8.7's binding rule — that makes it a legal worklet-resident controller
+  // target, so an LFO can sweep the corpus at audio rate rather than in 60 Hz
+  // steps. Samples relative to the partition, like every other zone position.
+  '/zone/grain/<n>/pos': 'f',
+  '/zone/grain/<n>/size': 'f',    // grain duration, samples
+  '/zone/grain/<n>/rate': 'f',    // grains per second
+  '/zone/grain/<n>/pitch': 'f',   // per-grain read rate; signed, negative reads back
+  // Random offset added to each grain's start, in samples. The one parameter
+  // here with no equivalent anywhere else in the instrument: without it a held
+  // position is the same few hundred milliseconds repeating at the grain rate,
+  // which is a buzz at that frequency rather than a texture.
+  '/zone/grain/<n>/spray': 'f',
+  '/zone/grain/<n>/level': 'f',
 
   // Voices (§4.4, §4.10) — the things with no buffer region. Fixed topology in
   // this pass: source → filter → saturator → level. There is deliberately no
@@ -276,7 +321,39 @@ export const ENGINE_TO_CLIENT = Object.freeze({
   '/job/<n>/progress': 'ii',       // samples done, samples total
   '/job/<n>/done': '',
   '/job/<n>/error': 'is',          // refusal code, message
+  // The corpus measurements (§4.6): jobId, start, hop, grainCount, then a blob
+  // of grainCount × CORPUS_COLUMNS floats.
+  //
+  // Each grain's TIME is derived — `start + i * hop` — never stored, the same
+  // rule the envelope reply follows for column positions: a table that carried
+  // its own times could disagree with the start and hop in the same message,
+  // and a corpus whose timestamps drift from the tape is unfalsifiably wrong.
+  //
+  // This is the PAYLOAD, not the terminal message: `/job/<n>/done` still
+  // follows, so "exactly one terminal per accepted job" holds for every job
+  // type rather than gaining an exception the first time a job returned data.
+  '/corpus/data': 'iiiib',
 });
+
+/**
+ * What the engine measures per grain, and the ORDER it measures it in — the
+ * wire layout of `/corpus/data`'s blob.
+ *
+ * §6 item 5 asked which descriptors the corpus extracts. These four, and the
+ * reason they are these four is that all of them fall out of two passes over a
+ * time-domain window with no FFT anywhere: one pass for level and zero
+ * crossings, one autocorrelation for the other two. Pitch and periodicity come
+ * from the SAME autocorrelation — the peak's position and its height — so the
+ * pair costs what either would alone.
+ *
+ * The engine does not know these names. It fills columns; this list is the
+ * client's reading of them, and it lives here rather than in the UI because the
+ * blob's column order is a protocol fact, not a presentation choice.
+ *
+ * APPEND-ONLY: a column index is a position in a wire format, and a SELECT
+ * storing "navigate by column 2" is saved in projects.
+ */
+export const CORPUS_COLUMNS = Object.freeze(['loudness', 'brightness', 'pitch', 'periodicity']);
 
 /**
  * Declared in §8.8 but not implemented yet — zones, graphs, controllers, jobs,
@@ -347,7 +424,7 @@ export const MAX_CONTROLLERS = 16;
 export const SLEW_TABLE_BASE = MAX_CONTROLLERS;
 
 /** Zone type tokens. Fixed vocabulary — rule 5 forbids a free name here. */
-export const ZONE_TYPES = Object.freeze(['rec', 'play', 'load', 'spectral', 'synth']);
+export const ZONE_TYPES = Object.freeze(['rec', 'play', 'load', 'spectral', 'synth', 'grain']);
 
 /**
  * Collapse a concrete address to its declared pattern: `/zone/play/3/rate`

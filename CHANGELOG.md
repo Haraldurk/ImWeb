@@ -19,6 +19,27 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
   most ordinary performance move there is, fading to black, was the trigger.
 
 ### Added
+- **The corpus index** (audio §4.6) — two new panels under **Audio**. Press
+  **Analyse** and the tape is measured grain by grain into four descriptors:
+  loudness, brightness, pitch and periodicity. The **Corpus** pad then plots
+  every grain as a point in a 2D space whose axes you choose from those four,
+  and dragging through the cloud picks the grain nearest your finger.
+
+  The **Grain Player** is what plays it — a bank of overlapping windowed grains
+  rather than a single playhead, because a playhead jumping between timestamps
+  is a scrub: you hear the jumps, and holding still gives you one short loop
+  buzzing at its own length. Grains let a *position* be held and come out as a
+  texture. **Spray** scatters where each grain starts, which is what stops a
+  held position being a buzz at the grain rate.
+
+  Changing which descriptors are the axes **re-projects the measurements
+  already held** — 3 ms on a 1332-grain corpus, against roughly twenty seconds
+  to measure it. That is the whole point of an index rather than a second
+  buffer. The pad writes ordinary parameters, so a hand, an LFO, a MIDI knob or
+  the stroke looper all navigate by the same path.
+
+  The analysis is **paced across audio quanta** like the spectral render, so it
+  never interrupts what is playing, reports progress, and can be cancelled.
 - **The spectral writer** (audio §4.5) — a new panel under **Audio → Spectral
   Writer** that turns the picture into tape. Whatever the instrument is
   currently showing, with the whole effect chain already in it, is read as a
@@ -48,6 +69,12 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
   measured on the samples it produced (pitch off interpolated zero crossings,
   energy by Goertzel) rather than asserted about the source. Calibrated by
   mutation: twelve deliberate breakages of the engine, twelve caught.
+- `tests/audit-audio-corpus.mjs` — 73 checks on the corpus index. The
+  descriptors are checked against synthesized signals whose answers are
+  arithmetic (a 220 Hz sine must read 220 Hz), and the nearest-neighbour search
+  against brute force over 60 random corpora. Mutation-calibrated: eighteen
+  breakages, seventeen caught, and the one that survives is documented in the
+  file rather than papered over.
 
 ---
 
