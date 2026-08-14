@@ -99,7 +99,7 @@ import { TeletextSource } from "./inputs/TeletextSource.js";
 import { registerTeletextParams } from "./inputs/TeletextParams.js";
 import { buildTeletextUI } from "./inputs/TeletextUI.js";
 import { AudioBinding } from "./audio/AudioBinding.js";
-import { lumaFromRGBA } from "./audio/spectral-image.js";
+import { lumaFromRGBA, chromaFromRGBA } from "./audio/spectral-image.js";
 import { DrawLayer } from "./inputs/DrawLayer.js";
 import { StrokeLooper, LOOP_SLOTS } from "./inputs/StrokeLooper.js";
 import { TextLayer } from "./inputs/TextLayer.js";
@@ -1090,7 +1090,10 @@ async function main() {
     // blit and works on any frame, which is what `capturePresetThumb` does too.
     const grab = document.createElement("canvas");
     const gctx = grab.getContext("2d", { willReadFrequently: true });
-    audio.imageSource = (rows, frames) => {
+    // `wantChroma` is asked for rather than always produced (§8.14): the pan
+    // image needs the colour luminance throws away, but only in Colour mode, and
+    // the other modes would be paying a per-pixel pass to ignore it.
+    audio.imageSource = (rows, frames, wantChroma = false) => {
       // Sized by the CALLER, not read back off the params here: the binding has
       // already resolved how many rows fit below Nyquist, and that can be fewer
       // than `aspec.rows` asked for. Reading the picture at exactly the size it
@@ -1101,7 +1104,11 @@ async function main() {
       if (grab.width !== w || grab.height !== h) { grab.width = w; grab.height = h; }
       gctx.drawImage(canvas, 0, 0, w, h);
       const rgba = gctx.getImageData(0, 0, w, h).data;
-      return { luma: lumaFromRGBA(rgba, w, h), width: w, height: h };
+      return {
+        luma: lumaFromRGBA(rgba, w, h),
+        chroma: wantChroma ? chromaFromRGBA(rgba, w, h) : null,
+        width: w, height: h,
+      };
     };
   }
   {

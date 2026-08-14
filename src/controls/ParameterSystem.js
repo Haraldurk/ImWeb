@@ -16,7 +16,7 @@
 // else — silently, and only on the degrees where the two scales differ. This is
 // the SOURCE_DEFS lesson (CLAUDE.md) applied before there is a second copy to
 // regret. `spectral-image.js` imports nothing itself, so this adds no weight.
-import { SCALE_NAMES } from '../audio/spectral-image.js';
+import { SCALE_NAMES, PAN_MODES } from '../audio/spectral-image.js';
 // Same rule, same reason: a SELECT stores an INDEX, so the axis menus must be
 // built from the one list the index itself reads, never retyped beside it.
 import { DESCRIPTOR_LABELS } from '../audio/corpus-index.js';
@@ -6900,6 +6900,26 @@ export function registerCoreParameters(ps) {
   });
   ps.register({
     id: "aspec.level", label: "Level Spec", group: "aspec",
+    min: 0, max: 1, value: 1, step: 0.01,
+  });
+  // The pan image (§8.14) — how a picture becomes stereo positions. 'aspec', so
+  // captured, and the index points into `PAN_MODES`, a fixed code-side list of
+  // the SOURCE_DEFS kind rather than a user-editable one.
+  //
+  // Off is the default, and it is not merely the conservative choice: mono into
+  // every channel is what the writer did before this existed, so every saved
+  // project renders exactly as it did. A default of Colour would re-place the
+  // material in every project authored before §8.14 the first time it was
+  // re-rendered.
+  ps.register({
+    id: "aspec.pan", label: "Pan Image", group: "aspec",
+    type: PARAM_TYPE.SELECT, value: 0, options: [...PAN_MODES],
+  });
+  // How far from centre the extremes reach. A width, not a position — 0 is
+  // mono and collapses the image away entirely, which is why Off and a width of
+  // 0 mean the same thing to the render and both skip the upload.
+  ps.register({
+    id: "aspec.panWidth", label: "Pan Width", group: "aspec",
     min: 0, max: 1, value: 1, step: 0.01,
   });
   ps.register({

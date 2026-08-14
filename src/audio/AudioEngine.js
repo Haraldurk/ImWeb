@@ -352,6 +352,16 @@ export class AudioEngine {
   specData(slot, rows, frames, mag) {
     this._send(`/spec/${slot}/data`, rows | 0, frames | 0, mag);
   }
+  /**
+   * @param {Float32Array} pan one position in [-1,+1] per cell, same grid and
+   *   same frame-major layout as `specData` — and it must be sent AFTER it, for
+   *   two reasons that both point the same way: the engine refuses a pan image
+   *   for a slot with no magnitudes, and `/spec/<n>/data` clears any pan already
+   *   there (a new picture's cells are not the old one's).
+   */
+  specPan(slot, rows, frames, pan) {
+    this._send(`/spec/${slot}/pan`, rows | 0, frames | 0, pan);
+  }
   specClear(slot) { this._send(`/spec/${slot}/clear`); }
 
   /**

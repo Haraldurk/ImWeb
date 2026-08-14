@@ -1422,6 +1422,10 @@ row a stereo position, and it is a second upload with its own meaning rather tha
 a flag on this one. The render is mono into every channel, matching
 `/tape/write`'s mono payload rule.
 
+> **BUILT in §8.14**, on exactly those terms — `/spec/<n>/pan`, its own upload,
+> optional, and Off by default so this paragraph still describes what every
+> existing project renders.
+
 ### 8.11 §4.6 built — the map, the territory, and the reader between them
 
 The corpus index shipped in step 9. §6 item 5 asked which descriptors it
@@ -1812,3 +1816,126 @@ a one-line temporary override of `AudioEngine.micOpen`, reverted afterwards —
 because the browser pane blocks capture, so `_loopLive()` ran for real against a
 device that was not. That leaves the same debt §8.12 left: nobody has yet watched
 this appear with an actual microphone open.
+
+### 8.14 §4.5's pan image built — a second picture, not a flag
+
+§8.10 deferred this in one sentence, and the sentence is the design:
+
+> *"a second picture assigning each row a stereo position, and it is a second
+> upload with its own meaning rather than a flag on this one"*
+
+Both halves of that turn out to matter, and in opposite directions.
+
+#### Why "second upload" and not a flag
+
+A flag would have meant deriving position from the magnitude image — brightness
+to one side, or the row index, or something. Whatever it was, it would have
+coupled *how loud* to *where*, and those are exactly the two things a performer
+wants to move independently. A second image keeps them separable, and the price
+is one address:
+
+```
+/spec/<n>/pan  'iib'    rows, frames, float32 in [-1, +1], frame-major
+```
+
+The same shape and layout as `/spec/<n>/data`, because it is a second picture
+over the same grid — any other layout would need its own indexing in the one
+loop that has to stay cheap.
+
+#### Positions, not modes — the §4.5 split again
+
+The wire carries where each cell sits between the speakers, and nothing about
+how that was decided. Which colour meant which side, whether the spread runs
+low-to-high, how far a width control had opened: all client-side, exactly as the
+musical scale is. Four modes exist today —
+
+| mode | what becomes position |
+|---|---|
+| **Off** | nothing; the render is mono, as it was before this existed |
+| **Colour** | red-to-blue balance, the channel luminance throws away |
+| **Spread** | pitch — lowest row left, highest right |
+| **Sweep** | time — the render travels left to right across itself |
+
+— and a fifth costs the protocol nothing. The audit asserts the engine cannot
+name any of them.
+
+**Colour is luma-weighted, and that is the whole difference between a pan image
+and a colour histogram.** Take a cell that is mostly black with one bright red
+stroke through it. An unweighted average pulls the position toward centre in
+proportion to how much darkness surrounds the stroke — so the same stroke moves
+depending on its background. Weighting by luminance asks *where the sound in this
+cell is*, which is the only question the render can act on, since the dark pixels
+contribute no magnitude either.
+
+#### Equal power, and an odd-sized table
+
+Gains are `cos θ` / `sin θ` over a sampled table, because a linear law dips 3 dB
+in the middle: a centred stroke would come out quieter than the same stroke
+pushed to one side, so the picture would be changing loudness while claiming to
+change place. The table exists because the alternative is a `cos` and a `sin` per
+row per sample — 56 million of each for a 256-row image over five seconds, on the
+audio thread.
+
+**The table has an odd number of entries.** With an even one the true centre
+falls between two entries, truncation lands on the lower, and a pan of exactly 0
+comes out 0.15% to the left. Inaudible — and still wrong in the one place a
+listener has a reference for. The audit asserts the two channels are *bit*
+identical at centre, which is the only form of that check that fails on an even
+table.
+
+Equal power also keeps the normalization sound without touching it. Both gains
+are ≤ 1, so neither channel's sum can exceed the worst-case column sum phase 0
+already measures, and that bound is what makes a render unable to clip.
+
+#### The mono path is a separate loop, deliberately
+
+Not a branch inside the old one. Adding stereo must not have moved mono: every
+project that ever rendered has to re-render identically, and a shared loop with
+`if (pan)` inside it is one refactor away from not doing that. The audit pins it
+from both sides — an unpanned render is bit-identical across runs, and it is
+*louder* than a centred pan image, because equal power at centre is 1/√2 and
+duplicating a mono signal into two channels is not.
+
+A pan image on a **mono tape** is ignored rather than folded down. Folding would
+attenuate the render by up to 3 dB according to a picture that cannot be heard,
+making the level depend on something inaudible.
+
+#### Two ordering rules that are not tidiness
+
+- **Pan is uploaded after data.** The engine refuses a pan image for a slot with
+  no magnitudes, which makes "data, then pan" the only working order rather than
+  one of two.
+- **A new image drops the old pan, unconditionally.** Not "if the size changed" —
+  a new picture with the *same* rows and frames is the dangerous case, because no
+  size check can catch it and the render would place a new picture using the
+  previous one's positions. Silently.
+
+Positions outside [-1, +1] are refused rather than clamped, for the reason a
+pitch above Nyquist is: a client sending a 0..1 luma image unshifted would
+otherwise get a hard-right mix and no indication of why.
+
+#### Pacing, re-priced
+
+§8.3's budget is a promise about never making a quantum late, priced in
+oscillator-samples. A panned row costs about two of them — a second lerp, two
+table reads, two multiply-adds — so it is charged as two. Leaving the price alone
+would have let a 256-row image quietly run at double the intended cost per
+quantum, which is a promise in units that stopped meaning what they said. The
+audit checks that a panned render takes about twice the quanta of the same image
+unpanned.
+
+#### What was measured, and where
+
+The DSP is measured on produced samples in `tests/audit-audio-pan.mjs`: hard-left
+and hard-right placement, the 1/√2 centre, bit-identical centre channels, the
+flat total across a sweep, no clipping at five positions, the column crossfade,
+every refusal, and the pacing. 56 checks, mutation-calibrated 13/13 — two of
+which found real faults rather than confirming absent ones: the even-sized table,
+and a crossfade check that passed on correct code by luck because two partials
+beating made its windows noisier than the effect it was measuring.
+
+The browser confirmed the half Node cannot: a real 128×256 pan image built from
+real `getImageData` colour, transferred and accepted with no refusal, in both
+Colour and Spread, rendering 15 seconds into P0. That is the path where detached
+buffers and size mismatches live (§8.10's `encode()` lesson), and it is the only
+place they show up.

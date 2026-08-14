@@ -19,6 +19,20 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
   most ordinary performance move there is, fading to black, was the trigger.
 
 ### Added
+- **The spectral writer paints in stereo** (audio §4.5, §8.14). **Audio →
+  Spectral Writer → Pan Image** decides where each part of the picture sits
+  between the speakers, with **Pan Width** for how far out it goes.
+
+  Four choices. **Colour** reads the red-to-blue balance — the channel the
+  writer otherwise throws away — so warm and cool parts of the same frame land
+  on opposite sides. **Spread** puts pitch across the image, lowest left. **Sweep**
+  travels left to right across the render's own duration. **Off** is the default
+  and renders mono, exactly as before, so nothing you have already made changes.
+
+  Colour asks where the *sound* in each cell is rather than where the pixels
+  are: a bright stroke keeps its position instead of drifting toward centre
+  because it happens to be surrounded by black. The pan law is equal-power, so
+  moving a stroke across the stereo field does not change how loud it is.
 - **The audio graph is in the signal path display, and the loop is drawn**
   (audio §8.6, §8.13). While the engine runs, a second row appears under the
   video chain: `mic → rec P0 → tape 60s → play P0 → limit → ▶ speakers`. When

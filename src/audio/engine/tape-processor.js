@@ -15,7 +15,7 @@
  * Zones are step 2 (§4.4).
  */
 
-const PROTO_VERSION = 4;
+const PROTO_VERSION = 5;
 const REFUSE_PROTO_MISMATCH = 1;
 const REFUSE_NO_TAPE = 2;
 const REFUSE_BAD_RANGE = 3;
@@ -127,6 +127,16 @@ const SPEC_OPS_PER_QUANTUM = 1 << 16;
  */
 const SPEC_SINE_BITS = 12;
 const SPEC_SINE_SIZE = 1 << SPEC_SINE_BITS;
+/**
+ * Equal-power pan gain table (§8.14). See `_panL` for why it is a table.
+ *
+ * **ODD, and that is the whole of it.** With an even size the true centre falls
+ * between two entries, truncation lands on the lower one, and a pan of exactly 0
+ * comes out about 0.15% to the left — inaudible, and still wrong in the one
+ * place a listener has a reference for. Centre has to BE centre; the audit
+ * asserts the two gains are bit-identical there.
+ */
+const SPEC_PAN_SIZE = (1 << 10) + 1;
 
 /**
  * Fixed seed for the render's initial phases. Random phases are needed — every
@@ -569,7 +579,9 @@ class TapeProcessor extends AudioWorkletProcessor {
     /** Uploaded frequency-time images. Null until `/spec/<n>/data` fills one. */
     this._spec = [];
     for (let i = 0; i < MAX_SPEC_SLOTS; i++) {
-      this._spec.push({ rows: 0, frames: 0, pitches: null, mag: null });
+      // `pan` stays null on a slot that never gets one, and null means MONO —
+      // the render's behaviour before §8.14 existed, reached by doing nothing.
+      this._spec.push({ rows: 0, frames: 0, pitches: null, mag: null, pan: null });
     }
     /**
      * The one in-flight render, or null. ONE, globally — not a queue like
@@ -596,6 +608,33 @@ class TapeProcessor extends AudioWorkletProcessor {
       this._sine[i] = Math.sin((2 * Math.PI * i) / SPEC_SINE_SIZE);
     }
     this._sine[SPEC_SINE_SIZE] = this._sine[0];
+    /**
+     * Equal-power pan gains, sampled once (§8.14). `p` in [-1, +1] maps to
+     * θ = (p+1)/2 · π/2, so `gL = cos θ` and `gR = sin θ`.
+     *
+     * **A table because the alternative is `cos` and `sin` per row per sample**
+     * — a 256-row image over five seconds is 56 million of each, on the audio
+     * thread. TRUNCATED, not rounded and not interpolated: one step is 0.002 of
+     * the pan range, so the bias is at most half of that toward the left, which
+     * is three orders of magnitude below anything a listener can place. Said
+     * exactly rather than as "nearest-neighbour", which is what this said first
+     * and is a different operation with half the error.
+     *
+     * Equal power rather than linear because a linear pan dips 3 dB in the
+     * middle, so a centred stroke would come out quieter than the same stroke
+     * pushed to one side — the picture would be changing loudness while
+     * claiming to change position. It also keeps the normalization sound:
+     * both gains are ≤ 1, so neither channel's sum can exceed the worst-case
+     * column sum phase 0 already measured, and that bound is what makes the
+     * render unable to clip.
+     */
+    this._panL = new Float32Array(SPEC_PAN_SIZE);
+    this._panR = new Float32Array(SPEC_PAN_SIZE);
+    for (let i = 0; i < SPEC_PAN_SIZE; i++) {
+      const th = (i / (SPEC_PAN_SIZE - 1)) * (Math.PI / 2);
+      this._panL[i] = Math.cos(th);
+      this._panR[i] = Math.sin(th);
+    }
 
     this._voices = [];
     for (let i = 0; i < MAX_VOICES; i++) this._voices.push(makeVoice(i + 1));
@@ -720,6 +759,7 @@ class TapeProcessor extends AudioWorkletProcessor {
       // is refused by `_zone` rather than by a second check here.
       case '/spec/<n>/pitches':       return this._specPitches(idx[0], v[0]);
       case '/spec/<n>/data':          return this._specData(idx[0], v[0], v[1], v[2]);
+      case '/spec/<n>/pan':           return this._specPan(idx[0], v[0], v[1], v[2]);
       case '/spec/<n>/clear':         return this._specClear(idx[0]);
       case '/zone/<type>/<n>/render':
         return this._render(type, idx[0], v[0], v[1], v[2], v[3]);
@@ -2021,6 +2061,53 @@ class TapeProcessor extends AudioWorkletProcessor {
         `image blob is ${m.length} floats, expected ${rows * frames}`);
     }
     s.rows = rows; s.frames = frames; s.mag = m;
+    // A NEW PICTURE INVALIDATES THE OLD PAN, and this line is the whole reason
+    // the pan image is not simply left alone here. The two are one grid; a pan
+    // image kept across an upload describes cells that no longer exist, and if
+    // the new image happens to have the same rows and frames it would be worse
+    // — no size check could catch it, and the render would place a new picture
+    // using the previous one's positions. Silently. Re-uploading pan after data
+    // is the client's job, and `_specRender` is where forgetting shows up.
+    s.pan = null;
+  }
+
+  /**
+   * The pan image (§8.14) — one stereo position per cell, over the same grid.
+   *
+   * Validated against the IMAGE rather than against the pitch table, unlike
+   * `_specData`: pan is meaningless without magnitudes to place, so the image is
+   * the thing it has to agree with, and requiring it to exist first is what
+   * makes "upload data, then pan" the only working order rather than one of two.
+   */
+  _specPan(i, rows, frames, blob) {
+    const s = this._specSlot(i);
+    if (!s) return;
+    if (this._specInUse(i)) {
+      return this._refuse(REFUSE_BUSY, `spectral slot ${i} is being rendered`);
+    }
+    if (!s.mag) {
+      return this._refuse(REFUSE_BAD_RANGE, `spectral slot ${i} has no image yet`);
+    }
+    if (rows !== s.rows || frames !== s.frames) {
+      return this._refuse(REFUSE_BAD_RANGE,
+        `pan is ${rows}×${frames}, image is ${s.rows}×${s.frames}`);
+    }
+    const p = new Float32Array(blob);
+    if (p.length !== rows * frames) {
+      return this._refuse(REFUSE_BAD_RANGE,
+        `pan blob is ${p.length} floats, expected ${rows * frames}`);
+    }
+    // Refused rather than clamped, for `_specPitches`'s reason one level down:
+    // a clamped position is not obviously wrong when you hear it — everything
+    // simply piles up at the edges — so a client sending 0..1 instead of -1..+1
+    // would get a hard-right mix and no indication of why.
+    for (let n = 0; n < p.length; n++) {
+      if (!(p[n] >= -1 && p[n] <= 1)) {
+        return this._refuse(REFUSE_BAD_RANGE,
+          `pan ${p[n]} at cell ${n} is outside [-1, 1]`);
+      }
+    }
+    s.pan = p;
   }
 
   _specClear(i) {
@@ -2029,7 +2116,7 @@ class TapeProcessor extends AudioWorkletProcessor {
     if (this._specInUse(i)) {
       return this._refuse(REFUSE_BUSY, `spectral slot ${i} is being rendered`);
     }
-    s.rows = 0; s.frames = 0; s.pitches = null; s.mag = null;
+    s.rows = 0; s.frames = 0; s.pitches = null; s.mag = null; s.pan = null;
   }
 
   /**
@@ -2103,7 +2190,10 @@ class TapeProcessor extends AudioWorkletProcessor {
       // span is fixed in absolute samples right here, so moving the partition
       // afterwards does not move the writer with it.
       id, slot, part: z.part, base: a, len: lenSamples, pos: 0,
-      rows: s.rows, frames: s.frames, mag: s.mag,
+      // `pan` is null unless a pan image was uploaded for this slot — the whole
+      // of §8.14's opt-in, carried on the job so a later upload cannot change
+      // where a render in flight is placing things.
+      rows: s.rows, frames: s.frames, mag: s.mag, pan: s.pan,
       // Phase 0 is the normalization scan; phase 1 is the synthesis. Both are
       // paced by the same budget, because a 256×4096 image is a million cells
       // and scanning it in the message handler is the dropout `_envStep` exists
@@ -2159,7 +2249,13 @@ class TapeProcessor extends AudioWorkletProcessor {
     }
 
     // ── phase 1: the oscillator bank ────────────────────────────────────────
-    let n = Math.floor(budget / rows);
+    const pan = job.pan;
+    // A panned row costs about twice an unpanned one — a second lerp, two table
+    // reads and two multiply-adds instead of one — so it is charged as two.
+    // §8.3's budget is a promise about not making a quantum late, and a promise
+    // priced in units that stopped meaning what they meant is not one: a 256-row
+    // image would have quietly run at double the intended cost per quantum.
+    let n = Math.floor(budget / (pan ? rows * 2 : rows));
     if (n < 1) return;
     if (n > job.len - job.pos) n = job.len - job.pos;
     const sine = this._sine;
@@ -2168,6 +2264,51 @@ class TapeProcessor extends AudioWorkletProcessor {
     const norm = job.norm;
     const chans = this._tape.length;
     const end = job.pos + n;
+    // Split rather than branched per sample: the mono path is what every render
+    // did before §8.14 and it stays byte-for-byte that loop, so adding pan
+    // cannot have changed what an unpanned image renders to. The audit asserts
+    // exactly that by rendering the same image both ways.
+    if (pan && chans >= 2) {
+      const panL = this._panL, panR = this._panR;
+      const L = this._tape[0], R = this._tape[1];
+      for (let s = job.pos; s < end; s++) {
+        const pos = (s * frames) / job.len;
+        const c = pos | 0;
+        const c1 = c + 1 < frames ? c + 1 : c;
+        const f = pos - c;
+        const b0 = c * rows;
+        const b1 = c1 * rows;
+        let accL = 0, accR = 0;
+        for (let r = 0; r < rows; r++) {
+          const m0 = mag[b0 + r];
+          const m = m0 + (mag[b1 + r] - m0) * f;
+          let ph = phase[r] + inc[r];
+          if (ph >= 1) ph -= 1;
+          phase[r] = ph;
+          if (m > 0) {
+            const x = ph * SPEC_SINE_SIZE;
+            const xi = x | 0;
+            const v = m * (sine[xi] + (sine[xi + 1] - sine[xi]) * (x - xi));
+            // The position is crossfaded between columns exactly as the
+            // magnitude is. Interpolating one and not the other would make a
+            // stroke that moves across the image jump between column positions
+            // while its level glided — audible as a click at the column rate,
+            // which is the same artefact the magnitude lerp exists to remove.
+            const p0 = pan[b0 + r];
+            const pv = p0 + (pan[b1 + r] - p0) * f;
+            const pi = ((pv + 1) * 0.5 * (SPEC_PAN_SIZE - 1)) | 0;
+            accL += v * panL[pi];
+            accR += v * panR[pi];
+          }
+        }
+        L[job.base + s] = accL * norm;
+        R[job.base + s] = accR * norm;
+      }
+      this._markDirty(job.base + job.pos, job.base + end);
+      job.pos = end;
+      if (job.pos >= job.len) this._specDone();
+      return;
+    }
     for (let s = job.pos; s < end; s++) {
       // Each column occupies an equal slice of the render, and neighbouring
       // columns are crossfaded rather than switched. Without the interpolation
@@ -2197,9 +2338,11 @@ class TapeProcessor extends AudioWorkletProcessor {
         }
       }
       // Mono into every channel, matching `/tape/write`'s mono payload rule.
-      // A per-row pan image is Metasynth's obvious next move and deliberately
-      // not in this pass — it is a second image with its own upload and its own
-      // meaning, not a flag on this one.
+      // Reached when no pan image was uploaded — and also on a mono tape, where
+      // a pan image is data about a dimension that does not exist. Ignoring it
+      // there beats folding it down: an equal-power fold would attenuate the
+      // render by up to 3 dB according to a picture that cannot be heard, so
+      // the level would depend on something inaudible.
       const v = acc * norm;
       for (let ch = 0; ch < chans; ch++) this._tape[ch][job.base + s] = v;
     }

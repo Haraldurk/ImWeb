@@ -95,6 +95,36 @@ export function buildPitches(scaleIndex, rootHz, rows, sampleRate) {
  */
 export function imageFromLuma(luma, width, height, rows, frames, opts = {}) {
   const { gamma = 2, floor = 0.06, gain = 1 } = opts;
+  const out = boxAverage(luma, width, height, rows, frames);
+  for (let i = 0; i < out.length; i++) {
+    const v = out[i];
+    // The floor is not a nicety. A camera frame is never actually black, so
+    // without it every row is faintly on in every column and the render is a
+    // wash of all pitches at once — the exact "drawn spectra are noise"
+    // failure §4.5 says the scale quantization exists to avoid. Subtracting
+    // and rescaling rather than hard-gating keeps a fading stroke fading
+    // instead of switching off at the threshold.
+    const lifted = v <= floor ? 0 : (v - floor) / (1 - floor);
+    out[i] = lifted > 0 ? Math.pow(lifted, gamma) * gain : 0;
+  }
+  return out;
+}
+
+/**
+ * Box-average a single-channel grid into `frames × rows`, frame-major, y
+ * flipped.
+ *
+ * Extracted so the magnitude image and the pan image cannot disagree about
+ * WHICH WAY UP the picture is. Two copies of a y-flip is the shape of bug this
+ * project has paid for before (CLAUDE.md's warp-axis note is a whole section
+ * about one), and a pan image flipped relative to its magnitudes would place
+ * every stroke on the wrong side while sounding otherwise perfect — audible
+ * only if you happen to know what you drew.
+ *
+ * `weight`, when given, is a second grid of the same size: cells are averaged
+ * weighted by it, and a cell whose weights are all zero comes out 0.
+ */
+export function boxAverage(src, width, height, rows, frames, weight = null) {
   const out = new Float32Array(frames * rows);
   for (let f = 0; f < frames; f++) {
     const x0 = Math.floor((f * width) / frames);
@@ -108,17 +138,72 @@ export function imageFromLuma(luma, width, height, rows, frames, opts = {}) {
       let n = 0;
       for (let y = y0; y < y1 && y < height; y++) {
         const base = y * width;
-        for (let x = x0; x < x1 && x < width; x++) { sum += luma[base + x]; n++; }
+        for (let x = x0; x < x1 && x < width; x++) {
+          const w = weight ? weight[base + x] : 1;
+          sum += src[base + x] * w;
+          n += w;
+        }
       }
-      const v = n ? sum / n : 0;
-      // The floor is not a nicety. A camera frame is never actually black, so
-      // without it every row is faintly on in every column and the render is a
-      // wash of all pitches at once — the exact "drawn spectra are noise"
-      // failure §4.5 says the scale quantization exists to avoid. Subtracting
-      // and rescaling rather than hard-gating keeps a fading stroke fading
-      // instead of switching off at the threshold.
-      const lifted = v <= floor ? 0 : (v - floor) / (1 - floor);
-      out[f * rows + r] = lifted > 0 ? Math.pow(lifted, gamma) * gain : 0;
+      out[f * rows + r] = n > 0 ? sum / n : 0;
+    }
+  }
+  return out;
+}
+
+/**
+ * How a picture becomes stereo positions (§8.14).
+ *
+ * The engine is never told which of these is in force — it receives positions in
+ * [-1, +1] and nothing else. That is the same split §4.5 makes for scales, and
+ * it buys the same thing: a fifth mode is a line here and no protocol change.
+ *
+ * Append-only. A SELECT stores an index into this list.
+ */
+export const PAN_MODES = Object.freeze(['Off', 'Colour', 'Spread', 'Sweep']);
+export const PAN = Object.freeze({ OFF: 0, COLOUR: 1, SPREAD: 2, SWEEP: 3 });
+
+/**
+ * Build the pan image, or null for Off.
+ *
+ * @param {number} mode index into `PAN_MODES`
+ * @param {number} rows @param {number} frames the grid, matching the magnitudes
+ * @param {number} amount 0..1, how far from centre the extremes reach. This is
+ *   the width control, and it lives here rather than on the wire for the reason
+ *   the mode does — the engine holds positions, not a notion of how wide the
+ *   image was allowed to be.
+ * @param {object|null} pic `{ chroma, luma, width, height }`, needed only by
+ *   Colour. Spread and Sweep are pure geometry and ignore the picture entirely,
+ *   which is why they still work on a frame that has no colour in it at all.
+ */
+export function buildPan(mode, rows, frames, amount, pic = null) {
+  if (mode === PAN.OFF || !(amount > 0) || rows < 1 || frames < 1) return null;
+  const out = new Float32Array(frames * rows);
+
+  if (mode === PAN.COLOUR) {
+    if (!pic?.chroma) return null;
+    // LUMA-WEIGHTED, and that is the difference between a pan image and a
+    // colour histogram. A cell is mostly black with one bright red stroke
+    // through it: an unweighted average pulls the position toward centre in
+    // proportion to how much darkness surrounds the stroke, so the same stroke
+    // moves depending on its background. Weighting by luma asks where the SOUND
+    // in this cell is, which is the only question the render can act on — the
+    // dark pixels contribute no magnitude either.
+    const c = boxAverage(pic.chroma, pic.width, pic.height, rows, frames, pic.luma);
+    for (let i = 0; i < out.length; i++) {
+      const v = c[i] * amount;
+      out[i] = v < -1 ? -1 : v > 1 ? 1 : v;
+    }
+    return out;
+  }
+
+  // Spread: pitch becomes position, lowest row left. Sweep: time becomes
+  // position, the render travelling left to right across its own duration.
+  const span = mode === PAN.SPREAD ? rows : frames;
+  for (let f = 0; f < frames; f++) {
+    for (let r = 0; r < rows; r++) {
+      const i = mode === PAN.SPREAD ? r : f;
+      const p = span > 1 ? (i / (span - 1)) * 2 - 1 : 0;
+      out[f * rows + r] = p * amount;
     }
   }
   return out;
@@ -133,6 +218,31 @@ export function lumaFromRGBA(rgba, width, height) {
   for (let i = 0; i < out.length; i++) {
     const p = i * 4;
     out[i] = (0.2126 * rgba[p] + 0.7152 * rgba[p + 1] + 0.0722 * rgba[p + 2]) / 255;
+  }
+  return out;
+}
+
+/**
+ * Red-to-blue balance from packed RGBA, in [-1, +1] — the pan image's raw
+ * material, and precisely the information luminance throws away.
+ *
+ * **Blue is left and red is right, arbitrarily but permanently.** It falls out
+ * of writing the difference as `R − B` rather than the other way round, and
+ * there is no physical fact to appeal to. What matters is that it never changes:
+ * a performer learns which way their picture moves, and a later "improvement"
+ * would silently mirror every project that used it. The audit pins the sign for
+ * that reason and no other.
+ *
+ * Green is absent rather than forgotten. Adding it would need a second axis and
+ * stereo has one, so the choice is which pair opposes — and red/blue is the pair
+ * the eye reads as warm against cool, which is the distinction a performer is
+ * already making while they paint.
+ */
+export function chromaFromRGBA(rgba, width, height) {
+  const out = new Float32Array(width * height);
+  for (let i = 0; i < out.length; i++) {
+    const p = i * 4;
+    out[i] = (rgba[p] - rgba[p + 2]) / 255;
   }
   return out;
 }
