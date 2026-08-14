@@ -19,6 +19,23 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
   most ordinary performance move there is, fading to black, was the trigger.
 
 ### Added
+- **The audio graph is in the signal path display, and the loop is drawn**
+  (audio §8.6, §8.13). While the engine runs, a second row appears under the
+  video chain: `mic → rec P0 → tape 60s → play P0 → limit → ▶ speakers`. When
+  the room closes the path, a bracket is drawn underneath it, returning from the
+  monitors to the microphone — the one edge that cannot be a row of nodes,
+  because it goes backwards.
+
+  It distinguishes two states the warning line could not. **Dashed and grey**:
+  the room is a wire, but nothing is driving it — no recorder writing the mic,
+  or no reader reading it back. You are one Run toggle from a howl, and the row
+  says which toggle. **Solid and red**: a recorder and a reader on the same
+  material, and you are in it. That is the whole point of drawing a loop rather
+  than announcing one — you can see *which link to open*.
+
+  The monitoring line stays where it was, beside the switch. The signal path
+  strip can be hidden, and is by default; a safety marking whose only surface is
+  optional is one that is off for most people.
 - **A monitoring switch** (audio §8.6) — **Audio → Monitoring**, Headphones or
   Speakers, sitting directly under Mic because the two are the halves of one
   question. It tells ImWeb whether `mic → tape → speakers → mic` is a real

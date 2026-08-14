@@ -1347,10 +1347,19 @@ const _FX_NODE_INFO = {
 };
 
 export class SignalPath {
-  constructor({ ps, pipeline = null, onOrderChange = null }) {
+  /**
+   * @param {object} o
+   * @param {object|null} o.audioHost `AudioBinding`, injected (§8.6). Injected
+   *   rather than imported for the reason every other audio consumer is: the
+   *   binding stays the only module that sees both halves, so this one asks for
+   *   a row of nodes and never learns what an AudioContext is. Null-safe — with
+   *   no host there is simply no audio row.
+   */
+  constructor({ ps, pipeline = null, onOrderChange = null, audioHost = null }) {
     this.ps = ps;
     this.pipeline = pipeline;
     this.onOrderChange = onOrderChange;
+    this.audioHost = audioHost;
     this.el = document.getElementById('signal-path-display');
     this._fxOrder = pipeline ? [...pipeline.fxOrder] : [...DEFAULT_FX_ORDER_SP];
     this._dragSrc = null;
@@ -1381,9 +1390,112 @@ export class SignalPath {
       'effect.lutamount','effect.wbtemp','effect.wbtint',
       'fg.hue','fg.sat','fg.bright','bg.hue','bg.sat','bg.bright',
       'keyer.chroma',
+      // The audio graph (§8.6). Every param that changes a LINK in the drawn
+      // row — not every audio param, because the row draws routing, not values.
+      // The one change these cannot see is the microphone DEVICE opening or
+      // closing, which is not a param at all (`_applyTap` opens it directly and
+      // `audio.mic` catches up afterwards); `onLoopState` covers that edge, and
+      // main.js drives this from there.
+      'audio.enable', 'audio.mic', 'audio.monitor', 'audio.tapeSec',
+      'arec.on', 'arec.part', 'arec.unsafe',
+      'aplay.on', 'aplay.part', 'aplay.unsafe',
+      'agrain.on', 'agrain.part', 'agrain.unsafe',
+      'avoice.on',
+      // Partition layout, because whether the loop is CARRYING is decided by
+      // whether the recorder's and the reader's partitions overlap on the tape
+      // — dragging a partition can close the loop without either zone moving.
+      'apart0.start', 'apart0.len', 'apart1.start', 'apart1.len',
+      'apart2.start', 'apart2.len', 'apart3.start', 'apart3.len',
     ].forEach(id => {
       ps.get(id)?.onChange(() => this._render());
     });
+
+    // The loop bracket is measured in pixels and `.sp-node` flex-shrinks, so a
+    // window resize leaves it spanning the wrong two points until the next param
+    // change. The layout handler in main.js runs at module scope, before this
+    // object exists, so this rides its own listener rather than that one.
+    window.addEventListener('resize', () => this._render());
+  }
+
+  /**
+   * Draw the audio graph, and the loop through the room if it is closed (§8.6).
+   *
+   * The row is nodes-and-arrows like the video chain above it; the loop is the
+   * one thing that cannot be drawn that way, because it returns from the last
+   * node to the first. So it is a bracket UNDER the row, measured from the two
+   * node centres it joins.
+   *
+   * **The label is not measured and the line is.** If the measurement comes back
+   * degenerate — the strip is `display:none`, or a float/dock has just moved the
+   * display and nothing has re-rendered since — the bracket is skipped and the
+   * label still says the loop is closed. A safety marking that silently vanishes
+   * when a layout query returns zero is worse than no marking at all, so the two
+   * are deliberately not on the same failure.
+   */
+  _renderAudio() {
+    if (!this.el) return;
+    const { nodes, loop } = this.audioHost
+      ? this.audioHost.describeGraph()
+      : { nodes: [], loop: null };
+    // The strip grows for the audio row and shrinks back when the engine stops.
+    // Set on every render rather than only when the row exists: a class that is
+    // only ever added is a strip that never shrinks again.
+    document.body.classList.toggle('sp-audio', nodes.length > 0);
+    if (!nodes.length) return;
+
+    const row = document.createElement('div');
+    row.className = 'sp-audio-row';
+    nodes.forEach((n, i) => {
+      const el = document.createElement('div');
+      if (n.type === 'merge') {
+        el.className = 'sp-merge';
+        el.textContent = '╱';
+      } else {
+        el.className = `sp-node ${n.type}`;
+        el.textContent = n.label;
+        if (n.key) el.dataset.spKey = n.key;
+      }
+      row.appendChild(el);
+      if (i < nodes.length - 1 && n.type !== 'merge' && nodes[i + 1].type !== 'merge') {
+        const arrow = document.createElement('div');
+        arrow.className = 'sp-arrow';
+        arrow.textContent = '→';
+        row.appendChild(arrow);
+      }
+    });
+
+    if (loop) {
+      const tag = document.createElement('div');
+      tag.className = `sp-loop-tag ${loop.carried ? 'live' : 'idle'}`;
+      tag.textContent = loop.label;
+      tag.title = loop.title;
+      row.appendChild(tag);
+    }
+    this.el.appendChild(row);
+
+    // After the append, so the offsets are real. Reading layout here costs one
+    // synchronous reflow on a render that already rebuilt the whole strip, and
+    // this runs on param changes rather than per frame.
+    if (loop) {
+      const from = row.querySelector(`[data-sp-key="${loop.from}"]`);
+      const to   = row.querySelector(`[data-sp-key="${loop.to}"]`);
+      if (from && to) {
+        const a = to.offsetLeft + to.offsetWidth / 2;
+        const b = from.offsetLeft + from.offsetWidth / 2;
+        if (b > a) {
+          const ret = document.createElement('div');
+          ret.className = `sp-loop-return ${loop.carried ? 'live' : 'idle'}`;
+          ret.style.left = `${a}px`;
+          ret.style.width = `${b - a}px`;
+          ret.title = loop.title;
+          const head = document.createElement('span');
+          head.className = 'sp-loop-head';
+          head.textContent = '▲';
+          ret.appendChild(head);
+          row.appendChild(ret);
+        }
+      }
+    }
   }
 
   _render() {
@@ -1579,6 +1691,13 @@ export class SignalPath {
         mainRow.appendChild(arrow);
       }
     });
+
+    // The audio graph goes directly under the main chain and ABOVE the sequence
+    // rows, and the order is not cosmetic: the strip is 60px and three active
+    // sequencers already overflow it. The row that can be clipped without
+    // consequence is a sequencer's speed; the row that must not be is the one
+    // saying the room is a wire.
+    this._renderAudio();
 
     // Append sequence rows below the main chain
     seqRowEls.forEach(row => this.el.appendChild(row));

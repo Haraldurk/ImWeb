@@ -28,6 +28,7 @@ import { partitionSpan, zoneSpan, clampToPartition } from './tape-geometry.js';
 import { buildPitches, imageFromLuma } from './spectral-image.js';
 import { CorpusView } from './CorpusView.js';
 import { DESCRIPTORS, buildIndex, nearest, grainTime } from './corpus-index.js';
+import { describeAudioGraph } from './graph-view.js';
 import {
   AUDIO_TARGETS, describeController, describeSlew, descDiff, semitoneToHz,
   sampleSlewCurve, slewStrength, SLEW_MECHANISM, SLEW_SEGMENT,
@@ -158,6 +159,52 @@ export class AudioBinding {
    */
   _refreshLoop() {
     this.onLoopState?.(this._loopLive(), MONITOR_MODES[this.ps.get('audio.monitor').value]);
+  }
+
+  /**
+   * The audio graph as drawable nodes, for the signal path display (§8.6).
+   *
+   * Pull, not push: the display asks when it renders. The one thing that can
+   * change the answer without a param changing is the DEVICE opening or closing,
+   * and `_refreshLoop` already fires on exactly those edges — so the display
+   * subscribes to that and calls back here, rather than this method growing a
+   * second notification channel beside `onLoopState`.
+   *
+   * The shape of the row lives in `graph-view.js`, which knows nothing about
+   * ParameterSystem. This method is the translation layer and nothing else — the
+   * same split as `buildPitches` and `buildIndex`, and it is what makes the row
+   * testable without a browser.
+   */
+  describeGraph() {
+    const v = (id, dflt = 0) => this.ps.get(id)?.value ?? dflt;
+    const zone = (prefix) => ({
+      on: !!v(`${prefix}.on`),
+      part: v(`${prefix}.part`),
+      unsafe: !!v(`${prefix}.unsafe`),
+    });
+    return describeAudioGraph({
+      running: this.running,
+      micOpen: this.engine.micOpen,
+      // Asked of the ONE predicate rather than re-assembled from the same three
+      // reads. Two answers to "is the loop closed" is the failure this whole
+      // step exists to make visible, and it would be a poor joke to introduce it
+      // in the drawing of it.
+      loopLive: this._loopLive(),
+      monitorLabel: MONITOR_MODES[v('audio.monitor')],
+      tapeSec: v('audio.tapeSec', 60),
+      // The partition layout, so `carries()` can ask whether two zones' spans
+      // OVERLAP rather than whether their slot indices match. Nothing makes
+      // partitions disjoint — the worklet's `_partBounds` validates the range
+      // and refuses while a zone runs, and that is all — so two slots can cover
+      // the same tape and an index comparison would call that "not carrying".
+      partBounds: Array.from({ length: PARTITION_SLOTS }, (_, i) => ({
+        start: v(`apart${i}.start`), len: v(`apart${i}.len`),
+      })),
+      rec: zone('arec'),
+      play: zone('aplay'),
+      grain: zone('agrain'),
+      voiceOn: !!v('avoice.on'),
+    });
   }
 
   /**
