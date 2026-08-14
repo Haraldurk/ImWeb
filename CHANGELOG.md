@@ -19,6 +19,30 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
   most ordinary performance move there is, fading to black, was the trigger.
 
 ### Added
+- **A monitoring switch** (audio §8.6) — **Audio → Monitoring**, Headphones or
+  Speakers, sitting directly under Mic because the two are the halves of one
+  question. It tells ImWeb whether `mic → tape → speakers → mic` is a real
+  acoustic path, and when it is, a persistent line names that whole closed path
+  so you can see which link to open. It replaces a warning that used to fire
+  unconditionally — "USE HEADPHONES" was advice rather than information, and
+  said the same thing whether or not anything was actually looping.
+
+  Speakers is the default deliberately: the instrument assumes the loop is
+  closed until told otherwise, so the safe state needs no selection from you.
+  The switch changes no level and no routing — only what the instrument knows,
+  and therefore what it can tell you.
+- **Setup acts can now refuse controllers.** Some controls are part of setting up
+  a session rather than of playing it, and assigning an LFO to one is a hazard
+  rather than a feature — a monitoring switch swept at 2 Hz is your own feedback
+  exposure being modulated. Such parameters now show an inert controller badge
+  ("Setup act — takes no controller"), offer no controller menu, and refuse
+  assignment from **every** path — the badge, the context menu, the
+  controller-of-controller layer, and a loaded project file, which could
+  otherwise put back what the UI refuses. A setup act's value does not come from
+  a file either: it describes the room you are in today, and a project authored
+  on headphones must not silence the loop warning at a venue on a PA. Monitoring
+  is the first; the rule was written down in the audio blueprint long before
+  anything could enforce it.
 - **The corpus index** (audio §4.6) — two new panels under **Audio**. Press
   **Analyse** and the tape is measured grain by grain into four descriptors:
   loudness, brightness, pitch and periodicity. The **Corpus** pad then plots
@@ -69,6 +93,9 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
   measured on the samples it produced (pitch off interpolated zero crossings,
   energy by Goertzel) rather than asserted about the source. Calibrated by
   mutation: twelve deliberate breakages of the engine, twelve caught.
+- `tests/audit-audio-monitoring.mjs` — 39 checks pinning the two rules §8.6 said
+  would drift: the switch is not captured, and takes no controller by any path.
+  Mutation-calibrated: twenty-one breakages, twenty-one caught.
 - `tests/audit-audio-corpus.mjs` — 73 checks on the corpus index. The
   descriptors are checked against synthesized signals whose answers are
   arithmetic (a 220 Hz sine must read 220 Hz), and the nearest-neighbour search

@@ -289,6 +289,21 @@ export class ControllerManager {
   assignX(paramId, xIndex, xConfig) {
     const p = this.ps.get(paramId);
     if (!p) return;
+    /**
+     * A setup act takes no controller OF ANY KIND (§8.6), and an xController is
+     * one — it drives the parameter just as surely for arriving through the
+     * controller-of-controller layer rather than the primary slot.
+     *
+     * Guarded here rather than left to the UI. The context menu already refuses
+     * to open for a setup act, so no user can reach this today, and that is
+     * exactly the argument step 10 made against UI-only gating before making the
+     * same mistake one layer down: `assign()` is NOT the only attachment path,
+     * and a claim that it is was wrong.
+     */
+    if (p.setup) {
+      console.warn(`[ControllerManager] ${paramId} is a setup act and takes no xController`);
+      return;
+    }
     while (p.xControllers.length <= xIndex) p.xControllers.push(null);
 
     const key = `${paramId}:${xIndex}`;
@@ -325,7 +340,17 @@ export class ControllerManager {
     }
   }
 
-  /** Rebuild xLFO instances from param.xControllers after preset load. */
+  /**
+   * Rebuild xLFO instances from param.xControllers after preset load.
+   *
+   * **Deliberately no `p.setup` guard here**, and the reason is CLAUDE.md's rule
+   * about guards: at this line, can a setup act have a non-null entry in
+   * `xControllers`? Only two things write one — `assignX()` and
+   * `Parameter.deserialize()` — and both refuse for setup acts, so the answer is
+   * no and a guard would be dead code. Covering the writers is what makes this
+   * reader safe; adding a third check that cannot fire would read as belt-and-
+   * braces while actually making the invariant harder to locate.
+   */
   rebuildXControllers() {
     this._xLFOs.clear();
     this.ps.getAll().forEach(p => {
@@ -351,6 +376,32 @@ export class ControllerManager {
   assign(paramId, controllerConfig) {
     const p = this.ps.get(paramId);
     if (!p) { console.warn(`[ControllerManager] Unknown param: ${paramId}`); return; }
+    /**
+     * A setup act takes no controller (audio blueprint §8.6).
+     *
+     * **This is not the only attachment path, and step 10 shipped claiming it
+     * was.** The claim was that `assign()` is "the one function every path
+     * reaches"; it is not. Two others write a controller onto a parameter
+     * without coming through here, and both are now guarded at their own sites:
+     *
+     *   1. `assignX()` below — the controller-of-controller layer;
+     *   2. `Parameter.deserialize()` — a file, which writes `controller` and
+     *      `xControllers` straight onto the param.
+     *
+     * There is no choke point to find, so the invariant is held by covering
+     * every WRITER instead. `tests/audit-audio-monitoring.mjs` enumerates them
+     * and fails if a fourth appears unguarded — which is the only version of
+     * this that stays true, since the next writer will be added by someone who
+     * never read this comment.
+     *
+     * Placed before `_removeController` rather than after: there is never
+     * anything to remove from a parameter nothing could attach to, so an early
+     * return is the whole behaviour rather than a shortcut past cleanup.
+     */
+    if (p.setup) {
+      console.warn(`[ControllerManager] ${paramId} is a setup act and takes no controller`);
+      return;
+    }
 
     // Clean up old controller
     this._removeController(paramId);

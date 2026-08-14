@@ -56,6 +56,14 @@ export function buildParamRow(param, contextMenu) {
   const ctrlEl = document.createElement('span');
   ctrlEl.className = `param-ctrl ${param.controllerClass}`;
   ctrlEl.textContent = param.controllerLabel;
+  // A setup act takes no controller (§8.6). The badge already reads '—' because
+  // nothing can ever be attached, but '—' otherwise means "none yet" — so say
+  // which of the two this is, or the row looks like one nobody got round to
+  // mapping. The dimming rides on `param.controllerClass`, since `updateDisplay`
+  // rewrites `className` from that getter and would drop anything added here.
+  // The four popover handlers below need no extra guard: every one of them
+  // already returns on `!param.controller`, and for these that is permanent.
+  if (param.setup) ctrlEl.title = 'Setup act — takes no controller';
 
   // Right-click or Ctrl+click on badge → controller settings popover
   ctrlEl.addEventListener('contextmenu', e => {

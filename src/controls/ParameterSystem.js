@@ -21,6 +21,18 @@ import { SCALE_NAMES } from '../audio/spectral-image.js';
 // built from the one list the index itself reads, never retyped beside it.
 import { DESCRIPTOR_LABELS } from '../audio/corpus-index.js';
 
+/**
+ * How the performer is listening (§8.6). ONE list, read twice: the labels are
+ * `audio.monitor`'s options and the indices are what `AudioBinding` compares
+ * against, so a SELECT index cannot come to mean the other mode.
+ *
+ * Exported from here rather than from the audio half because `AudioBinding`
+ * already imports this file and the reverse would be a cycle. The audit
+ * cross-checks that the names and the indices still agree.
+ */
+export const MONITOR_MODES = Object.freeze(['Headphones', 'Speakers']);
+export const MONITOR = Object.freeze({ HEADPHONES: 0, SPEAKERS: 1 });
+
 // Set by main.js after TableManager is initialised
 let _tableManager = null;
 let _ps           = null;   // set by registerCoreParameters; used by setTableManager
@@ -228,6 +240,27 @@ export class Parameter {
     this.table = null; // response curve table name (string)
 
     // Flags
+    /**
+     * A SETUP ACT, not performance state — and therefore **never a controller
+     * target** (audio blueprint §8.6).
+     *
+     * §8.6 wrote that rule down for the monitoring switch and said exactly why:
+     * *"a switch that changes defaults is exactly the kind of control that
+     * drifts into being controller-assignable when nobody records that it must
+     * not be."* Recording it in prose is not enough — nothing in this file made
+     * it possible to express, so the rule had no way to be true. This flag is
+     * the rule, enforced at `ControllerManager.assign()`, which is the single
+     * choke point every assignment path goes through.
+     *
+     * `group: 'global'` and `setup: true` answer different questions and a param
+     * can need both: 'global' keeps a value out of a Display State, while this
+     * keeps a CONTROLLER off the parameter. `audio.tapeSec` is global because
+     * recalling it would discard a tape; it is not marked setup, because sweeping
+     * it with an LFO is merely useless rather than a hazard to the performer.
+     * The distinction is what stops this flag becoming a synonym for 'global'
+     * and getting applied by habit.
+     */
+    this.setup = config.setup ?? false;
     this.select = config.select ?? false; // force native <select> dropdown regardless of option count
     this.invert = false;
     this.cycle = false; // for SELECT: cycle on trigger
@@ -647,6 +680,13 @@ export class Parameter {
   }
 
   get controllerClass() {
+    // A setup act (§8.6) can never have a controller, so its badge is inert
+    // rather than merely unassigned. Returned from HERE rather than added to the
+    // element by the row builder: `updateDisplay()` rewrites `className`
+    // wholesale from this getter, so a `classList.add` outside it survives until
+    // the first refresh and then silently vanishes. Making it part of the source
+    // of truth is the only version that stays true.
+    if (this.setup) return "param-ctrl-setup";
     if (!this.controller) return "";
     const t = this.controller.type;
     if (t.startsWith("lfo")) return "lfo";
@@ -689,6 +729,25 @@ export class Parameter {
   }
 
   deserialize(data) {
+    /**
+     * **Nothing in a file may set a setup act — not even its value.**
+     *
+     * The narrow reason is a hole: this method writes `this.controller` and
+     * `this.xControllers` DIRECTLY, so it is an attachment path that never goes
+     * near `ControllerManager.assign()`. Guarding only `assign()` — which step 10
+     * did, while claiming it was "the one function every path reaches" — left a
+     * saved or hand-edited project able to reattach exactly what the UI refuses.
+     * That is verbatim the failure the flag exists to prevent.
+     *
+     * The broader reason is why the VALUE is dropped too, which is not merely
+     * caution. A setup act describes the physical situation the session is
+     * running in, and a file cannot know that: a project authored in a studio on
+     * headphones, opened at a venue on a PA, would restore "Headphones" and
+     * silently suppress the one warning that matters there. §8.6 says fixed at
+     * SESSION start, and a session is not a project. Combined with `group:
+     * 'global'` keeping it out of Display States, nothing persisted can move it.
+     */
+    if (this.setup) return;
     if (data.value !== undefined) this.value = data.value;
     if (data.controller !== undefined) this.controller = data.controller;
     if (data.xControllers !== undefined) {
@@ -6604,6 +6663,32 @@ export function registerCoreParameters(ps) {
   ps.register({
     id: "audio.mic", label: "Mic", group: "global",
     type: PARAM_TYPE.TOGGLE, value: 0,
+  });
+  /**
+   * How the performer is listening (§8.6) — the one thing that decides whether
+   * `mic → tape → monitors → mic` is a real acoustic path or just a diagram.
+   *
+   * **A setup act, so `group: 'global'` AND `setup: true`.** §8.6 puts it with
+   * partition layout: fixed at session start, never captured, and never a
+   * controller target — a switch that changes the performer's feedback exposure
+   * must not be sweepable, and the `setup` flag is what makes that enforceable
+   * rather than merely written down.
+   *
+   * **Speakers is the default, and it is the cautious one.** The instrument
+   * assumes the loop is closed until told otherwise, the same way `audio.tapSrc`
+   * defaults to mic-only so that the safe state requires no selection. Guessing
+   * headphones would suppress the one warning that matters on the setup where it
+   * matters, which is the wrong direction to be wrong in.
+   *
+   * It changes no gain and no routing. What it changes is what the instrument
+   * knows, and therefore what it can tell you — see `_loopLive` in
+   * AudioBinding. Silently attenuating on Speakers was considered and rejected:
+   * a monitoring switch that quietly moves the level is a switch nobody can
+   * reason about, and §4.11's non-bypassable ceiling already bounds the damage.
+   */
+  ps.register({
+    id: "audio.monitor", label: "Monitoring", group: "global", setup: true,
+    type: PARAM_TYPE.SELECT, value: MONITOR.SPEAKERS, options: [...MONITOR_MODES],
   });
   // What the analyser tap listens to (§8.6) — the input to the sound-reactive
   // controllers and the vectorscope, which are consumers of the engine's one
