@@ -729,6 +729,25 @@ export class Parameter {
   }
 
   deserialize(data) {
+    /**
+     * **Nothing in a file may set a setup act — not even its value.**
+     *
+     * The narrow reason is a hole: this method writes `this.controller` and
+     * `this.xControllers` DIRECTLY, so it is an attachment path that never goes
+     * near `ControllerManager.assign()`. Guarding only `assign()` — which step 10
+     * did, while claiming it was "the one function every path reaches" — left a
+     * saved or hand-edited project able to reattach exactly what the UI refuses.
+     * That is verbatim the failure the flag exists to prevent.
+     *
+     * The broader reason is why the VALUE is dropped too, which is not merely
+     * caution. A setup act describes the physical situation the session is
+     * running in, and a file cannot know that: a project authored in a studio on
+     * headphones, opened at a venue on a PA, would restore "Headphones" and
+     * silently suppress the one warning that matters there. §8.6 says fixed at
+     * SESSION start, and a session is not a project. Combined with `group:
+     * 'global'` keeping it out of Display States, nothing persisted can move it.
+     */
+    if (this.setup) return;
     if (data.value !== undefined) this.value = data.value;
     if (data.controller !== undefined) this.controller = data.controller;
     if (data.xControllers !== undefined) {

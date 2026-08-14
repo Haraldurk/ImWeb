@@ -1575,11 +1575,34 @@ already covered capture, but **nothing in `ParameterSystem` could express "takes
 no controller"**: every parameter got a badge, every badge could be assigned, and
 the rule lived only in this document. Prose does not fail a build.
 
-So step 10 adds `setup: true`, enforced at **`ControllerManager.assign()`** —
-the one function every assignment path reaches: badge popover, context menu, MIDI
-learn, a loaded project, a preset recall. Gating the UI alone would have left a
-saved file able to reintroduce what the UI refuses, which is the shape of bug
-that survives its own fix.
+So step 10 adds `setup: true`. It was first enforced at
+**`ControllerManager.assign()`**, described as "the one function every assignment
+path reaches".
+
+> **That claim was false, and review caught it.** There is no choke point. Two
+> other writers put a controller onto a parameter without going near `assign()`:
+> `assignX()` for the controller-of-controller layer, and
+> **`Parameter.deserialize()`, which writes `controller` and `xControllers`
+> straight onto the param from a file.** So a saved or hand-edited project could
+> reattach exactly what the UI refuses — verbatim the failure the flag exists to
+> prevent, and sitting in the one place the step claimed was covered. Latent only
+> because the parameter was new enough that no file referenced it yet.
+>
+> The invariant is therefore held by covering every **writer**, not by finding a
+> single gate, and the audit tests all three by outcome rather than by reading
+> their source. The reader that instantiates live LFOs from them
+> (`rebuildXControllers`) deliberately gets **no** guard: with every writer
+> refusing, a check there could not fire, and CLAUDE.md's rule is that a guard
+> whose condition is always the same value is dead code. Covering the writers is
+> what makes the reader safe.
+
+`deserialize` drops the setup act's **value** as well, and that is not merely
+caution. A setup act describes the physical situation the session runs in, and a
+file cannot know it: a project authored in a studio on headphones, opened at a
+venue on a PA, would restore "Headphones" and silently suppress the one warning
+that matters there. §8.6 says fixed at *session* start, and a session is not a
+project. With `group: 'global'` keeping it out of Display States too, nothing
+persisted can move it.
 
 `setup` and `group: 'global'` answer different questions and the distinction is
 load-bearing, or the flag becomes a synonym applied by habit: 'global' keeps a

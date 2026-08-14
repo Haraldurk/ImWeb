@@ -25,6 +25,20 @@ import {
 } from '../src/controls/ParameterSystem.js';
 import { AUDIO_TARGETS } from '../src/audio/ctrl-handoff.js';
 
+/**
+ * `ControllerManager`'s constructor binds a keydown listener, so it needs these
+ * two before it can be imported — which is worth the two lines, because it makes
+ * the assignment paths testable by OUTCOME instead of by reading their source.
+ * Two earlier attempts to census the writers with a regex were both wrong (a
+ * negative lookahead behind `\s*` backtracks; a `^\s*` anchor misses a write
+ * that follows `if (...)` on the same line), and formatting cannot fool this.
+ */
+globalThis.window = { addEventListener() {}, removeEventListener() {} };
+globalThis.document = {
+  addEventListener() {}, removeEventListener() {}, getElementById() { return null; },
+};
+const { ControllerManager } = await import('../src/controls/ControllerManager.js');
+
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const read = (p) => readFileSync(resolve(root, p), 'utf8');
 
@@ -77,16 +91,25 @@ console.log('\nit is a setup act: not captured, and never a controller target');
     !AUDIO_TARGETS.some((t) => t.id === 'audio.monitor'),
     'a §8.7 hand-off would sweep it at audio rate');
 
-  // And the client-side path, which is the one a user reaches.
+  /**
+   * That `assign()` refuses is asserted BEHAVIOURALLY in the next section; only
+   * the guard's POSITION needs the source, because placing it after the cleanup
+   * would be indistinguishable by outcome (a setup act can never hold a
+   * controller, so there is never anything for `_removeController` to remove).
+   *
+   * Two earlier versions of this check were wrong about the file rather than
+   * about the code: one measured a bounded character distance from the signature,
+   * so lengthening the comment above the guard turned it red; the next assumed
+   * `assign` appears before `assignX`, and it does not. Anchor on the one
+   * relationship that is actually claimed and nothing else.
+   */
   const cm = read('src/controls/ControllerManager.js');
-  check('ControllerManager.assign refuses a setup act',
-    /assign\(paramId, controllerConfig\)[\s\S]{0,900}?if \(p\.setup\)[\s\S]{0,200}?return;/.test(cm),
-    'assign() is the choke point every path reaches — badge, menu, MIDI, a loaded file');
-  const assignIdx = cm.indexOf('assign(paramId, controllerConfig)');
+  const assignIdx = cm.indexOf('assign(paramId, controllerConfig) {');
   const setupIdx = cm.indexOf('if (p.setup)', assignIdx);
   const removeIdx = cm.indexOf('_removeController(paramId)', assignIdx);
-  check('and refuses BEFORE it tries to remove anything',
-    setupIdx > 0 && removeIdx > 0 && setupIdx < removeIdx,
+  check('assign() refuses BEFORE it tries to remove anything',
+    assignIdx > 0 && setupIdx > assignIdx && removeIdx > assignIdx
+      && setupIdx < removeIdx,
     'there is nothing to remove from a parameter nothing could attach to');
 
   // The badge has to READ as inert, and the dimming must survive a refresh:
@@ -108,6 +131,93 @@ console.log('\nit is a setup act: not captured, and never a controller target');
   check('the context menu does not open for a setup act',
     /show\(param, x, y\) \{[\s\S]{0,400}?if \(param\?\.setup\) return;/.test(ui),
     'a menu of controller types that all silently no-op reads as a broken feature');
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+console.log('\nEVERY writer of a controller respects it — there is no choke point');
+{
+  /**
+   * Step 10 claimed `assign()` was "the one function every assignment path
+   * reaches". It was not, and the claim is the finding: two more writers put a
+   * controller onto a parameter without going near it — `assignX()` for the
+   * controller-of-controller layer, and `Parameter.deserialize()` for a file.
+   *
+   * So the invariant cannot be held at one place. It is held by covering every
+   * WRITER, and this section is what keeps that true: a census, so a fourth
+   * writer added by someone who never read the comments fails here.
+   */
+  const p = ps.get('audio.monitor');
+
+  // The file path, tested behaviourally rather than by reading the source —
+  // this is the one an actual `.imweb` or `.imbank` exercises.
+  const before = p.value;
+  p.deserialize({
+    value: MONITOR.HEADPHONES,
+    controller: { type: 'lfo-sine', hz: 2 },
+    xControllers: [{ type: 'lfo-tri', hz: 0.5 }],
+    table: 'scurve', invert: true,
+  });
+  check('a file cannot attach a controller to a setup act',
+    p.controller === null,
+    `controller is ${JSON.stringify(p.controller)} — a saved project would reattach it on load`);
+  check('a file cannot attach an xController either',
+    (p.xControllers ?? []).every((x) => !x),
+    `${JSON.stringify(p.xControllers)} — rebuildXControllers would instantiate a live LFO`);
+  check('and a file cannot set its VALUE',
+    p.value === before,
+    `${MONITOR_MODES[p.value]} — a project authored on headphones must not silence `
+    + 'the loop warning at a venue on a PA');
+
+  // A non-setup param must still restore everything, or the guard is a
+  // regression dressed as a fix.
+  const ok = ps.get('aplay.rate');
+  ok.deserialize({ value: 0.5, controller: { type: 'lfo-sine', hz: 2 } });
+  check('an ordinary param still restores its controller and value',
+    ok.value === 0.5 && ok.controller?.type === 'lfo-sine',
+    `${ok.value}, ${JSON.stringify(ok.controller)}`);
+
+  /**
+   * The other two writers, tested by OUTCOME rather than by reading the source.
+   *
+   * The first version of this counted assignment lines with a regex and was
+   * wrong twice in a row — once because a negative lookahead behind `\s*`
+   * backtracks and let every `= null` through, once because `this.controller =`
+   * sits after an `if (...)` on the same line and defeated a `^\s*` anchor.
+   * Source-text census is the wrong tool: `ControllerManager` imports cleanly in
+   * Node, so what the functions DO is directly observable and cannot be fooled
+   * by formatting.
+   */
+  const cmgr = new ControllerManager(ps);
+  cmgr.assign('audio.monitor', { type: 'lfo-sine', hz: 2 });
+  check('assign() attaches nothing to a setup act', p.controller === null,
+    `controller is ${JSON.stringify(p.controller)}`);
+  cmgr.assignX('audio.monitor', 0, { type: 'lfo-tri', hz: 0.5 });
+  check('assignX() attaches nothing either',
+    (p.xControllers ?? []).every((x) => !x),
+    `${JSON.stringify(p.xControllers)} — an xController drives the param just as surely`);
+
+  // The reader that instantiates live LFOs from whatever the writers left.
+  // Deliberately UNGUARDED (see the comment there): with every writer refusing,
+  // a guard here could not fire, and CLAUDE.md's rule is to cover the writers
+  // rather than add a check that is dead by construction. This asserts the
+  // consequence — that the reader finds nothing to build.
+  p.xControllers = [{ type: 'lfo-sine', hz: 3 }];   // force the hostile state
+  cmgr.rebuildXControllers();
+  const built = cmgr._xLFOs.has('audio.monitor:0');
+  p.xControllers = [];
+  check('rebuildXControllers is only safe because the writers are guarded', built,
+    'if this ever goes false the reader gained its own guard — which means a '
+    + 'writer stopped being covered, or the dead-guard reasoning changed');
+
+  // And the guards must not have broken ordinary parameters.
+  cmgr.assign('aplay.len', { type: 'lfo-sine', hz: 2 });
+  check('an ordinary param still accepts a controller',
+    ps.get('aplay.len').controller?.type === 'lfo-sine',
+    JSON.stringify(ps.get('aplay.len').controller));
+  cmgr.assignX('aplay.len', 0, { type: 'lfo-tri', hz: 0.5 });
+  check('and still accepts an xController',
+    ps.get('aplay.len').xControllers?.[0]?.type === 'lfo-tri',
+    JSON.stringify(ps.get('aplay.len').xControllers));
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
