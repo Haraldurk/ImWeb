@@ -6818,6 +6818,12 @@ export function registerCoreParameters(ps) {
     id: "aspec.render", label: "Render", group: "global",
     type: PARAM_TYPE.TRIGGER,
   });
+  // 'global' for the same reason Render is — it is one half of a pair, and a
+  // captured Cancel would fire on every recall to say "nothing is rendering".
+  ps.register({
+    id: "aspec.cancel", label: "Cancel", group: "global",
+    type: PARAM_TYPE.TRIGGER,
+  });
 
   return ps;
 }

@@ -85,6 +85,8 @@ export class AudioBinding {
      * an open client-side question rather than a protocol one.
      */
     this.imageSource = null;
+    /** The render in flight, or -1. Held so `cancelSpectral` has an id to send. */
+    this._specJobId = -1;
     // Progress on a paced render (§8.3), at frame cadence. Straight to the
     // status line: a multi-second render with no sign of life is
     // indistinguishable from a wedged one.
@@ -648,11 +650,6 @@ export class AudioBinding {
   async renderSpectral() {
     if (!this.running) return this._say('spectral render needs the audio engine running');
     const g = (id) => this.ps.get(id).value;
-    const pic = this.imageSource?.();
-    if (!pic || !pic.width || !pic.height) {
-      return this._say('spectral render: no picture to read');
-    }
-
     const pitches = buildPitches(
       g('aspec.scale'), semitoneToHz(g('aspec.root')), g('aspec.rows') | 0,
       this.engine.sampleRate);
@@ -676,6 +673,17 @@ export class AudioBinding {
     }
 
     const frames = g('aspec.frames') | 0;
+    // The picture is asked for at the size it is about to become, and the size
+    // is the RESOLVED row count, not the requested one — `buildPitches` may have
+    // stopped short of Nyquist. Reading `aspec.rows` at the grab site instead
+    // meant the readback was taller than the render whenever that happened:
+    // harmless, because the box average absorbs it, but it made the comment
+    // there one step ahead of the truth, and the next person to optimise the
+    // grab would have been optimising against the wrong number.
+    const pic = this.imageSource?.(rows, frames);
+    if (!pic || !pic.width || !pic.height) {
+      return this._say('spectral render: no picture to read');
+    }
     const mag = imageFromLuma(pic.luma, pic.width, pic.height, rows, frames, {
       gamma: g('aspec.gamma'), floor: g('aspec.floor'), gain: g('aspec.level'),
     });
@@ -693,9 +701,11 @@ export class AudioBinding {
     const secs = (lengthSamples / this.engine.sampleRate).toFixed(1);
     this.engine.specPitches(0, pitches);
     this.engine.specData(0, rows, frames, mag);
-    const { done } = this.engine.render('spectral', 0, 0, startRel, lengthSamples);
+    const { jobId, done } = this.engine.render('spectral', 0, 0, startRel, lengthSamples);
+    this._specJobId = jobId;
     this._say(`spectral: rendering ${secs}s from ${rows}×${frames}…`);
     const res = await done;
+    this._specJobId = -1;
     // Reported either way. A render that refused in silence looks exactly like
     // one that is still going, and the region it would have written is the one
     // the performer is about to play.
@@ -703,6 +713,25 @@ export class AudioBinding {
       ? `spectral: ${secs}s rendered into P${g('aspec.part')}`
       : `spectral render refused (${res.code}): ${res.message}`);
     return res;
+  }
+
+  /**
+   * Stop the render in flight.
+   *
+   * Worth a control rather than left to the protocol, because a render is not
+   * always the second or two the default settings suggest: the region can be a
+   * whole partition and the row count goes to 128, which at the engine's budget
+   * is the better part of a minute. Until this existed the only way to stop one
+   * was Audio Off — which settles the job, but by taking the instrument down.
+   *
+   * Partially rendered material stays on the tape. That is the engine's rule
+   * (`_specCancel`) and it is the right one: it is what was actually asked for
+   * and actually written, and an `unsafe` render can begin anywhere, so zeroing
+   * could destroy a region that was being recorded into before this started.
+   */
+  cancelSpectral() {
+    if (!(this._specJobId >= 0)) return this._say('spectral: nothing is rendering');
+    this.engine.cancelJob(this._specJobId);
   }
 
   /**
@@ -849,6 +878,7 @@ export class AudioBinding {
     this._on('aspec.part', (v) => this.engine.zonePart('spectral', 0, v));
     this._on('aspec.unsafe', (v) => this.engine.zoneUnsafe('spectral', 0, !!v));
     this._on('aspec.render', () => { this.renderSpectral(); });
+    this._on('aspec.cancel', () => this.cancelSpectral());
 
     // Reallocating throws away every recording, so it is not a live control:
     // it applies on the next enable. Reflected here rather than silently

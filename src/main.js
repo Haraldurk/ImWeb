@@ -1084,13 +1084,14 @@ async function main() {
     // blit and works on any frame, which is what `capturePresetThumb` does too.
     const grab = document.createElement("canvas");
     const gctx = grab.getContext("2d", { willReadFrequently: true });
-    audio.imageSource = () => {
-      // Sized from the render request, not from the display: the columns and
-      // rows are what the picture is about to become, so reading it at that
-      // resolution is both the cheapest grab and the least aliased one — the
-      // browser's own downscale is a box filter over the whole frame.
-      const w = Math.max(2, Math.min(1024, ps.get("aspec.frames").value | 0));
-      const h = Math.max(2, Math.min(256, ps.get("aspec.rows").value | 0));
+    audio.imageSource = (rows, frames) => {
+      // Sized by the CALLER, not read back off the params here: the binding has
+      // already resolved how many rows fit below Nyquist, and that can be fewer
+      // than `aspec.rows` asked for. Reading the picture at exactly the size it
+      // is about to become is both the cheapest grab and the least aliased one
+      // — the browser's own downscale is a box filter over the whole frame.
+      const w = Math.max(2, Math.min(1024, frames | 0));
+      const h = Math.max(2, Math.min(256, rows | 0));
       if (grab.width !== w || grab.height !== h) { grab.width = w; grab.height = h; }
       gctx.drawImage(canvas, 0, 0, w, h);
       const rgba = gctx.getImageData(0, 0, w, h).data;

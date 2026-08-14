@@ -510,6 +510,24 @@ console.log('\nrefusals are correlated, so a client waiting on a job is never we
     e.refusals().some((m) => m.v[0] === REFUSE.LAYOUT_LOCKED),
     'unfinished work on this tape is not something a realloc may silently drop');
   check('the tape was not in fact reallocated', e.p._length === SR * 4);
+
+  // A render counts as active on its partition. `_render` fixed its span in
+  // ABSOLUTE samples at accept time, so a relayout does not move the writer with
+  // it — it goes on filling where the partition used to be, which after a drag
+  // may be inside the NEXT partition's material. The rec/play loop in
+  // `_partBounds` cannot catch this: it tests `on` and `gainCur`, and a render
+  // writer has neither.
+  e.clear();
+  e.send('/part/0/bounds', SR, SR);
+  check('moving the partition under a running render is refused',
+    e.refusals().some((m) => m.v[0] === REFUSE.LAYOUT_LOCKED),
+    'the writer would keep filling where the partition was');
+  check('the layout did not move', e.p._parts[0].start === 0 && e.p._parts[0].len === SR);
+  e.clear();
+  e.send('/part/2/bounds', SR * 3, SR);
+  check('a partition the render is NOT writing into still moves freely',
+    e.refusals().length === 0 && e.p._parts[2].start === SR * 3,
+    'the lock is per-slot, exactly as the running-zone lock beside it is');
   const done = e.runJob(706);
   check('and it still completes', done > 0 && e.msgs('/job/706/done').length === 1);
 }

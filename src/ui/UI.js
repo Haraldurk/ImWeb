@@ -357,7 +357,7 @@ export function buildMappingPanels(ps, contextMenu) {
     'audio-spec-params': [
       ...pick('aspec', ['part', 'start', 'len', 'unsafe', 'scale', 'root', 'rows',
         'frames', 'gamma', 'floor', 'level']),
-      ps.get('aspec.render'),
+      ps.get('aspec.render'), ps.get('aspec.cancel'),
     ].filter(Boolean),
     'audio-voice-params': pick('avoice', ['on', 'src', 'wave', 'pitch', 'fmRatio',
       'fmIndex', 'colour', 'cut', 'res', 'ftype', 'drive', 'level']),

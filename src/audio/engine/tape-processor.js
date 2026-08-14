@@ -1515,7 +1515,11 @@ class TapeProcessor extends AudioWorkletProcessor {
       this._specInc[r] = s.pitches[r] / sampleRate;
     }
     this._specJob = {
-      id, slot, base: a, len: lenSamples, pos: 0,
+      // The PARTITION, kept beside the image slot because `_partBounds` has to
+      // be able to refuse a relayout of it — see the lock there. The render's
+      // span is fixed in absolute samples right here, so moving the partition
+      // afterwards does not move the writer with it.
+      id, slot, part: z.part, base: a, len: lenSamples, pos: 0,
       rows: s.rows, frames: s.frames, mag: s.mag,
       // Phase 0 is the normalization scan; phase 1 is the synthesis. Both are
       // paced by the same budget, because a 256×4096 image is a million cells
@@ -1679,6 +1683,19 @@ class TapeProcessor extends AudioWorkletProcessor {
             `partition ${slot} has an active zone; layout is fixed while it runs`);
         }
       }
+    }
+    // A render counts as active on its partition, by the same rule and for a
+    // sharper reason than a playback zone does. `_render` resolved its span to
+    // ABSOLUTE samples at accept time, so moving the partition afterwards does
+    // not move the writer: it goes on filling where the partition used to be,
+    // which after a drag may be inside the NEXT partition's material. That is
+    // §4.3's one ruinous failure — a writer with the wrong bounds overwriting
+    // what you are playing — arriving through the layout rather than through
+    // the zone. The loop above cannot catch it because it counts `on` and
+    // `gainCur`, and a render writer has neither.
+    if (this._specJob && this._specJob.part === slot) {
+      return this._refuse(REFUSE_LAYOUT_LOCKED,
+        `partition ${slot} is being rendered by job ${this._specJob.id}`);
     }
     this._parts[slot].start = start;
     this._parts[slot].len = len;
