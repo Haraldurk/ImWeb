@@ -23,7 +23,14 @@
  * `process()` at all. The worklet has zero imports (§4.1), so it instantiates in
  * Node and is driven quantum by quantum.
  *
+ * **Calibrated by mutation, and the calibration is committed** — the 14 defects
+ * these checks are meant to catch live in `tests/mutations.mjs` and are re-run by
+ * `npm run mutate`. Two of them found real faults rather than confirming absent
+ * ones: the even-sized pan table, and a crossfade check that passed on correct
+ * code by luck.
+ *
  * Run:  node tests/audit-audio-pan.mjs
+ *       npm run mutate audit-audio-pan
  */
 
 import { fileURLToPath } from 'node:url';
