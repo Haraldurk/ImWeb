@@ -4934,3 +4934,17 @@ body.fullscreen-output #app {
     border-top: 1px solid var(--border);
     border-bottom: 1px solid var(--border);
 }
+
+/* The corpus pad (§4.6). Square-ish rather than the tape's letterbox, because
+   both of its axes are descriptors and neither is time — a wide strip would
+   read as a timeline, which is the one thing this is not. */
+.corpus-view {
+    display: block;
+    width: 100%;
+    height: 190px;
+    background: var(--bg-0);
+    border-top: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+    cursor: crosshair;
+    touch-action: none;
+}

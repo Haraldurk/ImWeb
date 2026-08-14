@@ -15,7 +15,7 @@
  * Zones are step 2 (§4.4).
  */
 
-const PROTO_VERSION = 3;
+const PROTO_VERSION = 4;
 const REFUSE_PROTO_MISMATCH = 1;
 const REFUSE_NO_TAPE = 2;
 const REFUSE_BAD_RANGE = 3;
@@ -140,6 +140,80 @@ const SPEC_SINE_SIZE = 1 << SPEC_SINE_BITS;
 const SPEC_SEED = 0x9e3779b9;
 
 /**
+ * The corpus index (§4.6) — the engine's whole half of it.
+ *
+ * Which is deliberately small. §4.6 says the corpus is a MAP and the tape is
+ * the territory; the engine measures the territory and plays positions in it,
+ * and never learns that a map exists. There is no 2D space here, no notion of
+ * which descriptors are being navigated, not even the names of the four columns
+ * below — the same division that keeps musical scales out of the spectral
+ * writer's half (§4.5).
+ *
+ * Four columns per grain, in this order: loudness, brightness, pitch,
+ * periodicity. They are these four because all four fall out of two passes over
+ * a time-domain window with **no FFT anywhere**: one pass for level and zero
+ * crossings, one autocorrelation for the other two. Pitch and periodicity are
+ * the position and the height of the same peak, so the pair costs what either
+ * would alone — which is the argument for including pitch at all in a first
+ * pass, given it is the expensive one on paper.
+ */
+const CORPUS_COLS = 4;
+
+/**
+ * The result is allocated at ACCEPT, like the envelope's, so the cap is what
+ * bounds that one allocation: 16384 grains × 4 columns × 4 bytes is 256 KB.
+ * At a 40 ms hop that is eleven minutes of tape, comfortably past the 600 s
+ * ceiling `MAX_TAPE_SECONDS` already sets.
+ */
+const MAX_CORPUS_GRAINS = 16384;
+const MIN_CORPUS_WINDOW = 64;
+const MAX_CORPUS_WINDOW = 16384;
+
+/**
+ * The pitch analysis looks at a FIXED real span — `CORPUS_AC_N * CORPUS_AC_D`
+ * = 2048 samples — decimated into 512, whatever the descriptor window is.
+ *
+ * Fixed rather than derived from the window because otherwise the pitch range
+ * would slide around underneath the performer: a 16384-sample window decimated
+ * to 512 is a factor of 32, which would put the searchable range at 8–187 Hz
+ * and make "pitch" mean something different at every window setting.
+ *
+ * Decimating by 4 rather than working at full rate is a 16× saving — a quarter
+ * of the samples across a quarter of the lags — and it costs lag RESOLUTION,
+ * not lag RANGE. That loss is bought back by interpolating a parabola through
+ * the peak and its two neighbours, which is the standard repair and turns a
+ * ±200-cent quantization at the top of the range into a few cents.
+ *
+ * A short window shrinks the searchable range instead of the resolution, and
+ * that is physically honest: two periods have to fit in what you looked at, so
+ * a 10 ms window genuinely cannot see 68 Hz.
+ */
+const CORPUS_AC_N = 512;
+const CORPUS_AC_D = 4;
+/** Decimated; 32 real samples, i.e. 1500 Hz at 48 kHz. */
+const CORPUS_MIN_LAG = 8;
+
+/**
+ * Analysis budget (§8.3). Costs per grain are bounded BY CONSTRUCTION, not by
+ * habit: the autocorrelation is always `CORPUS_AC_N` samples over at most
+ * `CORPUS_AC_N / 2` lags, and the level/crossing pass is one op per sample of a
+ * window capped at `MAX_CORPUS_WINDOW`. Worst case is about 86 k, so this
+ * budget completes at least one whole grain per quantum and never more than
+ * two — which is why `_corpusStep` needs no mid-grain resume state, and why
+ * that is a fact about the constants rather than an assumption about material.
+ */
+const CORPUS_OPS_PER_QUANTUM = 1 << 17;
+
+/**
+ * Concurrent grains per zone. Sixteen is rate × size = 160 grains/second at
+ * 100 ms each, well past where a cloud stops gaining density and starts gaining
+ * only level. A spawn that finds no free slot is DROPPED rather than stealing
+ * one: stealing cuts a grain mid-window, which is a click, and a click is worse
+ * than a grain that never happened in a texture made of hundreds.
+ */
+const MAX_GRAINS_PER_ZONE = 16;
+
+/**
  * Worklet-resident controllers (§8.7). Sixteen is a starting hypothesis like
  * every other count here: it is more than the audio params that exist today and
  * far less than the 128 RoSa gave zones, because a controller costs a per-sample
@@ -179,6 +253,8 @@ const TGT_VOICE_LEVEL = 3;
 const TGT_VOICE_COLOUR = 4;
 const TGT_VOICE_DRIVE = 5;
 const TGT_OUT_GAIN = 6;
+const TGT_GRAIN_POS = 7;
+const TGT_GRAIN_LEVEL = 8;
 
 /**
  * The render quantum. Fixed at 128 by the Web Audio spec, and allocated for
@@ -210,6 +286,17 @@ const ZONE_SPECIFIC = new Set([
   '/zone/play/<n>/rate',
   '/zone/rec/<n>/dynamic',
   '/zone/rec/<n>/length',
+  // The grain player's own vocabulary (§4.6). Note `/zone/grain/<n>/rate` is
+  // here as well as play's: they are different quantities on different zone
+  // types — grains per second against a read speed — so they must NOT collapse
+  // onto one pattern. Leaving either out sends one to the other's handler,
+  // which reads as a density control that changes pitch.
+  '/zone/grain/<n>/pos',
+  '/zone/grain/<n>/size',
+  '/zone/grain/<n>/rate',
+  '/zone/grain/<n>/pitch',
+  '/zone/grain/<n>/spray',
+  '/zone/grain/<n>/level',
 ]);
 
 /**
@@ -353,6 +440,66 @@ function makeZone() {
   };
 }
 
+/**
+ * A grain player (§4.6) — the reader that makes a descriptor space mean
+ * something.
+ *
+ * Not a Playback zone with a short region. A single playhead jumping between
+ * the timestamps a corpus yields is a scrub: you hear the jumps, and holding
+ * still gives you one short loop buzzing at its own length. Overlapping
+ * windowed grains are what let a POSITION be held and come out as a texture,
+ * which is the entire point of navigating a space rather than a timeline.
+ *
+ * It has no region, deliberately. `pos` says where to read and `size` says how
+ * much — a start and a length would be a third way of saying the same thing,
+ * and the one that a controller sweeping the corpus would fight with.
+ */
+function makeGrainZone(seed) {
+  const z = {
+    part: 0, unsafe: false, on: false,
+    // Slewed like every other zone bound (§4.11), and for a sharper reason
+    // here: `pos` is a legal §8.7 controller target, so it arrives either from
+    // a hand or at audio rate, and a step in it is a jump across the corpus.
+    posCur: 0, posTgt: 0, posCtrl: -1,
+    size: 4800, rate: 20, pitch: 1, spray: 0,
+    levelCur: 1, levelTgt: 1, levelCtrl: -1,
+    /**
+     * How many grains are still sounding. There is deliberately NO zone gain
+     * ramp and no partition-change duck here, unlike a Playback zone, and both
+     * absences are properties of the architecture rather than omissions:
+     *
+     * - Switching off gates SPAWNING. The grains already in flight finish their
+     *   own Hann windows, which is a fade-out that is already exactly right;
+     *   ramping the zone to zero underneath them would cut most of them
+     *   mid-window, which is the click this design otherwise never has.
+     * - A partition change needs no duck because every grain captured its own
+     *   read window at spawn. Old grains finish reading the old partition and
+     *   new ones start in the new one, with no moment at which anything reads
+     *   across the gap.
+     *
+     * This count is what keeps the zone being rendered after `on` goes false.
+     */
+    live: 0,
+    // Fractional grains-per-sample accumulator. The scheduler lives on the
+    // audio thread rather than in the client for §8.7's reason one level down:
+    // grains triggered from rAF land on frame boundaries, so the cloud's
+    // density quantizes to 60 Hz and stops entirely when the tab is hidden.
+    schedPhase: 0,
+    // Per-zone PRNG state for `spray`. Per zone, not global, so two grain
+    // zones running the same position do not scatter in lockstep.
+    rnd: (seed * 0x9e3779b9) >>> 0,
+    grains: [],
+  };
+  for (let i = 0; i < MAX_GRAINS_PER_ZONE; i++) {
+    // Allocated once, here. A grain is spawned by flipping `active`, never by
+    // pushing an object — §4.9's inner-loop allocation is GC on the audio
+    // thread, and a granular cloud is the densest allocator in the instrument
+    // if you let it be one.
+    z.grains.push({ active: false, pos: 0, inc: 1, t: 0, dur: 1, lo: 0, count: 1 });
+  }
+  return z;
+}
+
 class TapeProcessor extends AudioWorkletProcessor {
   constructor() {
     super();
@@ -397,6 +544,27 @@ class TapeProcessor extends AudioWorkletProcessor {
      */
     this._spectral = [];
     for (let i = 0; i < ZONES_PER_TYPE; i++) this._spectral.push({ part: 0, unsafe: false });
+
+    /** Grain players (§4.6). */
+    this._grain = [];
+    for (let i = 0; i < ZONES_PER_TYPE; i++) this._grain.push(makeGrainZone(i + 1));
+
+    /**
+     * The one in-flight corpus analysis, or null. One, globally, for the same
+     * reason there is one render: it is a long job, and two of them halve each
+     * other's budget for no musical gain. Unlike a render it is a READ, so it
+     * locks nothing — the tape can be recorded into while it is measured, and
+     * the result is then a description of what was there when it looked.
+     */
+    this._corpusJob = null;
+    /**
+     * Decimated scratch for the pitch autocorrelation, allocated once at full
+     * size. `_corpusStep` runs inside `process()` and may not allocate.
+     */
+    this._acBuf = new Float32Array(CORPUS_AC_N);
+    /** Prefix sums of squares and the NSDF curve — see `_describe`. */
+    this._acPs = new Float64Array(CORPUS_AC_N + 1);
+    this._nsdf = new Float32Array(CORPUS_AC_N + 1);
 
     /** Uploaded frequency-time images. Null until `/spec/<n>/data` fills one. */
     this._spec = [];
@@ -467,6 +635,7 @@ class TapeProcessor extends AudioWorkletProcessor {
     if (type === 'rec') return this._rec;
     if (type === 'play') return this._play;
     if (type === 'spectral') return this._spectral;
+    if (type === 'grain') return this._grain;
     return null;
   }
 
@@ -555,6 +724,23 @@ class TapeProcessor extends AudioWorkletProcessor {
       case '/zone/<type>/<n>/render':
         return this._render(type, idx[0], v[0], v[1], v[2], v[3]);
       case '/job/<n>/cancel':         return this._jobCancel(idx[0]);
+
+      // The corpus index (§4.6). `/corpus/analyse` measures; the grain player
+      // reads. Nothing between them is in this file — the map is the client's.
+      case '/corpus/analyse':
+        return this._corpusAnalyse(v[0], v[1], v[2], v[3], v[4]);
+      // `pos` and `level` go through the OWNERSHIP guard: both are single-float
+      // addresses, so §8.7 makes them legal worklet-controller targets, and a
+      // direct write to a target a controller drives is refused rather than
+      // overwritten a sample later.
+      case '/zone/grain/<n>/pos':
+        return this._zoneSet('grain', idx[0], 'posTgt', v[0], 'posCtrl', m.a);
+      case '/zone/grain/<n>/level':
+        return this._zoneSet('grain', idx[0], 'levelTgt', v[0], 'levelCtrl', m.a);
+      case '/zone/grain/<n>/size':  return this._grainSet(idx[0], 'size', v[0], 1);
+      case '/zone/grain/<n>/rate':  return this._grainSet(idx[0], 'rate', v[0], 0);
+      case '/zone/grain/<n>/pitch': return this._grainSet(idx[0], 'pitch', v[0], null);
+      case '/zone/grain/<n>/spray': return this._grainSet(idx[0], 'spray', v[0], 0);
 
       // Voices (§4.4, §4.10). Re-sending is an UPDATE, never a restart (rule 4)
       // — every one of these lands as a slew target, so a controller writing
@@ -693,6 +879,15 @@ class TapeProcessor extends AudioWorkletProcessor {
     let kind = TGT_NONE, index = 0;
     if (seg[1] === 'zone' && seg[2] === 'play' && seg[4] === 'rate') {
       kind = TGT_ZONE_RATE; index = Number(seg[3]);
+    } else if (seg[1] === 'zone' && seg[2] === 'grain' && seg.length === 5) {
+      index = Number(seg[3]);
+      // Position in SAMPLES, so a controller here scans the tape at audio rate
+      // — not the descriptor space, which is a client-side map the engine has
+      // never heard of. Worth being exact about: an LFO on this sweeps TIME,
+      // and sweeping the corpus means moving the client's XY, which resolves to
+      // a position and arrives here as ordinary writes.
+      if (seg[4] === 'pos') kind = TGT_GRAIN_POS;
+      else if (seg[4] === 'level') kind = TGT_GRAIN_LEVEL;
     } else if (seg[1] === 'voice' && seg.length === 4) {
       index = Number(seg[2]);
       if (seg[3] === 'freq') kind = TGT_VOICE_FREQ;
@@ -708,7 +903,9 @@ class TapeProcessor extends AudioWorkletProcessor {
     // Indices are checked HERE rather than at evaluation time: a controller that
     // silently drives nothing is indistinguishable from one whose rate is wrong,
     // and it would be diagnosed as a broken LFO for as long as it took to notice.
-    const limit = kind === TGT_ZONE_RATE ? ZONES_PER_TYPE : MAX_VOICES;
+    const zoneKind = kind === TGT_ZONE_RATE
+      || kind === TGT_GRAIN_POS || kind === TGT_GRAIN_LEVEL;
+    const limit = zoneKind ? ZONES_PER_TYPE : MAX_VOICES;
     if (kind !== TGT_OUT_GAIN && !(Number.isInteger(index) && index >= 0 && index < limit)) {
       return this._refuse(REFUSE_BAD_RANGE, `'${address}' index out of range`);
     }
@@ -745,6 +942,8 @@ class TapeProcessor extends AudioWorkletProcessor {
     else if (c.kind === TGT_VOICE_COLOUR) this._voices[c.idx].colourCtrl = slot;
     else if (c.kind === TGT_VOICE_DRIVE) this._voices[c.idx].driveCtrl = slot;
     else if (c.kind === TGT_OUT_GAIN) this._outGainCtrl = slot;
+    else if (c.kind === TGT_GRAIN_POS) this._grain[c.idx].posCtrl = slot;
+    else if (c.kind === TGT_GRAIN_LEVEL) this._grain[c.idx].levelCtrl = slot;
   }
 
   /**
@@ -761,6 +960,10 @@ class TapeProcessor extends AudioWorkletProcessor {
   _ctrlDetach(slot) {
     for (let i = 0; i < this._play.length; i++) {
       if (this._play[i].rateCtrl === slot) this._play[i].rateCtrl = -1;
+    }
+    for (let i = 0; i < this._grain.length; i++) {
+      if (this._grain[i].posCtrl === slot) this._grain[i].posCtrl = -1;
+      if (this._grain[i].levelCtrl === slot) this._grain[i].levelCtrl = -1;
     }
     for (let i = 0; i < this._voices.length; i++) {
       const v = this._voices[i];
@@ -1190,10 +1393,20 @@ class TapeProcessor extends AudioWorkletProcessor {
     // whereas a render is unfinished WORK on this tape. Cancel it explicitly if
     // that is what you meant — `/job/<n>/cancel` says so, and reallocating does
     // not.
+    for (let i = 0; i < this._grain.length; i++) {
+      if (this._grain[i].on || this._grain[i].live > 0) {
+        return this._refuse(REFUSE_LAYOUT_LOCKED,
+          'cannot reallocate the tape while a grain zone is running');
+      }
+    }
     if (this._specJob) {
       return this._refuse(REFUSE_LAYOUT_LOCKED,
         `cannot reallocate the tape while job ${this._specJob.id} is rendering`);
     }
+    // The corpus analysis is a READ, so unlike a render it does not block the
+    // realloc — but its cursors index the tape that is about to be replaced, so
+    // it is settled first, exactly as the envelope scans below are.
+    this._corpusCancel(REFUSE_NO_TAPE, 'the tape was reallocated');
     // Every queued scan indexes the tape that is about to be replaced, so they
     // are settled before it goes. Reusing the cursors against the new buffer
     // would answer a question about material that no longer exists.
@@ -1211,6 +1424,14 @@ class TapeProcessor extends AudioWorkletProcessor {
     // ends the render and says why. A job left pointing into a freed tape would
     // index an empty array on the next quantum.
     this._specCancel(REFUSE_NO_TAPE, 'the tape was cleared by panic');
+    this._corpusCancel(REFUSE_NO_TAPE, 'the tape was cleared by panic');
+    // Grains too. Panic is the one place a click is the correct outcome, so
+    // in-flight windows are cut rather than allowed to finish.
+    for (let i = 0; i < this._grain.length; i++) {
+      const z = this._grain[i];
+      z.on = false; z.live = 0; z.schedPhase = 0;
+      for (let k = 0; k < z.grains.length; k++) z.grains[k].active = false;
+    }
     this._dirtyLo = Infinity;
     this._dirtyHi = -Infinity;
     // Silence everything immediately. Panic is the one place a click is the
@@ -1361,6 +1582,368 @@ class TapeProcessor extends AudioWorkletProcessor {
       this.port.postMessage({ a: '/tape/env/err', t: 'ii', v: [job.reqId, code] });
     }
     this._envJobs.length = 0;
+  }
+
+  // ── the corpus index (§4.6), engine half ──────────────────────────────────
+
+  /**
+   * Measure a span of tape, grain by grain, paced across quanta (§8.3).
+   *
+   * A READ, so unlike a render it locks nothing: the tape may be recorded into
+   * while this runs, and the answer is then a description of what was there
+   * when it looked. That is the honest semantics for a background analysis and
+   * it is why this needs none of `_render`'s layout machinery.
+   */
+  _corpusAnalyse(start, end, hop, window, jobId) {
+    const id = Number.isInteger(jobId) ? jobId : -1;
+    const fail = (code, msg) => {
+      if (id >= 0) this.port.postMessage({ a: `/job/${id}/error`, t: 'is', v: [code, msg] });
+      this._refuse(code, msg);
+    };
+    if (this._corpusJob) {
+      return fail(REFUSE_BUSY, `corpus job ${this._corpusJob.id} is still running`);
+    }
+    if (!this._length) return fail(REFUSE_NO_TAPE, 'no tape allocated');
+    if (!Number.isInteger(hop) || hop < 1) {
+      return fail(REFUSE_BAD_RANGE, `hop ${hop} is not a positive sample count`);
+    }
+    if (!Number.isInteger(window) || window < MIN_CORPUS_WINDOW || window > MAX_CORPUS_WINDOW) {
+      return fail(REFUSE_BAD_RANGE,
+        `window ${window} outside ${MIN_CORPUS_WINDOW}..${MAX_CORPUS_WINDOW}`);
+    }
+    const a = Math.max(0, Math.min(start | 0, this._length));
+    const b = Math.max(a, Math.min(end | 0, this._length));
+    // Only grains whose WHOLE window fits are measured. A partial window at the
+    // end would report a quieter, differently-coloured grain than the same
+    // material measured anywhere else, and it would sit at the edge of the
+    // descriptor cloud looking like a real outlier.
+    const count = Math.floor((b - a - window) / hop) + 1;
+    if (count < 1) {
+      return fail(REFUSE_BAD_RANGE,
+        `span ${a}..${b} holds no whole ${window}-sample window`);
+    }
+    if (count > MAX_CORPUS_GRAINS) {
+      return fail(REFUSE_BAD_RANGE,
+        `${count} grains exceeds ${MAX_CORPUS_GRAINS}; use a longer hop`);
+    }
+    this._corpusJob = {
+      id, a, hop, window, count, g: 0, sent: -1,
+      out: new Float32Array(count * CORPUS_COLS),
+    };
+  }
+
+  /**
+   * One quantum's worth of measuring. Whole grains only — see
+   * `CORPUS_OPS_PER_QUANTUM`, where the per-grain cost is bounded by the
+   * constants rather than by what the material happens to be, which is what
+   * makes "no mid-grain resume" a fact instead of a hope.
+   */
+  _corpusStep() {
+    const job = this._corpusJob;
+    if (!job) return;
+    let budget = CORPUS_OPS_PER_QUANTUM;
+    while (job.g < job.count) {
+      const at = job.a + job.g * job.hop;
+      this._describe(at, job.window, job.out, job.g * CORPUS_COLS);
+      budget -= job.window + CORPUS_AC_N * (CORPUS_AC_N >> 1);
+      job.g++;
+      if (budget <= 0) return;
+    }
+    this._corpusDone(job);
+  }
+
+  /**
+   * The four descriptors for one window, written into `out` at `o`.
+   *
+   * Channel 0 only. Measuring the sum or both channels separately would double
+   * the cost of the whole analysis to describe a difference that no descriptor
+   * axis exposes — the corpus is a map of WHAT is at a timestamp, and a stereo
+   * image is not one of the things being navigated by.
+   */
+  _describe(at, window, out, o) {
+    const t = this._tape[0];
+    // ── pass one: level and zero crossings ──────────────────────────────────
+    let sum = 0;
+    let crossings = 0;
+    let prev = t[at];
+    for (let i = 0; i < window; i++) {
+      const s = t[at + i];
+      sum += s * s;
+      // A sign change, counting zero as positive so a silent run does not
+      // register as maximally bright — `0 <= 0` is false either way here, but
+      // making it explicit is cheaper than rediscovering why silence read as a
+      // hi-hat.
+      if ((s < 0) !== (prev < 0)) crossings++;
+      prev = s;
+    }
+    const rms = Math.sqrt(sum / window);
+    out[o] = rms;
+    // Normalized so 1 means a crossing every sample, i.e. Nyquist. The classic
+    // cheap stand-in for spectral centroid, and it is a stand-in — it says how
+    // often the signal changes sign, which correlates with brightness and is
+    // not the same measurement. Named `brightness` because that is what it is
+    // FOR; the honest description of what it is lives here.
+    out[o + 1] = window > 1 ? crossings / (window - 1) : 0;
+
+    // ── pass two: one autocorrelation, two descriptors ──────────────────────
+    // How many decimated samples the window can supply, capped at the fixed
+    // analysis size so cost is constant (see CORPUS_AC_N).
+    const n = Math.min(CORPUS_AC_N, Math.floor(window / CORPUS_AC_D));
+    const maxLag = n >> 1;                    // two periods must fit in what we looked at
+    if (maxLag <= CORPUS_MIN_LAG || rms <= 0) {
+      out[o + 2] = 0;
+      out[o + 3] = 0;
+      return;
+    }
+    const buf = this._acBuf;
+    let e0 = 0;
+    for (let i = 0; i < n; i++) {
+      // Decimation by averaging, not by dropping samples. Point-decimating
+      // aliases everything above 6 kHz down into the range the pitch search is
+      // looking at, which produces confident answers about partials that are
+      // not there.
+      let acc = 0;
+      const base = at + i * CORPUS_AC_D;
+      for (let k = 0; k < CORPUS_AC_D; k++) acc += t[base + k];
+      const v = acc / CORPUS_AC_D;
+      buf[i] = v;
+      e0 += v * v;
+    }
+    if (!(e0 > 0)) { out[o + 2] = 0; out[o + 3] = 0; return; }
+
+    /**
+     * The NORMALIZED SQUARE DIFFERENCE function: `2·ac(L)` over the energy
+     * actually present in both halves of the comparison. Bounded in [-1, 1] by
+     * Cauchy-Schwarz, which is what makes `periodicity` a confidence value
+     * rather than a number that happens to stay in range for the material
+     * anyone has tried. The prefix sums make it O(1) per lag, so it costs one
+     * pass over `n`, not one per lag.
+     *
+     * **It is not what fixed the octave error, and the comment here used to
+     * claim it was.** The first version divided each lag's sum by the `n - lag`
+     * terms that went into it, which inflates long lags, and a 220 Hz sine read
+     * as 55 Hz — the peak four periods out beating the real one. Replacing that
+     * normalization AND adding the peak-picking rule below fixed it together;
+     * measuring them separately afterwards showed the peak-picking rule does
+     * essentially all of the work (0.9980 against 0.9964 on a decaying tone,
+     * 0.1808 against 0.1816 on noise), because `maxLag` is `n/2` and the
+     * inflation therefore never exceeds 2×.
+     *
+     * So this is defence in depth, not the cure, and no check pins it — the
+     * audit says so rather than leaving a mutation quietly surviving.
+     */
+    const ps = this._acPs;
+    ps[0] = 0;
+    for (let i = 0; i < n; i++) ps[i + 1] = ps[i] + buf[i] * buf[i];
+    const nsdf = this._nsdf;
+    let gmax = 0;
+    for (let lag = CORPUS_MIN_LAG; lag <= maxLag; lag++) {
+      let ac = 0;
+      for (let i = 0; i < n - lag; i++) ac += buf[i] * buf[i + lag];
+      const m = (ps[n - lag] - ps[0]) + (ps[n] - ps[lag]);
+      const v = m > 0 ? (2 * ac) / m : 0;
+      nsdf[lag] = v;
+      if (v > gmax) gmax = v;
+    }
+    if (!(gmax > 0)) { out[o + 2] = 0; out[o + 3] = 0; return; }
+
+    /**
+     * Take the FIRST peak that is nearly as tall as the tallest, not the
+     * tallest. This is the other half of the octave fix and it is the half that
+     * survives real material: a periodic signal correlates with itself at every
+     * multiple of its period, and which of those multiples wins is decided by
+     * noise. Choosing the earliest strong peak chooses the fundamental, because
+     * every competitor is a multiple of it.
+     */
+    let bestLag = 0;
+    for (let lag = CORPUS_MIN_LAG + 1; lag < maxLag; lag++) {
+      if (nsdf[lag] > nsdf[lag - 1] && nsdf[lag] >= nsdf[lag + 1]
+          && nsdf[lag] >= 0.9 * gmax) {
+        bestLag = lag;
+        break;
+      }
+    }
+    if (bestLag <= 0) { out[o + 2] = 0; out[o + 3] = 0; return; }
+    // Parabolic interpolation through the peak and its neighbours — this is
+    // what buys back the resolution decimating by 4 gave away. Without it the
+    // top of the range quantizes to ±200 cents, which is not a pitch axis.
+    // Both neighbours exist here by construction: the search above starts one
+    // lag in and stops one lag short precisely so this cannot read past an end.
+    let refined = bestLag;
+    const denom = nsdf[bestLag - 1] - 2 * nsdf[bestLag] + nsdf[bestLag + 1];
+    if (denom !== 0) {
+      const shift = (0.5 * (nsdf[bestLag - 1] - nsdf[bestLag + 1])) / denom;
+      if (shift > -1 && shift < 1) refined = bestLag + shift;
+    }
+    out[o + 2] = sampleRate / (refined * CORPUS_AC_D);
+    const per = nsdf[bestLag];
+    out[o + 3] = per < 0 ? 0 : per > 1 ? 1 : per;
+  }
+
+  _corpusDone(job) {
+    this._corpusJob = null;
+    this.port.postMessage(
+      { a: '/corpus/data', t: 'iiiib', v: [job.id, job.a, job.hop, job.count, job.out.buffer] },
+      [job.out.buffer],
+    );
+    // The payload, then the terminal — in that order, so a client that resolves
+    // its promise on `/done` already holds the data by the time it does.
+    this.port.postMessage({ a: `/job/${job.id}/done`, t: '', v: [] });
+  }
+
+  _corpusCancel(code, message) {
+    const job = this._corpusJob;
+    if (!job) return;
+    this._corpusJob = null;
+    this.port.postMessage({ a: `/job/${job.id}/error`, t: 'is', v: [code, message] });
+  }
+
+  _corpusFlush() {
+    const job = this._corpusJob;
+    if (!job || job.g === job.sent) return;
+    job.sent = job.g;
+    this.port.postMessage({ a: `/job/${job.id}/progress`, t: 'ii', v: [job.g, job.count] });
+  }
+
+  // ── the grain player (§4.6) ───────────────────────────────────────────────
+
+  /**
+   * Non-position grain settings. Clamped rather than refused, unlike an index:
+   * these are continuous performance values a controller writes every frame,
+   * and a refusal per frame would be a status line full of them. `lo === null`
+   * means signed is meaningful — a negative pitch reads the grain backwards.
+   */
+  _grainSet(i, field, value, lo) {
+    const z = this._zone('grain', i);
+    if (!z) return;
+    if (!Number.isFinite(value)) return;
+    z[field] = lo === null ? value : Math.max(lo, value);
+  }
+
+  /**
+   * The zone's readable window. A grain player has no region: it may read
+   * anywhere in its partition, and `unsafe` widens that to the whole tape —
+   * which is what the flag means everywhere else (§4.3), applied to the one
+   * reader whose extent is a grain rather than a span.
+   */
+  _grainSpan(z) {
+    const p = this._parts[z.part];
+    let a = p.start;
+    let b = p.start + p.len;
+    if (z.unsafe) { a = 0; b = this._length; }
+    this._sa = Math.max(0, Math.min(a, this._length));
+    this._sb = Math.max(this._sa, Math.min(b, this._length));
+  }
+
+  /** xorshift32, per zone. Deterministic given a zone index and a spawn count. */
+  _grainRand(z) {
+    let x = z.rnd;
+    x ^= x << 13; x >>>= 0;
+    x ^= x >> 17;
+    x ^= x << 5; x >>>= 0;
+    z.rnd = x;
+    return x / 4294967296;
+  }
+
+  _renderGrain(z, L, R, frames) {
+    const rateInc = z.rate / sampleRate;
+    for (let i = 0; i < frames; i++) {
+      if (z.posCtrl >= 0) z.posCur = z.posTgt = this._ctrls[z.posCtrl].buf[i];
+      if (z.levelCtrl >= 0) z.levelCur = z.levelTgt = this._ctrls[z.levelCtrl].buf[i];
+      z.levelCur = this._approach(z.levelCur, z.levelTgt);
+      z.posCur = this._approach(z.posCur, z.posTgt);
+
+      // Spawning is gated on `on`; SOUNDING is not. Grains already in flight
+      // finish their windows, which is the difference between a cloud ending
+      // and a cloud being cut off.
+      if (z.on) {
+        z.schedPhase += rateInc;
+        if (z.schedPhase >= 1) {
+          // One spawn per sample at most, and the accumulator is RESET rather
+          // than decremented when it has run away. A rate above the sample rate
+          // is not a denser cloud, it is an unbounded inner loop, and the audio
+          // thread has no watchdog (§4.9).
+          z.schedPhase = z.schedPhase >= 2 ? 0 : z.schedPhase - 1;
+          this._spawnGrain(z);
+        }
+      }
+
+      let l = 0;
+      let r = 0;
+      for (let k = 0; k < MAX_GRAINS_PER_ZONE; k++) {
+        const g = z.grains[k];
+        if (!g.active) continue;
+        // Hann window, read off the shared sine table. cos(2πu) is sin at a
+        // quarter turn back, so the envelope costs one table lookup rather than
+        // a Math.cos per grain per sample.
+        const u = g.t / g.dur;
+        let ph = u - 0.25;
+        if (ph < 0) ph += 1;
+        const x = ph * SPEC_SINE_SIZE;
+        const xi = x | 0;
+        const w = 0.5 + 0.5 * (this._sine[xi] + (this._sine[xi + 1] - this._sine[xi]) * (x - xi));
+        /**
+         * NO RATE-AWARE ANTI-ALIASING HERE, and that is a recorded choice
+         * rather than an oversight.
+         *
+         * §4.10 named the rate-aware box filter in `_renderPlay` the main path
+         * for this instrument, and reading at rate r really is decimation by r
+         * wherever it happens — so a cloud pitched up two octaves over bright
+         * material folds, exactly as a playback zone would without it.
+         *
+         * It is left out because a grain is 5–500 ms of Hann-windowed material
+         * arriving among dozens of others: the window's own spectral skirt and
+         * the density of the cloud mask most of what the filter would remove,
+         * and the filter would soften every grain to fix an artefact that is
+         * audible in a narrow corner of the parameter space (high pitch, sparse
+         * cloud, bright source). Granular synthesis has accepted this since
+         * Truax. If it ever offends, the sub-read loop from `_renderPlay` drops
+         * in here unchanged — it is a cost decision, not a structural one.
+         */
+        l += this._cubic(0, g.pos, g.lo, g.count) * w;
+        r += this._cubic(1, g.pos, g.lo, g.count) * w;
+        g.pos += g.inc;
+        // Kept inside the grain's own window, so a grain near the seam wraps
+        // rather than reading whatever is past it.
+        if (g.pos >= g.lo + g.count) g.pos -= g.count;
+        else if (g.pos < g.lo) g.pos += g.count;
+        if (++g.t >= g.dur) { g.active = false; z.live--; }
+      }
+      L[i] += l * z.levelCur;
+      if (R !== L) R[i] += r * z.levelCur;
+    }
+  }
+
+  _spawnGrain(z) {
+    this._grainSpan(z);
+    const lo = Math.ceil(this._sa);
+    const count = Math.floor(this._sb) - lo;
+    if (count < 4) return;                     // nothing to read from
+    let slot = -1;
+    for (let k = 0; k < MAX_GRAINS_PER_ZONE; k++) {
+      if (!z.grains[k].active) { slot = k; break; }
+    }
+    // Dropped, not stolen — see MAX_GRAINS_PER_ZONE. Silent by design: at a
+    // hundred grains a second a message per drop is a flood, and the audible
+    // result of the cap is a cloud that stops getting denser, which is what a
+    // performer would expect from a density control at its limit.
+    if (slot < 0) return;
+    z.live++;
+    const g = z.grains[slot];
+    // `spray` is symmetric around the position, so scattering does not drag the
+    // centre of the cloud forward the way a one-sided offset would.
+    const jitter = z.spray > 0 ? (this._grainRand(z) * 2 - 1) * z.spray : 0;
+    let pos = this._parts[z.part].start + z.posCur + jitter;
+    pos = lo + (((pos - lo) % count) + count) % count;
+    g.active = true;
+    g.pos = pos;
+    g.inc = z.pitch;
+    g.t = 0;
+    // At least two samples, so `t / dur` cannot be 0/0 and the window cannot
+    // be a single full-amplitude sample, which is a click rather than a grain.
+    g.dur = Math.max(2, Math.round(z.size));
+    g.lo = lo;
+    g.count = count;
   }
 
   // ── the spectral writer (§4.5) ────────────────────────────────────────────
@@ -1645,10 +2228,13 @@ class TapeProcessor extends AudioWorkletProcessor {
   }
 
   _jobCancel(id) {
-    if (!this._specJob || this._specJob.id !== id) {
-      return this._refuse(REFUSE_BAD_RANGE, `job ${id} is not running`);
+    if (this._specJob && this._specJob.id === id) {
+      return this._specCancel(REFUSE_CANCELLED, 'cancelled by the client');
     }
-    this._specCancel(REFUSE_CANCELLED, 'cancelled by the client');
+    if (this._corpusJob && this._corpusJob.id === id) {
+      return this._corpusCancel(REFUSE_CANCELLED, 'cancelled by the client');
+    }
+    this._refuse(REFUSE_BAD_RANGE, `job ${id} is not running`);
   }
 
   /** Progress on the frame timer (rule 7), and only when it has moved. */
@@ -1744,6 +2330,12 @@ class TapeProcessor extends AudioWorkletProcessor {
     // field that does not exist, and quietly park the change in a `pend` flag
     // that nothing on this zone ever consumes.
     if (type === 'spectral') { z.part = slot; return; }
+    // A grain player takes it immediately too, and for a better reason than
+    // "nothing to duck": every grain captured its read window at spawn, so the
+    // ones in flight finish in the old partition while the next ones start in
+    // the new. There is no moment at which anything reads across the gap, which
+    // is precisely what the duck exists to prevent on a continuous reader.
+    if (type === 'grain') { z.part = slot; return; }
     if (!z.on && z.gainCur === 0) { z.part = slot; return; }
     z.pend = true; z.pendPart = slot;
   }
@@ -1759,6 +2351,14 @@ class TapeProcessor extends AudioWorkletProcessor {
     const z = this._zone(type, i);
     if (!z) return;
     if (type === 'spectral') return this._refuseRenderZone(type, 'region');
+    // A grain player has `pos` and `size`; a region would be a third way of
+    // saying the same thing, and the one a controller sweeping the corpus would
+    // fight with. Refused rather than stored-and-ignored (CLAUDE.md's guard
+    // rules: the fields it would set are ones nothing reads).
+    if (type === 'grain') {
+      return this._refuse(REFUSE_BAD_RANGE,
+        'grain zones are positioned by pos and size, not by a region');
+    }
     z.startTgt = startRel;
     z.lenTgt = lenRel;
     // Re-aim the ramp from wherever the value currently is, so a target that
@@ -1808,6 +2408,11 @@ class TapeProcessor extends AudioWorkletProcessor {
     const z = this._zone(type, i);
     if (!z) return;
     if (type === 'spectral') return this._refuseRenderZone(type, on ? 'on' : 'off');
+    // A grain player has no playhead to rewind — every grain carries its own —
+    // so switching it on is only a gain target. Handled before the reset below
+    // rather than by giving grain zones `phase`/`writePos`/`recorded` fields
+    // nothing would ever read.
+    if (type === 'grain') { z.on = on; return; }
     if (on && !z.on) { z.phase = 0; z.writePos = 0; z.recorded = 0; }
     if (!on && z.on && type === 'rec' && z.dynamic) {
       // LiSa's dynamic length: the recording runs to the end of the region and
@@ -2342,6 +2947,14 @@ class TapeProcessor extends AudioWorkletProcessor {
         const z = this._play[i];
         if (z.on || z.gainCur > 0) this._renderPlay(z, L, R, frames);
       }
+      for (let i = 0; i < this._grain.length; i++) {
+        const z = this._grain[i];
+        // `gainCur > 0` is not enough on its own here: a stopped zone's gain
+        // reaches 0 in 8 ms while its last grains still have most of their
+        // windows to run, and cutting them there is the click the drop-rather-
+        // than-steal rule exists to avoid at the other end.
+        if (z.on || z.live > 0) this._renderGrain(z, L, R, frames);
+      }
     }
 
     // OUTSIDE the tape guard, deliberately. A Voice has no buffer region
@@ -2365,12 +2978,18 @@ class TapeProcessor extends AudioWorkletProcessor {
     // zone reading the region it is filling should see this quantum's picture
     // consistently rather than half of it.
     if (this._specJob) this._specStep();
+    // The corpus analysis (§4.6), on the same terms. After the render rather
+    // than before because a render WRITES the tape and this only reads it: if
+    // both are somehow in flight, measuring after the write describes the
+    // material that now exists rather than the material that is about to.
+    if (this._corpusJob) this._corpusStep();
 
     if (++this._quanta >= this._quantaPerFlush) {
       this._quanta = 0;
       this._flushDirty();
       this._ctrlFlush();
       this._specFlush();
+      this._corpusFlush();
     }
     return true;
   }

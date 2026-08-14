@@ -1106,6 +1106,10 @@ async function main() {
     // needs a running engine.
     const tapeEl = document.getElementById("audio-tape-view");
     if (tapeEl) audio.attachView(tapeEl);
+    // The corpus pad (§4.6). Attached before the engine starts too — the axes
+    // and the cursor are meaningful with an empty cloud, and the pad says so.
+    const corpusEl = document.getElementById("audio-corpus-view");
+    if (corpusEl) audio.attachCorpusView(corpusEl);
     ps.get("audio.enable")?.onChange(async (v) => {
       try {
         if (v) await audio.start();

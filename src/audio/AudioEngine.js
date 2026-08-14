@@ -78,6 +78,8 @@ export class AudioEngine {
     this._nextJobId = 1;
     /** job id → resolve, for paced renders (§8.3). */
     this._jobs = new Map();
+    /** job id → payload that arrived before the job's terminal message. */
+    this._jobData = new Map();
     /** Called with (jobId, samplesDone, samplesTotal) at frame cadence. */
     this.onJobProgress = null;
 
@@ -227,6 +229,7 @@ export class AudioEngine {
       settle({ ok: false, code: REFUSE.CANCELLED, message: 'the engine stopped' });
     }
     this._jobs.clear();
+    this._jobData.clear();
     if (this.ctx.state === 'running') await this.ctx.suspend();
   }
 
@@ -374,6 +377,33 @@ export class AudioEngine {
 
   cancelJob(jobId) { this._send(`/job/${jobId}/cancel`); }
 
+  // ── the corpus index (§4.6) ───────────────────────────────────────────────
+
+  /**
+   * Measure a span of tape. Resolves like `render` does, except that the
+   * payload rides ON the resolution: `/corpus/data` arrives first and is
+   * stashed against the job id, so `{ok:true, data}` hands the caller the
+   * table without a second callback to sequence against.
+   */
+  analyseCorpus(startSample, endSample, hopSamples, windowSamples) {
+    const jobId = this._nextJobId++;
+    const done = new Promise((resolve) => this._jobs.set(jobId, resolve));
+    this._send('/corpus/analyse',
+      startSample | 0, endSample | 0, hopSamples | 0, windowSamples | 0, jobId);
+    return { jobId, done };
+  }
+
+  grainPart(i, slot) { this._send(`/zone/grain/${i}/part`, slot | 0); }
+  grainUnsafe(i, on) { this._send(`/zone/grain/${i}/unsafe`, !!on); }
+  grainOn(i) { this._send(`/zone/grain/${i}/on`); }
+  grainOff(i) { this._send(`/zone/grain/${i}/off`); }
+  grainPos(i, samples) { this._send(`/zone/grain/${i}/pos`, samples); }
+  grainSize(i, samples) { this._send(`/zone/grain/${i}/size`, samples); }
+  grainRate(i, perSecond) { this._send(`/zone/grain/${i}/rate`, perSecond); }
+  grainPitch(i, ratio) { this._send(`/zone/grain/${i}/pitch`, ratio); }
+  grainSpray(i, samples) { this._send(`/zone/grain/${i}/spray`, samples); }
+  grainLevel(i, level) { this._send(`/zone/grain/${i}/level`, level); }
+
   /**
    * Ask for an envelope over an explicit span. **Never resample a envelope you
    * already hold into a different resolution — ask** (§6 item 6): min/max is not
@@ -423,8 +453,10 @@ export class AudioEngine {
       if (job[2] === 'progress') return this.onJobProgress?.(id, m.v[0], m.v[1]);
       const settle = this._jobs.get(id);
       this._jobs.delete(id);
+      const payload = this._jobData.get(id);
+      this._jobData.delete(id);
       settle?.(job[2] === 'done'
-        ? { ok: true }
+        ? { ok: true, data: payload ?? null }
         : { ok: false, code: m.v[0], message: m.v[1] });
       return;
     }
@@ -477,6 +509,16 @@ export class AudioEngine {
       case '/tape/env/dirty':
         this.onDirty?.(m.v[0], m.v[1]);
         return;
+      case '/corpus/data': {
+        // Stashed against the job id rather than delivered by callback: the
+        // terminal `/job/<n>/done` follows immediately, and holding it here
+        // means one promise carries both "it finished" and "here it is". A
+        // separate callback would make every caller sequence two events that
+        // the engine already guarantees the order of.
+        const [jobId, start, hop, count, blob] = m.v;
+        this._jobData.set(jobId, { start, hop, count, raw: new Float32Array(blob) });
+        return;
+      }
       case '/ctrl/echo/data': {
         // One message per frame carrying every live slot (rule 7). Handed over
         // as the flat [slot, value, …] pairs it arrived as: the consumer knows

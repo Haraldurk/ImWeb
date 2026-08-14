@@ -359,6 +359,17 @@ export function buildMappingPanels(ps, contextMenu) {
         'frames', 'gamma', 'floor', 'level']),
       ps.get('aspec.render'), ps.get('aspec.cancel'),
     ].filter(Boolean),
+    // The corpus (§4.6). Axes first — they are what the pad above means — then
+    // how it is measured, then the verbs. The analysis params and both triggers
+    // are group 'global', so they are listed explicitly rather than through
+    // pick(), exactly as `audio.enable` and `aspec.render` are.
+    'audio-corpus-params': [
+      ...pick('acorp', ['xAxis', 'yAxis', 'x', 'y']),
+      ps.get('acorp.hop'), ps.get('acorp.window'),
+      ps.get('acorp.analyse'), ps.get('acorp.cancel'),
+    ].filter(Boolean),
+    'audio-grain-params': pick('agrain', ['part', 'on', 'size', 'rate', 'pitch',
+      'spray', 'level', 'unsafe']),
     'audio-voice-params': pick('avoice', ['on', 'src', 'wave', 'pitch', 'fmRatio',
       'fmIndex', 'colour', 'cut', 'res', 'ftype', 'drive', 'level']),
   };

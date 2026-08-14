@@ -1421,3 +1421,138 @@ A **pan image**. Metasynth's obvious next move is a second picture assigning eac
 row a stereo position, and it is a second upload with its own meaning rather than
 a flag on this one. The render is mono into every channel, matching
 `/tape/write`'s mono payload rule.
+
+### 8.11 §4.6 built — the map, the territory, and the reader between them
+
+The corpus index shipped in step 9. §6 item 5 asked which descriptors it
+extracts and whether its navigation surface is the draw surface; both are
+answered below, along with one thing §4.6 did not mention and turned out to
+need.
+
+#### The split that made it small
+
+§4.6 says the corpus is a **map** and the tape is the **territory**. Taking that
+structurally rather than poetically is what kept the engine's half tiny: it
+measures the territory and plays positions in it, and never learns that a map
+exists. There is no 2D space in the worklet, no notion of which descriptors are
+being navigated, not even the names of the columns it fills.
+
+What crosses the boundary is a table of numbers and, later, a position in
+samples. Which two columns are the axes, how they are scaled, what "near"
+means — all client-side, in `src/audio/corpus-index.js`. This is the same
+division that keeps musical scales out of the spectral writer's half (§4.5), and
+it pays the same dividend: adding a descriptor axis, a scaling, or a different
+notion of nearness needs no protocol change at all.
+
+#### The four descriptors, and why four
+
+Loudness, brightness, pitch, periodicity — §4.6's own list. They are these four
+because **all four fall out of two passes over a time-domain window with no FFT
+anywhere**: one pass for RMS and zero crossings, one autocorrelation for the
+other two. Pitch and periodicity are the position and the height of the same
+peak, so the pair costs what either would alone, which is what makes pitch
+affordable in a first pass despite being the expensive one on paper.
+
+Brightness is a zero-crossing rate, which is a **stand-in** for spectral
+centroid and not the same measurement. It is named for what it is for; the
+honest description lives at the code.
+
+Two things went wrong here and both are worth keeping:
+
+- **The octave error.** Normalizing each lag by the `n - lag` terms that went
+  into it inflates long lags, and a 220 Hz sine read as **55 Hz** — two octaves
+  down, confidently, on the cleanest possible input. The fix was an NSDF
+  normalization *and* taking the first peak within 90% of the tallest rather
+  than the tallest. Measuring them separately afterwards showed the peak-picking
+  rule does essentially all of the work; the normalization is defence in depth,
+  and the audit says so rather than implying a check pins it.
+- **Decimation must average, not point-sample.** Decimating by four for the
+  pitch search folds everything above 6 kHz into the range being searched. A
+  four-tap average is not an anti-alias filter and the NSDF is amplitude-
+  normalized, so a loud enough alias still reads as a confident pitch; what the
+  averaging buys is that an alias *loses* to real low-frequency content instead
+  of competing with it.
+
+#### The reader §4.6 did not name
+
+§4.6 says navigating the space "yields timestamps into the waveform, which
+trigger playback", and leaves what plays them unstated. A Playback zone is the
+wrong answer: a single playhead jumping between timestamps is a **scrub** — you
+hear the jumps, and holding still gives one short loop buzzing at its own
+length. So step 9 adds a **grain player**, a zone type whose reader is a bank of
+overlapping windowed grains. That is what lets a position be *held* and come out
+as a texture, which is the whole reason to navigate a space rather than a
+timeline.
+
+Three properties of it are architectural rather than incidental:
+
+- **The scheduler is engine-resident.** Grains triggered from rAF land on frame
+  boundaries, so the cloud's density quantizes to 60 Hz and stops entirely when
+  the tab is hidden — §8.7's lesson one level down.
+- **No zone gain ramp and no partition-change duck.** Switching off gates
+  spawning and lets grains in flight finish their own Hann windows, which is
+  already exactly the right fade; ramping underneath them would cut most of them
+  mid-window. A partition change needs no duck because every grain captured its
+  read window at spawn, so there is no moment at which anything reads across the
+  gap. Both absences are consequences of the design, not omissions.
+- **`spray` is not a nicety.** Without it a held position is the same few
+  hundred milliseconds repeating at the grain rate, which is a buzz at that
+  frequency rather than a texture. The audit measures the comb it removes.
+
+#### §6 item 5's second half: a separate widget
+
+The navigation surface is its own pad, not the draw surface. §4.6 already warned
+that descriptor space is not the image plane — that (0.3, 0.7) means "bright and
+quiet" and has no relationship to the pixel at (0.3, 0.7) — and sharing one
+*widget* would invite exactly the coincidence it warns against. They share a
+gesture, which is the part that was ever the point: the pad writes ordinary
+parameters, so a hand, an LFO, a MIDI knob and the stroke looper all drive it by
+the same path.
+
+#### What the index buys, measured
+
+Changing which descriptors are the axes **re-projects the measurements already
+held** and never re-measures the tape. On a 1332-grain corpus that is 3 ms
+against roughly twenty seconds. This is the practical content of "an index, not
+a second buffer": the expensive thing happened once, and the map is cheap to
+redraw.
+
+#### The map must not claim what the reader cannot reach
+
+A decision the first cut got wrong by omission. The analysis covers the whole
+tape; a grain zone reads its **partition**, and `_spawnGrain` wraps anything
+outside it. So a corpus measured over the whole tape plotted grains the player
+would never play: touch one, hear a different one, silently. That is the one
+failure mode where a map looks like it is working while lying about its
+territory — the sound is plausible, nothing is refused, and the gesture simply
+stops corresponding to the result.
+
+The fix is in the **map**, not the reader: `buildIndex` takes the reader's
+reachable span and drops grains outside it, counted separately from the
+pitchless ones because the two have different remedies — one wants a different
+axis pair, the other a different partition. `unsafe` widens the reach to the
+whole tape and every grain returns.
+
+Filtering at projection time rather than at analysis time is what keeps changing
+the partition free: the measurements are still valid, only the projection moves,
+which is the same reason an axis change does not re-measure. Verified live —
+1332 grains measured, 334 reachable in P0, 333 in P2, all 1332 with `unsafe`.
+
+**Corollary, and it applies to every future tape-derived view:** the corpus is
+discarded on Audio Off, because `start()` re-allocates the tape and zeroes it.
+The waveform display already had that rule; a second view of the same tape must
+not get a second rule, or it will confidently plot material that no longer
+exists.
+
+#### Recorded, not fixed: grains do not get the rate-aware anti-aliasing
+
+§4.10 named the rate-aware box filter in `_renderPlay` the main path for this
+instrument, and reading at rate r is decimation by r wherever it happens — so a
+cloud pitched up two octaves over bright material folds. The grain player is
+left without it deliberately: a grain is 5–500 ms of Hann-windowed material
+arriving among dozens of others, so the window's own spectral skirt and the
+density of the cloud mask most of what the filter would remove, and the filter
+would soften every grain to fix an artefact audible in a narrow corner of the
+parameter space. Granular synthesis has accepted this since Truax. The sub-read
+loop drops in unchanged if it ever offends — a cost decision, not a structural
+one.
