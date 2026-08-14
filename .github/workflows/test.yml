@@ -1,0 +1,44 @@
+# CI — the enforcement half of the test suite.
+#
+# npm test runs every audit on every PR: a red tree cannot reach main through
+# a forgotten local run. Mutation calibration gates only the audits a PR
+# actually touches (tests/mutate-affected.mjs does the mapping) — the full run
+# grows with the registry and belongs on demand, not on the critical path.
+
+name: test
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - run: npm test
+
+      - name: Mutation-calibrate the audits this PR touches
+        if: github.event_name == 'pull_request'
+        run: |
+          CHANGED=$(git diff --name-only "origin/${{ github.base_ref }}...HEAD")
+          AFFECTED=$(node tests/mutate-affected.mjs $CHANGED)
+          if [ -z "$AFFECTED" ]; then
+            echo "no calibrated audit touched — nothing to calibrate"
+            exit 0
+          fi
+          for AUDIT in $AFFECTED; do
+            echo "── calibrating $AUDIT"
+            node tests/mutate.mjs "$AUDIT"
+          done
