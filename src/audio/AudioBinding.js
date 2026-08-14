@@ -649,6 +649,20 @@ export class AudioBinding {
    */
   async renderSpectral() {
     if (!this.running) return this._say('spectral render needs the audio engine running');
+    /**
+     * Refused HERE as well as by the engine, and this half is the one that
+     * matters. The engine already refuses a second render BUSY, so the material
+     * was never at risk — but this method would have overwritten `_specJobId`
+     * with the id of the render that was about to be refused, then reset it to
+     * -1 when that refusal resolved a moment later, all while the FIRST render
+     * was still running. Cancel would then answer "nothing is rendering" over a
+     * live job, and the only way to stop it would be Audio Off again.
+     *
+     * Early, before the picture is read: rebuilding a 128×1024 image to throw
+     * it away is not free, and the two uploads below would each draw their own
+     * BUSY refusal into the status line on the way to the same answer.
+     */
+    if (this._specJobId >= 0) return this._say('spectral: already rendering');
     const g = (id) => this.ps.get(id).value;
     const pitches = buildPitches(
       g('aspec.scale'), semitoneToHz(g('aspec.root')), g('aspec.rows') | 0,
