@@ -95,6 +95,12 @@ export class AudioBinding {
      * an open client-side question rather than a protocol one.
      */
     this.imageSource = null;
+    /**
+     * The partition the ENGINE last accepted for the recording zone — see
+     * `_sendZonePart`, which is the only thing that writes it. Used to put
+     * `arec.part` back when a change is refused because the recorder is running.
+     */
+    this._recPart = 0;
     /** The render in flight, or -1. Held so `cancelSpectral` has an id to send. */
     this._specJobId = -1;
     /** The corpus analysis in flight, or -1. */
@@ -749,7 +755,7 @@ export class AudioBinding {
     this.engine.outGain(g('audio.outGain'));
     this.engine.outLimit(g('audio.limitThresh'), g('audio.limitRel'));
     for (const [prefix, type] of [['arec', 'rec'], ['aplay', 'play']]) {
-      this.engine.zonePart(type, 0, g(`${prefix}.part`));
+      this._sendZonePart(type, g(`${prefix}.part`));
       this._pushRegion(prefix, type);
       this.engine.zoneUnsafe(type, 0, !!g(`${prefix}.unsafe`));
     }
@@ -1071,6 +1077,23 @@ export class AudioBinding {
     }));
   }
 
+  /**
+   * Send a zone's partition, and remember the recorder's.
+   *
+   * **The ONE place `_recPart` is assigned**, and that is deliberate rather than
+   * tidy. It is a mirror of engine state, which is the shape of thing this
+   * project keeps paying for — so it gets exactly one writer, sitting on the
+   * exact call that makes it true. The audit asserts there is only one.
+   *
+   * It exists because reverting a refused change needs the last value the
+   * engine ACCEPTED, and a Parameter does not keep its previous value. Reverting
+   * to anything else would put the two back out of step in the other direction.
+   */
+  _sendZonePart(type, slot) {
+    this.engine.zonePart(type, 0, slot);
+    if (type === 'rec') this._recPart = slot;
+  }
+
   /** Write a param as a consequence of an engine message, without echoing. */
   _applyFromEngine(id, value) {
     this._fromEngine = true;
@@ -1156,7 +1179,32 @@ export class AudioBinding {
 
     for (const [prefix, type] of [['arec', 'rec'], ['aplay', 'play']]) {
       this._on(`${prefix}.part`, (v) => {
-        this.engine.zonePart(type, 0, v);
+        /**
+         * A RUNNING recorder cannot move (§4.4), and the client has to say so
+         * too — the engine's refusal alone is not enough.
+         *
+         * The engine refusing keeps the AUDIO right: the take goes on landing
+         * where it was. What it cannot fix is that `arec.part` has already
+         * changed on this side, so the button shows P1, the tape display draws
+         * the REC band over P1 (it reads this param, not the engine), and the
+         * recording is in P0. Every surface agrees with every other surface and
+         * all of them are wrong — which is exactly how this was reported:
+         * "recording into P1, it still goes into P0". A refusal on the status
+         * line does not undo that; it only annotates it.
+         *
+         * So the value goes back. `_applyFromEngine` is the vehicle because it
+         * suppresses the echo — reverting through a plain `set` would re-enter
+         * this handler with the old value and send it to the engine again.
+         *
+         * This also covers a Display State recall or a loaded project trying to
+         * move it mid-take: `arec.part` is captured (group 'arec'), so a recall
+         * IS a writer, and it gets the same answer as a click.
+         */
+        if (type === 'rec' && this.ps.get('arec.on').value) {
+          this._applyFromEngine('arec.part', this._recPart);
+          return this._say('recording — stop Run Rec to change its partition');
+        }
+        this._sendZonePart(type, v);
         this._pushRegion(prefix, type);   // the region is relative to the NEW partition
       });
       this._on(`${prefix}.start`, () => this._pushRegion(prefix, type));
