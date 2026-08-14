@@ -30,7 +30,24 @@
  *   against an already-broken tree dutifully report FAIL and calibrate nothing.
  *   A run that begins red is aborted rather than reported.
  * - **Restore in a `finally`, and on a signal.** A harness that leaves the tree
- *   mutated after Ctrl-C is a worse hazard than the one it is testing.
+ *   mutated after Ctrl-C is a worse hazard than the one it is testing. The signal
+ *   handlers write synchronously for that reason — an async restore on SIGTERM is
+ *   a restore that does not finish.
+ * - **A `find` pattern must match exactly one place.** Ambiguous is as bad as
+ *   absent and much less obvious: `String.replace` takes the first occurrence, so
+ *   a duplicated context mutates the wrong copy and the audit reports a false
+ *   SURVIVED — which reads as an audit hole and sends someone to fix a check that
+ *   was fine.
+ *
+ * ── What it cannot protect against ─────────────────────────────────────────
+ *
+ * Stated rather than left to be discovered, because both leave a MUTATED tree:
+ *
+ * - **`SIGKILL` or power loss.** Nothing can run a handler, so the file stays
+ *   broken. `git diff` shows it immediately and the mutation names the file, but
+ *   nothing here will tell you.
+ * - **Two concurrent runs.** The second would read the first's mutated file as
+ *   its "original" and restore to that. There is no lock; do not run two.
  *
  * ── What a failure means ───────────────────────────────────────────────────
  *
@@ -81,7 +98,14 @@ function auditPasses(audit) {
  */
 function mutate(src, m) {
   if (m.apply) return m.apply(src);
-  if (!src.includes(m.find)) return src;
+  // AMBIGUOUS IS AS BAD AS ABSENT, and less obvious. `String.replace` with a
+  // string pattern hits the FIRST occurrence only, so a `find` whose context
+  // gets duplicated by some later edit would quietly mutate the wrong copy —
+  // and the audit, seeing untouched code where it was looking, reports a false
+  // SURVIVED. That reads as an audit hole and would send someone to fix a check
+  // that was fine. A mutation must name exactly one place.
+  const n = src.split(m.find).length - 1;
+  if (n !== 1) return { ambiguous: n };
   return src.replace(m.find, m.replace);
 }
 
@@ -115,6 +139,13 @@ try {
     const original = readFileSync(path, 'utf8');
     const mutated = mutate(original, m);
 
+    if (typeof mutated === 'object') {
+      console.error(`  AMBIGUOUS    ${m.name}`);
+      console.error(`               pattern matches ${mutated.ambiguous} places in ${m.file}`);
+      console.error('               — it must name exactly one, or it mutates the wrong copy');
+      notApplied++;
+      continue;
+    }
     if (mutated === original) {
       console.error(`  NOT APPLIED  ${m.name}`);
       console.error(`               pattern no longer matches ${m.file} — asserting nothing`);
