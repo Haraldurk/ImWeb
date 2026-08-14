@@ -10,6 +10,14 @@
  *   → Parameter.value → onChange callbacks → render update
  */
 
+// The scale list for `aspec.scale`, imported rather than retyped. A SELECT
+// stores an INDEX into its options, so a second copy that drifted in ORDER
+// would leave the label reading "Major" while the writer rendered something
+// else — silently, and only on the degrees where the two scales differ. This is
+// the SOURCE_DEFS lesson (CLAUDE.md) applied before there is a second copy to
+// regret. `spectral-image.js` imports nothing itself, so this adds no weight.
+import { SCALE_NAMES } from '../audio/spectral-image.js';
+
 // Set by main.js after TableManager is initialised
 let _tableManager = null;
 let _ps           = null;   // set by registerCoreParameters; used by setTableManager
@@ -6734,6 +6742,81 @@ export function registerCoreParameters(ps) {
     [...ZONE_COMMON, ...extra].forEach(({ key, label, ...rest }) => {
       ps.register({ id: `${prefix}.${key}`, label: label + suffix, group: prefix, ...rest });
     });
+  });
+
+  // ── The spectral writer (§4.5, §8.10) ─────────────────────────────────────
+  //
+  // A frequency-time picture rendered ONCE into a partition, after which it is
+  // ordinary tape. Registered separately from ZONE_COMMON above rather than as
+  // a third entry in it: a render writer has no Run toggle and its region is an
+  // argument to the render, not a slewed target, so three of the five common
+  // keys would be controls that do nothing (the engine refuses them outright).
+  //
+  // Group 'aspec' — performance state, captured, every index pointing into a
+  // fixed code-side list. EXCEPT the trigger: `aspec.render` is 'global',
+  // because it overwrites a region of tape, and a Display State recall that
+  // silently destroys material is the exact failure the group split above
+  // exists to prevent. Triggers fire their listeners on any set, changed or
+  // not, so capturing this one would render on every recall.
+  ps.register({
+    id: "aspec.part", label: "Partition Spec", group: "aspec",
+    type: PARAM_TYPE.SELECT, value: 0,
+    options: Array.from({ length: PARTITION_SLOTS }, (_, i) => `P${i}`),
+  });
+  ps.register({
+    id: "aspec.start", label: "Start Spec", group: "aspec",
+    min: 0, max: 1, value: 0, step: 0.001,
+  });
+  ps.register({
+    id: "aspec.len", label: "Length Spec", group: "aspec",
+    min: 0, max: 1, value: 1, step: 0.001,
+  });
+  ps.register({
+    id: "aspec.unsafe", label: "Unsafe Spec", group: "aspec",
+    type: PARAM_TYPE.TOGGLE, value: 0,
+  });
+  // The musical decision (§4.5). Ten scales, and the engine knows none of them
+  // — AudioBinding turns this index plus the root into a list of frequencies.
+  ps.register({
+    id: "aspec.scale", label: "Scale", group: "aspec",
+    type: PARAM_TYPE.SELECT, value: 1, options: [...SCALE_NAMES],
+  });
+  // Semitones, not Hz, for the same reason `avoice.pitch` is (LEARNED
+  // 2026-08-08): pitch is heard as a ratio. 45 = A2, 110 Hz.
+  ps.register({
+    id: "aspec.root", label: "Root", group: "aspec",
+    min: 12, max: 96, value: 45, step: 1, unit: "st",
+  });
+  // Rows is a request, not a promise: `buildPitches` stops below Nyquist, so a
+  // tall chromatic table from a low root comes back short rather than folding
+  // partials down on top of the scale.
+  ps.register({
+    id: "aspec.rows", label: "Rows", group: "aspec",
+    min: 4, max: 128, value: 48, step: 1,
+  });
+  ps.register({
+    id: "aspec.frames", label: "Columns", group: "aspec",
+    min: 2, max: 1024, value: 256, step: 1,
+  });
+  ps.register({
+    id: "aspec.gamma", label: "Contrast", group: "aspec",
+    min: 0.25, max: 4, value: 2, step: 0.05,
+  });
+  // A camera frame is never actually black. Without a floor every row is
+  // faintly on in every column and the render is a wash of all pitches at once,
+  // which is the "drawn spectra are just noise" failure §4.5 says the scale
+  // quantization exists to avoid.
+  ps.register({
+    id: "aspec.floor", label: "Floor", group: "aspec",
+    min: 0, max: 0.5, value: 0.06, step: 0.005,
+  });
+  ps.register({
+    id: "aspec.level", label: "Level Spec", group: "aspec",
+    min: 0, max: 1, value: 1, step: 0.01,
+  });
+  ps.register({
+    id: "aspec.render", label: "Render", group: "global",
+    type: PARAM_TYPE.TRIGGER,
   });
 
   return ps;

@@ -25,6 +25,7 @@ import { AudioEngine, TAP } from './AudioEngine.js';
 import { SLEW_TABLE_BASE } from './protocol.js';
 import { TapeView } from './TapeView.js';
 import { partitionSpan, zoneSpan, clampToPartition } from './tape-geometry.js';
+import { buildPitches, imageFromLuma } from './spectral-image.js';
 import {
   AUDIO_TARGETS, describeController, describeSlew, descDiff, semitoneToHz,
   sampleSlewCurve, slewStrength, SLEW_MECHANISM, SLEW_SEGMENT,
@@ -75,6 +76,21 @@ export class AudioBinding {
     this._slewCurves = new Map();
     /** Has `process()` been PROVEN to run? Gates the hand-off — see `start()`. */
     this._alive = false;
+    /**
+     * `() => { luma: Float32Array, width, height }`, injected by main.js — the
+     * picture the spectral writer renders (§4.5). Injected rather than imported
+     * for §4.1's reason: this stays the only module seeing both halves, so it
+     * must not learn what a renderer is. Anything that can produce a luminance
+     * grid can be the source, which is what leaves paint-surface-versus-import
+     * an open client-side question rather than a protocol one.
+     */
+    this.imageSource = null;
+    // Progress on a paced render (§8.3), at frame cadence. Straight to the
+    // status line: a multi-second render with no sign of life is
+    // indistinguishable from a wedged one.
+    this.engine.onJobProgress = (_id, doneSamples, total) => {
+      this._say(`spectral: rendering ${Math.round((doneSamples / total) * 100)}%`);
+    };
   }
 
   _say(msg) { this.onStatus?.(msg); }
@@ -607,8 +623,86 @@ export class AudioBinding {
     }
     this.engine.playRate(0, g('aplay.rate'));
     this.engine.recDynamic(0, !!g('arec.dynamic'));
+    this.engine.zonePart('spectral', 0, g('aspec.part'));
+    this.engine.zoneUnsafe('spectral', 0, !!g('aspec.unsafe'));
     this.engine.setTap(g('audio.tapSrc'));
     this._pushVoice();
+  }
+
+  // ── the spectral writer (§4.5, §8.10) ─────────────────────────────────────
+
+  /**
+   * Turn the current picture into tape.
+   *
+   * The picture comes from `imageSource`, injected by main.js — the same rule
+   * the analyser tap follows (§4.1): AudioBinding is the only module allowed to
+   * see both halves, so it must not learn about the renderer to do this. It
+   * asks for `{ luma, width, height }` and does not care whether that came from
+   * the output canvas, a paint surface or a file.
+   *
+   * Everything musical happens on this side. The scale, the root, the rows, the
+   * y flip, the contrast — all of it resolves to a list of frequencies and a
+   * magnitude image before anything crosses the port, which is what lets the
+   * engine hold no vocabulary of tunings at all.
+   */
+  async renderSpectral() {
+    if (!this.running) return this._say('spectral render needs the audio engine running');
+    const g = (id) => this.ps.get(id).value;
+    const pic = this.imageSource?.();
+    if (!pic || !pic.width || !pic.height) {
+      return this._say('spectral render: no picture to read');
+    }
+
+    const pitches = buildPitches(
+      g('aspec.scale'), semitoneToHz(g('aspec.root')), g('aspec.rows') | 0,
+      this.engine.sampleRate);
+    if (!pitches.length) return this._say('spectral render: no pitch is below Nyquist');
+    /**
+     * Read the row count NOW, before anything is sent.
+     *
+     * `encode()` puts a blob's ArrayBuffer in the transfer list (rule 2, zero
+     * copy), so `specPitches` DETACHES this array and `pitches.length` is 0 on
+     * the next line. That shipped once: the image then uploaded with rows = 0,
+     * was refused, and the render came back "spectral slot 0 is empty" —
+     * a message about the slot, three steps downstream of the actual cause.
+     * Nothing below may read a typed array after passing it to the engine.
+     */
+    const rows = pitches.length;
+    // `buildPitches` stops below Nyquist, so a tall chromatic table from a high
+    // root comes back SHORT. Said out loud rather than silently accepted: the
+    // Rows control appearing to stick is otherwise indistinguishable from a bug.
+    if (rows < (g('aspec.rows') | 0)) {
+      this._say(`spectral: ${rows} of ${g('aspec.rows') | 0} rows fit below Nyquist`);
+    }
+
+    const frames = g('aspec.frames') | 0;
+    const mag = imageFromLuma(pic.luma, pic.width, pic.height, rows, frames, {
+      gamma: g('aspec.gamma'), floor: g('aspec.floor'), gain: g('aspec.level'),
+    });
+
+    const n = this._tapeLen;
+    const part = this._part(g('aspec.part'));
+    // Through `zoneSpan` for the same reason `_pushRegion` is: one conversion
+    // from fractions-of-a-partition to samples, so the render lands exactly
+    // where the tape display says it will.
+    const span = zoneSpan(part, g('aspec.start'), g('aspec.len'));
+    const startRel = (span.start - part.start) * n;
+    const lengthSamples = Math.floor((span.end - span.start) * n);
+    if (lengthSamples < 1) return this._say('spectral render: the region is empty');
+
+    const secs = (lengthSamples / this.engine.sampleRate).toFixed(1);
+    this.engine.specPitches(0, pitches);
+    this.engine.specData(0, rows, frames, mag);
+    const { done } = this.engine.render('spectral', 0, 0, startRel, lengthSamples);
+    this._say(`spectral: rendering ${secs}s from ${rows}×${frames}…`);
+    const res = await done;
+    // Reported either way. A render that refused in silence looks exactly like
+    // one that is still going, and the region it would have written is the one
+    // the performer is about to play.
+    this._say(res.ok
+      ? `spectral: ${secs}s rendered into P${g('aspec.part')}`
+      : `spectral render refused (${res.code}): ${res.message}`);
+    return res;
   }
 
   /**
@@ -747,6 +841,14 @@ export class AudioBinding {
     }
     this._on('aplay.rate', (v) => this.engine.playRate(0, v));
     this._on('arec.dynamic', (v) => this.engine.recDynamic(0, !!v));
+
+    // The spectral writer. Only the two the ENGINE holds are pushed on change —
+    // partition and unsafe. Everything else (scale, root, rows, region,
+    // contrast) is read at render time, because it never crosses the port as a
+    // setting: it is arithmetic that produces the frequencies and the image.
+    this._on('aspec.part', (v) => this.engine.zonePart('spectral', 0, v));
+    this._on('aspec.unsafe', (v) => this.engine.zoneUnsafe('spectral', 0, !!v));
+    this._on('aspec.render', () => { this.renderSpectral(); });
 
     // Reallocating throws away every recording, so it is not a live control:
     // it applies on the next enable. Reflected here rather than silently

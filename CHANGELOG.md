@@ -19,9 +19,35 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
   most ordinary performance move there is, fading to black, was the trigger.
 
 ### Added
+- **The spectral writer** (audio §4.5) — a new panel under **Audio → Spectral
+  Writer** that turns the picture into tape. Whatever the instrument is
+  currently showing, with the whole effect chain already in it, is read as a
+  frequency-time image and rendered once into a partition, after which it is
+  ordinary tape: scrubbed, played backwards, displaced from, like anything else
+  you recorded. There is no transform in the playback path.
+
+  The vertical axis is quantized to a **musical scale** — ten of them, including
+  the harmonic series, with a Root, a row count and a column count. That
+  quantization is the whole difference between this and noise, which is what
+  Metasynth and UPIC found forty and fifty years ago. **Contrast** and **Floor**
+  decide how much of the picture counts as sound; a camera frame is never
+  actually black, and without a floor every pitch is faintly on at once.
+
+  It renders **additively, one oscillator per row, not through an inverse FFT** —
+  see §8.10 of the audio blueprint. FFT bins are evenly spaced and a scale is
+  not, so an inverse transform rounds every degree onto the nearest bin and
+  undoes the quantization the feature exists for. Measured: up to 73 cents off.
+
+  The render is **paced across audio quanta**, so a fifteen-second render never
+  interrupts what is already playing, reports progress while it runs, and can be
+  cancelled. It cannot clip and it cannot write outside the region it was given.
 - `tests/audit-unresolved-identifiers.mjs` — asserts that every free identifier
   in `src/core/` resolves to a declaration in its own file, which is the family
   the Fade bug belonged to rather than the single instance.
+- `tests/audit-audio-spectral.mjs` — 50 checks on the spectral writer, every one
+  measured on the samples it produced (pitch off interpolated zero crossings,
+  energy by Goertzel) rather than asserted about the source. Calibrated by
+  mutation: twelve deliberate breakages of the engine, twelve caught.
 
 ---
 

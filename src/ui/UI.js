@@ -349,6 +349,16 @@ export function buildMappingPanels(ps, contextMenu) {
     'audio-play-params': pick('aplay', ['part', 'start', 'len', 'rate', 'unsafe', 'on']),
     // Signal order, not registration order: source → its own controls → filter
     // → saturator → level, so the row list reads as the chain it is.
+    // The spectral writer (§4.5). Destination first, then the musical decision
+    // (scale/root/rows), then how the picture is read, then the verb — which is
+    // the order the act happens in. `aspec.render` is group 'global' so it
+    // cannot be captured by a Display State, and is therefore listed explicitly
+    // rather than through pick(), exactly as `audio.enable` is above.
+    'audio-spec-params': [
+      ...pick('aspec', ['part', 'start', 'len', 'unsafe', 'scale', 'root', 'rows',
+        'frames', 'gamma', 'floor', 'level']),
+      ps.get('aspec.render'),
+    ].filter(Boolean),
     'audio-voice-params': pick('avoice', ['on', 'src', 'wave', 'pitch', 'fmRatio',
       'fmIndex', 'colour', 'cut', 'res', 'ftype', 'drive', 'level']),
   };

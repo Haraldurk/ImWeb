@@ -99,6 +99,7 @@ import { TeletextSource } from "./inputs/TeletextSource.js";
 import { registerTeletextParams } from "./inputs/TeletextParams.js";
 import { buildTeletextUI } from "./inputs/TeletextUI.js";
 import { AudioBinding } from "./audio/AudioBinding.js";
+import { lumaFromRGBA } from "./audio/spectral-image.js";
 import { DrawLayer } from "./inputs/DrawLayer.js";
 import { StrokeLooper, LOOP_SLOTS } from "./inputs/StrokeLooper.js";
 import { TextLayer } from "./inputs/TextLayer.js";
@@ -1071,6 +1072,31 @@ async function main() {
   // describe them to the worklet. Injected rather than imported, so
   // AudioBinding stays the only module that sees both halves.
   audio.controllers = ctrl;
+  // The spectral writer's picture (§4.5, §8.10). Injected, not imported, for
+  // the same reason the tap is: AudioBinding stays the only module that sees
+  // both halves, so it asks for a luminance grid and never learns what a
+  // renderer is. Reading the OUTPUT canvas is the §4.7 coupling at its
+  // cheapest — whatever the instrument is showing becomes the spectrum, with
+  // the whole effect chain already in it.
+  {
+    // One scratch canvas, reused. `getImageData` on the GL canvas directly
+    // would need preserveDrawingBuffer; drawing it into a 2D canvas costs a
+    // blit and works on any frame, which is what `capturePresetThumb` does too.
+    const grab = document.createElement("canvas");
+    const gctx = grab.getContext("2d", { willReadFrequently: true });
+    audio.imageSource = () => {
+      // Sized from the render request, not from the display: the columns and
+      // rows are what the picture is about to become, so reading it at that
+      // resolution is both the cheapest grab and the least aliased one — the
+      // browser's own downscale is a box filter over the whole frame.
+      const w = Math.max(2, Math.min(1024, ps.get("aspec.frames").value | 0));
+      const h = Math.max(2, Math.min(256, ps.get("aspec.rows").value | 0));
+      if (grab.width !== w || grab.height !== h) { grab.width = w; grab.height = h; }
+      gctx.drawImage(canvas, 0, 0, w, h);
+      const rgba = gctx.getImageData(0, 0, w, h).data;
+      return { luma: lumaFromRGBA(rgba, w, h), width: w, height: h };
+    };
+  }
   {
     const statusEl = document.getElementById("audio-status");
     audio.onStatus = (msg) => { if (statusEl) statusEl.textContent = msg; };
