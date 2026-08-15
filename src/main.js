@@ -5960,18 +5960,71 @@ void main() {
 
   let mediaRecorder = null;
   let recordChunks = [];
+  // The MediaStreamAudioDestinationNode for the current recording, plus the
+  // node we hung it off. Held so the edge can be dropped on stop — leaving it
+  // connected would keep a destination node alive per recording.
+  let _recAudioDest = null;
+  let _recAudioFrom = null;
+
+  // Add the instrument's sound to a canvas capture stream, if there is any.
+  // Tapped POST-limiter (`engine.node` IS the limiter's output, §8.6) off the
+  // engine's own AudioContext — the one-context decision means this is a second
+  // edge on an existing graph, not a second clock to align against the video.
+  // Returns true if an audio track was added.
+  function _attachRecordAudio(stream) {
+    const eng = audio.engine;
+    // `node` is null until start() and again after close(), so this is also the
+    // "is the engine actually running" test — a suspended or never-started
+    // engine would contribute a track of digital silence, which is worse than
+    // no track: it looks like the audio was captured and came out empty.
+    if (!eng?.ctx || !eng.node) return false;
+    _recAudioDest = eng.ctx.createMediaStreamDestination();
+    _recAudioFrom = eng.node;
+    // An extra outgoing edge; the existing node → ctx.destination connection is
+    // untouched, so monitoring keeps playing while recording.
+    _recAudioFrom.connect(_recAudioDest);
+    for (const t of _recAudioDest.stream.getAudioTracks()) stream.addTrack(t);
+    return true;
+  }
+
+  function _detachRecordAudio() {
+    // engine.close() mid-recording disconnects `node` wholesale, so the edge may
+    // already be gone; disconnecting a live edge twice throws.
+    try { _recAudioFrom?.disconnect(_recAudioDest); } catch { /* already gone */ }
+    _recAudioFrom = null;
+    _recAudioDest = null;
+  }
+
+  // vp9+opus is what Chrome and Firefox both give us; the fallbacks exist so a
+  // browser that refuses the explicit codec string still records rather than
+  // throwing NotSupportedError out of the constructor.
+  function _recMimeType(withAudio) {
+    const wanted = withAudio
+      ? ["video/webm;codecs=vp9,opus", "video/webm;codecs=vp8,opus", "video/webm"]
+      : ["video/webm;codecs=vp9", "video/webm"];
+    return wanted.find((m) => MediaRecorder.isTypeSupported?.(m) ?? true);
+  }
 
   document.getElementById("btn-record")?.addEventListener("click", async () => {
     const btn = document.getElementById("btn-record");
     if (!mediaRecorder) {
       const stream = canvas.captureStream(60);
+      const withAudio = _attachRecordAudio(stream);
+      if (!withAudio) {
+        console.info(
+          "[Record] Audio engine is not running — recording video only. " +
+            "Turn Audio on before starting the recording to capture sound.",
+        );
+      }
       mediaRecorder = new MediaRecorder(stream, {
-        mimeType: "video/webm;codecs=vp9",
+        mimeType: _recMimeType(withAudio),
         videoBitsPerSecond: 8_000_000,
+        ...(withAudio ? { audioBitsPerSecond: 192_000 } : {}),
       });
       recordChunks = [];
       mediaRecorder.ondataavailable = (e) => recordChunks.push(e.data);
       mediaRecorder.onstop = () => {
+        _detachRecordAudio();
         const blob = new Blob(recordChunks, { type: "video/webm" });
         const a = document.createElement("a");
         a.href = URL.createObjectURL(blob);

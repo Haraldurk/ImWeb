@@ -8,6 +8,26 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
 
 ## [Unreleased]
 
+### Fixed
+- **The output recorder now records the sound too.** `canvas.captureStream()`
+  returns video only, so every recording ImWeb has ever made had no audio track
+  at all — confirmed on four real files, each of which `ffprobe` reports as a
+  single `codec_type=video` stream. Not a silent track: no track. The recorder
+  now taps the audio engine post-limiter through a
+  `MediaStreamAudioDestinationNode` on the engine's own `AudioContext` (the
+  one-context decision from the audio build is what keeps this a second edge on
+  an existing graph rather than two clocks to align), adds that track to the same
+  `MediaStream`, and records `video/webm;codecs=vp9,opus` at 192 kbit/s audio.
+  Monitoring keeps playing while recording. With the audio engine off, the
+  recording is video-only as before and the console says so — a track of digital
+  silence would look like captured audio that came out empty.
+
+### Docs
+- `docs/Recorder-Frame-Rate-Investigation.md` — frame-timing measurements from
+  four real recordings, what they rule out (jitter, bitrate, `captureStream(60)`),
+  the resolution correlation, a DPR regression found on the way, and the one
+  measurement still to take. No frame-rate fix applied yet, deliberately.
+
 ---
 
 ## [0.20.0] — 2026-08-15 — The Other Half
