@@ -1,158 +1,160 @@
-# ImWeb v0.20.0 — The Other Half
+# ImWeb v0.21.0 — The Resolution
 
 *Released 2026-08-15*
 
-ImWeb has been a video instrument that could *listen*. Sound-reactive controllers
-have driven the picture for a long time — a kick drum opening a keyer, a room
-tone bending a warp. What it could not do was make a sound of its own.
+A beta tester on a 4K monitor said the Rutt-Etra was "not convincing" and asked
+for higher output resolution. Both halves of that were true. Neither was the
+whole story.
 
-This release gives it the other half: a tape it can record onto, scrub, paint
-into and play back, with the picture deciding what it sounds like.
+He had also mentioned, separately and never in writing, that he changes his
+monitor's resolution in order to use ImWeb at all — because the interface is
+drawn in 8 and 10 pixel type, and on a 4K panel addressed at its native
+3840×2160 that is about half the physical size it was designed to be. So he
+dropped the display to 1080p to read the panel, and *that* is what made the
+picture soft: a smaller canvas, then stretched back across a 4K screen.
 
-Two things to know before the rest. **The audio engine never starts by itself** —
-it takes a deliberate **Audio On**, because a browser audio context created
-without a gesture comes up silently suspended and looks identical to a working
-one, and because an instrument should not seize the sound card merely by being
-open. And **it tells you when the room is a wire**: with a microphone open and
-monitoring set to speakers, the signal path draws the closed
-`mic → tape → speakers → mic` loop instead of leaving you to discover it at
-volume.
+One cause, two symptoms, and the symptom that got reported was the downstream
+one. This release is about resolution in three senses — the interface at a
+legible size, the output at the size your screen can actually show, and a
+Rutt-Etra scan that keeps gaining detail across the whole range of its Lines
+knob instead of quietly stopping a third of the way up.
 
 ---
 
-## A tape, with regions that mean something
+## An interface that survives a dense display
 
-The **Audio** tab holds a length of tape — sixty seconds by default — divided
-into four partitions. A **Recording Zone** writes into one, a **Playback Zone**
-reads from one, at any rate including negative, and both are ordinary parameters
-that a controller can drive.
+There is a new **UI Size** control in the I/O panel: **Auto**, or 100% through
+200%.
 
-Positions are stored as fractions of a partition rather than as sample counts, so
-a saved state means the same thing on a machine with a different tape length.
-Partition layout is a setup act: it is fixed while a zone on it is running, and
-the instrument says so rather than quietly ignoring you.
+**Auto is the interesting setting.** The question it answers is not "is this
+screen big?" but "is this screen dense, and is the operating system already
+compensating?" — because those have opposite answers on the same monitor. A 4K
+panel in macOS's scaled HiDPI mode reports a 1920-pixel-wide screen at device
+pixel ratio 2, and every measurement in the interface is already the right
+physical size; nothing should happen. The *same panel* run at native 3840×2160
+reports ratio 1, and everything is half size. Auto looks at the panel's real
+pixel count and at what the OS is already doing, and asks only for the
+remainder. On every display where the OS is doing its job, it does nothing at
+all.
 
-## Painting sound — the spectral writer
+Your choice is stored per browser, not in your project. The right value is a
+property of the monitor in front of you, not of the patch — a scale saved into a
+Display State would be wrong the moment the project opened on a different
+machine.
 
-**Audio → Spectral Writer** takes whatever ImWeb is showing and renders it into
-the tape as sound: brightness becomes amplitude, height becomes pitch, and the
-horizontal axis becomes time. The whole effect chain is already in the picture,
-so what you hear is what you built.
+## 1440p and 4K output
 
-The vertical axis is quantized to a **musical scale** — chromatic through
-pentatonic, whole tone, octatonic, and the harmonic series, which is not
-octave-repeating and turns a vertical brush stroke into a timbre rather than a
-chord. That quantization is the difference between an instrument and a noise
-generator, and it is why this is not an inverse FFT: FFT bins are evenly spaced
-in frequency and scales are not, so a transform would re-quantize the one axis
-the feature exists for.
+The **Display** and **Record** resolution menus now reach **2560×1440** and
+**3840×2160**.
 
-The render is paced across audio frames rather than done in one blocking pass. It
-does not interrupt what is already playing, reports progress while it runs, can
-be cancelled, cannot clip, and cannot write outside the region it was given.
+These are fixed render sizes rather than anything derived from your screen. The
+canvas gets a true 4K backing buffer and is letterboxed into whatever space it
+has, which means a 4K display is needed to *see* the result at 1:1 but not to
+*produce* it — the recorder follows the same setting, so 4K capture works from a
+laptop.
 
-### And now in stereo
+They are at the end of the menu rather than in numeric order, deliberately.
+These menu values are stored in your saved states as positions in the list, so
+inserting anything in the middle would silently repoint every project you have.
 
-**Pan Image** decides where each part of the picture sits between the speakers.
-**Colour** reads the red-to-blue balance — the channel the writer otherwise
-throws away — so warm and cool parts of one frame land on opposite sides.
-**Spread** puts pitch across the field, lowest to the left. **Sweep** travels
-left to right across the render's own duration. **Off** is the default and
-renders mono, so nothing you have already made changes.
+## Rutt-Etra, at a density worth looking at
 
-Colour asks where the *sound* in each cell is rather than where the pixels are: a
-bright stroke keeps its position instead of drifting toward centre because it
-happens to sit on a black background. The pan law is equal-power, so moving a
-stroke across the field does not change how loud it is.
+The Lines knob went to 480. It now goes to **1080** — and more importantly, it
+now does something across its whole range.
 
-## Finding sounds instead of scrubbing for them
+The scan's horizontal sampling was capped at 512 columns. Above 256 lines, then,
+the scan got finer vertically and stayed *exactly as coarse horizontally*: the
+top half of the knob bought nothing. Columns now follow the line count up to
+2048, and the slew history follows them, so nothing else becomes the limit
+first. Even at the old 480-line maximum this doubles the horizontal detail.
 
-**Audio → Corpus** measures the tape in short grains and plots them on a pad by
-two of four descriptors — loudness, brightness, pitch, periodicity. Touching the
-pad finds the nearest grain and plays it. A **Grain Player** reads from that
-position with size, density, pitch and spray of its own.
+The top of the range is genuinely heavy — 1080 lines is a 1080×2048 lattice of
+about 4.4 million vertices, and dragging Lines around up there will stall while
+the geometry rebuilds. That cost is paid only if you ask for it. The default is
+still 120.
 
-The map only shows what the reader can actually reach. An earlier draft analysed
-the whole tape while the player read a single partition, so the pad plotted
-grains that would silently play as something else; the fix was to filter the map
-rather than to widen the reader.
+## The recorder records sound
 
-## Monitoring, and seeing the loop
+Every recording ImWeb has ever made had no audio track. Not a silent track — no
+track at all: `canvas.captureStream()` returns video only. This was confirmed
+against four real recordings, each of which reports a single video stream and
+nothing else.
 
-**Audio → Monitoring** — Headphones or Speakers — is how you tell ImWeb whether
-the room closes the circuit. It changes no gain and no routing. What it changes
-is what the instrument knows, and therefore what it can tell you.
-
-Speakers is the default, because the safe state should require no selection.
-Guessing headphones would suppress the one warning that matters on exactly the
-setup where it matters.
-
-When the loop is real, the **signal path display** grows a row for the audio
-graph and draws the return edge — the one connection that cannot be a row of
-arrows, because it goes backwards:
-
-```
-mic → rec P0 → tape 60s → play P0 → limit → ▶ speakers   ⚠ room
-└────────────────────────────────────────────────┘
-```
-
-**Dashed and grey** means the room is a wire with nothing driving it: you are one
-Run toggle from a howl, and the row names the toggle. **Solid and red** means a
-recorder and a reader are on the same material and you are in it. A warning line
-can say "closed"; only a drawing can say *which link to open*.
-
-The monitoring switch also takes no controller — a control that changes your
-exposure to feedback should not be sweepable — and that rule is now enforceable
-rather than merely written down.
+The recorder now taps the audio engine after its limiter and adds that as a real
+track on the same stream, writing `video/webm` with VP9 video and Opus audio at
+192 kbit/s. Monitoring keeps playing while you record. With the audio engine
+switched off you get a video-only file exactly as before, and the console says
+so — a track of digital silence would look like captured audio that came out
+empty, which is worse than no track.
 
 ---
 
 ## Fixed
 
-**The master Fade works.** Raising Fade above zero — by the slider, by `h`, by a
-controller, by a state recall or a loaded project — threw an error inside the
-render loop and stopped the picture on its last good frame. It went unnoticed
-because Fade defaults to 0, the one value that keeps the branch shut, so the most
-ordinary move there is — fading to black — was the trigger.
+**A display change no longer quadruples the cost of every frame.** ImWeb
+deliberately renders at pixel ratio 1: on a Retina display, ratio 2 doubles
+every dimension and quadruples the fill cost across more than 35 shader passes
+for no visible gain on moving video. But the handler watching for display
+changes adopted the new ratio, undoing that decision permanently the first time
+the window met a screen of a different density — with nothing to put it back.
+The picture is identical either way, so the only symptom was an instrument that
+became four times more expensive to draw at a moment that correlated with
+nothing. It was found by reading frame timestamps out of real recordings: the
+one file made at ratio 2 ran at 19 fps against 30 for files with half the pixels.
 
-**Changing the recording partition while recording** no longer looks like it
-worked when it did not. The button moved, the take went on landing in the old
-partition, and nothing said so. It now springs back and explains: stop the
-recorder, move it, start it again.
+**Floating surfaces land where you click them at any UI scale.** The parameter
+context menu, the controller popover, detached panels, the floating signal path,
+the on-screen keyboard and both slot menus all positioned themselves in screen
+coordinates written straight into a scaled element — which multiplies them
+again. At 200% the badge menu opened twice as far from the pointer as the click,
+and a detached panel opened past the right edge of a 4K screen taking its own
+drag handle with it. Found in code review rather than testing, because at 100%
+the two coordinate systems are identical and nothing is visibly wrong.
+
+**Modals fit the screen at any UI scale.** The documentation viewer's height was
+fixed at 80% of the window, which inside scaled chrome became 160% — clipping
+its own titlebar and close button off the top of the screen.
+
+**The large-display breakpoint no longer claims to fix type size.** A stylesheet
+rule aimed at exactly this problem set a base font size that was measured to
+reach zero elements on screen, because every one of the 198 font sizes in the
+interface is set directly and a direct setting always beats an inherited one. It
+was growing the spacing while leaving every letter the same size.
 
 ---
 
 ## Under the hood
 
-The audio engine is an AudioWorklet with **zero imports by construction**, which
-is what lets it be instantiated in Node and driven quantum by quantum. Every
-claim this release makes about sound is measured on the samples it produced — a
-row lands on the pitch the scale says it does, a hard-panned image puts nothing
-in the other channel, centre sits at 1/√2 and not at a 3 dB dip — rather than
-asserted about the source.
+Three new invariant audits run on every commit. One pins the pixel-ratio
+decision, so the four-times-cost regression cannot come back unnoticed. One
+covers UI scale end to end — including a rule that had to be written as a pure
+function and unit-tested, because the display it exists for cannot be reproduced
+on the machine it was written on.
 
-**`npm run mutate`** commits that discipline. Forty-eight registered defects, each
-with a stated consequence, each asserted to turn its audit red. Two of them found
-real faults rather than confirming absent ones, which is the argument for keeping
-them.
-
-The stereo placement and the loop marking were both checked by ear and eye on
-real hardware before this shipped, not only in Node.
+The third lesson is about the audits themselves. The first version of the UI
+scale audit listed the five full-screen overlays it checked. There were seven,
+and one of them contained a live instance of the very bug the audit existed to
+prevent — and the audit reported all clear. An audit that enumerates its
+subjects can only pass while that list is complete, which is the one thing
+nothing checks. It now derives them from the stylesheet instead.
 
 ---
 
 ## Upgrading
 
-**No project or state file changes.** `.imweb`, `.imbank` and `.imstate` files
-from v0.19.0 load unchanged. Audio parameters are new, so older files simply have
-none — the engine stays off until you turn it on.
+Nothing to do. Saved projects, banks and states load unchanged: the new
+resolutions were appended rather than inserted, and the Rutt-Etra Lines maximum
+is a number rather than a menu position, so a project that saved 240 still means
+240.
 
-The service worker cache is now named after the app version: **`imweb-v0.20.0`**.
-**If you self-host, deploy a fresh `npm run build`** — a returning visitor's
-browser serves the cached `index.html` until that constant changes, and a stale
-one points at a bundle hash that no longer exists on disk. Naming the cache after
-the version also means the staleness is now visible in the literal itself, and
-the audit checks it exactly rather than inferring it from the last release tag.
+The service worker cache is now named **`imweb-v0.21.0`**. **If you self-host,
+deploy a fresh `npm run build`** — a returning visitor's browser serves the
+cached `index.html` until that constant changes, and a stale one points at
+bundle hashes that no longer exist on disk.
+
+If your interface suddenly looks larger after updating, that is Auto deciding
+your display is dense and unscaled. Set **UI Size** to 100% in the I/O panel if
+you preferred it as it was.
 
 ## Credits
 

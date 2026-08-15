@@ -8,6 +8,21 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
 
 ## [Unreleased]
 
+---
+
+## [0.21.0] — 2026-08-15 — The Resolution
+
+A beta tester on a 4K monitor reported that the Rutt-Etra was "not convincing"
+and asked for higher output resolution. Both halves of that were true, and
+neither was the whole story: he had also, separately, been *changing his
+monitor's resolution* in order to read the interface at all — which is what made
+the picture look soft in the first place. One cause, two symptoms, and the
+symptom that got reported was the downstream one.
+
+So this release is about resolution in three senses: the interface at a legible
+size on a dense display, the output at 1440p and 4K, and a Rutt-Etra scan that
+finally keeps gaining detail across the whole range of its Lines knob.
+
 ### Added
 - **UI scale, and an interface that survives a 4K monitor.** New `UI Size`
   control in the I/O panel (Auto / 100–200%). On a display the OS is *not*

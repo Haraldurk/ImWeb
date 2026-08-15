@@ -8,7 +8,7 @@
 // content hash for the bundle each time — so a stale cached index.html points
 // at an asset that no longer exists on disk. That fails as a BLANK APP, not as
 // "my change didn't show up" (see docs/LEARNED.md, 2026-07-31).
-const CACHE = 'imweb-v0.20.0'; // bumped: v0.19.0 — Ctrl+click menus, slew curves, ⌘K
+const CACHE = 'imweb-v0.21.0'; // bumped: v0.21.0 — UI scale, 1440p/4K output, Rutt-Etra scan density
 
 // The /src/* entries only exist on the DEV server; a production build bundles
 // them into /assets/* under hashed names. That matters because addAll() is
