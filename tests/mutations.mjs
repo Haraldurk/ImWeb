@@ -516,4 +516,99 @@ export const MUTATIONS = [
     find: '    applyResolution(ps.get(\'output.resolution\').value);\n    window.matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`)\n      .addEventListener(\'change\', _onDPRChange, { once: true });\n  }',
     replace: '  }',
   },
+
+  // ═════════════════════════════════════════════════════════════════════════
+  // UI scale — the coordinate seam that `zoom` opens
+  //
+  // Every one of these is a defect that SHIPPED in the first cut of the UI
+  // scale change and was found in review rather than testing, which is the
+  // whole reason the audit exists: at scale 1 the two coordinate systems are
+  // identical, so none of it is visible on the machine it was written on.
+  //
+  // Two of these mutations reproduce faults that were live in a pushed commit
+  // (the zoomed scrim, and the raw viewport write), and one reproduces the
+  // enumeration flaw in the audit's own first draft.
+  // ═════════════════════════════════════════════════════════════════════════
+  {
+    name: 'ui-scale: a full-viewport scrim joins the zoom set',
+    audit: 'audit-ui-scale.mjs',
+    file: 'src/style.css',
+    why: 'this shipped — #mobile-state-modal was in the zoom list, and `inset: 0` at 2x is twice the viewport: the backdrop overflows the screen and the card it centres drifts off the bottom-right, unreachable',
+    find: '#status-bar,\n#control-panel,',
+    replace: '#kb-help,\n#status-bar,\n#control-panel,',
+  },
+  {
+    name: 'ui-scale: a modal card loses its zoom',
+    audit: 'audit-ui-scale.mjs',
+    file: 'src/style.css',
+    why: 'the inverse, and the reason the scrim/box split has two checks rather than one — the backdrop behaves but the shortcut card renders at 1x inside a 2x interface, i.e. unreadable on exactly the display the feature is for',
+    find: '#onboarding-box,\n#kb-help-box,',
+    replace: '#onboarding-box,',
+  },
+  {
+    name: 'ui-scale: a raw viewport unit returns inside the zoom set',
+    audit: 'audit-ui-scale.mjs',
+    file: 'src/style.css',
+    why: 'this shipped — 80vh inside a zoomed subtree resolves against the UNZOOMED viewport and is then multiplied, so at 2x the docs viewer is 160vh and its own titlebar and close button are clipped off the top of the screen',
+    find: '    height: calc(80 * var(--vh));',
+    replace: '    height: 80vh;',
+  },
+  {
+    name: 'ui-scale: a scale-divided helper leaks outside the zoom set',
+    audit: 'audit-ui-scale.mjs',
+    file: 'src/style.css',
+    why: 'the converse mistake, and the easier one to make once --vh exists: on an unzoomed element the division is never undone, so the value silently shrinks to half at 2x — here it would crop the picture rather than the chrome',
+    // Anchored on the declaration too: `#output-panel {` alone matches twice,
+    // the second inside a max-width media query.
+    find: '#output-panel {\n    flex: 1;',
+    replace: '#output-panel {\n    max-height: calc(90 * var(--vh));\n    flex: 1;',
+  },
+  {
+    name: 'ui-scale: #app stops compensating for the chrome it does not scale with',
+    audit: 'audit-ui-scale.mjs',
+    file: 'src/style.css',
+    why: '#app is the ONE element that is not zoomed but must clear chrome that is — drop the multiply and the whole app area sits tucked under the status bar at any scale above 1, hiding the first row of the panel and the top of the picture',
+    find: '    top: calc(var(--status-h) * var(--ui-scale));',
+    replace: '    top: var(--status-h);',
+  },
+  {
+    name: 'ui-scale: the safe-area inset gets scaled with the type',
+    audit: 'audit-ui-scale.mjs',
+    file: 'src/style.css',
+    why: 'an inset describing a physical bezel cutout is not a type-size preference — multiplying it strands a 68px dead band above the home indicator on iOS at 2x, and the plausible way to write it is exactly this, by folding env() inside the existing multiply',
+    find: '        (var(--signal-h) + var(--state-h)) * var(--ui-scale) + env(safe-area-inset-bottom, 0px)',
+    replace: '        (var(--signal-h) + var(--state-h) + env(safe-area-inset-bottom, 0px)) * var(--ui-scale)',
+  },
+  {
+    name: 'ui-scale: the dead body font-size returns to the wide breakpoint',
+    audit: 'audit-ui-scale.mjs',
+    file: 'src/style.css',
+    why: 'it looks like it fixes small type and was measured to reach ZERO elements, because all 198 font-size declarations are set on the elements themselves — re-adding it is how someone concludes the problem is handled and removes --ui-scale',
+    find: '@media (min-width: 2560px) {\n    :root {',
+    replace: '@media (min-width: 2560px) {\n    body {\n        font-size: 14px;\n    }\n    :root {',
+  },
+  {
+    name: 'ui-scale: a zoomed surface is positioned from a raw viewport coordinate',
+    audit: 'audit-ui-scale.mjs',
+    file: 'src/ui/components/CtrlPopover.js',
+    why: 'this shipped, five times over — gBCR is viewport px and style.left is element-local, so a zoomed popover lands at 2x the anchor: the controller editor opens far from the badge that summoned it, on the display the whole feature exists for',
+    find: '  setViewportPos(popover, r.right + 4, r.top);',
+    replace: '  popover.style.left = `${r.right + 4}px`;\n  popover.style.top  = `${r.top}px`;',
+  },
+  {
+    name: 'ui-scale: a drag grabs its offset in the wrong coordinate space',
+    audit: 'audit-ui-scale.mjs',
+    file: 'src/main.js',
+    why: 'the second form of the same fault and the more confusing one to debug — clientX is viewport, offsetLeft is element-local, so the panel jumps the moment you grab it and then tracks at twice the pointer speed',
+    find: '      const b = panel.getBoundingClientRect();\n      ox = e.clientX - b.left;\n      oy = e.clientY - b.top;',
+    replace: '      ox = e.clientX - panel.offsetLeft;\n      oy = e.clientY - panel.offsetTop;',
+  },
+  {
+    name: 'ui-scale: the auto rule keys off viewport width instead of panel density',
+    audit: 'audit-ui-scale.mjs',
+    file: 'src/ui/layout/LayoutManager.js',
+    why: 'this shipped and was caught in review — a width test doubles the interface on a 3440x1440 ultrawide, which is ordinary ~110 PPI desktop density that people run at 100%, and leaves a portrait 4K at 1x despite being the dense case it exists for',
+    find: '  const physShort = Math.min(screenW, screenH) * dpr;\n  if (physShort < 2000) return 1;',
+    replace: '  if (screenW < 3200) return 1;',
+  },
 ];
