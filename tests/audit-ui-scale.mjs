@@ -25,7 +25,21 @@
  * inner box must carry the zoom instead — and #app, the one element that is not
  * zoomed but must clear chrome that is, has to multiply the bar heights itself.
  *
+ * **Calibrated by mutation, and the calibration is committed** — the 10 defects
+ * these checks are meant to catch live in `tests/mutations.mjs` and are re-run
+ * by `npm run mutate`. Three of them are faults that were live in a pushed
+ * commit rather than hypotheticals: the zoomed scrim, the raw viewport write,
+ * and an auto rule that keyed off viewport width while claiming density.
+ *
+ * One of them found a real hole rather than confirming an absent one. The
+ * safe-area check used to pattern-match for `env()` sitting beside the
+ * `* var(--ui-scale)`, and the mutation that folds the inset INTO the
+ * multiplied group walked straight through it — a closing paren between the
+ * two was enough. It is structural now: whatever the multiply applies to must
+ * not contain the inset.
+ *
  * Run:  node tests/audit-ui-scale.mjs
+ *       npm run mutate audit-ui-scale
  */
 
 import { readFileSync } from 'node:fs';
@@ -316,10 +330,24 @@ check('#app top multiplies --status-h by --ui-scale',
   'without it #app sits under the zoomed status bar at any scale above 1');
 check('#app bottom multiplies the two bottom bars by --ui-scale',
   /bottom:\s*calc\([\s\S]*var\(--signal-h\)[\s\S]*var\(--state-h\)[\s\S]*var\(--ui-scale\)/.test(appRule));
-check('the safe-area inset is NOT multiplied',
-  /env\(safe-area-inset-bottom[^)]*\)\s*\)?\s*;?\s*$|\+\s*env\(safe-area-inset-bottom/.test(appRule) &&
-  !/var\(--ui-scale\)\s*\*\s*env\(|env\([^)]*\)\s*\*\s*var\(--ui-scale\)/.test(appRule),
-  'the inset is a property of the device bezel, not of our type size');
+// Structural, not textual. The first version of this check pattern-matched for
+// `env()` sitting immediately beside the `* var(--ui-scale)`, and a mutation
+// walked straight through it: folding the inset INTO the multiplied group —
+// `(a + b + env(...)) * var(--ui-scale)` — puts a closing paren between the two
+// and the regex no longer matches, so the check passed on code that scales the
+// bezel. Found by `npm run mutate audit-ui-scale`, which is the entire argument
+// for calibrating an audit rather than trusting that it reads correctly.
+//
+// The rule that actually matters: whatever is multiplied must not contain the
+// inset. So take everything the multiply applies to and look in THERE.
+const bottomDecl = /bottom:\s*calc\(([\s\S]*?)\);/.exec(appRule)?.[1] ?? '';
+const multipliedPart = bottomDecl.split(/\*\s*var\(--ui-scale\)/)[0];
+check('the safe-area inset is still applied at all',
+  /env\(safe-area-inset-bottom/.test(bottomDecl),
+  'without it the bottom bars sit under the iOS home indicator');
+check('the safe-area inset is NOT inside what --ui-scale multiplies',
+  bottomDecl !== '' && !/env\(/.test(multipliedPart),
+  'the inset is a property of the device bezel, not of our type size — at 2x it would strand a dead band above the home indicator');
 
 // The multiply must live where body-level overrides are visible. body.sp-audio,
 // body.statebar-hidden and body.signalpath-hidden all redefine these heights on
