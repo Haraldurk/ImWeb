@@ -8,6 +8,23 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
 
 ## [Unreleased]
 
+### Added
+- **1440p and 4K output resolutions.** `Display`/`Record` in the I/O panel now
+  reach 2560×1440 and 3840×2160, appended after `¼` so existing saved states
+  keep their indices. These are fixed render sizes, not display-derived — the
+  canvas gets a true 4K backing buffer and letterboxes into whatever container
+  it is in, so a 4K screen is needed to *see* it 1:1 but not to *produce* it.
+
+### Changed
+- **Rutt-Etra reaches a real scan density.** `rutt.lines` now goes to 1080
+  (was 480), and the horizontal sample count is no longer pinned at 512 — above
+  256 lines the scan used to get denser vertically while staying exactly as
+  coarse horizontally, so the top half of the Lines knob added nothing. Columns
+  now track lines 2:1 up to 2048, and the slew history follows at 2048² so it
+  is never the limiting term. The top of the range is heavy on purpose:
+  1080 lines is a 1080×2048 lattice, ~4.4M vertices, and re-dragging Lines up
+  there stalls while the grid rebuilds. The default stays 120.
+
 ---
 
 ## [0.20.0] — 2026-08-15 — The Other Half

@@ -368,16 +368,30 @@ const SURFACES = [
   },
 ];
 
-/** Horizontal sample count for a given line count. */
-const colsFor = (lines) => Math.min(512, Math.max(32, Math.round(lines * 2)));
+/**
+ * Horizontal sample count for a given line count.
+ *
+ * The ceiling was 512, which meant every line count above 256 sampled the SAME
+ * 512 columns — the scan got denser vertically and stayed exactly as coarse
+ * horizontally, so the relief stopped gaining detail long before the Lines
+ * knob ran out. 2048 keeps the 2:1 ratio honest across the whole (raised)
+ * range: at the 1080-line maximum the lattice is 1080×2160, ~2.3M grid points.
+ * That is a real cost — _rebuild() walks the grid in JS and reallocates, so a
+ * drag across the top of the Lines range stutters. It is paid only by whoever
+ * asks for it, and the alternative is a knob whose top half does nothing.
+ */
+const colsFor = (lines) => Math.min(2048, Math.max(32, Math.round(lines * 2)));
 
 /**
  * Resolution of the slew history. FIXED, and deliberately decoupled from both
  * the canvas and the line count: sizing it to the lattice would mean every
  * change of rutt.lines reallocated the buffer and wiped the momentum mid-glide.
- * 512 is exactly the maximum horizontal sampling density colsFor() can ask for.
+ * Sized to the maximum horizontal sampling density colsFor() can ask for, so
+ * the slew field is never the thing that limits detail. 2048² RGBA half-float
+ * is ~34MB, ~67MB for the ping-pong pair — 16× the old footprint, but _ensureSlew()
+ * allocates on first use, so a project that never engages slew never pays it.
  */
-const SLEW_RES = 512;
+const SLEW_RES = 2048;
 
 export class RuttEtra {
   constructor(renderer, width, height) {

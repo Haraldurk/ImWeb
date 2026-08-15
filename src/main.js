@@ -3240,8 +3240,13 @@ async function main() {
   });
 
   // ── Display resolution ──
+  // ONE list, read by both selects below. There were two hand-copied literals
+  // here and they are the kind of thing that drifts the moment a preset is
+  // added — which is exactly what adding 1440p/4K would have done. Values are
+  // indices into output.resolution's options and into RENDER_RESOLUTIONS.
+  const _RES_OPTS = [["Disp",0],["720p",1],["1080p",2],["540p",3],["¼",4],["1440p",5],["4K",6]];
   const dispSel = _ioSel();
-  [["Disp",0],["720p",1],["1080p",2],["540p",3],["¼",4]].forEach(([label, val]) => {
+  _RES_OPTS.forEach(([label, val]) => {
     const o = document.createElement("option");
     o.value = val; o.textContent = label;
     dispSel.appendChild(o);
@@ -3253,7 +3258,7 @@ async function main() {
 
   // ── Record resolution (linked to Display until independent REC target is built) ──
   const recSel = _ioSel();
-  [["Disp",0],["720p",1],["1080p",2],["540p",3],["¼",4]].forEach(([label, val]) => {
+  _RES_OPTS.forEach(([label, val]) => {
     const o = document.createElement("option");
     o.value = val; o.textContent = label;
     recSel.appendChild(o);
@@ -6743,6 +6748,13 @@ void main() {
     2: [1920, 1080], // 1080p
     3: [960, 540], // 540p
     4: null, // Quarter (½ of display)
+    // Appended, out of numeric order on purpose — see the APPEND-ONLY note on
+    // output.resolution in ParameterSystem.js. Both dimensions stay under 4096,
+    // the floor every WebGL1 implementation guarantees for MAX_TEXTURE_SIZE and
+    // MAX_RENDERBUFFER_SIZE, so neither preset can fail to allocate on hardware
+    // that runs the instrument at all — it can only be slow.
+    5: [2560, 1440], // 1440p
+    6: [3840, 2160], // 4K — 8.3 Mpx through 35+ passes. Ask for it deliberately.
   };
 
   function applyResolution(idx) {
