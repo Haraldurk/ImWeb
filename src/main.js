@@ -171,9 +171,27 @@ import { initSoak } from "./soak.js";
 // ─────────────────────────────────────────────────────────────────────────────
 
 // _applyLayout extracted to ui/layout/LayoutManager.js (Phase 2 Task 5)
-import { applyLayout as _applyLayout } from "./ui/layout/LayoutManager.js";
+// UI_SCALE_KEY/autoUiScale/storedUiScale live there too — the same module's
+// concern, and the auto rule needs a unit test because the display it exists
+// for (DPR 1) cannot be reproduced on the developer's Retina machine.
+import {
+  applyLayout as _applyLayout,
+  UI_SCALE_KEY,
+  autoUiScale as _autoUiScale,
+  storedUiScale as _storedUiScale,
+} from "./ui/layout/LayoutManager.js";
 import { version as APP_VERSION } from "../package.json";
-_applyLayout();
+
+function _applyUiScale() {
+  const s = _storedUiScale() ?? _autoUiScale();
+  document.documentElement.style.setProperty("--ui-scale", String(s));
+  // The chrome just changed size, so the measured --status-h and everything
+  // #app derives from it are stale until this runs.
+  _applyLayout();
+  return s;
+}
+
+_applyUiScale(); // calls _applyLayout() itself
 window.addEventListener("resize", _applyLayout);
 // Re-sync whenever the status bar's own size changes (font swap-in, button
 // wrap) — load/fonts.ready fire too early to catch late reflows
@@ -253,6 +271,11 @@ async function main() {
   function _onDPRChange() {
     const newDPR = window.devicePixelRatio;
     renderer.setPixelRatio(newDPR);
+    // A display change is exactly when _autoUiScale()'s answer changes: the same
+    // window dragged from a HiDPI laptop panel to a native-1× 4K monitor needs
+    // 2× chrome that it did not need a second ago. No-op when the user has
+    // chosen a scale explicitly, and no-op when the answer is unchanged.
+    _applyUiScale();
     applyResolution(ps.get('output.resolution').value);
     window.matchMedia(`(resolution: ${newDPR}dppx)`)
       .addEventListener('change', _onDPRChange, { once: true });
@@ -3266,6 +3289,32 @@ async function main() {
   recSel.value = ps.get("output.resolution").value;
   recSel.addEventListener("change", () => ps.set("output.resolution", +recSel.value));
   ioOutBlock.appendChild(_ioRow("Record", recSel));
+
+  // ── UI scale ──
+  // Deliberately NOT a ParameterSystem param, and so not captured by Display
+  // States: the right value is a property of the MONITOR, not of the patch.
+  // Same reasoning that keeps displace.warpSlot out of capture — a value that
+  // means something different on another machine must not travel in a saved
+  // state. localStorage, per-origin, like the rest of the prefs here.
+  const uiScaleSel = _ioSel();
+  [["Auto","auto"],["100%","1"],["125%","1.25"],["150%","1.5"],["175%","1.75"],["200%","2"]]
+    .forEach(([label, val]) => {
+      const o = document.createElement("option");
+      o.value = val; o.textContent = label;
+      uiScaleSel.appendChild(o);
+    });
+  uiScaleSel.value = localStorage.getItem(UI_SCALE_KEY) ?? "auto";
+  uiScaleSel.addEventListener("change", () => {
+    if (uiScaleSel.value === "auto") localStorage.removeItem(UI_SCALE_KEY);
+    else localStorage.setItem(UI_SCALE_KEY, uiScaleSel.value);
+    const s = _applyUiScale();
+    // The panel just changed width, so the output panel did too — and in
+    // Display/¼ modes the renderer is sized from it. Without this the picture
+    // keeps the old width until the next container resize.
+    applyResolution(ps.get("output.resolution").value);
+    showToast(`UI scale ${Math.round(s * 100)}%`, 1800);
+  });
+  ioOutBlock.appendChild(_ioRow("UI Size", uiScaleSel));
 
   // ── 2Display resolution — controls second screen bitmap resize pre-postMessage ──
   const _outWinResOpts = [

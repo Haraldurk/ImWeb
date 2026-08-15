@@ -39,6 +39,72 @@
     --signal-h: 60px;
     --state-h: 64px;
     --ctrl-w: 320px;
+
+    /* ── UI scale ──────────────────────────────────────────────────────────
+       Multiplier applied as `zoom` to the chrome — panel, bars, floating
+       panels, modals — and to NOTHING inside #output-panel. Set from JS
+       (_applyUiScale in main.js); 1 is the default and the no-op.
+
+       Why this exists: every font-size in this file is an absolute px, 198 of
+       them, with 8px and 10px the two most common values. On a display the OS
+       is NOT scaling — a 4K panel run at native 3840×2160, where DPR is 1 —
+       those are 8 and 10 DEVICE pixels at ~163 PPI, about half their intended
+       physical size. The instrument became unusable enough that a beta tester
+       was dropping his monitor's resolution to read the panel, which in turn
+       made the picture soft, which read as an image-quality complaint. One
+       cause, two symptoms.
+
+       The `@media (min-width: 2560px)` block below used to be the answer to
+       this and was not: it widens --ctrl-w and grows row height while every
+       glyph keeps its absolute size, so it made the UI more SPACIOUS at the
+       same text size — the wrong direction. Its `body { font-size }` reaches
+       nothing, because a declaration on the element always beats inheritance.
+
+       `zoom` rather than `transform: scale()` because zoom participates in
+       layout: a zoomed #control-panel actually occupies --ctrl-w × scale in
+       #app's flex row, so the output panel correctly gets the remainder. A
+       transform would scale the paint and leave the layout box behind,
+       overlapping the picture. */
+    --ui-scale: 1;
+
+}
+
+/* The chrome roots. Everything the user reads text in EXCEPT the picture and
+   the overlays drawn on top of it. Listed explicitly rather than applied to
+   body: zooming body would scale #output-panel too, and applyResolution()
+   sizes the renderer from `canvas.parentElement.clientWidth`, which is an
+   unzoomed layout value — the canvas would render small and be scaled up,
+   which is the exact softness this change exists to remove. */
+#status-bar,
+#control-panel,
+#signal-path,
+#state-bar,
+#mobile-state-bar,
+#mobile-state-modal,
+#param-search,
+#param-context-menu,
+#guide-panel,
+#capture-panel,
+#vkbd-panel,
+.ai-settings-panel,
+.detached-panel {
+    zoom: var(--ui-scale);
+}
+
+/* Modal scrims get the treatment on their INNER box, never on themselves.
+   #onboarding, #kb-help, #docs-viewer and #about-modal are all `position:
+   fixed; inset: 0` backdrops that flex-centre a card. Zooming the backdrop
+   would multiply a full-viewport element to 2× the viewport — the scrim would
+   overflow, the card would drift off-centre, and at 200% half of it would sit
+   outside the window with no way to scroll to it. Zooming the card leaves the
+   backdrop exactly covering the screen and the centring intact.
+   #panel-overlay is a bare scrim with no content and so wants no zoom at all —
+   there is nothing inside it to read. */
+#onboarding-box,
+#kb-help-box,
+#docs-viewer-box,
+#about-box {
+    zoom: var(--ui-scale);
 }
 
 *,
@@ -232,12 +298,26 @@ button {
        stacking context that traps #control-panel's z-index below the
        mobile #panel-overlay (z 199 vs 200) */
     position: absolute;
-    top: var(--status-h);
+    /* × --ui-scale, because #app is the one element that is NOT zoomed but must
+       clear chrome that IS. --status-h is written by applyLayout() from the
+       status bar's offsetHeight — the bar's UNZOOMED height — so without the
+       multiply #app sits tucked under the bar at any scale above 1.
+       The multiply is inlined here rather than hoisted into a --status-h-out
+       variable on :root, and that is deliberate: body.statebar-hidden and
+       body.signalpath-hidden zero these heights, and body.sp-audio raises
+       --signal-h to 84px, all on BODY. A calc() on :root would resolve against
+       :root's own --state-h and silently ignore every one of those overrides.
+       Resolved here, on a descendant of body, inheritance does the right thing. */
+    top: calc(var(--status-h) * var(--ui-scale));
     left: 0;
     right: 0;
     /* safe-area inset: 0 on desktop; on iOS the bottom bars grow by the
        home-indicator inset, so the app area must end above them */
-    bottom: calc(var(--signal-h) + var(--state-h) + env(safe-area-inset-bottom, 0px));
+    /* The bars scale; the safe-area inset does NOT — it is a physical property
+       of the device's screen cutout, not of our type size. */
+    bottom: calc(
+        (var(--signal-h) + var(--state-h)) * var(--ui-scale) + env(safe-area-inset-bottom, 0px)
+    );
     display: flex;
     gap: 0;
 }
@@ -3559,13 +3639,20 @@ body.fullscreen-output #app {
 
 /* ── RESPONSIVE BREAKPOINTS ─────────────────────────────────────────────── */
 
-/* 4K / HiDPI desktop (≥2560px) */
+/* Wide desktop (≥2560 CSS px).
+   NOT "4K / HiDPI", which is what this said and was the misunderstanding at the
+   root of the whole problem: a 4K panel in HiDPI reports a ~1920px viewport and
+   never reaches this query at all. A viewport this wide means the display is
+   being addressed at 1×, which is what --ui-scale now compensates for.
+   What survives here is only genuine breathing room — a wider panel and taller
+   rows, which --ui-scale then multiplies to the right PHYSICAL size.
+   The `body { font-size: 14px }` that used to sit here is gone. It was measured
+   to reach zero visible elements: all 198 font-size declarations in this file
+   are set on the elements themselves, and a declaration always beats
+   inheritance, so it never had any effect to lose. */
 @media (min-width: 2560px) {
     :root {
         --ctrl-w: 380px;
-    }
-    body {
-        font-size: 14px;
     }
     .param-row {
         height: 32px;

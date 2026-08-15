@@ -9,6 +9,16 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
 ## [Unreleased]
 
 ### Added
+- **UI scale, and an interface that survives a 4K monitor.** New `UI Size`
+  control in the I/O panel (Auto / 100–200%). On a display the OS is *not*
+  scaling — a 4K panel run at native 3840×2160, where `devicePixelRatio` is 1 —
+  the panel's 8–10px type was rendering at half its intended physical size, to
+  the point that a tester was dropping his monitor's resolution just to read it,
+  which is what made the picture look soft in the first place. Auto detects the
+  case from pixel density and applies 1.5× or 2×; it is a no-op on every HiDPI
+  display, where CSS pixels are already the right size. Stored per-origin in
+  localStorage and deliberately *not* a captured parameter — the correct value
+  belongs to the monitor, not to the patch.
 - **1440p and 4K output resolutions.** `Display`/`Record` in the I/O panel now
   reach 2560×1440 and 3840×2160, appended after `¼` so existing saved states
   keep their indices. These are fixed render sizes, not display-derived — the
@@ -16,6 +26,12 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
   it is in, so a 4K screen is needed to *see* it 1:1 but not to *produce* it.
 
 ### Changed
+- **The `≥2560px` breakpoint no longer claims to fix type size.** Its
+  `body { font-size: 14px }` was measured to reach zero visible elements — all
+  198 `font-size` declarations in `style.css` are set on the elements
+  themselves, and a declaration always beats inheritance — so the block was
+  growing spacing while leaving every glyph untouched. `--ui-scale` does that
+  job now; the wider panel and taller rows remain.
 - **Rutt-Etra reaches a real scan density.** `rutt.lines` now goes to 1080
   (was 480), and the horizontal sample count is no longer pinned at 512 — above
   256 lines the scan used to get denser vertically while staying exactly as
