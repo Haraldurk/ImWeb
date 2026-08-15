@@ -8,6 +8,23 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
 
 ## [Unreleased]
 
+---
+
+## [0.20.0] — 2026-08-15 — The Other Half
+
+ImWeb has been a video instrument that could *listen* — sound-reactive
+controllers have driven the picture since early on. This release gives it the
+other half: a tape it can record onto, scrub, paint into and play back, with the
+picture deciding what it sounds like.
+
+Two things are worth knowing before the list. **The audio engine never starts by
+itself** — it takes a deliberate Audio On, because an AudioContext created
+without a gesture is silently suspended, and because an instrument should not
+seize the sound card merely by being open. And **it will tell you when the room
+is a wire**: with a microphone open and monitoring set to speakers, the signal
+path draws the closed `mic → tape → speakers → mic` loop rather than leaving you
+to discover it at volume.
+
 ### Fixed
 - **Changing the recording partition while recording now springs back and says
   why, instead of showing a change that did not happen.** `Partition Rec` was
@@ -154,6 +171,32 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
   against brute force over 60 random corpora. Mutation-calibrated: eighteen
   breakages, seventeen caught, and the one that survives is documented in the
   file rather than papered over.
+- `tests/audit-audio-pan.mjs` and `tests/audit-audio-signalpath.mjs` — 56 and 84
+  checks on the pan image and the drawn loop. Two of the pan mutations found real
+  faults rather than confirming absent ones: an even-sized gain table that put
+  "centre" 0.15% to the left, and a crossfade check that passed on correct code
+  by luck because two beating partials moved its measurement windows more than
+  the effect did.
+
+### Changed — for people working on ImWeb
+
+- **`npm run mutate` — the mutation harness is committed.** Every audio audit
+  claimed to be "mutation-calibrated", and every one of those numbers came from
+  shell one-liners typed once and thrown away. An uncommitted calibration is
+  indistinguishable from no calibration. There are now 48 registered defects with
+  a stated consequence each; the runner asserts each one turns its audit red,
+  restores from bytes held in memory (so uncommitted work in a mutated file
+  survives), and proves the tree is green before it starts and after it finishes.
+- **CI, a pre-push hook, and promotion pressure on the lessons log.** `npm test`
+  runs on every PR, a pre-push hook blocks a red tree from leaving the machine,
+  and `docs/LEARNED.md` entries tagged `[advisory]` — the one tag with no
+  mechanism behind it — now fail an audit once they reach 90 days. The exits are
+  promotion to a mechanism, refinement, or an in-entry explanation of why it must
+  stay prose; deleting the lesson is not one of them.
+- **`AGENTS.md` and `GEMINI.md` ship with the repo.** They were gitignored, which
+  meant the instruction files for non-Claude agents existed on exactly one
+  machine. Both now carry a pointer to the live advisory lessons, and an audit
+  keeps it there.
 
 ---
 
