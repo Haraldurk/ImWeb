@@ -171,9 +171,29 @@ import { initSoak } from "./soak.js";
 // ─────────────────────────────────────────────────────────────────────────────
 
 // _applyLayout extracted to ui/layout/LayoutManager.js (Phase 2 Task 5)
-import { applyLayout as _applyLayout } from "./ui/layout/LayoutManager.js";
+// UI_SCALE_KEY/autoUiScale/storedUiScale live there too — the same module's
+// concern, and the auto rule needs a unit test because the display it exists
+// for (DPR 1) cannot be reproduced on the developer's Retina machine.
+import {
+  applyLayout as _applyLayout,
+  UI_SCALE_KEY,
+  autoUiScale as _autoUiScale,
+  storedUiScale as _storedUiScale,
+  elementZoom,
+  setViewportPos,
+} from "./ui/layout/LayoutManager.js";
 import { version as APP_VERSION } from "../package.json";
-_applyLayout();
+
+function _applyUiScale() {
+  const s = _storedUiScale() ?? _autoUiScale();
+  document.documentElement.style.setProperty("--ui-scale", String(s));
+  // The chrome just changed size, so the measured --status-h and everything
+  // #app derives from it are stale until this runs.
+  _applyLayout();
+  return s;
+}
+
+_applyUiScale(); // calls _applyLayout() itself
 window.addEventListener("resize", _applyLayout);
 // Re-sync whenever the status bar's own size changes (font swap-in, button
 // wrap) — load/fonts.ready fire too early to catch late reflows
@@ -271,6 +291,17 @@ async function main() {
   // only reason a SECOND display change is ever noticed.
   function _onDPRChange() {
     renderer.setPixelRatio(1);
+    // A display change is exactly when _autoUiScale()'s answer changes: the same
+    // window dragged from a HiDPI laptop panel to a native-1× 4K monitor needs
+    // 2× chrome that it did not need a second ago. No-op when the user has
+    // chosen a scale explicitly, and no-op when the answer is unchanged.
+    //
+    // Note this is the CHROME's scale, and has nothing to do with the line
+    // above: the canvas stays at pixel ratio 1 and takes its resolution from
+    // output.resolution. Panel type and picture pixels are separate decisions,
+    // which is the whole reason the 4K preset is a fixed size rather than a
+    // multiple of the display's density.
+    _applyUiScale();
     applyResolution(ps.get('output.resolution').value);
     window.matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`)
       .addEventListener('change', _onDPRChange, { once: true });
@@ -1456,18 +1487,25 @@ async function main() {
       oy = 0,
       pid = null;
     handle.style.touchAction = "none";
+    // Captured at grab time so the move handler does not force a style recalc
+    // per pointermove just to read the zoom back.
+    let z = 1;
     handle.addEventListener("pointerdown", (e) => {
       if (e.target.tagName === "BUTTON") return;
       handle.setPointerCapture(e.pointerId);
       pid = e.pointerId;
-      ox = e.clientX - panel.offsetLeft;
-      oy = e.clientY - panel.offsetTop;
+      z = elementZoom(panel);
+      // gBCR, not offsetLeft: offsetLeft is element-local, clientX is viewport.
+      // Subtracting one from the other at 2× makes the panel jump on grab and
+      // then track at twice the pointer's speed.
+      const b = panel.getBoundingClientRect();
+      ox = e.clientX - b.left;
+      oy = e.clientY - b.top;
       e.preventDefault();
     });
     handle.addEventListener("pointermove", (e) => {
       if (pid !== e.pointerId) return;
-      panel.style.left = e.clientX - ox + "px";
-      panel.style.top = e.clientY - oy + "px";
+      setViewportPos(panel, e.clientX - ox, e.clientY - oy, z);
     });
     const _endDrag = (e) => {
       if (pid === e.pointerId) pid = null;
@@ -1495,9 +1533,9 @@ async function main() {
 
     const panel = document.createElement("div");
     panel.className = "detached-panel";
+    // Measured BEFORE `section` is reparented into the panel below — once it
+    // moves, its rect is the new location, not the one we want to open next to.
     const rect = section.getBoundingClientRect();
-    panel.style.left = Math.min(rect.right + 8, window.innerWidth - 300) + "px";
-    panel.style.top = Math.max(4, rect.top) + "px";
 
     const titleBar = document.createElement("div");
     titleBar.className = "detached-panel-title";
@@ -1525,6 +1563,18 @@ async function main() {
     panel.appendChild(titleBar);
     panel.appendChild(panelBody);
     document.body.appendChild(panel);
+    // AFTER the append, not before: elementZoom() reads computed style, and a
+    // detached node has none — it would report zoom 1 and put the panel back
+    // off-screen at any UI scale above 1, which is the bug this call fixes.
+    // Clamp in viewport space (rect and innerWidth are both already scaled),
+    // then convert once. The clamp uses the panel's MEASURED width rather than
+    // the old hardcoded 300: that constant was a fair guess at a 280px panel,
+    // but the panel is --ctrl-w × scale wide, so at 2× it is ~560 and the old
+    // number left a quarter of it hanging off the right edge.
+    const pw = panel.getBoundingClientRect().width || 300;
+    setViewportPos(panel,
+      Math.min(rect.right + 8, window.innerWidth - pw - 8),
+      Math.max(4, rect.top));
     _makeDraggable(panel, titleBar);
   }
 
@@ -1877,23 +1927,30 @@ async function main() {
       const rect = document
         .getElementById("output-panel")
         ?.getBoundingClientRect() ?? { left: 0, top: 40 };
-      spEl.style.left = rect.left + 12 + "px";
-      spEl.style.top = rect.top + 12 + "px";
+      // #signal-path is in the zoom set, so these viewport coords need the
+      // conversion. It happened to land near the right place at 2× only
+      // because #output-panel sits near the origin — the error is proportional
+      // to the offset, so it would have been obvious the moment the output
+      // panel moved.
+      setViewportPos(spEl, rect.left + 12, rect.top + 12);
 
       // Drag on title bar — pointer events so it also drags on the iPad
       titleBar.style.touchAction = "none";
+      let _spZoom = 1;
       titleBar.addEventListener("pointerdown", (e) => {
         if (e.target.tagName === "BUTTON") return;
         titleBar.setPointerCapture(e.pointerId);
         _spDragging = true;
-        _spDragOx = e.clientX - spEl.offsetLeft;
-        _spDragOy = e.clientY - spEl.offsetTop;
+        _spZoom = elementZoom(spEl);
+        // gBCR, not offsetLeft — see _makeDraggable for the same mix.
+        const b = spEl.getBoundingClientRect();
+        _spDragOx = e.clientX - b.left;
+        _spDragOy = e.clientY - b.top;
         e.preventDefault();
       });
       titleBar.addEventListener("pointermove", (e) => {
         if (!_spDragging) return;
-        spEl.style.left = e.clientX - _spDragOx + "px";
-        spEl.style.top = e.clientY - _spDragOy + "px";
+        setViewportPos(spEl, e.clientX - _spDragOx, e.clientY - _spDragOy, _spZoom);
       });
       titleBar.addEventListener("pointerup", () => { _spDragging = false; });
       titleBar.addEventListener("pointercancel", () => { _spDragging = false; });
@@ -3258,8 +3315,13 @@ async function main() {
   });
 
   // ── Display resolution ──
+  // ONE list, read by both selects below. There were two hand-copied literals
+  // here and they are the kind of thing that drifts the moment a preset is
+  // added — which is exactly what adding 1440p/4K would have done. Values are
+  // indices into output.resolution's options and into RENDER_RESOLUTIONS.
+  const _RES_OPTS = [["Disp",0],["720p",1],["1080p",2],["540p",3],["¼",4],["1440p",5],["4K",6]];
   const dispSel = _ioSel();
-  [["Disp",0],["720p",1],["1080p",2],["540p",3],["¼",4]].forEach(([label, val]) => {
+  _RES_OPTS.forEach(([label, val]) => {
     const o = document.createElement("option");
     o.value = val; o.textContent = label;
     dispSel.appendChild(o);
@@ -3271,7 +3333,7 @@ async function main() {
 
   // ── Record resolution (linked to Display until independent REC target is built) ──
   const recSel = _ioSel();
-  [["Disp",0],["720p",1],["1080p",2],["540p",3],["¼",4]].forEach(([label, val]) => {
+  _RES_OPTS.forEach(([label, val]) => {
     const o = document.createElement("option");
     o.value = val; o.textContent = label;
     recSel.appendChild(o);
@@ -3279,6 +3341,32 @@ async function main() {
   recSel.value = ps.get("output.resolution").value;
   recSel.addEventListener("change", () => ps.set("output.resolution", +recSel.value));
   ioOutBlock.appendChild(_ioRow("Record", recSel));
+
+  // ── UI scale ──
+  // Deliberately NOT a ParameterSystem param, and so not captured by Display
+  // States: the right value is a property of the MONITOR, not of the patch.
+  // Same reasoning that keeps displace.warpSlot out of capture — a value that
+  // means something different on another machine must not travel in a saved
+  // state. localStorage, per-origin, like the rest of the prefs here.
+  const uiScaleSel = _ioSel();
+  [["Auto","auto"],["100%","1"],["125%","1.25"],["150%","1.5"],["175%","1.75"],["200%","2"]]
+    .forEach(([label, val]) => {
+      const o = document.createElement("option");
+      o.value = val; o.textContent = label;
+      uiScaleSel.appendChild(o);
+    });
+  uiScaleSel.value = localStorage.getItem(UI_SCALE_KEY) ?? "auto";
+  uiScaleSel.addEventListener("change", () => {
+    if (uiScaleSel.value === "auto") localStorage.removeItem(UI_SCALE_KEY);
+    else localStorage.setItem(UI_SCALE_KEY, uiScaleSel.value);
+    const s = _applyUiScale();
+    // The panel just changed width, so the output panel did too — and in
+    // Display/¼ modes the renderer is sized from it. Without this the picture
+    // keeps the old width until the next container resize.
+    applyResolution(ps.get("output.resolution").value);
+    showToast(`UI scale ${Math.round(s * 100)}%`, 1800);
+  });
+  ioOutBlock.appendChild(_ioRow("UI Size", uiScaleSel));
 
   // ── 2Display resolution — controls second screen bitmap resize pre-postMessage ──
   const _outWinResOpts = [
@@ -4717,11 +4805,10 @@ async function main() {
     }
     slotPickerEl.appendChild(grid);
 
-    // Position near the click
+    // Position near the click — clamped in viewport space, converted once.
     const x = Math.min(e.clientX, window.innerWidth - 180);
     const y = Math.min(e.clientY, window.innerHeight - 200);
-    slotPickerEl.style.left = `${x}px`;
-    slotPickerEl.style.top = `${y}px`;
+    setViewportPos(slotPickerEl, x, y);
     slotPickerEl.classList.remove("hidden");
   }
 
@@ -5101,8 +5188,9 @@ async function main() {
       _bufSlotMenu.appendChild(clearBtn);
     }
 
-    _bufSlotMenu.style.left = `${Math.min(x, window.innerWidth - 160)}px`;
-    _bufSlotMenu.style.top = `${Math.min(y, window.innerHeight - 140)}px`;
+    setViewportPos(_bufSlotMenu,
+      Math.min(x, window.innerWidth - 160),
+      Math.min(y, window.innerHeight - 140));
     _bufSlotMenu.classList.remove("hidden");
 
     // pointerdown outside, not click — this menu opens from `contextmenu`,
@@ -6814,6 +6902,13 @@ void main() {
     2: [1920, 1080], // 1080p
     3: [960, 540], // 540p
     4: null, // Quarter (½ of display)
+    // Appended, out of numeric order on purpose — see the APPEND-ONLY note on
+    // output.resolution in ParameterSystem.js. Both dimensions stay under 4096,
+    // the floor every WebGL1 implementation guarantees for MAX_TEXTURE_SIZE and
+    // MAX_RENDERBUFFER_SIZE, so neither preset can fail to allocate on hardware
+    // that runs the instrument at all — it can only be slow.
+    5: [2560, 1440], // 1440p
+    6: [3840, 2160], // 4K — 8.3 Mpx through 35+ passes. Ask for it deliberately.
   };
 
   function applyResolution(idx) {
@@ -8906,23 +9001,27 @@ function buildVirtualKeyboard() {
     _panelX = 0,
     _panelY = 0,
     _dragging = false;
+  // #vkbd-panel is in the UI-scale zoom set, so every one of these viewport
+  // coordinates needs converting before it becomes a style length.
+  let _panelZoom = 1;
   handle.addEventListener("pointerdown", (e) => {
     _dragging = true;
     _dragX = e.clientX;
     _dragY = e.clientY;
+    _panelZoom = elementZoom(panel);
     const r = panel.getBoundingClientRect();
     _panelX = r.left;
     _panelY = r.top;
     handle.setPointerCapture(e.pointerId);
     panel.style.transform = "none";
-    panel.style.left = _panelX + "px";
-    panel.style.top = _panelY + "px";
+    setViewportPos(panel, _panelX, _panelY, _panelZoom);
     panel.style.bottom = "auto";
   });
   handle.addEventListener("pointermove", (e) => {
     if (!_dragging) return;
-    panel.style.left = _panelX + e.clientX - _dragX + "px";
-    panel.style.top = _panelY + e.clientY - _dragY + "px";
+    setViewportPos(panel,
+      _panelX + e.clientX - _dragX,
+      _panelY + e.clientY - _dragY, _panelZoom);
   });
   handle.addEventListener("pointerup", () => {
     _dragging = false;

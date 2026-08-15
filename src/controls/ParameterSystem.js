@@ -4494,7 +4494,11 @@ export function registerCoreParameters(ps) {
     label: "Resolution",
     group: "output",
     type: PARAM_TYPE.SELECT,
-    options: ["Display", "720p", "1080p", "540p", "Quarter"],
+    // APPEND-ONLY. SELECT values persist as integer indices, so 1440p and 4K go
+    // at the END even though the list then reads out of order — inserting them
+    // after "1080p" would silently repoint every saved state, bank and .imweb
+    // file that stored 3 (540p) or 4 (Quarter).
+    options: ["Display", "720p", "1080p", "540p", "Quarter", "1440p", "4K"],
     value: 0,
   });
 
@@ -6407,7 +6411,12 @@ export function registerCoreParameters(ps) {
     label: "Lines",
     group: "rutt",
     min: 16,
-    max: 480,
+    // 1080, not 480. A max is not a recommendation — the default stays 120, and
+    // the range now reaches a scan dense enough to read as a surface rather than
+    // as a comb, which is the whole point of the machine. Raising a max is safe
+    // where widening a SELECT is not: the stored value is the number itself, so
+    // an old state that saved 240 still means 240.
+    max: 1080,
     value: 120,
     step: 1,
   });

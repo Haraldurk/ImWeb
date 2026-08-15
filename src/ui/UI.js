@@ -14,6 +14,7 @@ import { mkSelect as _mkSelect } from './components/Select.js';
 import { openCtrlPopover as _openCtrlPopover } from './components/CtrlPopover.js';
 import { buildParamRow } from './components/ParamRow.js';
 import { openGuide } from './Guide.js';
+import { setViewportPos } from './layout/LayoutManager.js';
 const DEFAULT_FX_ORDER_SP = DEFAULT_FX_ORDER;
 
 // ── Tab switching ──────────────────────────────────────────────────────────────
@@ -1263,8 +1264,9 @@ export class StateBar {
 
     m.classList.remove('hidden');
     const r = m.getBoundingClientRect();
-    m.style.left = Math.min(x, window.innerWidth  - r.width  - 8) + 'px';
-    m.style.top  = Math.max(8, y - r.height - 4) + 'px';
+    setViewportPos(m,
+      Math.min(x, window.innerWidth - r.width - 8),
+      Math.max(8, y - r.height - 4));
   }
 
   _flashTile(idx) {
@@ -1775,11 +1777,15 @@ export class ContextMenu {
       }
     }
 
-    this.el.style.left = `${x}px`;
-    this.el.style.top  = `${y}px`;
+    // x/y are viewport px (a pointer event); the menu is in the UI-scale zoom
+    // set, so writing them straight into style.left paints at x × scale.
+    setViewportPos(this.el, x, y);
     this.el.classList.remove('hidden');
 
-    // Clamp to viewport — all four edges, after browser has computed menu size
+    // Clamp to viewport — all four edges, after browser has computed menu size.
+    // The whole clamp stays in viewport space: gBCR and innerWidth are both
+    // already scaled, so the arithmetic is consistent — only the final write
+    // crosses back into the element's own coordinates.
     requestAnimationFrame(() => {
       const r   = this.el.getBoundingClientRect();
       const pad = 4;
@@ -1789,8 +1795,7 @@ export class ContextMenu {
       if (top  + r.height > window.innerHeight) top  = y - r.height;
       left = Math.max(pad, Math.min(left, window.innerWidth  - r.width  - pad));
       top  = Math.max(pad, Math.min(top,  window.innerHeight - r.height - pad));
-      this.el.style.left = `${left}px`;
-      this.el.style.top  = `${top}px`;
+      setViewportPos(this.el, left, top);
     });
   }
 
@@ -3560,11 +3565,15 @@ export function initHelpMenu() {
     // KBD button, the camera flip). A position captured once goes stale.
     const r = btn.getBoundingClientRect();
     menu.classList.remove('hidden');
-    menu.style.top = `${r.bottom + 4}px`;
     // Right-aligned to the button, then clamped: ? is the last item in the bar,
     // so a left-aligned menu would hang off the window edge.
-    const w = menu.offsetWidth;
-    menu.style.left = `${Math.max(4, Math.min(r.right - w, window.innerWidth - w - 4))}px`;
+    // gBCR width, not offsetWidth: offsetWidth is element-local and would be
+    // half the on-screen width at 2×, against an r.right/innerWidth that are
+    // both already scaled — the clamp would use two different rulers.
+    const w = menu.getBoundingClientRect().width;
+    setViewportPos(menu,
+      Math.max(4, Math.min(r.right - w, window.innerWidth - w - 4)),
+      r.bottom + 4);
     btn.classList.add('active');
   }
   function closeMenu() {

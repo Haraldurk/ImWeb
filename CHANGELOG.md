@@ -8,6 +8,23 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
 
 ## [Unreleased]
 
+### Added
+- **UI scale, and an interface that survives a 4K monitor.** New `UI Size`
+  control in the I/O panel (Auto / 100–200%). On a display the OS is *not*
+  scaling — a 4K panel run at native 3840×2160, where `devicePixelRatio` is 1 —
+  the panel's 8–10px type was rendering at half its intended physical size, to
+  the point that a tester was dropping his monitor's resolution just to read it,
+  which is what made the picture look soft in the first place. Auto detects the
+  case from pixel density and applies 1.5× or 2×; it is a no-op on every HiDPI
+  display, where CSS pixels are already the right size. Stored per-origin in
+  localStorage and deliberately *not* a captured parameter — the correct value
+  belongs to the monitor, not to the patch.
+- **1440p and 4K output resolutions.** `Display`/`Record` in the I/O panel now
+  reach 2560×1440 and 3840×2160, appended after `¼` so existing saved states
+  keep their indices. These are fixed render sizes, not display-derived — the
+  canvas gets a true 4K backing buffer and letterboxes into whatever container
+  it is in, so a 4K screen is needed to *see* it 1:1 but not to *produce* it.
+
 ### Fixed
 - **The output recorder now records the sound too.** `canvas.captureStream()`
   returns video only, so every recording ImWeb has ever made had no audio track
@@ -33,6 +50,34 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
   reading frame timestamps out of four real recordings: the only DPR-2 file in
   the set ran at 19 fps against 30 for DPR-1 files at half the pixels. The
   handler now re-asserts `1` and keeps doing the two things it is actually for.
+- **Floating surfaces land where you click them at any UI scale.** Found in code
+  review, not testing — at 100% the bug is invisible by construction. The
+  parameter context menu, controller popover, detached panels, the floating
+  signal path, the on-screen keyboard, the slot picker and the buffer slot menu
+  all wrote a viewport coordinate straight into `style.left`, which a zoomed
+  element then multiplies again: at 200% the badge menu opened twice as far from
+  the pointer as the click, and a detached panel opened off the right edge of a
+  4K screen with its own drag handle out of reach. All now go through one
+  conversion helper.
+- **Modals fit the screen at any UI scale.** The docs viewer's fixed `80vh`
+  became 160vh at 200%, clipping its own titlebar and close button off the top.
+  Viewport units and safe-area insets inside scaled chrome now divide out.
+
+### Changed
+- **The `≥2560px` breakpoint no longer claims to fix type size.** Its
+  `body { font-size: 14px }` was measured to reach zero visible elements — all
+  198 `font-size` declarations in `style.css` are set on the elements
+  themselves, and a declaration always beats inheritance — so the block was
+  growing spacing while leaving every glyph untouched. `--ui-scale` does that
+  job now; the wider panel and taller rows remain.
+- **Rutt-Etra reaches a real scan density.** `rutt.lines` now goes to 1080
+  (was 480), and the horizontal sample count is no longer pinned at 512 — above
+  256 lines the scan used to get denser vertically while staying exactly as
+  coarse horizontally, so the top half of the Lines knob added nothing. Columns
+  now track lines 2:1 up to 2048, and the slew history follows at 2048² so it
+  is never the limiting term. The top of the range is heavy on purpose:
+  1080 lines is a 1080×2048 lattice, ~4.4M vertices, and re-dragging Lines up
+  there stalls while the grid rebuilds. The default stays 120.
 
 ### Tests
 - `tests/audit-pixel-ratio.mjs` — every `setPixelRatio` call in `src/` must pass
