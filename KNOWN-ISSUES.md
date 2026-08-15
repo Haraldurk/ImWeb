@@ -74,6 +74,26 @@ y, which is a second geometric axis and works as intended.
 
 ---
 
+### Rutt-Etra stalls while dragging Lines near the top of its range
+**Symptom:** With `rutt.lines` above roughly 700, dragging the Lines control
+stutters or briefly freezes the instrument. Setting a value by double-click and
+typing it is smooth; it is the drag that hurts, because every step is a new
+value.
+**Status:** Known cost, accepted deliberately in v0.21.0 rather than a defect to
+fix blind. `_rebuild()` walks the whole lattice in JS and reallocates its buffers
+on any change of line count — at the 1080 maximum that is a 1080×2048 grid,
+~4.4M vertices and a 51MB index buffer, per step. The range was raised because
+the knob's top half previously did nothing at all (horizontal sampling was
+pinned at 512), and a knob that is slow at its extreme is better than one that
+is inert there. The default is unchanged at 120.
+**If it is worth fixing:** debounce the rebuild while a drag is in flight and
+rebuild once on release, or grow the lattice in place rather than reallocating.
+Neither was done because nobody has yet reported it from real use — the range
+only reached 1080 in v0.21.0.
+**Related files:** src/inputs/RuttEtra.js (`_rebuild`, `colsFor`)
+
+---
+
 ### Period values above ~Scale have no visible effect
 **Symptom:** Period values above the Scale value show no visual effect.
 **Status:** Deferred; fundamental tile-size vs tile-count semantics mismatch. Requires passing uScale/uPeriod to psrdnoise (tile-count redesign).
