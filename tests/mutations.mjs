@@ -473,4 +473,38 @@ export const MUTATIONS = [
     find: '      if (!_spHidden) signalPath?._render();\n',
     replace: '',
   },
+
+  // ═════════════════════════════════════════════════════════════════════════
+  // Pixel ratio (audit-pixel-ratio.mjs)
+  //
+  // The regression these represent SHIPPED and went unnoticed for months,
+  // because DPR = 2 renders an identical picture — the only symptom is an
+  // instrument that became four times more expensive to draw at some moment
+  // the user cannot correlate with anything. Found from the outside, by
+  // reading frame timestamps out of the owner's own recordings.
+  // ═════════════════════════════════════════════════════════════════════════
+  {
+    name: 'dpr: the handler adopts the display ratio again',
+    audit: 'audit-pixel-ratio.mjs',
+    file: 'src/main.js',
+    why: 'this is the original bug verbatim — one display move quadruples fill cost across 35+ shader passes, permanently, with an identical picture and no error to notice',
+    find: '    renderer.setPixelRatio(1);\n    applyResolution(',
+    replace: '    renderer.setPixelRatio(window.devicePixelRatio);\n    applyResolution(',
+  },
+  {
+    name: 'dpr: a variable ratio that happens to be 1 at boot',
+    audit: 'audit-pixel-ratio.mjs',
+    file: 'src/main.js',
+    why: 'the plausible half-fix — reads correct on a non-Retina machine and reintroduces the whole defect on the owner\'s, which is exactly how it would come back',
+    find: '  renderer.setPixelRatio(1); //',
+    replace: '  renderer.setPixelRatio(_dpr); //',
+  },
+  {
+    name: 'dpr: pinned the ratio by deleting the handler body',
+    audit: 'audit-pixel-ratio.mjs',
+    file: 'src/main.js',
+    why: 'trades the ratio bug for two quieter ones — engine targets left stale after a display move, and a { once: true } listener that never re-arms, so a SECOND display change is invisible',
+    find: '    applyResolution(ps.get(\'output.resolution\').value);\n    window.matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`)\n      .addEventListener(\'change\', _onDPRChange, { once: true });\n  }',
+    replace: '  }',
+  },
 ];

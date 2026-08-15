@@ -270,16 +270,40 @@ async function main() {
   }, false);
 
   // Fix A — DPR change detection (window moved to display with different pixel density)
+  //
+  // What this does NOT do is adopt the new ratio. It used to call
+  // `setPixelRatio(window.devicePixelRatio)`, which silently undid the
+  // `setPixelRatio(1)` decision three lines above — permanently, on the first
+  // display change of the session, with nothing to put it back. Dragging the
+  // window to a Retina display quadrupled the fill cost of 35+ shader passes
+  // and the instrument simply got slower and stayed slower.
+  //
+  // That was measured, not deduced: of four real recordings, the one at
+  // 2646×1766 — 1323×883 CSS at DPR 2, the only DPR-2 file in the set — ran at
+  // 19 fps, against 30 fps for the DPR-1 files at half the pixels. See
+  // docs/Recorder-Frame-Rate-Investigation.md.
+  //
+  // Re-asserting 1 rather than deleting the call: the ratio is a decision, and
+  // a decision restated at the one place that used to break it is worth the
+  // line. What the handler is still FOR is the other two statements —
+  // `applyResolution` re-syncs every engine's targets after a display move, and
+  // the matchMedia listener is `{ once: true }`, so re-arming it here is the
+  // only reason a SECOND display change is ever noticed.
   function _onDPRChange() {
-    const newDPR = window.devicePixelRatio;
-    renderer.setPixelRatio(newDPR);
+    renderer.setPixelRatio(1);
     // A display change is exactly when _autoUiScale()'s answer changes: the same
     // window dragged from a HiDPI laptop panel to a native-1× 4K monitor needs
     // 2× chrome that it did not need a second ago. No-op when the user has
     // chosen a scale explicitly, and no-op when the answer is unchanged.
+    //
+    // Note this is the CHROME's scale, and has nothing to do with the line
+    // above: the canvas stays at pixel ratio 1 and takes its resolution from
+    // output.resolution. Panel type and picture pixels are separate decisions,
+    // which is the whole reason the 4K preset is a fixed size rather than a
+    // multiple of the display's density.
     _applyUiScale();
     applyResolution(ps.get('output.resolution').value);
-    window.matchMedia(`(resolution: ${newDPR}dppx)`)
+    window.matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`)
       .addEventListener('change', _onDPRChange, { once: true });
   }
   window.matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`)
@@ -6042,18 +6066,71 @@ void main() {
 
   let mediaRecorder = null;
   let recordChunks = [];
+  // The MediaStreamAudioDestinationNode for the current recording, plus the
+  // node we hung it off. Held so the edge can be dropped on stop — leaving it
+  // connected would keep a destination node alive per recording.
+  let _recAudioDest = null;
+  let _recAudioFrom = null;
+
+  // Add the instrument's sound to a canvas capture stream, if there is any.
+  // Tapped POST-limiter (`engine.node` IS the limiter's output, §8.6) off the
+  // engine's own AudioContext — the one-context decision means this is a second
+  // edge on an existing graph, not a second clock to align against the video.
+  // Returns true if an audio track was added.
+  function _attachRecordAudio(stream) {
+    const eng = audio.engine;
+    // `node` is null until start() and again after close(), so this is also the
+    // "is the engine actually running" test — a suspended or never-started
+    // engine would contribute a track of digital silence, which is worse than
+    // no track: it looks like the audio was captured and came out empty.
+    if (!eng?.ctx || !eng.node) return false;
+    _recAudioDest = eng.ctx.createMediaStreamDestination();
+    _recAudioFrom = eng.node;
+    // An extra outgoing edge; the existing node → ctx.destination connection is
+    // untouched, so monitoring keeps playing while recording.
+    _recAudioFrom.connect(_recAudioDest);
+    for (const t of _recAudioDest.stream.getAudioTracks()) stream.addTrack(t);
+    return true;
+  }
+
+  function _detachRecordAudio() {
+    // engine.close() mid-recording disconnects `node` wholesale, so the edge may
+    // already be gone; disconnecting a live edge twice throws.
+    try { _recAudioFrom?.disconnect(_recAudioDest); } catch { /* already gone */ }
+    _recAudioFrom = null;
+    _recAudioDest = null;
+  }
+
+  // vp9+opus is what Chrome and Firefox both give us; the fallbacks exist so a
+  // browser that refuses the explicit codec string still records rather than
+  // throwing NotSupportedError out of the constructor.
+  function _recMimeType(withAudio) {
+    const wanted = withAudio
+      ? ["video/webm;codecs=vp9,opus", "video/webm;codecs=vp8,opus", "video/webm"]
+      : ["video/webm;codecs=vp9", "video/webm"];
+    return wanted.find((m) => MediaRecorder.isTypeSupported?.(m) ?? true);
+  }
 
   document.getElementById("btn-record")?.addEventListener("click", async () => {
     const btn = document.getElementById("btn-record");
     if (!mediaRecorder) {
       const stream = canvas.captureStream(60);
+      const withAudio = _attachRecordAudio(stream);
+      if (!withAudio) {
+        console.info(
+          "[Record] Audio engine is not running — recording video only. " +
+            "Turn Audio on before starting the recording to capture sound.",
+        );
+      }
       mediaRecorder = new MediaRecorder(stream, {
-        mimeType: "video/webm;codecs=vp9",
+        mimeType: _recMimeType(withAudio),
         videoBitsPerSecond: 8_000_000,
+        ...(withAudio ? { audioBitsPerSecond: 192_000 } : {}),
       });
       recordChunks = [];
       mediaRecorder.ondataavailable = (e) => recordChunks.push(e.data);
       mediaRecorder.onstop = () => {
+        _detachRecordAudio();
         const blob = new Blob(recordChunks, { type: "video/webm" });
         const a = document.createElement("a");
         a.href = URL.createObjectURL(blob);

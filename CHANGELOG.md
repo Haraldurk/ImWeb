@@ -26,6 +26,30 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
   it is in, so a 4K screen is needed to *see* it 1:1 but not to *produce* it.
 
 ### Fixed
+- **The output recorder now records the sound too.** `canvas.captureStream()`
+  returns video only, so every recording ImWeb has ever made had no audio track
+  at all — confirmed on four real files, each of which `ffprobe` reports as a
+  single `codec_type=video` stream. Not a silent track: no track. The recorder
+  now taps the audio engine post-limiter through a
+  `MediaStreamAudioDestinationNode` on the engine's own `AudioContext` (the
+  one-context decision from the audio build is what keeps this a second edge on
+  an existing graph rather than two clocks to align), adds that track to the same
+  `MediaStream`, and records `video/webm;codecs=vp9,opus` at 192 kbit/s audio.
+  Monitoring keeps playing while recording. With the audio engine off, the
+  recording is video-only as before and the console says so — a track of digital
+  silence would look like captured audio that came out empty.
+
+- **A display change no longer quadruples the cost of every frame.**
+  `renderer.setPixelRatio(1)` is a deliberate decision — on a Retina display
+  DPR 2 doubles every dimension, quadrupling fill cost across 35+ shader passes
+  for no perceptible gain on moving video. `_onDPRChange()` then adopted
+  `window.devicePixelRatio`, undoing it permanently the first time the window
+  met a display of a different density, with nothing to put it back. The picture
+  is identical either way, so the only symptom was an instrument that became four
+  times more expensive to draw at a moment nothing correlated with. Found by
+  reading frame timestamps out of four real recordings: the only DPR-2 file in
+  the set ran at 19 fps against 30 for DPR-1 files at half the pixels. The
+  handler now re-asserts `1` and keeps doing the two things it is actually for.
 - **Floating surfaces land where you click them at any UI scale.** Found in code
   review, not testing — at 100% the bug is invisible by construction. The
   parameter context menu, controller popover, detached panels, the floating
@@ -54,6 +78,22 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
   is never the limiting term. The top of the range is heavy on purpose:
   1080 lines is a 1080×2048 lattice, ~4.4M vertices, and re-dragging Lines up
   there stalls while the grid rebuilds. The default stays 120.
+
+### Tests
+- `tests/audit-pixel-ratio.mjs` — every `setPixelRatio` call in `src/` must pass
+  the literal `1`, and `_onDPRChange` must still re-assert the ratio, re-sync
+  through `applyResolution`, and re-arm its own `{ once: true }` listener. Runs
+  against sanitized source, because the fix's comment quotes the forbidden call
+  while explaining why it is gone. Three mutations registered and 3/3 caught.
+
+### Docs
+- `docs/Recorder-Frame-Rate-Investigation.md` — frame-timing measurements from
+  five real recordings. **The recorder's low frame rate is the capture/encode
+  path, not the render loop**: the loop holds 60 fps with zero jank whether
+  recording or not, while the recording itself runs at 57.6 fps at 0.58 MP,
+  30.3 at 2.06 MP and 19.0 at 4.67 MP. No frame-rate fix applied yet — the two
+  candidates (VP8 instead of VP9, a fixed export resolution through an
+  intermediate canvas) are named and left to be measured the same way.
 
 ---
 
