@@ -40,6 +40,35 @@ export const MUTATIONS = [
     replace: '- [advisory]: Before writing any integration',
   },
   {
+    name: 'advisory: a non-Claude agent file loses the pointer',
+    audit: 'audit-learned-advisory-age.mjs',
+    file: 'AGENTS.md',
+    why: 'the gap this closed — "read docs/LEARNED.md" was ALREADY in AGENTS.md and the advisories still went unread, because nothing said which of the five tags has no mechanism behind it',
+    // Removes the WHOLE pointer, which is the realistic regression: someone
+    // trims the file and the paragraph goes with it. A first draft reworded one
+    // sentence and survived — correctly, because AGENTS.md names the tag twice
+    // and the file still did its job. A mutation has to represent a loss the
+    // reader would actually suffer.
+    apply(src) {
+      const a = src.indexOf('   **Start with the');
+      const b = src.indexOf('2. **Verify Line Numbers');
+      if (a < 0 || b < 0 || a > b) return src;
+      return src.slice(0, a) + src.slice(b);
+    },
+    expect(out) {
+      const prose = out.replace(/```[\s\S]*?```/g, '');
+      return !/\[advisory\]/.test(prose) && out.includes('docs/LEARNED.md');
+    },
+  },
+  {
+    name: 'advisory: the pull command is dropped from an agent file',
+    audit: 'audit-learned-advisory-age.mjs',
+    file: 'GEMINI.md',
+    why: 'agents that cannot run session-advisory.sh have no other route to the list, so the pointer becomes advice to go and find something with no way to find it',
+    find: 'grep -E \'^- [0-9]{4}-[0-9]{2}-[0-9]{2} \\[advisory\\]:\' docs/LEARNED.md',
+    replace: 'grep advisory docs/LEARNED.md',
+  },
+  {
     name: 'advisory: an entry that has aged past the boundary',
     audit: 'audit-learned-advisory-age.mjs',
     file: 'docs/LEARNED.md',

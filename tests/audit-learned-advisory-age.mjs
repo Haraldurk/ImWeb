@@ -84,6 +84,50 @@ for (const e of entries) {
 }
 
 /**
+ * The advisories have to REACH the agent that needs them, not merely exist.
+ *
+ * Claude Code gets them injected by `.claude/hooks/session-advisory.sh` at
+ * session start. Nothing else does — Kimi, Antigravity and anything else driving
+ * this repo read their own instruction file and never run that hook, so for them
+ * the entire promotion-pressure mechanism is invisible. That is the gap this
+ * checks: each non-Claude agent file must tell its reader to pull the advisory
+ * entries itself.
+ *
+ * These files were `.gitignore`d until 2026-08-14, which meant the pointer lived
+ * on exactly one machine and reached none of the agents it was written for. That
+ * is why the check asserts EXISTENCE as well as content — re-ignoring them turns
+ * the suite red instead of silently un-teaching every non-Claude agent.
+ *
+ * An explicit list rather than a glob over `*.md`, because most root docs are
+ * for humans and should not be dragged in. When a third agent file appears, add
+ * it here — the audit failing on a file that has not been added yet is the
+ * cheapest possible reminder that a new agent is not getting the lessons.
+ */
+const AGENT_FILES = ['AGENTS.md', 'GEMINI.md'];
+for (const f of AGENT_FILES) {
+  let doc = '';
+  try { doc = readFileSync(resolve(root, f), 'utf8'); } catch { /* reported below */ }
+  check(`${f} exists and is tracked`, doc.length > 0);
+  check(`${f} points at docs/LEARNED.md`, doc.includes('docs/LEARNED.md'));
+  // The distinction is the point: "read LEARNED.md" was ALREADY in AGENTS.md and
+  // still left the advisories unread, because nothing said which tag has no
+  // mechanism behind it.
+  //
+  // FENCED BLOCKS STRIPPED FIRST. The tag necessarily appears inside the grep
+  // command below, so testing the raw file passes even when every explanatory
+  // sentence has been deleted — which a mutation proved, by removing the prose
+  // and staying green. The claim is that the file EXPLAINS the tag, and a regex
+  // in a code fence is not an explanation.
+  const prose = doc.replace(/```[\s\S]*?```/g, '');
+  check(`${f} names the [advisory] tag in prose, not just inside a command`,
+    /\[advisory\]/.test(prose),
+    'pointing at the file is not enough — the other four tags defend themselves');
+  check(`${f} gives a way to pull them without Claude's hook`,
+    /grep -E '\^- \[0-9\]\{4\}/.test(doc),
+    'an agent that cannot run session-advisory.sh needs the command');
+}
+
+/**
  * Say when the next one falls due.
  *
  * The review's fourth item was "watch for the first aging-out event" — which is
