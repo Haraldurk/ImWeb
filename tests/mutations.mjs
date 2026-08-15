@@ -488,8 +488,17 @@ export const MUTATIONS = [
     audit: 'audit-pixel-ratio.mjs',
     file: 'src/main.js',
     why: 'this is the original bug verbatim — one display move quadruples fill cost across 35+ shader passes, permanently, with an identical picture and no error to notice',
-    find: '    renderer.setPixelRatio(1);\n    applyResolution(',
-    replace: '    renderer.setPixelRatio(window.devicePixelRatio);\n    applyResolution(',
+    // Anchored on the function signature, not on the line that used to follow
+    // the call. The original pattern paired `setPixelRatio(1)` with the
+    // `applyResolution(` beneath it, and PR #66 inserted an _applyUiScale()
+    // call and a comment between the two — so the pattern matched nothing, the
+    // audit passed because nothing had been broken, and the result was
+    // indistinguishable from a genuine audit hole. Caught by property (a) of
+    // the harness (LEARNED 2026-08-14): assert the mutation ACTUALLY APPLIED.
+    // A declaration cannot drift the way an adjacent statement can, and there
+    // is exactly one _onDPRChange.
+    find: 'function _onDPRChange() {\n    renderer.setPixelRatio(1);',
+    replace: 'function _onDPRChange() {\n    renderer.setPixelRatio(window.devicePixelRatio);',
   },
   {
     name: 'dpr: a variable ratio that happens to be 1 at boot',
