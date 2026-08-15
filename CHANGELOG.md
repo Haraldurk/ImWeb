@@ -22,6 +22,25 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
   recording is video-only as before and the console says so — a track of digital
   silence would look like captured audio that came out empty.
 
+- **A display change no longer quadruples the cost of every frame.**
+  `renderer.setPixelRatio(1)` is a deliberate decision — on a Retina display
+  DPR 2 doubles every dimension, quadrupling fill cost across 35+ shader passes
+  for no perceptible gain on moving video. `_onDPRChange()` then adopted
+  `window.devicePixelRatio`, undoing it permanently the first time the window
+  met a display of a different density, with nothing to put it back. The picture
+  is identical either way, so the only symptom was an instrument that became four
+  times more expensive to draw at a moment nothing correlated with. Found by
+  reading frame timestamps out of four real recordings: the only DPR-2 file in
+  the set ran at 19 fps against 30 for DPR-1 files at half the pixels. The
+  handler now re-asserts `1` and keeps doing the two things it is actually for.
+
+### Tests
+- `tests/audit-pixel-ratio.mjs` — every `setPixelRatio` call in `src/` must pass
+  the literal `1`, and `_onDPRChange` must still re-assert the ratio, re-sync
+  through `applyResolution`, and re-arm its own `{ once: true }` listener. Runs
+  against sanitized source, because the fix's comment quotes the forbidden call
+  while explaining why it is gone. Three mutations registered and 3/3 caught.
+
 ### Docs
 - `docs/Recorder-Frame-Rate-Investigation.md` — frame-timing measurements from
   four real recordings, what they rule out (jitter, bitrate, `captureStream(60)`),

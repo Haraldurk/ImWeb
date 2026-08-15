@@ -68,24 +68,42 @@ Frame rate tracks resolution, not duration and not bitrate. That points at fill
 cost or encode cost per frame, both of which scale with pixels — and away from
 anything scheduling-shaped.
 
-### And 2646×1766 should not have been possible
+### And 2646×1766 should not have been possible — FIXED
 
-`src/main.js:238` sets `renderer.setPixelRatio(1)` with a comment explaining the
+`src/main.js` sets `renderer.setPixelRatio(1)` with a comment explaining the
 decision at length: on a Retina display DPR = 2 quadruples fill cost across 35+
 shader passes for no perceptible gain on moving video, and DPR = 1 is what buys
 60 fps.
 
-`_onDPRChange()` at `src/main.js:255` then calls
-`renderer.setPixelRatio(window.devicePixelRatio)` — restoring Retina 2× and
-permanently undoing that decision the first time the window meets a display of a
-different density.
+`_onDPRChange()` — the handler that exists to notice a window moving to a display
+of a different pixel density — then called
+`renderer.setPixelRatio(window.devicePixelRatio)`, restoring Retina 2× and
+permanently undoing that decision on the first display change of the session,
+with nothing to put it back.
 
 2646 × 1766 is 1323 × 883 CSS pixels at DPR 2. The other three files are all
 DPR 1. **The slowest recording in the set is the one that had been through a DPR
-change**, and nothing ever puts the ratio back. This is a latent, silent 4×
-regression in fill cost with a documented intent sitting three lines above it,
-and it is worth fixing on its own merits regardless of what the measurement
-below says.
+change.**
+
+The handler now re-asserts `setPixelRatio(1)` rather than adopting the display's.
+Re-asserting rather than deleting the call: the ratio is a decision, and a
+decision restated at the one place that used to break it is worth the line. The
+handler's other two statements are what it is actually for — `applyResolution`
+re-syncs every engine's targets after a display move, and its matchMedia listener
+is `{ once: true }`, so re-arming it there is the only reason a *second* display
+change is ever noticed.
+
+`tests/audit-pixel-ratio.mjs` makes it permanent: every `setPixelRatio` call in
+`src/` must pass the literal `1`, and `_onDPRChange` must still do all three
+things. The census runs against sanitized source, because the fix's own comment
+quotes the forbidden call while explaining why it is gone. Three mutations in
+`tests/mutations.mjs` — the original bug verbatim, a variable ratio that reads
+correct on a non-Retina machine, and "pinning" the ratio by deleting the handler
+body — all caught, 3/3.
+
+**This is not claimed to be the whole stutter.** It explains one file of four.
+The other three were DPR 1 and still ran at 19–30 fps, so the measurement below
+is still the one that decides where the rest of the work goes.
 
 ---
 
@@ -137,7 +155,8 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
 
 - **`idle.fps ≈ during.fps ≈ 30`** → the render loop is the limiter. The recorder
   is correct; the recorded 30 fps is the instrument's real frame rate. Fix
-  rendering (starting with the DPR regression above), not recording.
+  rendering, not recording — the DPR regression above is already fixed, so the
+  next place to look is per-pass fill cost at 2 MP.
 - **`idle.fps ≈ 60`, `during.fps ≈ 30`** → the encoder is the limiter. VP9 at
   8 Mbit/s and 2 MP has no hardware encoder on this machine's AMD 5500M, so this
   is libvpx competing for CPU. Fix in the recorder: try

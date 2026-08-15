@@ -250,11 +250,29 @@ async function main() {
   }, false);
 
   // Fix A — DPR change detection (window moved to display with different pixel density)
+  //
+  // What this does NOT do is adopt the new ratio. It used to call
+  // `setPixelRatio(window.devicePixelRatio)`, which silently undid the
+  // `setPixelRatio(1)` decision three lines above — permanently, on the first
+  // display change of the session, with nothing to put it back. Dragging the
+  // window to a Retina display quadrupled the fill cost of 35+ shader passes
+  // and the instrument simply got slower and stayed slower.
+  //
+  // That was measured, not deduced: of four real recordings, the one at
+  // 2646×1766 — 1323×883 CSS at DPR 2, the only DPR-2 file in the set — ran at
+  // 19 fps, against 30 fps for the DPR-1 files at half the pixels. See
+  // docs/Recorder-Frame-Rate-Investigation.md.
+  //
+  // Re-asserting 1 rather than deleting the call: the ratio is a decision, and
+  // a decision restated at the one place that used to break it is worth the
+  // line. What the handler is still FOR is the other two statements —
+  // `applyResolution` re-syncs every engine's targets after a display move, and
+  // the matchMedia listener is `{ once: true }`, so re-arming it here is the
+  // only reason a SECOND display change is ever noticed.
   function _onDPRChange() {
-    const newDPR = window.devicePixelRatio;
-    renderer.setPixelRatio(newDPR);
+    renderer.setPixelRatio(1);
     applyResolution(ps.get('output.resolution').value);
-    window.matchMedia(`(resolution: ${newDPR}dppx)`)
+    window.matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`)
       .addEventListener('change', _onDPRChange, { once: true });
   }
   window.matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`)
