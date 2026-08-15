@@ -67,6 +67,19 @@
        overlapping the picture. */
     --ui-scale: 1;
 
+    /* Viewport units and env() insets, expressed so they survive `zoom`.
+       Inside a zoomed subtree `80vh` resolves against the UNZOOMED viewport and
+       is THEN multiplied, so it paints 160vh at 2× — and a fixed height clips
+       its own titlebar off the top of the screen. `%` does not have this
+       problem (it resolves against a parent that is zoomed identically), and
+       neither does px. Use these anywhere inside the zoom set.
+       env() is the same shape and worse in kind: an inset describing a physical
+       bezel cutout has no business being multiplied by a type-size preference.
+       #app handles it by not scaling it; inside the zoom set it must be
+       divided out explicitly. */
+    --vh: calc(1vh / var(--ui-scale));
+    --vw: calc(1vw / var(--ui-scale));
+    --safe-b: calc(env(safe-area-inset-bottom, 0px) / var(--ui-scale));
 }
 
 /* The chrome roots. Everything the user reads text in EXCEPT the picture and
@@ -80,14 +93,31 @@
 #signal-path,
 #state-bar,
 #mobile-state-bar,
-#mobile-state-modal,
 #param-search,
 #param-context-menu,
 #guide-panel,
 #capture-panel,
 #vkbd-panel,
 .ai-settings-panel,
-.detached-panel {
+.detached-panel,
+/* Second wave, from review: every one of these carries text, floats above the
+   UI, and was rendering at 1× inside a 2× interface. The controller popover
+   mattered most — it is the editor reached from the badge context menu, so the
+   two halves of the assign-a-controller workflow were both unreadable at the
+   scale where the workflow matters. Each is positioned from getBoundingClientRect
+   in JS and therefore needed setViewportPos() before it could be zoomed. */
+.ctrl-popover,
+/* The CLASS, not just #param-context-menu: the Stills Buffer slot menu is the
+   same kind of surface built from the same styles, and was the one context
+   menu left rendering at 1×. */
+.context-menu,
+#ctrl-map-panel,
+.slot-picker,
+#state-tile-menu,
+#help-menu,
+.clip-error-toast,
+.ai-coach-notif,
+#glsl-ai-box {
     zoom: var(--ui-scale);
 }
 
@@ -103,7 +133,15 @@
 #onboarding-box,
 #kb-help-box,
 #docs-viewer-box,
-#about-box {
+#about-box,
+/* #glsl-ai-modal is a sixth scrim, found in review — it was in neither the
+   list above nor the audit's hardcoded enumeration, which is why the audit now
+   DERIVES the scrim set from the stylesheet instead of listing it.
+   #mobile-state-modal was a seventh, and worse: it was in the zoomed list, so
+   at 2× the modal itself became twice the viewport. Its content is injected at
+   runtime by MobileStatePad, so the zoom goes on the scrim's children. */
+#glsl-ai-box,
+#mobile-state-modal > * {
     zoom: var(--ui-scale);
 }
 
@@ -777,7 +815,7 @@ button.ws-open:hover {
 }
 .detached-panel-body {
     overflow-y: auto;
-    max-height: 85vh;
+    max-height: calc(85 * var(--vh));
 }
 
 /* ── LAYER SOURCE / BLEND SELECTS (now custom dark dropdowns) ────────────── */
@@ -1614,7 +1652,7 @@ body.dnd-active::after {
 
 #signal-path {
     position: fixed;
-    bottom: calc(var(--state-h) + env(safe-area-inset-bottom, 0px));
+    bottom: calc(var(--state-h) + var(--safe-b));
     left: 0;
     right: 0;
     height: var(--signal-h);
@@ -1646,7 +1684,7 @@ body.sp-floating #signal-path-docked-space {
     right: auto;
     width: auto;
     min-width: 400px;
-    max-width: 90vw;
+    max-width: calc(90 * var(--vw));
     height: auto;
     min-height: 28px;
     border: 1px solid var(--border);
@@ -2271,7 +2309,7 @@ body.sp-floating #signal-path-docked-space {
        cap the height and let the list scroll with iOS momentum. Contain
        the overscroll so a fling at the list edge can never chain out to
        the page (swipe-back / rubber-band). */
-    max-height: min(65vh, 560px);
+    max-height: min(65 * var(--vh), 560px);
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
     overscroll-behavior: contain;
@@ -2325,8 +2363,8 @@ body.sp-floating #signal-path-docked-space {
     left: 50%;
     transform: translateX(-50%);
     width: 560px;
-    max-width: 92vw;
-    max-height: calc(100vh - 80px);
+    max-width: calc(92 * var(--vw));
+    max-height: calc(100 * var(--vh) - 80px);
     display: flex;
     flex-direction: column;
     background: var(--bg-2);
@@ -2380,7 +2418,7 @@ body.sp-floating #signal-path-docked-space {
 #param-search-results {
     flex: 1;
     min-height: 0;
-    max-height: 60vh;
+    max-height: calc(60 * var(--vh));
     overflow-y: auto;
 }
 /* Shown in place of the result list when a filter matches nothing, so an empty
@@ -2441,7 +2479,7 @@ body.sp-floating #signal-path-docked-space {
     padding: 20px 24px;
     box-shadow: 0 12px 48px rgba(0, 0, 0, 0.8);
     min-width: 460px;
-    max-width: 90vw;
+    max-width: calc(90 * var(--vw));
 }
 #kb-help-title {
     font-family: var(--mono);
@@ -2590,7 +2628,7 @@ body.sp-floating #signal-path-docked-space {
     border-radius: 8px;
     box-shadow: 0 12px 48px rgba(0, 0, 0, 0.8);
     width: 420px;
-    max-width: 90vw;
+    max-width: calc(90 * var(--vw));
 }
 #about-titlebar {
     display: flex;
@@ -2656,8 +2694,8 @@ body.sp-floating #signal-path-docked-space {
     border-radius: 8px;
     box-shadow: 0 12px 48px rgba(0, 0, 0, 0.8);
     width: 720px;
-    max-width: 90vw;
-    height: 80vh;
+    max-width: calc(90 * var(--vw));
+    height: calc(80 * var(--vh));
     display: flex;
     flex-direction: column;
 }
@@ -2760,8 +2798,8 @@ body.sp-floating #signal-path-docked-space {
     bottom: calc(var(--signal-h) + 12px);
     z-index: 3000; /* under #docs-viewer (3100) — a manual opened over the tour */
     width: 340px;
-    max-width: calc(100vw - 24px);
-    max-height: 60vh;
+    max-width: calc(100 * var(--vw) - 24px);
+    max-height: calc(60 * var(--vh));
     display: flex;
     flex-direction: column;
     background: var(--bg-2);
@@ -2999,7 +3037,7 @@ body.sp-floating #signal-path-docked-space {
     padding: 28px 32px;
     box-shadow: 0 16px 64px rgba(0, 0, 0, 0.9);
     max-width: 460px;
-    width: 90vw;
+    width: calc(90 * var(--vw));
     text-align: center;
 }
 #onboarding-title {
@@ -3492,7 +3530,7 @@ body.fullscreen-output #app {
     font-size: 12px;
     padding: 7px 16px;
     pointer-events: none;
-    max-width: min(90vw, 640px);
+    max-width: min(90 * var(--vw), 640px);
     white-space: normal;
     text-align: center;
     z-index: 600;
@@ -3717,10 +3755,10 @@ body.fullscreen-output #app {
 /* Phone portrait (≤600px) */
 @media (max-width: 600px) {
     :root {
-        --ctrl-w: 100vw;
+        --ctrl-w: calc(100 * var(--vw));
     }
     #control-panel {
-        width: 100vw;
+        width: calc(100 * var(--vw));
     }
 }
 
@@ -3825,7 +3863,7 @@ body.fullscreen-output #app {
        --state-h tall at bottom:0): at the old 44px the panel's lower edge —
        touch-action:none, cursor:move — sat on top of the state tiles and
        swallowed their taps. Drag-to-move overrides this via left/top. */
-    bottom: calc(var(--state-h) + 8px + env(safe-area-inset-bottom, 0px));
+    bottom: calc(var(--state-h) + 8px + var(--safe-b));
     left: 50%;
     transform: translateX(-50%);
     z-index: 5000;
@@ -4717,8 +4755,8 @@ body.fullscreen-output #app {
            zone must never overlap the Save/Clear/tile row. Controls keep
            --state-h; the inset strip below them stays empty. Requires
            viewport-fit=cover in the meta tag for env() to be non-zero. */
-        height: calc(var(--state-h) + env(safe-area-inset-bottom, 0px));
-        padding-bottom: env(safe-area-inset-bottom, 0px);
+        height: calc(var(--state-h) + var(--safe-b));
+        padding-bottom: var(--safe-b);
         z-index: 100; /* same slot as the desktop state bar */
         display: flex;
         align-items: stretch;
@@ -4957,7 +4995,7 @@ body.fullscreen-output #app {
     border-radius: 8px;
     box-shadow: 0 12px 48px rgba(0, 0, 0, 0.8);
     width: 520px;
-    max-width: 92vw;
+    max-width: calc(92 * var(--vw));
     padding: 14px;
     display: flex;
     flex-direction: column;

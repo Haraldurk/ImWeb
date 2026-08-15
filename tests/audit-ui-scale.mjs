@@ -56,29 +56,38 @@ const { autoUiScale, storedUiScale } = await import(
   new URL('../src/ui/layout/LayoutManager.js', import.meta.url).href
 );
 
-// The two configurations of ONE physical 4K monitor. Getting the same answer
-// for both would mean the rule is reading the wrong thing.
-check('4K at native 1× scales up (the reported case)',
-  autoUiScale(1, 3840) === 2, `got ${autoUiScale(1, 3840)}`);
-check('the same 4K panel in HiDPI is left alone',
-  autoUiScale(2, 1920) === 1, `got ${autoUiScale(2, 1920)}`);
+// screen.* is reported in CSS px, so each triple must be internally consistent:
+// ONE 4K panel reports (1, 3840, 2160) at 100% and (2, 1920, 1080) in HiDPI.
+const CASES = [
+  // dpr,  screenW, screenH, expect, what it is
+  [1,    3840, 2160, 2,   '4K at native 1× — the reported case'],
+  [2,    1920, 1080, 1,   'the same 4K panel in HiDPI'],
+  [1,    2160, 3840, 2,   '4K in PORTRAIT — dense, and the width test missed it'],
+  [1,    5120, 2880, 2,   '5K at 1×'],
+  [2,    2560, 1440, 1,   '5K iMac in HiDPI'],
+  [1,    3440, 1440, 1,   'ultrawide — 110 PPI, the width test doubled it'],
+  [1,    5120, 1440, 1,   'super-ultrawide — same trap, wider'],
+  [1,    2560, 1440, 1,   '27in 1440p at 1× — ordinary density'],
+  [1,    1920, 1080, 1,   'an ordinary 1080p desktop'],
+  [1.25, 3072, 1728, 1.5, '4K at Windows 125% — partial OS compensation'],
+  [1.5,  2560, 1440, 1.25,'4K at Windows 150%'],
+  [2,    1792, 1120, 1,   'this dev machine — must be a no-op'],
+];
+for (const [dpr, w, h, want, what] of CASES) {
+  const got = autoUiScale(dpr, w, h);
+  check(`${what} → ${want}×`, got === want, `got ${got}`);
+}
 
-check('5K/retina-class desktop in HiDPI is left alone',
-  autoUiScale(2, 2560) === 1, `got ${autoUiScale(2, 2560)}`);
-check('1440p at 1× gets the intermediate step',
-  autoUiScale(1, 2560) === 1.5, `got ${autoUiScale(1, 2560)}`);
-check('an ordinary 1080p desktop is left alone',
-  autoUiScale(1, 1920) === 1, `got ${autoUiScale(1, 1920)}`);
-// screen.width is reported in CSS pixels, so the pair must be consistent: one
-// 4K panel reports (1, 3840) at 100%, (1.25, 3072) at 125%, (1.5, 2560) at 150%.
-check('a 4K panel at Windows 125% still gets the remaining half-step',
-  autoUiScale(1.25, 3072) === 1.5, `got ${autoUiScale(1.25, 3072)}`);
-check('a 4K panel at Windows 150% is left alone',
-  autoUiScale(1.5, 2560) === 1, `got ${autoUiScale(1.5, 2560)}`);
+// The default must never scale DOWN, or every existing user's UI shrinks.
+check('the rule never returns less than 1',
+  CASES.every(([d, w, h]) => autoUiScale(d, w, h) >= 1) &&
+  [[3, 1920, 1080], [1, 640, 480], [4, 1024, 768]].every(([d, w, h]) => autoUiScale(d, w, h) >= 1));
 
-// The default must be a no-op, or every existing user's UI moves.
-check('the rule never scales DOWN',
-  [[1, 800], [1, 1280], [2, 1440], [3, 1920]].every(([d, w]) => autoUiScale(d, w) >= 1));
+// Auto must only ever land on a value the control actually offers, or the
+// select shows a blank and the user cannot get back to what they had.
+const LADDER = new Set([1, 1.25, 1.5, 1.75, 2]);
+check('every auto result is on the control ladder',
+  CASES.every(([d, w, h]) => LADDER.has(autoUiScale(d, w, h))));
 
 // ── 2. The stored override ───────────────────────────────────────────────────
 console.log('\nstoredUiScale — the user overrides the rule');
@@ -97,15 +106,36 @@ check('a tiny stored value is clamped too', storedUiScale('0.01') === 0.75,
 // ── 3. Scrims must not be zoomed; their inner box must be ────────────────────
 console.log('\nzoom targets');
 
+// Parse the stylesheet into rules once, and DERIVE both sets from it.
+//
+// The first version of this audit hardcoded `SCRIMS = [five selectors]`, which
+// is a check that can only pass while the list is complete — and it was not:
+// #glsl-ai-modal was a sixth scrim nobody had listed, and #mobile-state-modal
+// was a seventh that was actually IN the zoom set, i.e. the live instance of
+// the bug the audit claimed to prevent. An enumeration cannot catch the next
+// one. Deriving the set means a new `position: fixed; inset: 0` rule is
+// classified automatically, or fails here.
+const rules = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)]
+  .map(m => ({ sel: m[1].trim().replace(/\s+/g, ' '), body: m[2] }));
+
+const zoomRules = [];
+for (const r of rules) {
+  if (/zoom:\s*var\(--ui-scale\)/.test(r.body)) {
+    r.sel.split(',').map(s => s.trim()).filter(Boolean).forEach(s => zoomRules.push(s));
+  }
+}
+check('the zoom set is non-empty (the parse actually worked)', zoomRules.length > 5);
+
 // A `position: fixed; inset: 0` element zoomed by 2 becomes twice the viewport:
 // the backdrop overflows and the card it centres drifts off-screen.
-const SCRIMS = ['#onboarding', '#kb-help', '#docs-viewer', '#about-modal', '#panel-overlay'];
-const zoomRules = [...css.matchAll(/([^{}]+)\{[^{}]*zoom:\s*var\(--ui-scale\)[^{}]*\}/g)]
-  .map(m => m[1].split(',').map(s => s.trim()).filter(Boolean))
-  .flat();
+const scrims = rules
+  .filter(r => /position:\s*fixed/.test(r.body) &&
+    (/inset:\s*0/.test(r.body) || (/top:\s*0/.test(r.body) && /bottom:\s*0/.test(r.body))))
+  .flatMap(r => r.sel.split(',').map(s => s.trim()));
 
-for (const s of SCRIMS) {
-  check(`${s} (a full-viewport scrim) is not itself zoomed`,
+check('the stylesheet still has full-viewport scrims to check', scrims.length >= 5);
+for (const s of scrims) {
+  check(`${s} (full-viewport, fixed) is not itself zoomed`,
     !zoomRules.includes(s),
     'zooming a full-viewport element pushes it past the viewport edge');
 }
@@ -114,6 +144,62 @@ for (const box of ['#onboarding-box', '#kb-help-box', '#docs-viewer-box', '#abou
 }
 check('the control panel is zoomed', zoomRules.includes('#control-panel'));
 check('the status bar is zoomed', zoomRules.includes('#status-bar'));
+check('the controller popover is zoomed (the badge-workflow editor)',
+  zoomRules.includes('.ctrl-popover'));
+
+// ── 3b. Viewport units and env() inside the zoom set ─────────────────────────
+console.log('\nviewport units under zoom');
+
+// Inside a zoomed subtree, `80vh` resolves against the UNZOOMED viewport and is
+// then multiplied — 160vh at 2×, which clipped the docs viewer's own titlebar
+// off the top of the screen. `%` is fine (its containing block is zoomed too),
+// px is fine. env() must not be multiplied at all: it describes a bezel.
+const underZoom = (sel) => zoomRules.find((z) => {
+  const base = z.replace(/\s*>\s*\*$/, '');
+  return sel === base || sel.startsWith(base + ' ') || sel.startsWith(base + '.') ||
+    sel.startsWith(base + ':') ||
+    sel.replace(/^[#.]/, '').startsWith(base.replace(/^[#.]/, '') + '-');
+});
+
+let rawUnits = 0;
+for (const r of rules) {
+  const body = r.body.replace(/var\(--[a-z-]+\)/g, ''); // --vh/--vw are the FIX
+  const hits = body.match(/[0-9.]+v[hw]\b|env\(/g);
+  if (!hits) continue;
+  for (const sel of r.sel.split(',').map(s => s.trim())) {
+    if (underZoom(sel)) {
+      console.error(`  FAIL ${sel} uses ${[...new Set(hits)].join(',')} inside the zoom set` +
+        ' — use var(--vh) / var(--vw) / var(--safe-b)');
+      rawUnits++; failures++;
+    }
+  }
+}
+check('no raw viewport unit or env() inside the zoom set', rawUnits === 0);
+
+// And the converse: the helpers divide by --ui-scale, so using one OUTSIDE the
+// zoom set shrinks the value with nothing to multiply it back.
+let strayHelpers = 0;
+for (const r of rules) {
+  for (const decl of r.body.split(';')) {
+    const [prop, ...rest] = decl.split(':');
+    const value = rest.join(':');
+    if (!/var\(--(?:vh|vw|safe-b)\)/.test(value)) continue;
+    // A CUSTOM property is not a used length — it is a token that some other
+    // element resolves later, and that element may well be zoomed. The mobile
+    // `:root { --ctrl-w: calc(100 * var(--vw)) }` is exactly this: the value is
+    // consumed by #control-panel, which IS in the zoom set, so it is correct.
+    // Only a real property declaration commits to a coordinate space here.
+    if (prop.trim().startsWith('--')) continue;
+    for (const sel of r.sel.split(',').map(s => s.trim())) {
+      if (!underZoom(sel)) {
+        console.error(`  FAIL ${sel} sets ${prop.trim()} from --vh/--vw/--safe-b` +
+          ' but is not in the zoom set — the division would never be undone');
+        strayHelpers++; failures++;
+      }
+    }
+  }
+}
+check('no scale-divided helper used outside the zoom set', strayHelpers === 0);
 
 // Zooming #output-panel would be self-defeating: applyResolution() sizes the
 // renderer from canvas.parentElement.clientWidth, an UNZOOMED layout value, so
@@ -121,6 +207,104 @@ check('the status bar is zoomed', zoomRules.includes('#status-bar'));
 // output preset exists to remove.
 for (const never of ['#output-panel', '#output-canvas', 'body', 'html', ':root']) {
   check(`${never} is never zoomed`, !zoomRules.includes(never));
+}
+
+// ── 3c. No raw viewport→style.left writes anywhere in the UI ─────────────────
+console.log('\ncoordinate spaces in JS');
+
+// The bug class that review found three live instances of: `getBoundingClientRect`,
+// `clientX/clientY` and `innerWidth/innerHeight` are VIEWPORT px (already
+// multiplied by zoom); `style.left/top` and `offsetLeft/offsetTop` are
+// ELEMENT-LOCAL px (multiplied on the way out). Mixing them double-scales.
+// At scale 1 the two spaces are identical, so nothing is ever wrong in testing
+// on a normal display — which is exactly why this has to be mechanical.
+//
+// The rule: floating elements are positioned through setViewportPos(), which
+// does the one conversion. A bare `style.left = <something>px` in these files
+// is either a bug or needs to justify itself.
+const JS_FILES = [
+  'src/main.js',
+  'src/ui/UI.js',
+  'src/ui/components/CtrlPopover.js',
+];
+// The check is deliberately narrow: a style.left/top write is only suspect when
+// the value FED INTO IT came from viewport space. A write driven by local
+// geometry (offsetLeft/offsetWidth) is self-consistent — both sides share a
+// ruler — and a write of a stored//computed number is nobody's business here.
+// Broadening this to every style.left write flags ~23 legitimate lines, most of
+// them overlays inside the unzoomed #output-panel, and an audit that cries wolf
+// 23 times is one nobody will read on the day it is right.
+// Which JS variables refer to an element that IS in the zoom set? Derived from
+// the zoom set itself, not listed here — so a newly-zoomed element is covered
+// the moment it joins, which is the property the scrim check lacked and paid
+// for. An element positioned in viewport space while UNZOOMED is correct and
+// must not be flagged: #h-tl..#h-bl (corner-pin handles, which have to track
+// the picture, not the chrome) and .feedback-item (inside the unzoomed output
+// overlay) are both in that category and are the reason this is targeted.
+const zoomNames = zoomRules
+  .map(s => s.replace(/\s*>\s*\*$/, '').match(/^[#.]([\w-]+)$/)?.[1])
+  .filter(Boolean);
+
+const POS_WRITE = /(\w+)\.style\.(?:left|top)\s*=/;
+const VIEWPORT_SRC = /client[XY]|innerWidth|innerHeight|getBoundingClientRect|\b\w*[Rr]ect\.(?:left|right|top|bottom)\b/;
+const LOCAL_SRC = /offset(?:Left|Top|Width|Height)/;
+let bareWrites = 0;
+let scanned = 0;
+for (const f of JS_FILES) {
+  const src = readFileSync(resolve(root, f), 'utf8');
+  const lines = src.split('\n');
+
+  // Every point where a variable is bound to SOME element, with whether that
+  // element is in the zoom set. Nearest preceding binding wins — `el` and
+  // `panel` are rebound all over these files, and a file-wide set would report
+  // an unzoomed .feedback-item as zoomed purely because some other `el` is.
+  const BIND = /(?:const|let|var)\s+(\w+)\s*=|(\w+)\.(?:className|id)\s*=/;
+  const bindings = [];
+  lines.forEach((line, i) => {
+    const m = BIND.exec(line);
+    if (!m) return;
+    const name = m[1] || m[2];
+    const zoomed = zoomNames.some(n =>
+      new RegExp(`["'\`][#.]?${n}(?:[\\s"'\`])`).test(line));
+    bindings.push({ i, name, zoomed });
+  });
+  scanned += bindings.filter(b => b.zoomed).length;
+
+  const isZoomedAt = (name, at) => {
+    let last = null;
+    for (const b of bindings) {
+      if (b.i > at) break;
+      if (b.name === name) last = b;
+    }
+    return last?.zoomed === true;
+  };
+
+  lines.forEach((line, i) => {
+    const m = POS_WRITE.exec(line);
+    if (!m) return;
+    if (!isZoomedAt(m[1], i)) return;  // not a zoomed element — correct as-is
+    if (LOCAL_SRC.test(line)) return;  // local geometry, self-consistent
+    const ctx = lines.slice(Math.max(0, i - 3), i + 1).join('\n');
+    if (!VIEWPORT_SRC.test(ctx)) return;
+    console.error(`  FAIL ${f}:${i + 1} writes a viewport coordinate into ${m[1]}.style` +
+      ' — that element is zoomed; use setViewportPos()');
+    bareWrites++; failures++;
+  });
+}
+check('the scan actually resolved zoomed elements in JS (not vacuous)', scanned >= 3,
+  `resolved ${scanned}`);
+check('no zoomed element is positioned from a raw viewport coordinate',
+  bareWrites === 0);
+
+check('setViewportPos and elementZoom are exported for those call sites',
+  /export function setViewportPos/.test(lm) && /export function elementZoom/.test(lm));
+
+// A drag loop must not subtract a local offset from a viewport coordinate.
+for (const f of ['src/main.js']) {
+  const src = readFileSync(resolve(root, f), 'utf8');
+  check(`${f}: no drag grabs an offset as clientX - offsetLeft`,
+    !/client[XY]\s*-\s*\w+\.offset(?:Left|Top)/.test(src),
+    'mixes viewport and local px — the panel jumps on grab and tracks at scale× speed');
 }
 
 // ── 4. #app compensates for chrome it does not share the zoom with ───────────

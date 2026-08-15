@@ -25,6 +25,20 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
   canvas gets a true 4K backing buffer and letterboxes into whatever container
   it is in, so a 4K screen is needed to *see* it 1:1 but not to *produce* it.
 
+### Fixed
+- **Floating surfaces land where you click them at any UI scale.** Found in code
+  review, not testing — at 100% the bug is invisible by construction. The
+  parameter context menu, controller popover, detached panels, the floating
+  signal path, the on-screen keyboard, the slot picker and the buffer slot menu
+  all wrote a viewport coordinate straight into `style.left`, which a zoomed
+  element then multiplies again: at 200% the badge menu opened twice as far from
+  the pointer as the click, and a detached panel opened off the right edge of a
+  4K screen with its own drag handle out of reach. All now go through one
+  conversion helper.
+- **Modals fit the screen at any UI scale.** The docs viewer's fixed `80vh`
+  became 160vh at 200%, clipping its own titlebar and close button off the top.
+  Viewport units and safe-area insets inside scaled chrome now divide out.
+
 ### Changed
 - **The `≥2560px` breakpoint no longer claims to fix type size.** Its
   `body { font-size: 14px }` was measured to reach zero visible elements — all

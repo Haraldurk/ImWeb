@@ -3,6 +3,8 @@
  * Extracted verbatim from UI.js (Phase 2 componentization).
  */
 
+import { setViewportPos } from '../layout/LayoutManager.js';
+
 // ── Controller badge popover ──────────────────────────────────────────────────
 
 /**
@@ -391,9 +393,12 @@ export function openCtrlPopover(param, anchorEl, ctrl, tables) {
 
   document.body.appendChild(popover);
 
+  // All of this arithmetic is in VIEWPORT px — gBCR and innerWidth/innerHeight
+  // are already multiplied by any zoom in effect. setViewportPos does the one
+  // conversion back into the popover's own coordinates, which is what keeps it
+  // next to its badge when the UI is scaled.
   const r = anchorEl.getBoundingClientRect();
-  popover.style.left = `${r.right + 4}px`;
-  popover.style.top  = `${r.top}px`;
+  setViewportPos(popover, r.right + 4, r.top);
 
   requestAnimationFrame(() => {
     const pr  = popover.getBoundingClientRect();
@@ -401,8 +406,7 @@ export function openCtrlPopover(param, anchorEl, ctrl, tables) {
     let top   = r.top;
     if (left + pr.width  > window.innerWidth)  left = r.left - pr.width - 4;
     if (top  + pr.height > window.innerHeight) top  = window.innerHeight - pr.height - 4;
-    popover.style.left = `${Math.max(4, left)}px`;
-    popover.style.top  = `${Math.max(4, top)}px`;
+    setViewportPos(popover, Math.max(4, left), Math.max(4, top));
   });
 
   // Close on the next outside gesture — pointerdown, NOT click. This popover is

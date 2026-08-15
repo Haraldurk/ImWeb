@@ -179,6 +179,8 @@ import {
   UI_SCALE_KEY,
   autoUiScale as _autoUiScale,
   storedUiScale as _storedUiScale,
+  elementZoom,
+  setViewportPos,
 } from "./ui/layout/LayoutManager.js";
 import { version as APP_VERSION } from "../package.json";
 
@@ -1461,18 +1463,25 @@ async function main() {
       oy = 0,
       pid = null;
     handle.style.touchAction = "none";
+    // Captured at grab time so the move handler does not force a style recalc
+    // per pointermove just to read the zoom back.
+    let z = 1;
     handle.addEventListener("pointerdown", (e) => {
       if (e.target.tagName === "BUTTON") return;
       handle.setPointerCapture(e.pointerId);
       pid = e.pointerId;
-      ox = e.clientX - panel.offsetLeft;
-      oy = e.clientY - panel.offsetTop;
+      z = elementZoom(panel);
+      // gBCR, not offsetLeft: offsetLeft is element-local, clientX is viewport.
+      // Subtracting one from the other at 2× makes the panel jump on grab and
+      // then track at twice the pointer's speed.
+      const b = panel.getBoundingClientRect();
+      ox = e.clientX - b.left;
+      oy = e.clientY - b.top;
       e.preventDefault();
     });
     handle.addEventListener("pointermove", (e) => {
       if (pid !== e.pointerId) return;
-      panel.style.left = e.clientX - ox + "px";
-      panel.style.top = e.clientY - oy + "px";
+      setViewportPos(panel, e.clientX - ox, e.clientY - oy, z);
     });
     const _endDrag = (e) => {
       if (pid === e.pointerId) pid = null;
@@ -1500,9 +1509,9 @@ async function main() {
 
     const panel = document.createElement("div");
     panel.className = "detached-panel";
+    // Measured BEFORE `section` is reparented into the panel below — once it
+    // moves, its rect is the new location, not the one we want to open next to.
     const rect = section.getBoundingClientRect();
-    panel.style.left = Math.min(rect.right + 8, window.innerWidth - 300) + "px";
-    panel.style.top = Math.max(4, rect.top) + "px";
 
     const titleBar = document.createElement("div");
     titleBar.className = "detached-panel-title";
@@ -1530,6 +1539,18 @@ async function main() {
     panel.appendChild(titleBar);
     panel.appendChild(panelBody);
     document.body.appendChild(panel);
+    // AFTER the append, not before: elementZoom() reads computed style, and a
+    // detached node has none — it would report zoom 1 and put the panel back
+    // off-screen at any UI scale above 1, which is the bug this call fixes.
+    // Clamp in viewport space (rect and innerWidth are both already scaled),
+    // then convert once. The clamp uses the panel's MEASURED width rather than
+    // the old hardcoded 300: that constant was a fair guess at a 280px panel,
+    // but the panel is --ctrl-w × scale wide, so at 2× it is ~560 and the old
+    // number left a quarter of it hanging off the right edge.
+    const pw = panel.getBoundingClientRect().width || 300;
+    setViewportPos(panel,
+      Math.min(rect.right + 8, window.innerWidth - pw - 8),
+      Math.max(4, rect.top));
     _makeDraggable(panel, titleBar);
   }
 
@@ -1882,23 +1903,30 @@ async function main() {
       const rect = document
         .getElementById("output-panel")
         ?.getBoundingClientRect() ?? { left: 0, top: 40 };
-      spEl.style.left = rect.left + 12 + "px";
-      spEl.style.top = rect.top + 12 + "px";
+      // #signal-path is in the zoom set, so these viewport coords need the
+      // conversion. It happened to land near the right place at 2× only
+      // because #output-panel sits near the origin — the error is proportional
+      // to the offset, so it would have been obvious the moment the output
+      // panel moved.
+      setViewportPos(spEl, rect.left + 12, rect.top + 12);
 
       // Drag on title bar — pointer events so it also drags on the iPad
       titleBar.style.touchAction = "none";
+      let _spZoom = 1;
       titleBar.addEventListener("pointerdown", (e) => {
         if (e.target.tagName === "BUTTON") return;
         titleBar.setPointerCapture(e.pointerId);
         _spDragging = true;
-        _spDragOx = e.clientX - spEl.offsetLeft;
-        _spDragOy = e.clientY - spEl.offsetTop;
+        _spZoom = elementZoom(spEl);
+        // gBCR, not offsetLeft — see _makeDraggable for the same mix.
+        const b = spEl.getBoundingClientRect();
+        _spDragOx = e.clientX - b.left;
+        _spDragOy = e.clientY - b.top;
         e.preventDefault();
       });
       titleBar.addEventListener("pointermove", (e) => {
         if (!_spDragging) return;
-        spEl.style.left = e.clientX - _spDragOx + "px";
-        spEl.style.top = e.clientY - _spDragOy + "px";
+        setViewportPos(spEl, e.clientX - _spDragOx, e.clientY - _spDragOy, _spZoom);
       });
       titleBar.addEventListener("pointerup", () => { _spDragging = false; });
       titleBar.addEventListener("pointercancel", () => { _spDragging = false; });
@@ -4753,11 +4781,10 @@ async function main() {
     }
     slotPickerEl.appendChild(grid);
 
-    // Position near the click
+    // Position near the click — clamped in viewport space, converted once.
     const x = Math.min(e.clientX, window.innerWidth - 180);
     const y = Math.min(e.clientY, window.innerHeight - 200);
-    slotPickerEl.style.left = `${x}px`;
-    slotPickerEl.style.top = `${y}px`;
+    setViewportPos(slotPickerEl, x, y);
     slotPickerEl.classList.remove("hidden");
   }
 
@@ -5137,8 +5164,9 @@ async function main() {
       _bufSlotMenu.appendChild(clearBtn);
     }
 
-    _bufSlotMenu.style.left = `${Math.min(x, window.innerWidth - 160)}px`;
-    _bufSlotMenu.style.top = `${Math.min(y, window.innerHeight - 140)}px`;
+    setViewportPos(_bufSlotMenu,
+      Math.min(x, window.innerWidth - 160),
+      Math.min(y, window.innerHeight - 140));
     _bufSlotMenu.classList.remove("hidden");
 
     // pointerdown outside, not click — this menu opens from `contextmenu`,
@@ -8896,23 +8924,27 @@ function buildVirtualKeyboard() {
     _panelX = 0,
     _panelY = 0,
     _dragging = false;
+  // #vkbd-panel is in the UI-scale zoom set, so every one of these viewport
+  // coordinates needs converting before it becomes a style length.
+  let _panelZoom = 1;
   handle.addEventListener("pointerdown", (e) => {
     _dragging = true;
     _dragX = e.clientX;
     _dragY = e.clientY;
+    _panelZoom = elementZoom(panel);
     const r = panel.getBoundingClientRect();
     _panelX = r.left;
     _panelY = r.top;
     handle.setPointerCapture(e.pointerId);
     panel.style.transform = "none";
-    panel.style.left = _panelX + "px";
-    panel.style.top = _panelY + "px";
+    setViewportPos(panel, _panelX, _panelY, _panelZoom);
     panel.style.bottom = "auto";
   });
   handle.addEventListener("pointermove", (e) => {
     if (!_dragging) return;
-    panel.style.left = _panelX + e.clientX - _dragX + "px";
-    panel.style.top = _panelY + e.clientY - _dragY + "px";
+    setViewportPos(panel,
+      _panelX + e.clientX - _dragX,
+      _panelY + e.clientY - _dragY, _panelZoom);
   });
   handle.addEventListener("pointerup", () => {
     _dragging = false;
