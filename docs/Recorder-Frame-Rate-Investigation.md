@@ -1,11 +1,16 @@
-# The output recorder's frame rate — what four real recordings say
+# The output recorder's frame rate — what five real recordings say
 
-Investigation only. **No frame-rate fix is applied in this PR** — the one
-measurement that would justify a fix cannot be taken from an automated browser
-pane (see *What is still unmeasured*), and the numbers below already rule out
-the first hypothesis anyone would try.
+Investigation. **No frame-rate fix is applied in this PR**, but the question is
+now answered: see *The answer*. The capture/encode path is the limiter, not the
+render loop, and it is limited by pixel count. One contributing cause — a DPR
+regression that quadrupled fill cost after any display change — was found on the
+way and *is* fixed here.
 
 Companion to the audio-track change in `src/main.js` (`btn-record`).
+
+**One conclusion in the first draft of this document was wrong and is corrected
+in place below**, marked as a correction rather than quietly edited, because the
+reasoning that produced it is the reusable part.
 
 ---
 
@@ -29,17 +34,31 @@ ffprobe -v error -select_streams v:0 -show_entries frame=pts_time -of csv=p=0 FI
 
 `ffprobe` also confirms the audio report directly: **every one of the four files
 has exactly one stream, `codec_type=video`.** Not a silent track — no track.
-That is what this PR's other half fixes.
+That is what this PR's other half fixes — and the fifth file, recorded after it,
+carries `codec_name=opus`, 48 kHz, 2 channels, decoding to 12.000 s at
+`mean_volume: -27.3 dB` / `max_volume: -12.0 dB`. Real sound, not silence
+(silence reads about −91 dB) and not clipping. ffmpeg logs one
+`Error parsing Opus packet header` on the first packet and then decodes the whole
+stream to the sample; the decoded length is exact.
 
 ---
 
 ## What the numbers rule out
 
-**It is not jitter, and it is not the encoder falling behind irregularly.**
-Every gap is an integer multiple of one 60 Hz vsync, and in the best file 1052 of
-1077 gaps are *exactly* two vsyncs, p95 = 35 ms against a p50 of 33 ms. A capture
-pipeline dropping frames under encoder backpressure does not produce a
-distribution that tight. Frames are arriving on a clean grid — just a coarse one.
+**It is not jitter.** Every gap is an integer multiple of one 60 Hz vsync, and in
+the best file 1052 of 1077 gaps are *exactly* two vsyncs, p95 = 35 ms against a
+p50 of 33 ms. Frames are arriving on a clean grid — just a coarse one.
+
+> **Correction (2026-08-15).** The first draft of this document went on to argue
+> that "a capture pipeline dropping frames under encoder backpressure does not
+> produce a distribution that tight", and used that to rule out the encoder.
+> **That was wrong, and it was the load-bearing error here.** A canvas stream
+> only ever produces frames on canvas commit, i.e. *on the vsync grid* — so a
+> capture path that can only absorb every second frame drops on that grid too,
+> and yields exactly the tight 2× distribution above. Tightness distinguishes
+> regular from irregular. It says nothing at all about which stage is the
+> limiter. See *The answer* below, which is the opposite of what this paragraph
+> originally concluded.
 
 **It is not bitrate starvation.** The 8 Mbit/s ceiling is never reached:
 19.9 MB / 35.5 s ≈ 4.5 Mbit/s, 16.1 MB / 20.3 s ≈ 6.3 Mbit/s.
@@ -101,76 +120,77 @@ quotes the forbidden call while explaining why it is gone. Three mutations in
 correct on a non-Retina machine, and "pinning" the ratio by deleting the handler
 body — all caught, 3/3.
 
-**This is not claimed to be the whole stutter.** It explains one file of four.
-The other three were DPR 1 and still ran at 19–30 fps, so the measurement below
-is still the one that decides where the rest of the work goes.
+**It does not explain the other three.** They were DPR 1 and still ran at
+19–30 fps.
 
 ---
 
-## What is still unmeasured, and why
+## The answer (measured 2026-08-15)
 
-The discriminating question is one line long:
+Two measurements settled it, and neither matched the prediction I wrote down.
 
-> Does starting the recorder change ImWeb's own frame rate, or was the render
-> loop already running at 30?
+**1. The render loop is not the limiter, and recording costs it nothing
+measurable.** `window.__perfStats` on the owner's machine, sampled before and
+during a recording:
 
-If the loop already runs at 30 fps on this patch and this hardware, the recorder
-is faithful and there is nothing to fix in the recorder — the work is render
-performance. If the loop runs at 60 and drops to 30 the moment recording starts,
-the encoder is stealing the frame and the fix belongs in the recorder (cheaper
-codec, or capture at a fixed lower resolution through an intermediate canvas).
-
-**This cannot be taken from the automated browser pane.** The pane's tab reports
-`document.visibilityState === "hidden"`, which suspends `requestAnimationFrame`
-entirely — measured here as **0 rAF callbacks in 2 s**, with `setInterval(…, 16)`
-throttled to 3 ticks in 5.2 s. There is no frame timing to read, and a recording
-started there produces a 0-byte blob because the canvas is never committed. Any
-fps number obtained in that pane would be fiction.
-
-### The measurement to run
-
-`src/perf-logger.js` already computes `window.__perfStats` on every frame
-regardless of its `ENABLED` flag, so no code change is needed. On the owner's
-machine, with a normal working patch loaded and the window in the foreground,
-paste into DevTools:
-
-```js
-const sample = () => JSON.parse(JSON.stringify(window.__perfStats ?? {}));
-const wait = ms => new Promise(r => setTimeout(r, ms));
-(async () => {
-  await wait(6000);
-  const idle = sample();
-  document.getElementById('btn-record').click();
-  await wait(12000);
-  const during = sample();
-  document.getElementById('btn-record').click();
-  console.log(JSON.stringify({ idle, during }, null, 2));
-})();
+```
+idle:   { fps: 60, avg_ms: 16.67, p95_ms: 17.6, worst_ms: 17.7, jank: 0 }
+during: { fps: 60, avg_ms: 16.67, p95_ms: 17.4, worst_ms: 17.7, jank: 0 }
 ```
 
-`__perfStats` refreshes every 5 s, hence the waits. It reports
-`{ fps, avg_ms, p95_ms, worst_ms, jank }`.
+Not 30 idle, not 60 dropping to 30 — **60 both times, with zero jank and a worst
+frame of 17.7 ms.** All three predicted outcomes were wrong. Chrome encodes off
+the page's main thread, so the encoder can be saturated without the render loop
+noticing at all, which is exactly what a page-side fps probe is blind to.
 
-**Predictions, so a match is evidence and a mismatch is a finding:**
+**2. A recording made at a smaller output keeps up.** `imweb-1786791723965.webm`,
+the first ImWeb recording ever made with sound:
 
-- **`idle.fps ≈ during.fps ≈ 30`** → the render loop is the limiter. The recorder
-  is correct; the recorded 30 fps is the instrument's real frame rate. Fix
-  rendering, not recording — the DPR regression above is already fixed, so the
-  next place to look is per-pass fill cost at 2 MP.
-- **`idle.fps ≈ 60`, `during.fps ≈ 30`** → the encoder is the limiter. VP9 at
-  8 Mbit/s and 2 MP has no hardware encoder on this machine's AMD 5500M, so this
-  is libvpx competing for CPU. Fix in the recorder: try
-  `video/webm;codecs=vp8,opus` first (much cheaper, already in the fallback list
-  the audio change added), and if that is not enough, capture through an
-  intermediate canvas at a fixed export resolution.
-- **`during.jank` high with `during.fps ≈ idle.fps`** → neither; something is
-  hitching periodically, and `mediaRecorder.start(100)`'s per-100 ms `Blob`
-  delivery on the main thread becomes the next suspect.
+| resolution | span | frames | mean fps | gap p50 | gap p95 | vsync multiples |
+|---|---|---|---|---|---|---|
+| 683×846 (0.58 MP) | 11.9 s | 689 | **57.6** | 17 ms | 19 ms | `1×: 657`, `2×: 15`, `3×: 9`, `4×: 1` |
 
-### One way this could still be wrong
+657 of 688 gaps are exactly **one** vsync. Same instrument, same recorder, same
+machine — a third of the pixels, and double the frame rate.
 
-`preserveDrawingBuffer: true` (`src/main.js:236`) is on permanently for
-`toBlob()` capture, and it forces a copy rather than a swap on every frame. It is
-constant across the idle and recording samples, so it cannot explain a
-*difference* between them — but if the answer comes back "already 30 fps", it is
-a standing tax on the baseline that the fps comparison above will not reveal.
+**So the capture/encode path is the limiter, and it is limited by pixel count:**
+
+| pixels | fps |
+|---|---|
+| 0.58 MP | 57.6 |
+| 2.06 MP | 30.3 |
+| 4.67 MP | 19.0 |
+
+VP9 at 8 Mbit/s has no hardware encoder on this machine's AMD 5500M, so this is
+libvpx on the CPU, and the canvas capture is copying every frame out at full
+output resolution before it gets there.
+
+### What that makes the fix, when someone takes it
+
+Not render performance — the loop is already at 60. In the recorder:
+
+1. **A cheaper codec.** `video/webm;codecs=vp8,opus` is already in the fallback
+   list the audio change added; promoting it to first choice is a one-line
+   experiment with a measurable answer.
+2. **A fixed export resolution**, capturing through an intermediate canvas rather
+   than the live output, so the recording's cost stops depending on how large the
+   user happened to leave the window.
+
+Neither is done here. Both should be measured the same way this was — by reading
+the PTS distribution out of the produced file, not by asking the page how it
+feels.
+
+### Still unexplained
+
+Three 0-byte `.webm` files, all from runs of the `__perfStats` snippet above.
+Manual recording immediately before and after works and produces good files, so
+this is specific to driving `btn-record` programmatically and is not a property
+of the recorder in normal use. Recorded here rather than guessed at.
+
+### The standing tax the fps numbers cannot see
+
+`preserveDrawingBuffer: true` (`src/main.js`) is on permanently for `toBlob()`
+capture, and it forces a copy rather than a swap on every frame. It is constant
+across both samples above, so it could never have shown up as a *difference*
+between them — and at 60 fps with zero jank there is currently no evidence it is
+costing anything that matters.

@@ -43,9 +43,12 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
 
 ### Docs
 - `docs/Recorder-Frame-Rate-Investigation.md` — frame-timing measurements from
-  four real recordings, what they rule out (jitter, bitrate, `captureStream(60)`),
-  the resolution correlation, a DPR regression found on the way, and the one
-  measurement still to take. No frame-rate fix applied yet, deliberately.
+  five real recordings. **The recorder's low frame rate is the capture/encode
+  path, not the render loop**: the loop holds 60 fps with zero jank whether
+  recording or not, while the recording itself runs at 57.6 fps at 0.58 MP,
+  30.3 at 2.06 MP and 19.0 at 4.67 MP. No frame-rate fix applied yet — the two
+  candidates (VP8 instead of VP9, a fixed export resolution through an
+  intermediate canvas) are named and left to be measured the same way.
 
 ---
 
