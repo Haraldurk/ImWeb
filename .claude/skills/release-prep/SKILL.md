@@ -1,13 +1,17 @@
 ---
 name: release-prep
-description: Cut an ImWeb release — CHANGELOG, RELEASE_NOTES, version bump, README, tag and GitHub publish. Use when shipping a new version. Releases are hand-published; there is no CI.
+description: Cut an ImWeb release — CHANGELOG, RELEASE_NOTES, version bump, README, tag and GitHub publish. Use when shipping a new version. CI runs the tests but never publishes; the release itself is hand-published.
 disable-model-invocation: true
 ---
 
 # Cutting an ImWeb release
 
-There is **no CI**. Every step here is manual, and two of them are easy to get
-wrong in ways that are only visible after publishing.
+**CI runs `npm test` and mutation calibration on PRs (since #58), but it does
+not publish anything.** Every step below is manual, and several are easy to get
+wrong in ways only visible after publishing — a tag with no Release object, a
+README anchor pointing at a heading that no longer exists, a lockfile left two
+versions behind. Where a step can be enforced it now is, and the audit that
+enforces it is named at that step; the rest is on whoever runs this.
 
 ## 0. What is actually unreleased
 
@@ -84,6 +88,21 @@ npm version <x.y.z> --no-git-tag-version
 `--no-git-tag-version` matters: the tag is created in step 5, after the commit,
 so it points at the release commit rather than the one before it. This updates
 `package.json` **and** `package-lock.json` — both must move together.
+
+**Use the command; do not hand-edit the version.** This is the whole reason the
+step is written as a command rather than "set the version to x.y.z". Editing
+`package.json` directly — with an editor, a script, a find-and-replace — updates
+one file and silently leaves the lockfile behind, and nothing about the result
+looks wrong: the build works, `npm ci` works, the release publishes. The lockfile
+sat at 0.19.0 through **both** the v0.20.0 and v0.21.0 releases that way, found
+only by accident while cleaning up an unrelated change.
+
+`audit-sw-cache-bump.mjs` now enforces it, so a hand-edited bump fails `npm test`
+rather than shipping. If you find them already out of step:
+
+```bash
+npm install --package-lock-only    # syncs the version, touches no dependency
+```
 
 ## 4. README — three places move, two do not
 

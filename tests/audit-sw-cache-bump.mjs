@@ -146,6 +146,37 @@ function finish() {
       'package.json. See docs/LEARNED.md 2026-07-31 and issue #22.',
     );
   }
+  // ── 4. The other place the version must propagate ──────────────────────────
+  //
+  // Same class of fault as the cache name, same silence, different file. The
+  // release skill has always said package.json and package-lock.json "must move
+  // together", because `npm version` updates both — but a release that hand-edits
+  // the version instead updates only one, and nothing notices. That is exactly
+  // what happened: the lockfile sat at 0.19.0 through the 0.20.0 AND 0.21.0
+  // releases, and was found only because an unrelated uncommitted change to it
+  // was being cleaned up.
+  //
+  // It breaks nothing at install time — `npm ci` reads the dependency tree, not
+  // this field — which is precisely why it drifts unnoticed. What it costs is
+  // the ability to trust the lockfile as a record of what a given release
+  // shipped with, and `npm version` refuses to run against a mismatched pair.
+  //
+  // Prose did not hold this for two releases. This is the same rule, enforced.
+  console.log('\nversion propagation — package-lock.json');
+  const lockPath = resolve(root, 'package-lock.json');
+  const lock = JSON.parse(readFileSync(lockPath, 'utf8'));
+  check('package-lock.json version matches package.json',
+    lock.version === pkgVersion,
+    `lockfile says ${lock.version}, package.json says ${pkgVersion} — ` +
+    'run `npm install --package-lock-only`, or use `npm version` for the bump ' +
+    'so both move together');
+  // The nested self-reference: npm writes the project's own version twice, and
+  // a hand-edit typically catches one of them.
+  const selfEntry = lock.packages?.['']?.version;
+  check('the lockfile\'s nested self-entry matches too',
+    selfEntry === undefined || selfEntry === pkgVersion,
+    `packages[""].version is ${selfEntry}, expected ${pkgVersion}`);
+
   console.log(failures
     ? `\n${failures} FAILURE(S)\n`
     : '\nAll service worker cache-bump checks passed.\n');
