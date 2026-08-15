@@ -1,127 +1,160 @@
-# ImWeb v0.19.0 — The Second Pair of Hands
+# ImWeb v0.20.0 — The Other Half
 
-*Released 2026-08-10*
+*Released 2026-08-15*
 
-The guide describes a parameter with a controller on it as "a second pair of
-hands that never gets tired and never gets bored". This release is about those
-hands: being able to *assign* one at all, and the shape of how it moves once
-assigned.
+ImWeb has been a video instrument that could *listen*. Sound-reactive controllers
+have driven the picture for a long time — a kick drum opening a keyer, a room
+tone bending a warp. What it could not do was make a sound of its own.
 
-Both halves came from someone else using the instrument. The slew work started
-from a report that slow LFOs stuttered; the reachability work started from a beta
-tester who could not assign a single controller and said so.
+This release gives it the other half: a tape it can record onto, scrub, paint
+into and play back, with the picture deciding what it sounds like.
+
+Two things to know before the rest. **The audio engine never starts by itself** —
+it takes a deliberate **Audio On**, because a browser audio context created
+without a gesture comes up silently suspended and looks identical to a working
+one, and because an instrument should not seize the sound card merely by being
+open. And **it tells you when the room is a wire**: with a microphone open and
+monitoring set to speakers, the signal path draws the closed
+`mic → tape → speakers → mic` loop instead of leaving you to discover it at
+volume.
 
 ---
 
-## Ctrl+click reaches the controller menus
+## A tape, with regions that mean something
 
-If your pointer has no secondary button — every Mac trackpad at its default
-settings — you could open the assignment menu and never reach an item in it. It
-closed the instant you let go.
+The **Audio** tab holds a length of tape — sixty seconds by default — divided
+into four partitions. A **Recording Zone** writes into one, a **Playback Zone**
+reads from one, at any rate including negative, and both are ordinary parameters
+that a controller can drive.
 
-macOS fires `contextmenu` on the **mousedown** of a Ctrl+click and then still
-delivers a `click` on the release, so a close-on-outside-click handler shuts the
-menu before it can be used. Four surfaces had it: the parameter assignment menu,
-the controller badge popover, the state tile menu and the Stills Buffer slot
-menu. Between them, that is the entire controller-assignment grammar plus the
-state bar.
+Positions are stored as fractions of a partition rather than as sample counts, so
+a saved state means the same thing on a machine with a different tape length.
+Partition layout is a setup act: it is fixed while a zone on it is running, and
+the instrument says so rather than quietly ignoring you.
 
-Two of those did worse than close. A state tile's plain click **recalls the
-state**, so Ctrl+clicking a tile to reach *Save here* or *Export* jumped the
-whole instrument to that state, mid-performance. A buffer cell selected a
-different frame.
+## Painting sound — the spectral writer
 
-It survived years of daily use because it is invisible from the inside: a
-button-2 press emits no `click` at all, so anyone with two-finger secondary click
-enabled — which is every maintainer — can never reproduce it. It took an outside
-tester on a default trackpad.
+**Audio → Spectral Writer** takes whatever ImWeb is showing and renders it into
+the tape as sound: brightness becomes amplitude, height becomes pitch, and the
+horizontal axis becomes time. The whole effect chain is already in the picture,
+so what you hear is what you built.
 
-`tests/audit-contextmenu-dismissal.mjs` now enforces the rule: pair the close
-gesture with the phase the open gesture used.
+The vertical axis is quantized to a **musical scale** — chromatic through
+pentatonic, whole tone, octatonic, and the harmonic series, which is not
+octave-repeating and turns a vertical brush stroke into a timbre rather than a
+chord. That quantization is the difference between an instrument and a noise
+generator, and it is why this is not an inverse FFT: FFT bins are evenly spaced
+in frequency and scales are not, so a transform would re-quantize the one axis
+the feature exists for.
 
-## Slew curves
+The render is paced across audio frames rather than done in one blocking pass. It
+does not interrupt what is already playing, reports progress while it runs, can
+be cancelled, cannot clip, and cannot write outside the region it was given.
 
-Slew gains a response curve, set in the badge popover or by appending a word to
-Set Slew (`0.4 bounce`). The menu is in two groups because the split is
-structural rather than cosmetic:
+### And now in stereo
 
-- ***Any source*** — **Lag**, **Ease in/out**, **Elastic**. Filters, with no
-  clock and no fixed endpoint, so they behave the same on a stepped source and a
-  swept one.
-- ***Stepped sources*** — timed curves running from a captured start to the
-  target over exactly the slew time. That clock is the only way to overshoot,
-  ring or bounce, and also the limitation: on a continuously sweeping source they
-  add ripple instead of removing it.
+**Pan Image** decides where each part of the picture sits between the speakers.
+**Colour** reads the red-to-blue balance — the channel the writer otherwise
+throws away — so warm and cool parts of one frame land on opposite sides.
+**Spread** puts pitch across the field, lowest to the left. **Sweep** travels
+left to right across the render's own duration. **Off** is the default and
+renders mono, so nothing you have already made changes.
 
-**Elastic** is an underdamped spring rather than the textbook `easeOutElastic`,
-which covered **39% of the whole move in its first frame** at 60 fps — a snap
-with a wobble after it, and the one curve in the set that did not ease in at all.
-It now bounces off `min` and `max` instead of pressing flat against them, which
-is where S+H lands most often. **Back** no longer stalls for ten frames when a
-move starts on a rail. Both gained **Strength**, and Elastic a **Damp**.
+Colour asks where the *sound* in each cell is rather than where the pixels are: a
+bright stroke keeps its position instead of drifting toward centre because it
+happens to sit on a black background. The pan law is equal-power, so moving a
+stroke across the field does not change how loud it is.
 
-## Modulation that is actually slow
+## Finding sounds instead of scrubbing for them
 
-- **Rate floor is now 0.001 Hz** — one cycle per ~17 minutes.
-- **Slow modulation no longer stutters.** `step` was doing double duty as the UI
-  drag increment *and* a value quantum, so a 0.001 Hz sine moved the value on 4
-  frames out of 600 while the fps counter read a healthy 60. Controller-driven
-  writes bypass sub-unit snapping now; integer steps still snap.
-- **X-Map onto an LFO's rate is logarithmic**, over 0.05–20 Hz. Linear put every
-  rate under 0.5 Hz inside the bottom 2.5% of the travel.
-- **Phase** did nothing on a free-running LFO. It does now.
+**Audio → Corpus** measures the tape in short grains and plots them on a pad by
+two of four descriptors — loudness, brightness, pitch, periodicity. Touching the
+pad finds the nearest grain and plays it. A **Grain Player** reads from that
+position with size, density, pitch and spray of its own.
 
-## Finding things, on any keyboard
+The map only shows what the reader can actually reach. An earlier draft analysed
+the whole tape while the player read a single partition, so the pad plotted
+grains that would silently play as something else; the fix was to filter the map
+rather than to widen the reader.
 
-**`⌘K` / `Ctrl+K`** opens parameter search whatever your layout. `/` cannot work
-on Nordic keyboards — there it is `Shift`+`7`, which clip select claims first —
-and the `þ` alias was only ever discoverable by accident. Matched on the physical
-key, so it follows the key rather than the character printed on it.
+## Monitoring, and seeing the loop
 
-An empty filter now says *why* it is empty. *Active* on a fresh session is empty
-by definition, and it is the first chip most people press.
+**Audio → Monitoring** — Headphones or Speakers — is how you tell ImWeb whether
+the room closes the circuit. It changes no gain and no routing. What it changes
+is what the instrument knows, and therefore what it can tell you.
 
-## The guided tour, rewritten from tester notes
+Speakers is the default, because the safe state should require no selection.
+Guessing headphones would suppress the one warning that matters on exactly the
+setup where it matters.
 
-Rewritten wherever a first-time reader got lost: source and input each defined
-plainly instead of "routed, not wired"; **LFO** expanded on first use; the drag
-directions disambiguated (the row drags sideways, the min/max fields vertically);
-`⌥` named as the alt/option key and located on the keyboard; the state step
-sequencer described rather than alluded to.
+When the loop is real, the **signal path display** grows a row for the audio
+graph and draws the return edge — the one connection that cannot be a row of
+arrows, because it goes backwards:
 
-The tour's highlight is visible now. It was one 1.6 s pulse of the same yellow
-that already means "this row has a controller", so it both said the wrong thing
-and vanished into the rows that are legitimately yellow. Three pulses of blue
-over 2.6 s, with an outline and a glow.
+```
+mic → rec P0 → tape 60s → play P0 → limit → ▶ speakers   ⚠ room
+└────────────────────────────────────────────────┘
+```
 
-Sub-headings in **Effects** and **LUT** collapse when you click the arrow. They
-had been flipping the arrow and moving nothing, which reads as broken rather than
-as unsupported.
+**Dashed and grey** means the room is a wire with nothing driving it: you are one
+Run toggle from a howl, and the row names the toggle. **Solid and red** means a
+recorder and a reader are on the same material and you are in it. A warning line
+can say "closed"; only a drawing can say *which link to open*.
+
+The monitoring switch also takes no controller — a control that changes your
+exposure to feedback should not be sweepable — and that rule is now enforceable
+rather than merely written down.
+
+---
+
+## Fixed
+
+**The master Fade works.** Raising Fade above zero — by the slider, by `h`, by a
+controller, by a state recall or a loaded project — threw an error inside the
+render loop and stopped the picture on its last good frame. It went unnoticed
+because Fade defaults to 0, the one value that keeps the branch shut, so the most
+ordinary move there is — fading to black — was the trigger.
+
+**Changing the recording partition while recording** no longer looks like it
+worked when it did not. The button moved, the take went on landing in the old
+partition, and nothing said so. It now springs back and explains: stop the
+recorder, move it, start it again.
+
+---
 
 ## Under the hood
 
-`tests/audit-contextmenu-dismissal.mjs` was confirmed to fail with each of seven
-faults injected rather than merely passing on correct code: four
-`pointerdown`→`click` reversions, both modifier guards removed, and an unreviewed
-listener appended.
+The audio engine is an AudioWorklet with **zero imports by construction**, which
+is what lets it be instantiated in Node and driven quantum by quantum. Every
+claim this release makes about sound is measured on the samples it produced — a
+row lands on the pitch the scale says it does, a hard-panned image puts nothing
+in the other channel, centre sits at 1/√2 and not at a 3 dB dip — rather than
+asserted about the source.
+
+**`npm run mutate`** commits that discipline. Forty-eight registered defects, each
+with a stated consequence, each asserted to turn its audit red. Two of them found
+real faults rather than confirming absent ones, which is the argument for keeping
+them.
+
+The stereo placement and the loop marking were both checked by ear and eye on
+real hardware before this shipped, not only in Node.
 
 ---
 
 ## Upgrading
 
-No project or state file changes. `.imweb`, `.imbank` and `.imstate` files from
-v0.18.0 load unchanged.
+**No project or state file changes.** `.imweb`, `.imbank` and `.imstate` files
+from v0.19.0 load unchanged. Audio parameters are new, so older files simply have
+none — the engine stays off until you turn it on.
 
-The service worker cache is bumped to `imweb-v0.15`. **If you self-host, deploy a
-fresh `npm run build`** — a returning visitor's browser serves the cached
-`index.html` until that constant changes, and a stale one points at a bundle hash
-that no longer exists on disk.
+The service worker cache is now named after the app version: **`imweb-v0.20.0`**.
+**If you self-host, deploy a fresh `npm run build`** — a returning visitor's
+browser serves the cached `index.html` until that constant changes, and a stale
+one points at a bundle hash that no longer exists on disk. Naming the cache after
+the version also means the staleness is now visible in the literal itself, and
+the audit checks it exactly rather than inferring it from the last release tag.
 
 ## Credits
-
-Reachability and guide feedback from a beta tester working on an M1 MacBook Air
-with an Icelandic keyboard, who found in one afternoon what the project had
-walked past for a year.
 
 ImWeb is a reimagining of *Image/ine* by Tom Demeyer and Steina Vasulka
 (STEIM Amsterdam, 1997/2008). See [CREDITS.md](CREDITS.md).
