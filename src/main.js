@@ -2392,8 +2392,14 @@ async function main() {
     draw();
   }
   tbGrid.addEventListener('click',toggleGrid);
+  // documentElement, not body. Fullscreening BODY leaves the html element
+  // behind it visible as a strip along the top in Chromium — reported on Brave
+  // and Zen, while Safari happened to tolerate it, which is exactly the shape
+  // of bug that survives being tested on one browser. The main window has
+  // always used documentElement (see the fullscreen-output handler); this
+  // popup was the one place that did not.
   tbFs.addEventListener('click',()=>{
-    if(!document.fullscreenElement)document.body.requestFullscreen?.();
+    if(!document.fullscreenElement)document.documentElement.requestFullscreen?.();
     else document.exitFullscreen?.();
   });
 
@@ -2444,7 +2450,7 @@ async function main() {
 
   // Fullscreen on double-click (desktop fallback — toolbar ⛶ button used on touch)
   window.addEventListener('dblclick',()=>{
-    if(!document.fullscreenElement)document.body.requestFullscreen?.();
+    if(!document.fullscreenElement)document.documentElement.requestFullscreen?.();
     else document.exitFullscreen?.();
   });
 <\/script>
@@ -3369,13 +3375,34 @@ async function main() {
   ioOutBlock.appendChild(_ioRow("UI Size", uiScaleSel));
 
   // ── 2Display resolution — controls second screen bitmap resize pre-postMessage ──
+  // What this actually controls: the size the frame is RESIZED TO before being
+  // handed to the second window, not the window's own resolution. The frame is
+  // read back with createImageBitmap and posted across, so this is a transfer
+  // cost dial — smaller is cheaper, and the second screen is already throttled
+  // to every other frame for the same reason.
+  //
+  // 1440p and 4K were missing, which made the output.resolution work of v0.21.0
+  // unreachable where it matters most: a performer's second display IS the
+  // output, and it was silently downscaling 4K to 1080p by default. Reported by
+  // Tom, who also asked what the row meant — hence the title text below.
+  //
+  // Ordered largest-first, which the persisted SELECTs (output.resolution) may
+  // NOT do. The difference is real and worth stating: _outWinResIdx is a
+  // session-only `let` — never serialised, never in localStorage, not a
+  // ParameterSystem param — so no saved file holds an index into this list and
+  // reordering it cannot repoint anything.
   const _outWinResOpts = [
-    { label: "Same",  dims: null },
+    { label: "Same",  dims: null },            // no resize — whatever output.resolution is
+    { label: "4K",    dims: [3840, 2160] },
+    { label: "1440p", dims: [2560, 1440] },
     { label: "1080p", dims: [1920, 1080] },
     { label: "720p",  dims: [1280, 720] },
     { label: "540p",  dims: [960, 540] },
   ];
-  let _outWinResIdx = 1; // default 1080p — fast for projection, lower transfer cost
+  // Default stays 1080p — fast for projection, lower transfer cost. Raising the
+  // ceiling is not the same as raising the default: 4K readback every other
+  // frame is a real cost, and someone who wants it can now ask for it.
+  let _outWinResIdx = _outWinResOpts.findIndex((o) => o.label === "1080p");
   const outWinSel = _ioSel();
   _outWinResOpts.forEach((opt, i) => {
     const o = document.createElement("option");
@@ -3383,8 +3410,15 @@ async function main() {
     outWinSel.appendChild(o);
   });
   outWinSel.value = _outWinResIdx;
+  outWinSel.title =
+    "Size the picture is resized to before it is sent to the second screen " +
+    "window. Lower costs less to transfer; \"Same\" sends it at whatever the " +
+    "Display resolution is, with no resize. This is not the second screen's " +
+    "own resolution — it is how much detail reaches it.";
   outWinSel.addEventListener("change", () => { _outWinResIdx = +outWinSel.value; });
-  ioOutBlock.appendChild(_ioRow("2Display", outWinSel));
+  const _outWinRow = _ioRow("2Display", outWinSel);
+  _outWinRow.title = outWinSel.title; // the label is the part people point at
+  ioOutBlock.appendChild(_outWinRow);
 
   // Phase 23 Step 3: the Mapping tab is retired. I/O leads the SOURCES tab —
   // it is mostly input-device selection (Camera, Audio In) and stays the first
