@@ -3328,18 +3328,24 @@ async function main() {
   });
   dispSel.value = ps.get("output.resolution").value;
   dispSel.addEventListener("change", () => ps.set("output.resolution", +dispSel.value));
-  ps.get("output.resolution").onChange(v => { dispSel.value = v; recSel.value = v; });
+  ps.get("output.resolution").onChange(v => { dispSel.value = v; });
   ioOutBlock.appendChild(_ioRow("Display", dispSel));
 
-  // ── Record resolution (linked to Display until independent REC target is built) ──
+  // ── Record resolution (independent of Display) ──
+  // Its own option list, and its own indices: output.recResolution has no
+  // "Quarter" entry, because a record target derived from the window size is
+  // the behaviour this control exists to escape. "Disp" (0) still means "record
+  // the output canvas as-is" for anyone who wants it.
+  const _REC_RES_OPTS = [["Disp",0],["720p",1],["1080p",2],["540p",3],["1440p",4],["4K",5]];
   const recSel = _ioSel();
-  _RES_OPTS.forEach(([label, val]) => {
+  _REC_RES_OPTS.forEach(([label, val]) => {
     const o = document.createElement("option");
     o.value = val; o.textContent = label;
     recSel.appendChild(o);
   });
-  recSel.value = ps.get("output.resolution").value;
-  recSel.addEventListener("change", () => ps.set("output.resolution", +recSel.value));
+  recSel.value = ps.get("output.recResolution").value;
+  recSel.addEventListener("change", () => ps.set("output.recResolution", +recSel.value));
+  ps.get("output.recResolution").onChange(v => { recSel.value = v; });
   ioOutBlock.appendChild(_ioRow("Record", recSel));
 
   // ── UI scale ──
@@ -6101,20 +6107,140 @@ void main() {
     _recAudioDest = null;
   }
 
-  // vp9+opus is what Chrome and Firefox both give us; the fallbacks exist so a
-  // browser that refuses the explicit codec string still records rather than
-  // throwing NotSupportedError out of the constructor.
+  // H.264-in-MP4 first, because it is the only codec here with a HARDWARE
+  // encoder on this class of machine (VideoToolbox). VP9 has none — it is
+  // libvpx on the CPU, and it is the measured limiter on the recorder's frame
+  // rate (Recorder-Frame-Rate-Investigation.md: 57.6 → 30.3 → 19.0 fps as pixel
+  // count rises). L5.1 before L5.0 because L5.0 is refused at 4K.
+  //
+  // **VP8 is deliberately absent, not forgotten.** It reads as the cheaper
+  // codec and it is, below ~2 MP — then it falls off a cliff between 1964 and
+  // 2048 px wide: 7.7 fps against VP9's 26.8 at 2048×1280, 3.2 against 21.6 at
+  // 1440p. Since v0.21.0 ships 1440p and 4K presets, promoting VP8 would be a
+  // 7× regression at a headline resolution. Measurements in PR #72.
   function _recMimeType(withAudio) {
+    // No isTypeSupported at all: do not guess a container. Returning undefined
+    // lets MediaRecorder choose what it can actually write; naming MP4 on a
+    // browser we cannot interrogate would throw NotSupportedError out of the
+    // constructor, which is the failure the fallback list exists to avoid.
+    if (typeof MediaRecorder.isTypeSupported !== "function") return undefined;
     const wanted = withAudio
-      ? ["video/webm;codecs=vp9,opus", "video/webm;codecs=vp8,opus", "video/webm"]
-      : ["video/webm;codecs=vp9", "video/webm"];
-    return wanted.find((m) => MediaRecorder.isTypeSupported?.(m) ?? true);
+      ? [
+          "video/mp4;codecs=avc1.640033,mp4a.40.2",
+          "video/mp4;codecs=avc1.640032,mp4a.40.2",
+          "video/webm;codecs=vp9,opus",
+          "video/webm",
+        ]
+      : [
+          "video/mp4;codecs=avc1.640033",
+          "video/mp4;codecs=avc1.640032",
+          "video/webm;codecs=vp9",
+          "video/webm",
+        ];
+    return wanted.find((m) => MediaRecorder.isTypeSupported(m));
+  }
+
+  // Bitrate scaled to the capture size rather than a flat 8 Mbit/s. The old
+  // ceiling is a quality cap that current files already brush against (measured
+  // 6.3 Mbit/s at 2 MP), and it means a 4K take is starved four times harder
+  // than a 1080p one for no reason anybody chose. 0.16 bits per pixel per frame
+  // at 60 fps reproduces the advisory's targets — 1080p ≈ 20, 1440p ≈ 35
+  // Mbit/s — and the 60 Mbit/s clamp holds 4K to a sane file size instead of
+  // the ~80 the formula alone would ask for.
+  function _recVideoBitrate(w, h) {
+    return Math.min(60_000_000, Math.max(8_000_000, Math.round(w * h * 60 * 0.16)));
+  }
+
+  // ── Independent record resolution ────────────────────────────────────────
+  //
+  // Recording used to capture the output canvas directly, so the cost of a take
+  // was whatever size the user had left the window — the single biggest term in
+  // the frame-rate measurements (57.6 fps at 0.58 MP, 19.0 at 4.67). These
+  // record through a fixed-size canvas instead, so the encoder always sees the
+  // same pixel count no matter how the instrument is being displayed.
+  //
+  // Index 0 ("Display") keeps the old path exactly: no intermediate surface, no
+  // per-frame copy, `canvas.captureStream()` as before. That is the escape
+  // hatch for anyone who wants the window's own resolution, and it costs
+  // nothing when chosen.
+  // Fixed, standard sizes. The output is STRETCHED to fill them.
+  //
+  // Three properties were wanted and only two are ever simultaneously
+  // available: exact 1920x1080-class dimensions, no black bars, no cropping.
+  // Contain gives up the first, cover gives up the third, aspect-matching
+  // gives up standard dimensions (a near-square window recorded 1134x1080).
+  // Stretch is the only one that keeps all three, and it pays for them with
+  // anamorphic distortion proportional to how far the window is from 16:9.
+  //
+  // That is a deliberate choice for this instrument: the output is a synthesis
+  // canvas with no canonical geometry, the deliverable is a standard video
+  // file, and an operator who wants undistorted output can size the window
+  // 16:9 or set the Display preset — at which point stretch is the identity.
+  // Both alternatives were tried on real recordings first; this is the one
+  // that was kept.
+  const _REC_RESOLUTIONS = {
+    0: null, // Display — capture the output canvas itself
+    1: [1280, 720],
+    2: [1920, 1080],
+    3: [960, 540],
+    4: [2560, 1440],
+    5: [3840, 2160],
+  };
+
+  let _recCanvas = null;
+  let _recCtx = null;
+  let _recBlitting = false;
+
+  // Copy the output canvas into the record canvas, stretched to fill it.
+  //
+  // The three-argument drawImage covers the whole destination, so every pixel
+  // is written every frame — no clear is needed and none is done, and a window
+  // resized MID-recording is handled for free (the stream's dimensions cannot
+  // change once started, and the next frame simply stretches by a new factor
+  // rather than suddenly letterboxing).
+  //
+  // Depends on `preserveDrawingBuffer: true` — without it drawImage() off a
+  // WebGL canvas returns a STALE frame rather than failing (LEARNED
+  // 2026-07-31), which would present as a recording that mysteriously lags or
+  // freezes. The advisory contemplates removing that flag; this is now its
+  // second consumer, alongside the PNG capture panel.
+  function _recBlit() {
+    if (!_recBlitting || !_recCtx) return;
+    // A zero-sized source throws InvalidStateError rather than drawing
+    // nothing, which would kill the render loop mid-recording.
+    if (!canvas.width || !canvas.height) return;
+    _recCtx.drawImage(canvas, 0, 0, _recCanvas.width, _recCanvas.height);
+  }
+
+  // The surface to record, and its size. Returns the output canvas itself for
+  // "Display", otherwise an intermediate sized to the chosen preset.
+  function _recSurface() {
+    const preset = _REC_RESOLUTIONS[ps.get("output.recResolution").value];
+    if (!preset) {
+      _recBlitting = false;
+      return canvas;
+    }
+    if (!_recCanvas) {
+      _recCanvas = document.createElement("canvas");
+      // `alpha: false` — the encoder discards alpha regardless, and an opaque
+      // 2D context lets the compositor skip a blend per frame. `desynchronized`
+      // is deliberately NOT set: it can hand back a surface whose contents lag
+      // the last drawImage, which is the one property a recorder cannot accept.
+      _recCtx = _recCanvas.getContext("2d", { alpha: false });
+    }
+    [_recCanvas.width, _recCanvas.height] = preset;
+    _recBlitting = true;
+    // Seed the first frame now, so the stream's opening frame is the picture
+    // rather than an empty canvas.
+    _recBlit();
+    return _recCanvas;
   }
 
   document.getElementById("btn-record")?.addEventListener("click", async () => {
     const btn = document.getElementById("btn-record");
     if (!mediaRecorder) {
-      const stream = canvas.captureStream(60);
+      const surface = _recSurface();
+      const stream = surface.captureStream(60);
       const withAudio = _attachRecordAudio(stream);
       if (!withAudio) {
         console.info(
@@ -6122,23 +6248,80 @@ void main() {
             "Turn Audio on before starting the recording to capture sound.",
         );
       }
+      const mime = _recMimeType(withAudio);
+      // The capture size is read off the surface actually being captured, not
+      // off output.resolution — under a fixed record resolution those are two
+      // different numbers, and it is the encoder's pixel count that the
+      // bitrate has to match.
       mediaRecorder = new MediaRecorder(stream, {
-        mimeType: _recMimeType(withAudio),
-        videoBitsPerSecond: 8_000_000,
+        ...(mime ? { mimeType: mime } : {}),
+        videoBitsPerSecond: _recVideoBitrate(surface.width, surface.height),
         ...(withAudio ? { audioBitsPerSecond: 192_000 } : {}),
       });
       recordChunks = [];
       mediaRecorder.ondataavailable = (e) => recordChunks.push(e.data);
       mediaRecorder.onstop = () => {
         _detachRecordAudio();
-        const blob = new Blob(recordChunks, { type: "video/webm" });
+        // Stop the per-frame copy. The canvas itself is kept: a performer
+        // starting and stopping takes all night should not reallocate a 4K
+        // surface each time, and it is re-sized on every start anyway.
+        _recBlitting = false;
+        // Read the container back off the recorder rather than assuming it.
+        // `mimeType` is the type it ACTUALLY wrote, which is not necessarily
+        // the one asked for — and a `.webm` name on an MP4 payload is a file
+        // that some editors open and some silently refuse.
+        const type = mediaRecorder.mimeType || "video/webm";
+        const ext = type.includes("mp4") ? "mp4" : "webm";
+        const blob = new Blob(recordChunks, { type });
         const a = document.createElement("a");
         a.href = URL.createObjectURL(blob);
-        a.download = `imweb-${Date.now()}.webm`;
+        a.download = `imweb-${Date.now()}.${ext}`;
         a.click();
+        // The object URL keeps the whole recording alive for the life of the
+        // page, so it is revoked once the download has been handed off. Every
+        // other createObjectURL in this file already did this (the .imweb save
+        // path, the frame-capture zip); the recorder was the one that did not,
+        // and it is the one whose blobs are hundreds of megabytes.
+        //
+        // This was the recorder's frame-rate ceiling, and it is confirmed by
+        // experiment rather than inferred.
+        //
+        // Before: four 60-second 1080p takes in one page session retained
+        // 162 -> 281 -> 391 -> 487 MB, and the frame rate fell 31 -> 21 -> 22
+        // -> 18 fps with a 120-190 ms stall recurring on a ~0.52 s period.
+        // After: five consecutive 60-second takes, no reloads, 55.9-58.1 fps
+        // with stalls at 0.02-0.22/s and flat within every take. Same protocol,
+        // same bits-per-frame (645 vs 638 kbit, so comparable scenes), one
+        // variable.
+        //
+        // It is NOT thermal — three takes back to back got FASTER (54, 58, 58)
+        // once the leak was gone. The periodic stall that four separate
+        // hypotheses were built to explain (keyframes, the audio path,
+        // frame-counted work, GC) was this: memory pressure from recordings
+        // that never went away.
+        //
+        // 5000 ms, matching the other two call sites: the click is
+        // asynchronous and revoking immediately can cancel the download.
+        setTimeout(() => URL.revokeObjectURL(a.href), 5000);
         mediaRecorder = null;
       };
-      mediaRecorder.start(100);
+      // NO TIMESLICE. Justified on its own terms, NOT as a performance fix —
+      // an earlier version of this comment claimed the latter and was wrong.
+      //
+      // Nothing ever wanted the chunks: `ondataavailable` pushes into
+      // recordChunks, which is read only in `onstop`. No streaming consumer, no
+      // upload, no progress UI. The 100 ms was the timeslice from the MDN
+      // example, carried in with the first recorder in v0.1 (1e5dc35) and never
+      // revisited. With no argument MediaRecorder delivers one Blob at stop and
+      // memory is unchanged, because the chunks were retained either way. So
+      // this is a dead parameter removed, and that is the whole claim.
+      //
+      // What it did NOT fix, despite an earlier claim here: the 120-190 ms
+      // stall on a ~0.52 s period. That was the leaked object URL in `onstop`
+      // above, and it is fixed there. The two takes that came in clean at
+      // 57 fps and were briefly credited to a long timeslice were simply the
+      // FIRST takes of their session, before enough recordings had piled up.
+      mediaRecorder.start();
       btn.classList.add("recording");
       btn.textContent = "⏹";
     } else {
@@ -8133,6 +8316,14 @@ void main() {
         seq.renderTimewarp(pipeline.prev.texture, ps, i + 1);
       }
     });
+
+    // Feed the record canvas, if a fixed record resolution is in use. Placed
+    // here because the output canvas is final at this point, and because it is
+    // AFTER the early returns for _captureMode and the midisync/autosync
+    // gating — a frame the instrument chose not to draw must not become a
+    // frame in the file. That gating is what makes the recording contain one
+    // frame per rendered frame rather than per rAF callback.
+    _recBlit();
 
     // Draw-call/triangle counts are available on demand via __dbg.draws() and
     // in __dbg.state() (?soak=1) — deliberately NOT logged from here. A

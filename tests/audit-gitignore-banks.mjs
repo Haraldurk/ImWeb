@@ -209,6 +209,33 @@ for (const name of FACTORY) {
     'the app ships this — an over-broad rule has excluded it');
 }
 
+// ── 5. No symlink is tracked ─────────────────────────────────────────────────
+// A symlink is committed as a 120000 blob whose CONTENTS are the link target —
+// usually an absolute path from one machine, which is meaningless on any other
+// and, for node_modules, actively harmful.
+//
+// This is here rather than in a new file because the cause was a .gitignore
+// subtlety: the rule was `node_modules/`, and a trailing slash matches a
+// DIRECTORY only. A git worktree pointed at the main checkout's install has a
+// node_modules SYMLINK, which the rule did not match, so `git add -A` committed
+// it and it reached main (PR #74). The ignore rule is fixed; this is the check
+// that would have caught it either way, since the next symlink will have some
+// other name.
+console.log('\ntracked symlinks');
+const links = execFileSync('git', ['ls-files', '-s'], { cwd: root, encoding: 'utf8' })
+  .split('\n')
+  .filter((l) => l.startsWith('120000'))
+  .map((l) => l.split('\t')[1]);
+
+check('no symlink is tracked', links.length === 0,
+  links.length
+    ? `tracked symlink(s): ${links.join(', ')}\n` +
+      '       FIX: `git rm --cached <path>` and make sure .gitignore matches the\n' +
+      '       LINK, not just a directory of the same name — `foo/` does not match\n' +
+      '       a symlink named foo. A committed symlink holds an absolute path\n' +
+      '       from whoever committed it and is broken for everyone else.'
+    : '');
+
 if (failures) {
   console.error(
     '\nDo NOT fix this by loosening the rule. The order in .gitignore is the\n' +

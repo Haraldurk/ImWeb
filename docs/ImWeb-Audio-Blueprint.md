@@ -605,9 +605,11 @@ list said nothing here was, which was wrong once §8.1 landed:
    sharing but the teardown: `AudioEngine.close()` used to close the context, which
    under one shared context takes down every consumer silently, so it suspends
    instead and the engine restarts on the surviving context.
-   **Still open from §8.6, and deliberately not built here:** drawing the loop in
-   the signal path display, and the headphones/speakers monitoring switch (a setup
-   act, `group: 'global'`, never a controller target).
+   **Two things §8.6 asked for were left unbuilt here and have since landed:** the
+   headphones/speakers monitoring switch (step 10, §8.12 — a setup act,
+   `group: 'global'`, never a controller target, and step 10 is where that last
+   clause stopped being prose and became `setup: true`) and drawing the loop in the
+   signal path display (step 11, §8.13). Nothing from §8.6 remains open.
 6. **ANSWERED in §8.8 — the protocol vocabulary itself.** This item said "pending the
    RoSa v2 Implementation manual (§2); do not invent one before reading it." **That
    precondition cannot be met and the item is unblocked by its own impossibility** —
