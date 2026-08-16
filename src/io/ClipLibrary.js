@@ -98,7 +98,11 @@ class ClipLibrary {
       };
 
       mr.onerror = e => reject(e.error ?? new Error('MediaRecorder error'));
-      mr.start(100);
+      // No timeslice — same reason as the output recorder in main.js: a chunk
+      // cadence costs a periodic 120-190 ms stall and nothing here consumes
+      // chunks (`chunks` is read only in onstop). Clips are short, so this
+      // recorder stalling was easy to miss; the cost was the same.
+      mr.start();
       setTimeout(() => { if (mr.state !== 'inactive') mr.stop(); }, maxSeconds * 1000);
     });
   }

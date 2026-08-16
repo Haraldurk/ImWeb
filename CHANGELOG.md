@@ -8,6 +8,60 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
 
 ## [Unreleased]
 
+### Changed
+- **The recorder writes MP4/H.264 in hardware instead of WebM/VP9 in software.**
+  VP9 has no hardware encoder on Intel Macs with AMD graphics — it is libvpx on
+  the CPU, and it was the measured limiter on recording frame rate (57.6 fps at
+  0.58 MP falling to 19.0 at 4.67). H.264 and HEVC both encode in hardware at
+  1080p, 1440p and 4K. The preference order is now
+  `mp4;avc1.640033,mp4a.40.2` → `avc1.640032,mp4a.40.2` →
+  `webm;vp9,opus` → `webm`, and the saved file's extension follows whatever
+  container was actually written rather than always saying `.webm`.
+  VP8 is deliberately absent: it is faster than VP9 below ~2 MP and roughly
+  **7× slower** at 1440p, so promoting it — as an earlier document
+  recommended — would have been a large regression at a resolution this app
+  now ships.
+- **Recording bitrate scales with the frame size.** A flat 8 Mbit/s starved a
+  4K take four times harder than a 1080p one. Now ~0.16 bits per pixel per
+  frame, clamped to 8–60 Mbit/s: about 20 Mbit/s at 1080p, 35 at 1440p.
+- **The recorder no longer asks for a data chunk every 100 ms.** That was the
+  timeslice from the MDN example, carried in with the first recorder in v0.1
+  and never revisited; nothing in the app read the chunks before the recording
+  stopped, so it was a dead parameter. Removing it changes no behaviour and no
+  memory usage.
+
+### Fixed
+- **Recording no longer gets slower the longer you use it — and this was the
+  frame-rate ceiling.** The object URL created to trigger each download was
+  never revoked, so every completed recording stayed resident for the life of
+  the page: four 60-second 1080p takes retained 162 → 281 → 391 → 487 MB, and
+  the frame rate fell 31 → 21 → 22 → 18 fps with a 120–190 ms stall recurring
+  twice a second. With the URL released, **five consecutive 60-second takes
+  hold 55.9–58.1 fps** with stalls at 0.02–0.22/s and a flat rate inside every
+  take. Every other download path in the app already revoked its URL; the
+  recorder, whose blobs are by far the largest, was the one that did not.
+
+### Added
+- **Independent record resolution.** The I/O panel's `Record` select used to
+  write the *same* parameter as `Display` — its own comment admitted it was
+  linked "until an independent REC target is built" — so recording cost tracked
+  whatever size the window happened to be, which was the largest variable in
+  the frame-rate measurements. It now records through a fixed-size canvas at
+  720p/1080p/540p/1440p/4K, or `Disp` to capture the output canvas as before.
+  The output is stretched to fill the chosen size, so recordings are always
+  standard dimensions with no black bars and nothing cropped; size the window
+  16:9, or set `Display` to a 16:9 preset, if a piece needs exact geometry.
+- **`tests/audit-recorder.mjs`** — the recorder's codec order, container-correct
+  naming, resolution decoupling, absence of a chunk cadence, and post-limiter
+  audio tap are all decisions that fail *silently* when undone: the file still
+  records, it is just slower, mis-named, window-sized, or not the signal the
+  audience heard. 12 mutations, all caught.
+
+### Known
+- Recording with the audio engine running costs about **3%** of the frame rate
+  — 57.9 fps average without, 55.9 with, measured over five 60-second takes.
+  Small, consistent, and not worth trading the sound for.
+
 ---
 
 ## [0.21.0] — 2026-08-15 — The Resolution

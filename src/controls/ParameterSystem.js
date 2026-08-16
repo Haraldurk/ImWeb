@@ -4501,6 +4501,30 @@ export function registerCoreParameters(ps) {
     options: ["Display", "720p", "1080p", "540p", "Quarter", "1440p", "4K"],
     value: 0,
   });
+  ps.register({
+    id: "output.recResolution",
+    label: "Rec Resolution",
+    group: "output",
+    type: PARAM_TYPE.SELECT,
+    // APPEND-ONLY, for the same reason as output.resolution above.
+    //
+    // "Display" (0) is the old behaviour: capture the output canvas itself, at
+    // whatever size it happens to be, with no intermediate surface and no copy.
+    // Every other entry records through a fixed-size canvas, which is the point
+    // — the recorder's measured cost scales with pixel count, so a take should
+    // not get slower because the window got bigger.
+    //
+    // Group "output", so this IS captured by Display States. Unlike
+    // displace.warpSlot or glsl.preset, the options are code-owned and
+    // append-only, so an index cannot come to mean something else on another
+    // machine or origin; a recorded 1080p is 1080p everywhere.
+    options: ["Display", "720p", "1080p", "540p", "1440p", "4K"],
+    // 1080p rather than "Display": the whole reason this parameter exists is
+    // that recording at the window's size is what made recording slow, and a
+    // default of "Display" would leave every existing user with the problem
+    // this is here to fix until they found the control.
+    value: 2,
+  });
 
   // ── Global BPM / Tap Tempo / Morph ───────────────────────────────────────
   ps.register({
