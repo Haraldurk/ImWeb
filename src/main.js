@@ -6277,23 +6277,46 @@ void main() {
         a.href = URL.createObjectURL(blob);
         a.download = `imweb-${Date.now()}.${ext}`;
         a.click();
+        // The object URL keeps the whole recording alive for the life of the
+        // page, so it is revoked once the download has been handed off. Every
+        // other createObjectURL in this file already did this (the .imweb save
+        // path, the frame-capture zip); the recorder was the one that did not,
+        // and it is the one whose blobs are hundreds of megabytes.
+        //
+        // Correct on its own terms: an unreleased blob is a leak whatever else
+        // is true. Whether it also explains a frame-rate observation is a
+        // SEPARATE claim and is not yet tested. What is measured: four
+        // 60-second 1080p takes in one page session retained 162 -> 281 -> 391
+        // -> 487 MB, and typical frame rate fell from 56 fps on the first take
+        // to 35-38 on the rest. That correlation is suggestive and nothing
+        // more — takes were sequential, so machine warm-up predicts the same
+        // shape. Reloading between takes separates the two; until that is run,
+        // do not cite this as the cause of anything.
+        //
+        // 5000 ms, matching the other two call sites: the click is
+        // asynchronous and revoking immediately can cancel the download.
+        setTimeout(() => URL.revokeObjectURL(a.href), 5000);
         mediaRecorder = null;
       };
-      // NO TIMESLICE — deliberately, and this is the single largest frame-rate
-      // win in the recorder. `start(100)` asked for a chunk every 100 ms and
-      // cost a 120-190 ms stall on a ~0.5 s period: measured across seven
-      // recordings, 100 ms takes stall from the first 8-second window (15-20
-      // stalls) while 1000 ms takes start clean (0-4) and hold 56-58 fps. The
-      // period is a wall clock, not a frame counter, and survives changes of
-      // codec, resolution, keyframe interval and audio presence.
+      // NO TIMESLICE. Justified on its own terms, NOT as a performance fix —
+      // an earlier version of this comment claimed the latter and was wrong.
       //
-      // Nothing ever wanted the chunks. `ondataavailable` pushes into
-      // recordChunks, which is read only in `onstop` — there is no streaming
-      // consumer, no upload, no progress UI. The 100 ms was the timeslice from
-      // the MDN example, carried in with the first recorder in v0.1 (1e5dc35)
-      // and never revisited. With no argument, MediaRecorder delivers one Blob
-      // at stop; memory is identical, because the chunks were retained either
-      // way.
+      // Nothing ever wanted the chunks: `ondataavailable` pushes into
+      // recordChunks, which is read only in `onstop`. No streaming consumer, no
+      // upload, no progress UI. The 100 ms was the timeslice from the MDN
+      // example, carried in with the first recorder in v0.1 (1e5dc35) and never
+      // revisited. With no argument MediaRecorder delivers one Blob at stop and
+      // memory is unchanged, because the chunks were retained either way. So
+      // this is a dead parameter removed, and that is the whole claim.
+      //
+      // What it does NOT fix: recordings stall 120-190 ms on a ~0.52 s period.
+      // That beat was measured in ten recordings and is present with and
+      // without a timeslice, with and without audio, in VP9 and H.264, at
+      // every resolution tried, and is not aligned to keyframes or to any
+      // frame counter. Two takes did come in clean at 57 fps and were briefly
+      // credited to a long timeslice; they are better explained by having been
+      // the FIRST takes of their session — see the object-URL leak note in
+      // `onstop` below. The cause of the beat is still unknown.
       mediaRecorder.start();
       btn.classList.add("recording");
       btn.textContent = "⏹";

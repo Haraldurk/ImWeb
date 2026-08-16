@@ -24,13 +24,18 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
 - **Recording bitrate scales with the frame size.** A flat 8 Mbit/s starved a
   4K take four times harder than a 1080p one. Now ~0.16 bits per pixel per
   frame, clamped to 8–60 Mbit/s: about 20 Mbit/s at 1080p, 35 at 1440p.
-- **Recording no longer stalls twice a second.** `MediaRecorder` was asked for
-  a data chunk every 100 ms — the timeslice from the MDN example, carried in
-  with the first recorder in v0.1 and never revisited. It cost a 120–190 ms
-  stall on a ~0.5 s period, and nothing in the app read the chunks before the
-  recording stopped. Removing it is the single largest frame-rate win in this
-  release: measured across seven recordings, **56–58 fps at 1080p** with p95
-  frame gaps of 21–32 ms, against 35–45 fps before.
+- **The recorder no longer asks for a data chunk every 100 ms.** That was the
+  timeslice from the MDN example, carried in with the first recorder in v0.1
+  and never revisited; nothing in the app read the chunks before the recording
+  stopped, so it was a dead parameter. Removing it changes no behaviour and no
+  memory usage.
+
+### Fixed
+- **The recorder no longer leaks each finished recording.** The object URL
+  created to trigger the download was never revoked, so every completed take
+  stayed resident for the life of the page — four 60-second 1080p recordings
+  in one session retained 487 MB. Every other download path in the app already
+  revoked its URL; this one did not.
 
 ### Added
 - **Independent record resolution.** The I/O panel's `Record` select used to
@@ -49,11 +54,20 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
   audience heard. 12 mutations, all caught.
 
 ### Known
-- A single 37-second take with audio degraded from 52 to 35 fps while
-  equivalent takes without audio held 56–58 fps flat. That take was recorded
-  with a second ImWeb instance running in another tab, which is another 60 fps
-  WebGL loop competing for the same GPU, so the cause is genuinely unknown —
-  recorded here as an open question rather than a diagnosis.
+- **Recordings stall for 120–190 ms on a ~0.52 s period, cause unknown.** It
+  costs roughly a third of the frame rate at 1080p. Measured in ten recordings
+  and present in all but two of them: with and without a chunk timeslice, with
+  and without audio, in VP9 and H.264, at every resolution tried, and not
+  aligned to keyframes or to any frame counter. Ruled out so far: keyframe
+  cost, the audio path, frame-counted application work, garbage collection,
+  and the chunk cadence.
+- Audio was suspected and is **cleared**: a controlled A/B/A/B test at 60
+  seconds a take put audio-on and audio-off within 2% of each other on every
+  measure, including the stall period.
+- Recording performance falls off across a session — the first take after a
+  page load is consistently the fastest. The leaked object URL fixed above is
+  one candidate; sequential takes also warm the machine, and the two have not
+  yet been separated.
 
 ---
 
