@@ -151,7 +151,47 @@ for phase 3.
    Prediction to falsify: 1920×1080 H.264 hardware holds ≥58 fps mean with
    p95 gap ≤ 2 vsyncs.
 
+**DONE, 2026-08-16.** All three items shipped. The prediction was *falsified on
+the first measurement* — 42.6 fps, p95 36.7 ms — and then met after a cause the
+advisory never suspected was removed: `MediaRecorder` was being asked for a
+data chunk every 100 ms, which cost a 120–190 ms stall on a ~0.5 s period.
+Final: **56–58 fps at 1080p, p95 21–32 ms**, prediction met.
+
+Two things worth carrying forward. The 1.4× that hardware H.264 bought at equal
+pixel count was real but was *not* what met the target; had the codec change
+been measured only by its mean fps it would have looked like a modest win and
+the actual limiter would have gone unfound. And the stall was invisible to both
+mean fps and the gap histogram — it appeared only when the gaps were ordered in
+time and the intervals *between* them read as a series. Add that to the PTS
+protocol: distribution, then periodicity.
+
 ### Phase 2 — MASTER mode: WebCodecs + Mediabunny, streamed to disk
+
+> **DESCOPED, 2026-08-16 — do not build this without re-arguing it first.**
+>
+> Phase 2's founding premise is stated in §0: "the encoder is the limiter."
+> That was true of software VP9 and is no longer true. After phase 1 the
+> recorder holds **56–58 fps at 1080p with p95 gaps of 21–32 ms** through
+> MediaRecorder, which is the acceptance target — so WebCodecs + Mediabunny
+> would now be a large dependency and a second recorder built to fix a
+> constraint that no longer binds.
+>
+> Three things genuinely still need WebCodecs, and none of them is frame rate.
+> Build phase 2 when one of these is actually wanted, not before:
+>
+> 1. **Frame-exact non-realtime export** — rendering slower than realtime and
+>    still getting one file frame per rendered frame. MediaRecorder samples a
+>    live stream and cannot do this at any cadence.
+> 2. **Deterministic per-frame timestamps** — `new VideoFrame(canvas, {timestamp})`
+>    lets the app own the clock. MediaRecorder writes when the canvas commits,
+>    which is why its output is variable-frame-rate and why QuickTime shows a
+>    slight judder even on a clean take.
+> 3. **Faster-than-realtime render-to-file**, and masters too long to hold in
+>    RAM. The existing PNG Frame Capture panel is the seed of the first; the
+>    second needs `StreamTarget` over `showSaveFilePicker`.
+>
+> The quantizer/CRF and HEVC items in phase 3 are independent of this and can
+> be done on MediaRecorder or not at all.
 
 MediaRecorder gives no keyframe control, no quantizer mode, no
 hardware-acceleration hint, and buffers the whole take in RAM before the Blob.
