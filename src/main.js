@@ -6101,14 +6101,48 @@ void main() {
     _recAudioDest = null;
   }
 
-  // vp9+opus is what Chrome and Firefox both give us; the fallbacks exist so a
-  // browser that refuses the explicit codec string still records rather than
-  // throwing NotSupportedError out of the constructor.
+  // H.264-in-MP4 first, because it is the only codec here with a HARDWARE
+  // encoder on this class of machine (VideoToolbox). VP9 has none — it is
+  // libvpx on the CPU, and it is the measured limiter on the recorder's frame
+  // rate (Recorder-Frame-Rate-Investigation.md: 57.6 → 30.3 → 19.0 fps as pixel
+  // count rises). L5.1 before L5.0 because L5.0 is refused at 4K.
+  //
+  // **VP8 is deliberately absent, not forgotten.** It reads as the cheaper
+  // codec and it is, below ~2 MP — then it falls off a cliff between 1964 and
+  // 2048 px wide: 7.7 fps against VP9's 26.8 at 2048×1280, 3.2 against 21.6 at
+  // 1440p. Since v0.21.0 ships 1440p and 4K presets, promoting VP8 would be a
+  // 7× regression at a headline resolution. Measurements in PR #72.
   function _recMimeType(withAudio) {
+    // No isTypeSupported at all: do not guess a container. Returning undefined
+    // lets MediaRecorder choose what it can actually write; naming MP4 on a
+    // browser we cannot interrogate would throw NotSupportedError out of the
+    // constructor, which is the failure the fallback list exists to avoid.
+    if (typeof MediaRecorder.isTypeSupported !== "function") return undefined;
     const wanted = withAudio
-      ? ["video/webm;codecs=vp9,opus", "video/webm;codecs=vp8,opus", "video/webm"]
-      : ["video/webm;codecs=vp9", "video/webm"];
-    return wanted.find((m) => MediaRecorder.isTypeSupported?.(m) ?? true);
+      ? [
+          "video/mp4;codecs=avc1.640033,mp4a.40.2",
+          "video/mp4;codecs=avc1.640032,mp4a.40.2",
+          "video/webm;codecs=vp9,opus",
+          "video/webm",
+        ]
+      : [
+          "video/mp4;codecs=avc1.640033",
+          "video/mp4;codecs=avc1.640032",
+          "video/webm;codecs=vp9",
+          "video/webm",
+        ];
+    return wanted.find((m) => MediaRecorder.isTypeSupported(m));
+  }
+
+  // Bitrate scaled to the capture size rather than a flat 8 Mbit/s. The old
+  // ceiling is a quality cap that current files already brush against (measured
+  // 6.3 Mbit/s at 2 MP), and it means a 4K take is starved four times harder
+  // than a 1080p one for no reason anybody chose. 0.16 bits per pixel per frame
+  // at 60 fps reproduces the advisory's targets — 1080p ≈ 20, 1440p ≈ 35
+  // Mbit/s — and the 60 Mbit/s clamp holds 4K to a sane file size instead of
+  // the ~80 the formula alone would ask for.
+  function _recVideoBitrate(w, h) {
+    return Math.min(60_000_000, Math.max(8_000_000, Math.round(w * h * 60 * 0.16)));
   }
 
   document.getElementById("btn-record")?.addEventListener("click", async () => {
@@ -6122,19 +6156,30 @@ void main() {
             "Turn Audio on before starting the recording to capture sound.",
         );
       }
+      const mime = _recMimeType(withAudio);
+      // The capture size, read off the canvas being captured rather than off
+      // output.resolution — the two are the same today, and item 3 of phase 1
+      // is about to make them different. Reading the actual surface keeps the
+      // bitrate correct across that change without a second edit here.
       mediaRecorder = new MediaRecorder(stream, {
-        mimeType: _recMimeType(withAudio),
-        videoBitsPerSecond: 8_000_000,
+        ...(mime ? { mimeType: mime } : {}),
+        videoBitsPerSecond: _recVideoBitrate(canvas.width, canvas.height),
         ...(withAudio ? { audioBitsPerSecond: 192_000 } : {}),
       });
       recordChunks = [];
       mediaRecorder.ondataavailable = (e) => recordChunks.push(e.data);
       mediaRecorder.onstop = () => {
         _detachRecordAudio();
-        const blob = new Blob(recordChunks, { type: "video/webm" });
+        // Read the container back off the recorder rather than assuming it.
+        // `mimeType` is the type it ACTUALLY wrote, which is not necessarily
+        // the one asked for — and a `.webm` name on an MP4 payload is a file
+        // that some editors open and some silently refuse.
+        const type = mediaRecorder.mimeType || "video/webm";
+        const ext = type.includes("mp4") ? "mp4" : "webm";
+        const blob = new Blob(recordChunks, { type });
         const a = document.createElement("a");
         a.href = URL.createObjectURL(blob);
-        a.download = `imweb-${Date.now()}.webm`;
+        a.download = `imweb-${Date.now()}.${ext}`;
         a.click();
         mediaRecorder = null;
       };
