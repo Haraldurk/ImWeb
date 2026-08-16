@@ -31,11 +31,15 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
   memory usage.
 
 ### Fixed
-- **The recorder no longer leaks each finished recording.** The object URL
-  created to trigger the download was never revoked, so every completed take
-  stayed resident for the life of the page — four 60-second 1080p recordings
-  in one session retained 487 MB. Every other download path in the app already
-  revoked its URL; this one did not.
+- **Recording no longer gets slower the longer you use it — and this was the
+  frame-rate ceiling.** The object URL created to trigger each download was
+  never revoked, so every completed recording stayed resident for the life of
+  the page: four 60-second 1080p takes retained 162 → 281 → 391 → 487 MB, and
+  the frame rate fell 31 → 21 → 22 → 18 fps with a 120–190 ms stall recurring
+  twice a second. With the URL released, **five consecutive 60-second takes
+  hold 55.9–58.1 fps** with stalls at 0.02–0.22/s and a flat rate inside every
+  take. Every other download path in the app already revoked its URL; the
+  recorder, whose blobs are by far the largest, was the one that did not.
 
 ### Added
 - **Independent record resolution.** The I/O panel's `Record` select used to
@@ -54,20 +58,9 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
   audience heard. 12 mutations, all caught.
 
 ### Known
-- **Recordings stall for 120–190 ms on a ~0.52 s period, cause unknown.** It
-  costs roughly a third of the frame rate at 1080p. Measured in ten recordings
-  and present in all but two of them: with and without a chunk timeslice, with
-  and without audio, in VP9 and H.264, at every resolution tried, and not
-  aligned to keyframes or to any frame counter. Ruled out so far: keyframe
-  cost, the audio path, frame-counted application work, garbage collection,
-  and the chunk cadence.
-- Audio was suspected and is **cleared**: a controlled A/B/A/B test at 60
-  seconds a take put audio-on and audio-off within 2% of each other on every
-  measure, including the stall period.
-- Recording performance falls off across a session — the first take after a
-  page load is consistently the fastest. The leaked object URL fixed above is
-  one candidate; sequential takes also warm the machine, and the two have not
-  yet been separated.
+- Recording with the audio engine running costs about **3%** of the frame rate
+  — 57.9 fps average without, 55.9 with, measured over five 60-second takes.
+  Small, consistent, and not worth trading the sound for.
 
 ---
 

@@ -6283,15 +6283,22 @@ void main() {
         // path, the frame-capture zip); the recorder was the one that did not,
         // and it is the one whose blobs are hundreds of megabytes.
         //
-        // Correct on its own terms: an unreleased blob is a leak whatever else
-        // is true. Whether it also explains a frame-rate observation is a
-        // SEPARATE claim and is not yet tested. What is measured: four
-        // 60-second 1080p takes in one page session retained 162 -> 281 -> 391
-        // -> 487 MB, and typical frame rate fell from 56 fps on the first take
-        // to 35-38 on the rest. That correlation is suggestive and nothing
-        // more — takes were sequential, so machine warm-up predicts the same
-        // shape. Reloading between takes separates the two; until that is run,
-        // do not cite this as the cause of anything.
+        // This was the recorder's frame-rate ceiling, and it is confirmed by
+        // experiment rather than inferred.
+        //
+        // Before: four 60-second 1080p takes in one page session retained
+        // 162 -> 281 -> 391 -> 487 MB, and the frame rate fell 31 -> 21 -> 22
+        // -> 18 fps with a 120-190 ms stall recurring on a ~0.52 s period.
+        // After: five consecutive 60-second takes, no reloads, 55.9-58.1 fps
+        // with stalls at 0.02-0.22/s and flat within every take. Same protocol,
+        // same bits-per-frame (645 vs 638 kbit, so comparable scenes), one
+        // variable.
+        //
+        // It is NOT thermal — three takes back to back got FASTER (54, 58, 58)
+        // once the leak was gone. The periodic stall that four separate
+        // hypotheses were built to explain (keyframes, the audio path,
+        // frame-counted work, GC) was this: memory pressure from recordings
+        // that never went away.
         //
         // 5000 ms, matching the other two call sites: the click is
         // asynchronous and revoking immediately can cancel the download.
@@ -6309,14 +6316,11 @@ void main() {
       // memory is unchanged, because the chunks were retained either way. So
       // this is a dead parameter removed, and that is the whole claim.
       //
-      // What it does NOT fix: recordings stall 120-190 ms on a ~0.52 s period.
-      // That beat was measured in ten recordings and is present with and
-      // without a timeslice, with and without audio, in VP9 and H.264, at
-      // every resolution tried, and is not aligned to keyframes or to any
-      // frame counter. Two takes did come in clean at 57 fps and were briefly
-      // credited to a long timeslice; they are better explained by having been
-      // the FIRST takes of their session — see the object-URL leak note in
-      // `onstop` below. The cause of the beat is still unknown.
+      // What it did NOT fix, despite an earlier claim here: the 120-190 ms
+      // stall on a ~0.52 s period. That was the leaked object URL in `onstop`
+      // above, and it is fixed there. The two takes that came in clean at
+      // 57 fps and were briefly credited to a long timeslice were simply the
+      // FIRST takes of their session, before enough recordings had piled up.
       mediaRecorder.start();
       btn.classList.add("recording");
       btn.textContent = "⏹";
