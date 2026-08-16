@@ -295,6 +295,41 @@ for (const rel of ['src/main.js', 'src/io/ClipLibrary.js']) {
   }
 }
 
+// ── 5c. Every object URL is released ───────────────────────────────────────
+// This was the recorder's frame-rate ceiling and it read as completely normal
+// code. `createObjectURL` in onstop had no matching revoke, so every finished
+// recording stayed resident for the life of the page — four 60-second 1080p
+// takes retained 487 MB and the frame rate fell from 31 to 18 fps.
+//
+// Scanned across all of main.js rather than just the recorder, because the
+// invariant is not about recording: the other three call sites in the file
+// (the .imweb save, the frame-capture zip) already revoked, and it is exactly
+// that surrounding correctness that made the missing one invisible. A rule
+// that only covered the recorder would have been written the day after it was
+// needed and would not cover the next one.
+console.log('\nEvery createObjectURL is released:');
+
+{
+  const src = readCode('src/main.js');
+  const creates = [...src.matchAll(/URL\.createObjectURL/g)].length;
+  const revokes = [...src.matchAll(/URL\.revokeObjectURL/g)].length;
+
+  check('createObjectURL call sites were found', creates > 0,
+    'the census found none — the sanitizer or the save paths moved, and the\n' +
+    '       pairing check below is vacuous.');
+
+  check(`every createObjectURL has a revoke (${creates} created, ${revokes} revoked)`,
+    creates > 0 && revokes >= creates,
+    'FIX: an object URL keeps its Blob alive until revoked, for the LIFE OF\n' +
+    '       THE PAGE. For a recording that is hundreds of megabytes per take.\n' +
+    '       Pair it: `setTimeout(() => URL.revokeObjectURL(a.href), 5000)` after\n' +
+    '       the click — immediate revocation can cancel the download.\n' +
+    '       If a URL genuinely must outlive the function (a long-lived <video>\n' +
+    '       src, say), that is a real exception — but say so here, because the\n' +
+    '       symptom otherwise is "the app gets slower the longer you use it",\n' +
+    '       which nobody attributes to a download link.');
+}
+
 // ── 6. The audio tap has not moved ─────────────────────────────────────────
 // Carried over from the audio-track work (commit e86fdf6) rather than left to
 // the audio audits: this is the recorder's copy of the decision, and the

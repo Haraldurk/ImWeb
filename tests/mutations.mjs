@@ -701,6 +701,14 @@ export const MUTATIONS = [
     replace: '      mr.start(100);',
   },
   {
+    name: 'recorder: the finished recording is never released',
+    audit: 'audit-recorder.mjs',
+    file: 'src/main.js',
+    why: 'the shipped state, and it reads as ordinary download code — the URL keeps hundreds of MB alive for the life of the page, and the symptom is "the app gets slower the longer you use it", which nobody attributes to a download link',
+    find: '        setTimeout(() => URL.revokeObjectURL(a.href), 5000);\n        mediaRecorder = null;',
+    replace: '        mediaRecorder = null;',
+  },
+  {
     name: 'recorder: the audio tap moves off the limiter output',
     audit: 'audit-recorder.mjs',
     file: 'src/main.js',
