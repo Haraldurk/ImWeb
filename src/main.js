@@ -6163,15 +6163,21 @@ void main() {
   // per-frame copy, `canvas.captureStream()` as before. That is the escape
   // hatch for anyone who wants the window's own resolution, and it costs
   // nothing when chosen.
-  // Each preset names a HEIGHT. The width is derived from the output's aspect
-  // at record time, so a non-16:9 canvas records without black bars and
-  // without distortion — the nominal width beside it is only what that preset
-  // is called when the output happens to be 16:9.
+  // Fixed, standard sizes. The output is STRETCHED to fill them.
   //
-  // Fixing the height is what severs recording cost from window size, which is
-  // the whole point; fixing BOTH dimensions additionally imposes an aspect the
-  // instrument does not have, and the bars that come with it are picture the
-  // encoder spends bitrate on and the user has to crop later.
+  // Three properties were wanted and only two are ever simultaneously
+  // available: exact 1920x1080-class dimensions, no black bars, no cropping.
+  // Contain gives up the first, cover gives up the third, aspect-matching
+  // gives up standard dimensions (a near-square window recorded 1134x1080).
+  // Stretch is the only one that keeps all three, and it pays for them with
+  // anamorphic distortion proportional to how far the window is from 16:9.
+  //
+  // That is a deliberate choice for this instrument: the output is a synthesis
+  // canvas with no canonical geometry, the deliverable is a standard video
+  // file, and an operator who wants undistorted output can size the window
+  // 16:9 or set the Display preset — at which point stretch is the identity.
+  // Both alternatives were tried on real recordings first; this is the one
+  // that was kept.
   const _REC_RESOLUTIONS = {
     0: null, // Display — capture the output canvas itself
     1: [1280, 720],
@@ -6181,33 +6187,17 @@ void main() {
     5: [3840, 2160],
   };
 
-  // Record dimensions for a preset, matched to the current output aspect.
-  // Both axes are forced EVEN: H.264 is 4:2:0, so an odd dimension either
-  // fails to configure or gets silently rounded by the encoder, and a silent
-  // round is a half-pixel scale on every frame.
-  function _recDims(preset) {
-    const h = preset[1];
-    const aspect = canvas.width && canvas.height
-      ? canvas.width / canvas.height
-      : preset[0] / preset[1];
-    // Clamped to 4096, the floor every WebGL1 implementation guarantees for
-    // MAX_TEXTURE_SIZE — the same bound the render presets respect. An
-    // ultrawide output at the 4K preset would otherwise ask for ~8000 px.
-    const w = Math.min(4096, Math.max(2, Math.round(h * aspect)));
-    return [w - (w % 2), h - (h % 2)];
-  }
   let _recCanvas = null;
   let _recCtx = null;
   let _recBlitting = false;
 
-  // Copy the output canvas into the record canvas.
+  // Copy the output canvas into the record canvas, stretched to fill it.
   //
-  // Fitted to CONTAIN, never stretched. In the normal case this is an exact
-  // full-bleed copy, because _recDims() already matched the record canvas to
-  // the output's aspect — the contain maths is here for the one case it
-  // cannot cover: the window being RESIZED mid-recording. A MediaRecorder
-  // stream cannot change dimensions once started, so the choice then is bars
-  // or distortion, and bars are honest where a squashed picture is not.
+  // The three-argument drawImage covers the whole destination, so every pixel
+  // is written every frame — no clear is needed and none is done, and a window
+  // resized MID-recording is handled for free (the stream's dimensions cannot
+  // change once started, and the next frame simply stretches by a new factor
+  // rather than suddenly letterboxing).
   //
   // Depends on `preserveDrawingBuffer: true` — without it drawImage() off a
   // WebGL canvas returns a STALE frame rather than failing (LEARNED
@@ -6216,16 +6206,10 @@ void main() {
   // second consumer, alongside the PNG capture panel.
   function _recBlit() {
     if (!_recBlitting || !_recCtx) return;
-    const dw = _recCanvas.width, dh = _recCanvas.height;
-    const sw = canvas.width, sh = canvas.height;
-    if (!sw || !sh) return;
-    const scale = Math.min(dw / sw, dh / sh);
-    const w = Math.round(sw * scale), h = Math.round(sh * scale);
-    const x = Math.round((dw - w) / 2), y = Math.round((dh - h) / 2);
-    // Only clear when there are bars to clear; a full-bleed copy overwrites
-    // every pixel anyway and the clear would be pure cost per frame.
-    if (w !== dw || h !== dh) _recCtx.clearRect(0, 0, dw, dh);
-    _recCtx.drawImage(canvas, x, y, w, h);
+    // A zero-sized source throws InvalidStateError rather than drawing
+    // nothing, which would kill the render loop mid-recording.
+    if (!canvas.width || !canvas.height) return;
+    _recCtx.drawImage(canvas, 0, 0, _recCanvas.width, _recCanvas.height);
   }
 
   // The surface to record, and its size. Returns the output canvas itself for
@@ -6244,7 +6228,7 @@ void main() {
       // the last drawImage, which is the one property a recorder cannot accept.
       _recCtx = _recCanvas.getContext("2d", { alpha: false });
     }
-    [_recCanvas.width, _recCanvas.height] = _recDims(preset);
+    [_recCanvas.width, _recCanvas.height] = preset;
     _recBlitting = true;
     // Seed the first frame now, so the stream's opening frame is the picture
     // rather than an empty canvas.
