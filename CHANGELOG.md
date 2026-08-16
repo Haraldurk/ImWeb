@@ -64,6 +64,38 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
 
 ---
 
+## [0.21.1] — 2026-08-15 — Reaching the Second Screen
+
+v0.21.0 raised the output ceiling to 4K and left the one display that matters
+most to a performer still capped at 1080p. Both items here came straight back
+from the tester it was built for, within hours of him pulling it.
+
+### Fixed
+- **The second screen can receive 1440p and 4K.** `2Display` is a separate list
+  from `Display`/`Record` and was never extended: it offered `Same/1080p/720p/540p`
+  and **defaulted to 1080p**, so a 4K project was silently downscaled on its way
+  to a projector. The picture the audience sees was the one place the new
+  resolutions could not reach. The list is now largest-first —
+  `Same/4K/1440p/1080p/720p/540p` — and the default is unchanged at 1080p,
+  because raising a ceiling is not the same as raising a default: 4K readback on
+  every other frame is a real cost, and it should be asked for rather than
+  assumed.
+- **`2Display` says what it does.** It was a row of resolution-looking values
+  with no indication of their meaning, and the first question about it was "what
+  exactly does it refer to?". It is not the second screen's resolution — it is
+  the size the picture is resized to *before being transferred* to that window,
+  a detail/cost dial, with `Same` meaning no resize at all. Both the row and the
+  control now carry that explanation.
+- **Second-screen fullscreen no longer leaves a white bar at the top** in
+  Chromium browsers. The output window called `requestFullscreen()` on `<body>`
+  rather than on the document element, which leaves the html element visible
+  behind it as a strip. Reported on Brave and Zen; Safari tolerated it, which is
+  how a bug like this survives being tested in one browser. The main window has
+  always fullscreened the document element — the popup was the only place that
+  did not.
+
+---
+
 ## [0.21.0] — 2026-08-15 — The Resolution
 
 A beta tester on a 4K monitor reported that the Rutt-Etra was "not convincing"
