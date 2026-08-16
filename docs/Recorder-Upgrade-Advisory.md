@@ -8,6 +8,13 @@ distributions, not page-side fps) is the acceptance test for everything below.
 Companion probe: `tests/rec-capability-probe.html` — open it in the owner's real
 Chrome to re-verify the capability table in §2 (see the headless caveat there).
 
+**Correction 2026-08-16 (same day, post-review):** the first revision of this
+advisory ranked VP8 above VP9 in the fallback order, repeating the
+investigation doc's pre-1440p recommendation. PR #72 measured that
+recommendation and rejected it — VP8 falls off a cliff above ~2048 px wide.
+§3, §4-phase-1 and §6 are corrected; the investigation doc itself carries the
+strike-through.
+
 ---
 
 ## 0. The three questions, answered
@@ -108,8 +115,8 @@ path (§4) is unaffected — it does not depend on MediaRecorder at all.
 
 | candidate | verdict |
 |---|---|
-| VP9/WebM (current) | **Retire as first choice.** Software libvpx on this GPU; measured fps limiter. Keep as last-resort fallback. |
-| VP8/WebM | 2–3× faster software encode than VP9 realtime; the cheap one-line experiment the investigation doc already named. Fallback tier. |
+| VP9/WebM (current) | **Retire as first choice.** Software libvpx on this GPU; measured fps limiter. Best remaining *software* fallback (see VP8 row). |
+| ~~VP8/WebM~~ | **Do not use — corrected by PR #72's measurement.** The investigation doc's "promote VP8" recommendation predates the 1440p/4K presets and inverts above ~2 MP: VP8 falls off a cliff between 1964 and 2048 px wide (WebCodecs, 8 Mbps, 60 fps target: 117.5 vs 67.1 fps at 0.58 MP — VP8 wins; **7.7 vs 26.8 at 2048×1280 and 3.2 vs 21.6 at 1440p — VP9 wins**). Promoting VP8 would have been a 7× regression at a headline resolution sold as a performance fix. VP9-first is the correct software order at every resolution this app now ships. |
 | **H.264/MP4 hardware** | **The workhorse.** VideoToolbox, all resolutions to 4K60, universal playback/edit compatibility. Default for both modes. |
 | **HEVC/MP4 hardware** | ~30–40% better quality-per-bit than H.264 at master bitrates. Default for MASTER if the edit chain accepts HEVC; make it a setting, not a fork. |
 | AV1 | Hardware decode exists; **encode is software** here. Slower than VP9 to encode. Not for recording. |
@@ -125,7 +132,10 @@ for phase 3.
 
 1. Reorder `_recMimeType` to probe in this order:
    `video/mp4;codecs=avc1.640033,mp4a.40.2` → `avc1.640032,mp4a.40.2` →
-   `video/webm;codecs=vp8,opus` → `vp9,opus` → `video/webm`.
+   `video/webm;codecs=vp9,opus` → `video/webm`.
+   **No VP8 entry at all** — PR #72 measured it falling off a cliff above
+   ~2048 px wide (3.2 fps at 1440p vs VP9's 21.6); see §3. VP9 is the correct
+   software fallback at every shipped resolution.
    Filename extension must follow the chosen container (`.mp4`/`.webm`).
 2. Raise `videoBitsPerSecond`: 1080p ≈ 20 Mbps, 1440p ≈ 35 Mbps, 4K ≈ 60 Mbps,
    scaled from the actual capture size. The 8 Mbps ceiling is a quality cap
@@ -208,6 +218,10 @@ Phase 2 replaces it for the master path:
   loop is measured clean at 60 fps and the ratio is audit-protected.
 - Do not pick AV1 for recording — software encode, slower than the VP9 path
   being replaced.
+- Do not promote VP8 anywhere in the preference order — PR #72 measured the
+  cliff: 7.7 fps at 2048×1280, 3.2 fps at 1440p (VP9: 26.8 / 21.6). The
+  investigation doc's original VP8 recommendation predates the 1440p/4K
+  presets and is struck there.
 - Do not buffer masters in memory (Blob-at-end) — stream to disk from the
   start; a 10-min 4K master at 60 Mbps is ~4.5 GB.
 - Do not "fix" the bimodal 20/30 fps file by smoothing timestamps — that file
