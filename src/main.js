@@ -6163,6 +6163,15 @@ void main() {
   // per-frame copy, `canvas.captureStream()` as before. That is the escape
   // hatch for anyone who wants the window's own resolution, and it costs
   // nothing when chosen.
+  // Each preset names a HEIGHT. The width is derived from the output's aspect
+  // at record time, so a non-16:9 canvas records without black bars and
+  // without distortion — the nominal width beside it is only what that preset
+  // is called when the output happens to be 16:9.
+  //
+  // Fixing the height is what severs recording cost from window size, which is
+  // the whole point; fixing BOTH dimensions additionally imposes an aspect the
+  // instrument does not have, and the bars that come with it are picture the
+  // encoder spends bitrate on and the user has to crop later.
   const _REC_RESOLUTIONS = {
     0: null, // Display — capture the output canvas itself
     1: [1280, 720],
@@ -6171,16 +6180,34 @@ void main() {
     4: [2560, 1440],
     5: [3840, 2160],
   };
+
+  // Record dimensions for a preset, matched to the current output aspect.
+  // Both axes are forced EVEN: H.264 is 4:2:0, so an odd dimension either
+  // fails to configure or gets silently rounded by the encoder, and a silent
+  // round is a half-pixel scale on every frame.
+  function _recDims(preset) {
+    const h = preset[1];
+    const aspect = canvas.width && canvas.height
+      ? canvas.width / canvas.height
+      : preset[0] / preset[1];
+    // Clamped to 4096, the floor every WebGL1 implementation guarantees for
+    // MAX_TEXTURE_SIZE — the same bound the render presets respect. An
+    // ultrawide output at the 4K preset would otherwise ask for ~8000 px.
+    const w = Math.min(4096, Math.max(2, Math.round(h * aspect)));
+    return [w - (w % 2), h - (h % 2)];
+  }
   let _recCanvas = null;
   let _recCtx = null;
   let _recBlitting = false;
 
-  // Copy the output canvas into the record canvas, letterboxed.
+  // Copy the output canvas into the record canvas.
   //
-  // Fitted to CONTAIN rather than stretched to fill: the output aspect follows
-  // the window and the record target is fixed, so the two rarely agree, and
-  // stretching would silently distort every recording made in a non-16:9
-  // window. Bars are honest; a squashed picture is not.
+  // Fitted to CONTAIN, never stretched. In the normal case this is an exact
+  // full-bleed copy, because _recDims() already matched the record canvas to
+  // the output's aspect — the contain maths is here for the one case it
+  // cannot cover: the window being RESIZED mid-recording. A MediaRecorder
+  // stream cannot change dimensions once started, so the choice then is bars
+  // or distortion, and bars are honest where a squashed picture is not.
   //
   // Depends on `preserveDrawingBuffer: true` — without it drawImage() off a
   // WebGL canvas returns a STALE frame rather than failing (LEARNED
@@ -6217,7 +6244,7 @@ void main() {
       // the last drawImage, which is the one property a recorder cannot accept.
       _recCtx = _recCanvas.getContext("2d", { alpha: false });
     }
-    [_recCanvas.width, _recCanvas.height] = preset;
+    [_recCanvas.width, _recCanvas.height] = _recDims(preset);
     _recBlitting = true;
     // Seed the first frame now, so the stream's opening frame is the picture
     // rather than an empty canvas.
