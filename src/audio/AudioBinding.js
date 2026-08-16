@@ -764,6 +764,7 @@ export class AudioBinding {
     this.engine.zonePart('spectral', 0, g('aspec.part'));
     this.engine.zoneUnsafe('spectral', 0, !!g('aspec.unsafe'));
     this.engine.grainPart(0, g('agrain.part'));
+    this.engine.grainPos(0, this._grainPosSamples(g('agrain.pos')));
     this.engine.grainUnsafe(0, !!g('agrain.unsafe'));
     this.engine.grainSize(0, this._ms(g('agrain.size')));
     this.engine.grainRate(0, g('agrain.rate'));
@@ -1000,6 +1001,15 @@ export class AudioBinding {
     this.corpusView.setIndex(this._corpus, label('acorp.xAxis'), label('acorp.yAxis'));
   }
 
+  /**
+   * `agrain.pos` is a fraction OF THE PARTITION, like every other zone
+   * position (§4.3); the engine wants samples relative to the partition start.
+   * One conversion site, the same rule the rest of this file follows.
+   */
+  _grainPosSamples(frac) {
+    return frac * this._part(this.ps.get('agrain.part').value).len * this._tapeLen;
+  }
+
   /** Resolve the current XY to a timestamp and point the grain player at it. */
   _navigate() {
     if (!this._corpus || !this._corpus.count) return;
@@ -1014,7 +1024,19 @@ export class AudioBinding {
     // every other zone parameter crosses, in the one direction that has to be
     // undone rather than applied.
     const abs = grainTime(this._corpus, k);
-    this.engine.grainPos(0, abs - part.start * this._tapeLen);
+    // Write the PARAM, not the address. `agrain.pos` is now a real parameter
+    // (the time-stretch control), so the pad and an LFO would otherwise be two
+    // writers racing for one engine address, with the pad's value invisible in
+    // the UI and absent from any captured state. Going through the param makes
+    // the subscription below the single path to `/zone/grain/0/pos` — and the
+    // pad's landing position shows up on its own row, which is also how you
+    // find out where the pad just sent you.
+    const len = part.len * this._tapeLen;
+    // A zero-length partition would divide by zero; the pad has nothing to
+    // point at in that case anyway.
+    if (len > 0) {
+      this.ps.set('agrain.pos', Math.min(1, Math.max(0, (abs - part.start * this._tapeLen) / len)));
+    }
   }
 
   /**
@@ -1237,7 +1259,16 @@ export class AudioBinding {
 
     // Both of these change WHAT THE READER CAN REACH, so both re-project the
     // map — the cloud must never show a grain the player would wrap away from.
-    this._on('agrain.part', (v) => { this.engine.grainPart(0, v); this._rebuildCorpus(); });
+    // `part` re-sends `pos` because the fraction is OF the partition: the same
+    // 0.5 means a different sample the moment the partition changes, and the
+    // engine holds samples. Without this the cloud would keep reading the old
+    // absolute position until something happened to touch pos again.
+    this._on('agrain.part', (v) => {
+      this.engine.grainPart(0, v);
+      this.engine.grainPos(0, this._grainPosSamples(this.ps.get('agrain.pos').value));
+      this._rebuildCorpus();
+    });
+    this._on('agrain.pos', (v) => this.engine.grainPos(0, this._grainPosSamples(v)));
     this._on('agrain.unsafe', (v) => { this.engine.grainUnsafe(0, !!v); this._rebuildCorpus(); });
     this._on('agrain.on', (v) => { if (v) this.engine.grainOn(0); else this.engine.grainOff(0); });
     this._on('agrain.size', (v) => this.engine.grainSize(0, this._ms(v)));

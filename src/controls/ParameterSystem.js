@@ -6999,6 +6999,31 @@ export function registerCoreParameters(ps) {
   ps.register({
     id: "agrain.on", label: "Run Grain", group: "agrain", type: PARAM_TYPE.TOGGLE, value: 0,
   });
+  /**
+   * Where in the partition the cloud reads from — a FRACTION of the partition,
+   * like every other zone position (§4.3), converted to samples in
+   * AudioBinding at the one seam that does that.
+   *
+   * **This is the time-stretch control**, and it is a plain parameter for
+   * exactly that reason. `aplay.rate` is varispeed: it moves rate and pitch
+   * together, because reading tape faster is what a tape deck does. The grain
+   * player already separates them — `pos`, `pitch` and `rate` (density) are
+   * three independent addresses in the worklet — so a playhead that advances
+   * slowly while grains sound at pitch 1.0 IS time stretch, with no new DSP.
+   * What was missing was any way to ADVANCE it: the engine has had
+   * `/zone/grain/<n>/pos` and a `TGT_GRAIN_POS` controller target since §4.6,
+   * but the only writer was the corpus pad, so nothing could sweep it. Now an
+   * LFO ramp here is a playhead scanning at whatever speed you set, pitch
+   * untouched — the stretch factor is the ramp's period against the region.
+   *
+   * The corpus pad writes THIS, rather than the engine directly, so there is
+   * one path to the address instead of two racing ones — and the pad's
+   * position becomes visible in the UI and captured by a Display State.
+   */
+  ps.register({
+    id: "agrain.pos", label: "Grain Pos", group: "agrain",
+    min: 0, max: 1, value: 0, step: 0.001,
+  });
   ps.register({
     id: "agrain.size", label: "Grain Size", group: "agrain",
     min: 5, max: 500, value: 90, step: 1, unit: "ms",
