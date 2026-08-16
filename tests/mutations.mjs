@@ -611,4 +611,93 @@ export const MUTATIONS = [
     find: '  const physShort = Math.min(screenW, screenH) * dpr;\n  if (physShort < 2000) return 1;',
     replace: '  if (screenW < 3200) return 1;',
   },
+
+  // ═════════════════════════════════════════════════════════════════════════
+  // Output recorder (audit-recorder.mjs)
+  //
+  // Every one of these produces a file. That is the whole problem: the
+  // recorder has no failing state to notice, only a slower, mis-named,
+  // window-sized or wrongly-tapped one. Each mutation below is a change
+  // someone would plausibly make on purpose, believing it was an improvement.
+  // ═════════════════════════════════════════════════════════════════════════
+  {
+    name: 'recorder: VP8 promoted to first choice',
+    audit: 'audit-recorder.mjs',
+    file: 'src/main.js',
+    why: 'the merged investigation doc recommended exactly this, and a codec reference will agree that VP8 is cheaper than VP9 — it is, below ~2 MP, and it is 7x SLOWER at the 1440p preset the app ships (PR #72). The single most likely regression here, because it arrives as a documented performance fix',
+    find: '          "video/mp4;codecs=avc1.640033,mp4a.40.2",',
+    replace: '          "video/webm;codecs=vp8,opus",\n          "video/mp4;codecs=avc1.640033,mp4a.40.2",',
+  },
+  {
+    name: 'recorder: WebM restored as first choice',
+    audit: 'audit-recorder.mjs',
+    file: 'src/main.js',
+    why: 'the pre-change order, and the one a merge conflict resolves to by taking "theirs" — VP9 has no hardware encoder on this machine, so this silently gives back the frames the whole upgrade was for',
+    find: '          "video/mp4;codecs=avc1.640033,mp4a.40.2",\n          "video/mp4;codecs=avc1.640032,mp4a.40.2",\n          "video/webm;codecs=vp9,opus",',
+    replace: '          "video/webm;codecs=vp9,opus",\n          "video/mp4;codecs=avc1.640033,mp4a.40.2",\n          "video/mp4;codecs=avc1.640032,mp4a.40.2",',
+  },
+  {
+    name: 'recorder: H.264 level 5.0 offered before 5.1',
+    audit: 'audit-recorder.mjs',
+    file: 'src/main.js',
+    why: 'looks like a harmless tidy-up putting the lower level first, and caps recording below 4K — L5.0 is refused at 3840x2160, so the 4K preset silently falls through to a software codec',
+    find: '          "video/mp4;codecs=avc1.640033,mp4a.40.2",\n          "video/mp4;codecs=avc1.640032,mp4a.40.2",',
+    replace: '          "video/mp4;codecs=avc1.640032,mp4a.40.2",\n          "video/mp4;codecs=avc1.640033,mp4a.40.2",',
+  },
+  {
+    name: 'recorder: the download extension is hardcoded again',
+    audit: 'audit-recorder.mjs',
+    file: 'src/main.js',
+    why: 'the pre-change line, and the one anybody writes without thinking — an MP4 payload named .webm is a file some editors open and some silently refuse, and it reads as a codec fault rather than a naming one',
+    find: '        a.download = `imweb-${Date.now()}.${ext}`;',
+    replace: '        a.download = `imweb-${Date.now()}.webm`;',
+  },
+  {
+    name: 'recorder: the Blob is labelled webm regardless of container',
+    audit: 'audit-recorder.mjs',
+    file: 'src/main.js',
+    why: 'the half-fix — extension derived, Blob type still assumed. Misleads every consumer of the Blob while the filename looks right',
+    find: '        const blob = new Blob(recordChunks, { type });',
+    replace: '        const blob = new Blob(recordChunks, { type: "video/webm" });',
+  },
+  {
+    name: 'recorder: the Record select is re-linked to output.resolution',
+    audit: 'audit-recorder.mjs',
+    file: 'src/main.js',
+    why: 'this was the SHIPPED state for two releases and its own comment admitted it — choosing a record size changes what the audience sees, and recording cost goes back to tracking window size',
+    find: '  recSel.addEventListener("change", () => ps.set("output.recResolution", +recSel.value));',
+    replace: '  recSel.addEventListener("change", () => ps.set("output.resolution", +recSel.value));',
+  },
+  {
+    name: 'recorder: bitrate sized from the display canvas, not the capture',
+    audit: 'audit-recorder.mjs',
+    file: 'src/main.js',
+    why: 'the plausible half-fix after adding the record canvas — reads fine and is correct only while the two happen to be the same size, which is precisely the coupling this work removed',
+    find: 'videoBitsPerSecond: _recVideoBitrate(surface.width, surface.height),',
+    replace: 'videoBitsPerSecond: _recVideoBitrate(canvas.width, canvas.height),',
+  },
+  {
+    name: 'recorder: the blit runs before the render gate',
+    audit: 'audit-recorder.mjs',
+    file: 'src/main.js',
+    why: 'moving the copy "earlier so it is definitely fresh" makes the file follow the rAF clock instead of the rendered frames, so midisync/autosync gaps become duplicate frames — which reads as the instrument stuttering, not the recorder lying',
+    find: '    noisePhase += ps.get(\'noise.speed\').value * dt;\n    if (_captureMode) return;',
+    replace: '    noisePhase += ps.get(\'noise.speed\').value * dt;\n    _recBlit();\n    if (_captureMode) return;',
+  },
+  {
+    name: 'recorder: the audio tap moves off the limiter output',
+    audit: 'audit-recorder.mjs',
+    file: 'src/main.js',
+    why: 'tapping the pre-limiter bus looks more "pure" and records a signal the audience never heard — one that can clip the file while the monitor sounded clean',
+    find: '    _recAudioFrom = eng.node;',
+    replace: '    _recAudioFrom = eng.ctx.destination;',
+  },
+  {
+    name: 'recorder: a silent engine contributes a track anyway',
+    audit: 'audit-recorder.mjs',
+    file: 'src/main.js',
+    why: 'dropping the guard looks like removing a special case, and produces a track of digital silence — worse than no track, because the file looks like it captured audio and came out empty',
+    find: '    if (!eng?.ctx || !eng.node) return false;',
+    replace: '    if (!eng?.ctx) return false;',
+  },
 ];
