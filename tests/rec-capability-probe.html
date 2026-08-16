@@ -1,0 +1,72 @@
+<!doctype html>
+<html><body><pre id="out">PENDING</pre><script>
+(async () => {
+  const r = {};
+  r.ua = navigator.userAgent;
+  r.cores = navigator.hardwareConcurrency;
+  r.memGB = navigator.deviceMemory || null;
+
+  const mrTypes = [
+    'video/webm;codecs=vp9,opus',
+    'video/webm;codecs=vp8,opus',
+    'video/webm;codecs=av01.0.08M.08,opus',
+    'video/mp4;codecs=avc1.640032,mp4a.40.2',
+    'video/mp4;codecs=avc1.640032,opus',
+    'video/mp4;codecs=hvc1.1.6.L186.B0,mp4a.40.2',
+    'video/mp4;codecs=hev1.1.6.L186.B0,mp4a.40.2',
+    'video/mp4;codecs=av01.0.19M.08,mp4a.40.2',
+    'video/mp4',
+  ];
+  r.mediaRecorder = {};
+  for (const t of mrTypes) {
+    try { r.mediaRecorder[t] = MediaRecorder.isTypeSupported(t); }
+    catch (e) { r.mediaRecorder[t] = 'ERR:' + e.name; }
+  }
+
+  r.webcodecs = typeof VideoEncoder !== 'undefined';
+  if (r.webcodecs) {
+    const ve = [];
+    const bases = [
+      { codec: 'avc1.640032',  name: 'h264-high-L5.0' },
+      { codec: 'avc1.640033',  name: 'h264-high-L5.1' },
+      { codec: 'hvc1.1.6.L186.B0', name: 'hevc-main-L6.2' },
+      { codec: 'av01.0.19M.08', name: 'av1' },
+      { codec: 'vp09.00.50.08', name: 'vp9' },
+      { codec: 'vp8',           name: 'vp8' },
+    ];
+    for (const res of [[1920,1080],[2560,1440],[3840,2160]]) {
+      for (const b of bases) {
+        for (const hw of ['prefer-hardware','prefer-software']) {
+          try {
+            const s = await VideoEncoder.isConfigSupported({
+              codec: b.codec, width: res[0], height: res[1],
+              framerate: 60, bitrate: 20_000_000, hardwareAcceleration: hw,
+            });
+            ve.push(`${res[0]}x${res[1]} ${b.name} ${hw}: ${s.supported}`);
+          } catch (e) { ve.push(`${res[0]}x${res[1]} ${b.name} ${hw}: ERR ${e.name}`); }
+        }
+      }
+    }
+    r.videoEncoder = ve;
+
+    // quantizer bitrate mode (CBR/VBR/quantizer)
+    try {
+      const q = await VideoEncoder.isConfigSupported({
+        codec: 'avc1.640032', width: 1920, height: 1080, framerate: 60,
+        bitrate: 20_000_000, bitrateMode: 'quantizer',
+      });
+      r.avcQuantizerMode = q.supported;
+    } catch (e) { r.avcQuantizerMode = 'ERR:' + e.name; }
+
+    const ae = [];
+    for (const c of ['opus', 'mp4a.40.2']) {
+      try {
+        const s = await AudioEncoder.isConfigSupported({ codec: c, sampleRate: 48000, numberOfChannels: 2, bitrate: 256000 });
+        ae.push(`${c}: ${s.supported}`);
+      } catch (e) { ae.push(`${c}: ERR ${e.name}`); }
+    }
+    r.audioEncoder = ae;
+  }
+  document.getElementById('out').textContent = JSON.stringify(r, null, 1);
+})();
+</script></body></html>
