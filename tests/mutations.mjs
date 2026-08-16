@@ -685,6 +685,22 @@ export const MUTATIONS = [
     replace: '    noisePhase += ps.get(\'noise.speed\').value * dt;\n    _recBlit();\n    if (_captureMode) return;',
   },
   {
+    name: 'recorder: the output recorder asks for a chunk cadence again',
+    audit: 'audit-recorder.mjs',
+    file: 'src/main.js',
+    why: 'the shipped state since v0.1 and the shape of every MediaRecorder example on the web — it reads as a streaming nicety and costs a 120-190 ms stall on a ~0.5 s period, about 12 fps, while nothing reads the chunks before onstop',
+    find: '      mediaRecorder.start();',
+    replace: '      mediaRecorder.start(100);',
+  },
+  {
+    name: 'recorder: the clip recorder asks for a chunk cadence again',
+    audit: 'audit-recorder.mjs',
+    file: 'src/io/ClipLibrary.js',
+    why: 'the same fossil in the second recorder — clips are short so the stall is easy to miss here, but it costs the same per second of recording',
+    find: '      mr.start();',
+    replace: '      mr.start(100);',
+  },
+  {
     name: 'recorder: the audio tap moves off the limiter output',
     audit: 'audit-recorder.mjs',
     file: 'src/main.js',

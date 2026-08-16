@@ -6279,7 +6279,22 @@ void main() {
         a.click();
         mediaRecorder = null;
       };
-      mediaRecorder.start(100);
+      // NO TIMESLICE — deliberately, and this is the single largest frame-rate
+      // win in the recorder. `start(100)` asked for a chunk every 100 ms and
+      // cost a 120-190 ms stall on a ~0.5 s period: measured across seven
+      // recordings, 100 ms takes stall from the first 8-second window (15-20
+      // stalls) while 1000 ms takes start clean (0-4) and hold 56-58 fps. The
+      // period is a wall clock, not a frame counter, and survives changes of
+      // codec, resolution, keyframe interval and audio presence.
+      //
+      // Nothing ever wanted the chunks. `ondataavailable` pushes into
+      // recordChunks, which is read only in `onstop` — there is no streaming
+      // consumer, no upload, no progress UI. The 100 ms was the timeslice from
+      // the MDN example, carried in with the first recorder in v0.1 (1e5dc35)
+      // and never revisited. With no argument, MediaRecorder delivers one Blob
+      // at stop; memory is identical, because the chunks were retained either
+      // way.
+      mediaRecorder.start();
       btn.classList.add("recording");
       btn.textContent = "⏹";
     } else {

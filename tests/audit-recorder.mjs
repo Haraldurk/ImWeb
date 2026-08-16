@@ -265,6 +265,36 @@ if (renderFn) {
     '       sample it.');
 }
 
+// ── 5b. No recorder asks for a chunk cadence ───────────────────────────────
+// The single largest frame-rate win in this subsystem, and the easiest to undo
+// by copying an example: every MediaRecorder tutorial passes a timeslice, and
+// it looks like a streaming nicety. Measured here it costs a 120-190 ms stall
+// on a ~0.5 s period — 100 ms takes stall from the first 8-second window while
+// no-timeslice takes hold 56-58 fps. Nothing in this app consumes chunks: both
+// recorders read their array only in onstop.
+console.log('\nNo recorder passes a timeslice to start():');
+
+for (const rel of ['src/main.js', 'src/io/ClipLibrary.js']) {
+  const src = readCode(rel);
+  // Match .start( on a MediaRecorder-ish receiver, then ask whether it was
+  // given an argument. Asking the structure, not the spelling, so a renamed
+  // variable or a reformat does not silently stop covering it.
+  const calls = [...src.matchAll(/\b(\w*(?:[rR]ecorder|\bmr)\w*)\.start\s*\(([^)]*)\)/g)];
+  check(`${rel}: a recorder start() call was found`, calls.length > 0,
+    'the census found nothing — either the recorder moved or the sanitizer\n' +
+    '       over-blanked, and the timeslice check below is vacuous.');
+  for (const c of calls) {
+    check(`${rel}: ${c[1]}.start() is called with no timeslice`,
+      c[2].trim() === '',
+      `got \`${c[1]}.start(${c[2].trim()})\`.\n` +
+      '       FIX: delete the argument. A timeslice makes MediaRecorder deliver\n' +
+      '       chunks on a cadence, and that cadence costs a periodic stall worth\n' +
+      '       ~12 fps. Nothing reads the chunks before onstop, so the cadence\n' +
+      '       buys nothing. If a streaming consumer is ever added, this check is\n' +
+      '       the right place to argue with — measure the stall first.');
+  }
+}
+
 // ── 6. The audio tap has not moved ─────────────────────────────────────────
 // Carried over from the audio-track work (commit e86fdf6) rather than left to
 // the audio audits: this is the recorder's copy of the decision, and the
