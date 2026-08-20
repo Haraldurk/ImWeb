@@ -44,11 +44,17 @@ export AI_MODEL="DeepSeek V4"
 Leave `AI_MODEL` unset for work you typed yourself — an unstamped commit means a
 human wrote it, and that only stays true if the stamp is never applied loosely.
 
-Note that most vendors publish no co-author address, so these trailers are a
-record in the git history rather than entries in GitHub's contributor graph.
-That graph counts whichever tools stamp themselves with a *registered* address,
-which is a fact about tooling defaults and not a measure of contribution — don't
-read it as one.
+**Every AI trailer uses `noreply@ai-assisted.invalid`** — RFC 2606, permanently
+unresolvable — and the hook rewrites any vendor address it finds to match,
+including the one Claude Code writes for itself. That is deliberate. Anthropic
+is the only AI vendor publishing an address GitHub resolves to an account, so
+using real addresses made Claude the only model in the contributor graph while
+five others that worked on this repo left no trace, producing a chart that
+credited one model with 410 of 547 commits. The alternative — inventing
+addresses for the other vendors — fabricates identities to move a number.
+
+So these trailers are a record in the git history and nothing else. No model
+appears in the contributor graph, which never measured contribution anyway.
 
 ## Development Setup
 

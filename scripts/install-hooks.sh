@@ -48,31 +48,50 @@ cat > "$HOOK" << 'EOF'
 #
 # Unset ⇒ no-op, so hand-typed commits stay clean.
 #
-# The synthesised address uses .invalid (RFC 2606, permanently unresolvable) on
-# purpose. Only Anthropic publishes a registered noreply address, so only its
-# trailer feeds GitHub's contributor graph. Inventing a plausible-looking
-# vendor address to even that up would fake an identity to game a chart. These
-# trailers are an honest record in the history; the graph stays skewed, and the
-# fix for the graph is prose in the PR body, not a fabricated mailbox.
+# ALL addresses resolve to .invalid (RFC 2606, permanently unresolvable), and
+# registered vendor noreply addresses are rewritten to match — see below. No
+# model feeds GitHub's contributor graph, by design.
 MSG_FILE="$1"
 SOURCE="$2"
-
-[ -z "$AI_MODEL" ] && exit 0
 
 # Merge/squash messages are assembled by git from commits already stamped.
 case "$SOURCE" in merge|squash) exit 0 ;; esac
 
-# An amend or a -c/-C reuse already carries the trailer — do not double it.
-grep -qi '^Co-Authored-By:' "$MSG_FILE" && exit 0
+if [ -n "$AI_MODEL" ]; then
+  # An amend or a -c/-C reuse already carries the trailer — do not double it.
+  if ! grep -qi '^Co-Authored-By:' "$MSG_FILE"; then
+    # AI_MODEL is a NAME only. It deliberately cannot carry its own address —
+    # an escape hatch for "Name <mail@host>" is an escape hatch for a live
+    # address, which is the one thing this hook exists to prevent.
+    NAME=$(printf '%s' "$AI_MODEL" | sed -E 's/[[:space:]]*<[^>]*>//g; s/[[:space:]]+$//')
+    [ -z "$NAME" ] && exit 0
+    # Trailers are the last block, separated from the body by a blank line.
+    printf '\nCo-Authored-By: %s <noreply@ai-assisted.invalid>\n' "$NAME" >> "$MSG_FILE"
+  fi
+fi
 
-# Accept either "Name <mail@host>" or a bare "Name".
-case "$AI_MODEL" in
-  *\<*\>*) IDENT="$AI_MODEL" ;;
-  *)       IDENT="$AI_MODEL <noreply@ai-assisted.invalid>" ;;
-esac
-
-# Trailers must be the last block, separated from the body by a blank line.
-printf '\nCo-Authored-By: %s\n' "$IDENT" >> "$MSG_FILE"
+# ---------------------------------------------------------------------------
+# Neutralise registered vendor addresses. LAST, so it catches every trailer —
+# Claude Code's own stamp and anything carried in by --amend alike. Ordering
+# this before the append left a hole that AI_MODEL sailed straight through.
+#
+# Anthropic is the only AI vendor publishing a noreply address that GitHub
+# resolves to an account, so a Claude trailer became a contributor-graph entry
+# while an identical Gemini or DeepSeek trailer did not. That asymmetry is a
+# fact about which vendor runs a mailbox, not about who wrote the code, and it
+# produced a graph crediting one model with 410 of 547 commits.
+#
+# Two ways to even it up: invent addresses for the others, or stop using the
+# one that resolves. The first fabricates identities to move a number on a
+# chart. This does the second — every model is named in the history, none is
+# counted in the graph, and the graph stops claiming to measure something it
+# never measured.
+#
+# Gated on a `noreply` local part, so a real human with a vendor address is
+# never rewritten.
+sed -i.bak -E \
+  's/^([Cc]o-[Aa]uthored-[Bb]y: .+) <noreply@[A-Za-z0-9.-]+>[[:space:]]*$/\1 <noreply@ai-assisted.invalid>/' \
+  "$MSG_FILE" && rm -f "$MSG_FILE.bak"
 EOF
 chmod +x "$HOOK"
 echo "✓ prepare-commit-msg hook installed"
