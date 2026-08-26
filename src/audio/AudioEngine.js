@@ -153,7 +153,22 @@ export class AudioEngine {
       const url = import.meta.env?.DEV
         ? `${workletUrl}${workletUrl.includes('?') ? '&' : '?'}v=${Date.now()}`
         : workletUrl;
-      await this.ctx.audioWorklet.addModule(url);
+      // Chrome reports every module failure as the same opaque AbortError,
+      // "Unable to load a worklet's module" — no status, no URL. The processor
+      // is the ONE module fetched lazily, at the first Audio On, so in dev it
+      // is also the one thing that notices the vite server having restarted
+      // since the page loaded: the picture keeps running at 60fps off modules
+      // already in memory while audio alone fails, which reads as an audio bug.
+      // Probe the URL on the failure path only, and say which it was.
+      try {
+        await this.ctx.audioWorklet.addModule(url);
+      } catch (e) {
+        const why = await fetch(url).then(
+          (r) => (r.ok ? 'the module loaded but did not evaluate' : `HTTP ${r.status}`),
+          () => 'the server did not answer — restarted since this page loaded? reload it',
+        );
+        throw new Error(`audio worklet did not load (${why})`);
+      }
       this._moduleAdded = true;
     }
 

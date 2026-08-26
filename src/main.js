@@ -1189,12 +1189,26 @@ async function main() {
     // and the cursor are meaningful with an empty cloud, and the pad says so.
     const corpusEl = document.getElementById("audio-corpus-view");
     if (corpusEl) audio.attachCorpusView(corpusEl);
+    // Carries a failed start's reason into the stop it triggers — see below.
+    let audioFailure = null;
     ps.get("audio.enable")?.onChange(async (v) => {
       try {
-        if (v) await audio.start();
-        else { await audio.stop(); audio.onStatus?.("audio stopped"); }
+        if (v) { audioFailure = null; await audio.start(); }
+        else {
+          await audio.stop();
+          audio.onStatus?.(audioFailure ?? "audio stopped");
+          audioFailure = null;
+        }
       } catch (e) {
-        audio.onStatus?.(`audio failed to ${v ? "start" : "stop"}: ${e.message}`);
+        const msg = `audio failed to ${v ? "start" : "stop"}: ${e.message}`;
+        // A failed start must not leave the toggle reading On: the next click
+        // then means "turn audio off", so recovering takes two and the toggle
+        // looks dead. Clearing it re-enters this handler with v=0, whose own
+        // status message resolves a microtask later and would erase the reason
+        // — hence the flag rather than saying it here. Denied mic sets the
+        // precedent; it clears audio.mic the same way.
+        if (v) { audioFailure = msg; ps.set("audio.enable", 0); }
+        else audio.onStatus?.(msg);
       }
     });
   }
