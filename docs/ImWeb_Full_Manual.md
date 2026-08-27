@@ -270,6 +270,39 @@ Deck B mirrors every parameter below under the `movieB.` prefix
 | `movie.mirror` | TOGGLE | Horizontal flip |
 | `movie.bpmsync` | TOGGLE | Lock playback to global BPM |
 | `movie.bpmbeats` | SELECT | ½ / 1 / 2 / 4 / 8 / 16 beats per loop |
+| `movie.cueSlot` | SELECT 1–8 | Selected cue slot; setting it recalls that cue. Uncaptured by Display States on purpose (see below) |
+| `movie.cueStore` | TRIGGER | Store current Start/End/Pos into the selected cue slot |
+
+### Cue slots
+
+Each deck carries **eight cues**. A cue is MovieStart, MovieEnd and MoviePos
+captured *together* — recalling an in/out pair without the playhead that
+belongs to it drops you outside your own loop, so the three only mean anything
+as a set.
+
+The row sits under each deck's rack:
+
+| Gesture | Effect |
+|---------|--------|
+| Click an **empty** slot | Store the current Start/End/Pos |
+| Click a **filled** slot | Recall it |
+| **Shift**-click | Overwrite with the current values |
+| **Alt**-click | Clear the slot |
+
+Recall routes through `movie.cueSlot`, so a MIDI note mapped to that param
+takes exactly the same path a click does. `movie.cueStore` is a mappable
+trigger that stores into whichever slot is selected.
+
+**Where cues live:** in the `.imweb` project file, so a cue means the same
+thing wherever the project is opened. This is deliberately unlike the warp-map
+slots, whose contents sit in per-origin `localStorage` and therefore differ
+between ports and machines.
+
+**Why Display States do not capture the slot index:** a state already captures
+`movie.start`, `.end` and `.pos` directly. Capturing `cueSlot` as well would
+give those three values a second writer — the slot's `onChange`, firing after
+the restore — and which one won would depend on restore order. Leaving the
+index out keeps the captured values the only writer.
 
 **Clip context menu:** Right-click a rack row to assign a MIDI controller to `movie.speed` or remove the clip.
 

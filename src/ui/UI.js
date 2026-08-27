@@ -192,8 +192,14 @@ export function buildMappingPanels(ps, contextMenu) {
     // noise-params-top and noise-params are built by buildNoisePanel()
     'output-params':   ps.getGroup('output').filter(p => p.id !== 'output.resolution' && p.id !== 'output.interp'),
     'buffer-controls': ps.getGroup('buffer'),
-    'clip-params':     ps.getGroup('movie'),
-    'clipB-params':    ps.getGroup('movieB'),
+    // ...plus each deck's cueSlot/cueStore, appended by id for the same stated
+    // reason as displace.warpSlot: they are group 'global' only so Display
+    // States cannot capture them (see MovieCues.js), but they belong to the
+    // deck, not to the Global panel.
+    'clip-params':     [...ps.getGroup('movie'),
+      ps.get('movie.cueSlot'), ps.get('movie.cueStore')].filter(Boolean),
+    'clipB-params':    [...ps.getGroup('movieB'),
+      ps.get('movieB.cueSlot'), ps.get('movieB.cueStore')].filter(Boolean),
     'mix-params':      ps.getGroup('mix'),
     'mix2-params':     ps.getGroup('mix2'),
     'mix3-params':     ps.getGroup('mix3'),
@@ -265,7 +271,8 @@ export function buildMappingPanels(ps, contextMenu) {
     // capture, and that already have a home in their own feature panel. They
     // are 'global' for persistence reasons, not because they belong here.
     'global-params':       ps.getGroup('global').filter(p =>
-      p.id !== 'glsl.preset' && p.id !== 'displace.warpSlot'),
+      p.id !== 'glsl.preset' && p.id !== 'displace.warpSlot' &&
+      !/^movieB?\.cue(Slot|Store)$/.test(p.id)),
     // particle-params rendered separately below (legacy + v2 split)
     // 'particle-params': ps.getGroup('particle'),
     // Metaballs — one group across six SUBsections of a single panel section,

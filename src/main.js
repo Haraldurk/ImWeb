@@ -64,6 +64,7 @@ import { Automation } from "./controls/Automation.js";
 import { StepSequencer } from "./controls/StepSequencer.js";
 import { CameraInput } from "./inputs/CameraInput.js";
 import { MovieInput, MAX_CLIPS } from "./inputs/MovieInput.js";
+import { MovieCues, CUE_SLOTS } from "./inputs/MovieCues.js";
 
 /**
  * How many catalogue entries to rack into Deck A at boot.
@@ -388,8 +389,9 @@ async function main() {
 
   const movieInput = new MovieInput();
   const movieInputB = new MovieInput('movieB');
+  const movieCues = new MovieCues(ps);
   // Dev-only console access — Deck B has no UI until v0.12 Step 4
-  if (import.meta.env.DEV) window.__decks = { movieInput, movieInputB, ps, movieLibrary };
+  if (import.meta.env.DEV) window.__decks = { movieInput, movieInputB, ps, movieLibrary, movieCues };
   ctrl._movieInput = movieInput;
 
   const stillsBuffer = new StillsBuffer(renderer, W, H);
@@ -2631,6 +2633,7 @@ async function main() {
   ctrl.setMontySignal(montyBridge._signal);
   const projectFile = new ProjectFile(ps, presetMgr, tableManager, {
     warpEditor,
+    movieCues,
     drawLayer,
     strokeLooper,
     stillsBuffer,
@@ -3727,6 +3730,71 @@ async function main() {
   }
 
   refreshClipsList(); // show empty state on startup
+
+  // ── Movie cue slots ───────────────────────────────────────────────────────
+  // Eight Start/End/Pos sets per deck. Contents live in the .imweb project
+  // (see MovieCues.js), the slot index is uncaptured so a Display State's own
+  // start/end/pos stay the only writer.
+  //
+  // Button grammar, chosen so the common case needs no modifier: an EMPTY slot
+  // stores (there is nothing to recall, so storing is the only sensible thing
+  // a click can mean), a FILLED slot recalls. Shift overwrites a filled slot,
+  // Alt clears it. Recall routes through the cueSlot param rather than calling
+  // movieCues.recall() directly, so a MIDI note mapped to CueSlot and a click
+  // take exactly the same path.
+  const buildCueRow = (prefix, containerId) => {
+    const el = document.getElementById(containerId);
+    if (!el) return () => {};
+    const btns = [];
+    for (let i = 0; i < CUE_SLOTS; i++) {
+      const b = document.createElement("button");
+      b.className = "cue-btn";
+      b.textContent = String(i + 1);
+      b.addEventListener("click", (e) => {
+        if (e.altKey) {
+          movieCues.clear(prefix, i);
+          return;
+        }
+        if (e.shiftKey || !movieCues.has(prefix, i)) {
+          movieCues.store(prefix, i);
+          showModeOSD(`${prefix === "movieB" ? "Deck B" : "Deck A"}: cue ${i + 1} stored`);
+          return;
+        }
+        // Already on this slot? onChange won't fire, so recall directly.
+        if (ps.get(`${prefix}.cueSlot`).value === i) movieCues.recall(prefix, i);
+        else ps.set(`${prefix}.cueSlot`, i);
+      });
+      btns.push(b);
+      el.appendChild(b);
+    }
+    return () => {
+      const sel = Math.round(ps.get(`${prefix}.cueSlot`).value);
+      btns.forEach((b, i) => {
+        const filled = movieCues.has(prefix, i);
+        b.classList.toggle("filled", filled);
+        b.classList.toggle("active", filled && i === sel);
+        const cue = movieCues.get(prefix, i);
+        b.title = cue
+          ? `Cue ${i + 1}: in ${cue.start.toFixed(1)}% · out ${cue.end.toFixed(1)}% · pos ${cue.pos.toFixed(1)}%` +
+            `\nClick recalls · Shift-click overwrites · Alt-click clears`
+          : `Cue ${i + 1} empty — click to store the current Start/End/Pos`;
+      });
+    };
+  };
+  const _refreshCuesA = buildCueRow("movie", "clip-cues");
+  const _refreshCuesB = buildCueRow("movieB", "clipB-cues");
+  const _refreshCues = () => { _refreshCuesA(); _refreshCuesB(); };
+  movieCues.onChange = _refreshCues;
+  for (const prefix of ["movie", "movieB"]) {
+    ps.get(`${prefix}.cueSlot`).onChange((v) => {
+      movieCues.recall(prefix, Math.round(v));
+      _refreshCues();
+    });
+    ps.get(`${prefix}.cueStore`).onChange(() => {
+      movieCues.store(prefix, Math.round(ps.get(`${prefix}.cueSlot`).value));
+    });
+  }
+  _refreshCues();
 
   /** Empty one deck's rack. The Library is untouched — Clear unloads, it does
    *  not delete, so anything cleared can be racked again from the Library. */

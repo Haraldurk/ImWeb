@@ -2575,6 +2575,15 @@ export function registerCoreParameters(ps) {
     { key: "mute", label: "MuteMovie", type: PARAM_TYPE.TOGGLE, value: 1 },
     { key: "bpmsync", label: "BPM Sync", type: PARAM_TYPE.TOGGLE, value: 0 },
     { key: "bpmbeats", label: "BeatLen", type: PARAM_TYPE.SELECT, value: 2, options: ["1 beat", "2 beats", "4 beats", "8 beats", "16 beats"] },
+    // Cue slots — eight Start/End/Pos sets per deck. Both are group 'global',
+    // which overrides the `group: prefix` below, so Display States cannot
+    // capture them. A state already captures start/end/pos directly; capturing
+    // the slot index too would give those three values a second writer whose
+    // onChange fires after the restore, and which one won would depend on
+    // restore order. See MovieCues.js.
+    { key: "cueSlot", label: "CueSlot", type: PARAM_TYPE.SELECT, value: 0, group: "global",
+      options: ["1", "2", "3", "4", "5", "6", "7", "8"] },
+    { key: "cueStore", label: "CueStore", type: PARAM_TYPE.TRIGGER, group: "global" },
   ];
   [
     { prefix: "movie", labelSuffix: "" },

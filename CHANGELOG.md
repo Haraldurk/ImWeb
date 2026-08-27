@@ -8,7 +8,47 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
 
 ## [Unreleased]
 
+### Added
+- **Eight cue slots per movie deck.** A cue captures MovieStart, MovieEnd and
+  MoviePos together — recalling an in/out pair without the playhead that
+  belongs to it lands you outside your own loop, so the three only mean
+  anything as a set. The row sits under each deck's rack: clicking an *empty*
+  slot stores (there is nothing to recall, so storing is the only thing a
+  click can mean), clicking a *filled* one recalls, Shift-click overwrites,
+  Alt-click clears. `movie.cueSlot` / `movieB.cueSlot` are real params, so a
+  MIDI note recalls a cue by exactly the path a click takes; `cueStore` is a
+  mappable trigger.
+  Cue contents live in the **`.imweb` project file**, not localStorage — the
+  deliberate difference from warp-map slots, whose per-origin contents mean
+  different things on 5173 and 4173. The slot *index* is still group `global`
+  and uncaptured, for a different reason: a Display State already captures
+  start/end/pos directly, and capturing the index too would give those three
+  values a second writer whose onChange fires after the restore.
+
 ### Changed
+- **MovieSpeed now spans −5 – 5** (was −3 – 3), on both decks. Saved projects
+  are unaffected: `captureState()` stores raw values, and the widening is
+  symmetric so a controller's normalized centre is still 0.
+
+### Fixed
+- **An inverted MovieStart/MovieEnd froze the clip and killed MoviePos.**
+  Nothing stopped End being dragged below Start, and `Math.max(endT - startT,
+  0.001)` then collapsed the range to a millisecond: every MoviePos value
+  mapped onto startT, and Loop's wrap test was already true on arrival so it
+  re-seeked every frame. Both controls still moved, and neither did anything —
+  indistinguishable from a broken binding. The pair is now ordered at the one
+  read site, so an inverted range simply plays as the window between the marks
+  and whatever you typed is left intact.
+- **The keyboard help overlay listed 24 of the 34 bound keys.** `Option+1–8`
+  (Movie B clip select) was missing entirely and `Shift+1–8` was labelled
+  without naming Movie A, so the second deck read as having no keyboard at
+  all. Also added `g`, `i`, `u`, `⇧Esc`, `✱ 0–9`, `⌘O`, `⌘F`. The box had no
+  height limit, so a long list fell off short windows unreachable; it is now
+  three columns with `max-height` and scroll.
+- **Clip select on an empty slot said nothing.** `Shift+1–8` and `Option+1–8`
+  silently swallowed the key when the rack had no clip there — and Deck B's
+  rack is empty on every fresh launch, since only Deck A auto-loads from the
+  manifest. Both decks now flash the reason.
 - **The recorder writes MP4/H.264 in hardware instead of WebM/VP9 in software.**
   VP9 has no hardware encoder on Intel Macs with AMD graphics — it is libvpx on
   the CPU, and it was the measured limiter on recording frame rate (57.6 fps at

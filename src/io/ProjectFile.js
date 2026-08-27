@@ -84,6 +84,11 @@ export class ProjectFile {
       strokeLoops = this.extras.strokeLooper.serialize();
     }
 
+    // Movie deck cue slots (8 Start/End/Pos sets per deck). These live in the
+    // project rather than localStorage on purpose — unlike warpSlots above,
+    // a cue must mean the same thing wherever the project is opened.
+    const movieCues = this.extras.movieCues ? this.extras.movieCues.serialize() : null;
+
     // StillsBuffer metadata (thumbnails + protection)
     // We don't save full-res frames to JSON as it would be too large (>100MB)
     let stillsMetadata = null;
@@ -134,6 +139,7 @@ export class ProjectFile {
       tables,
       warpMap,
       warpSlots,
+      movieCues,
       drawData,
       strokeLoops,
       stills:       stillsMetadata,
@@ -239,6 +245,12 @@ export class ProjectFile {
     }
     if (data.warpSlots) {
       localStorage.setItem('imweb-warpmaps', JSON.stringify(data.warpSlots));
+    }
+
+    // Restore movie deck cue slots. Absent in files written before cues
+    // existed; MovieCues.restore() also tolerates a short or partial bank.
+    if (data.movieCues && this.extras.movieCues) {
+      this.extras.movieCues.restore(data.movieCues);
     }
 
     // Restore DrawLayer
