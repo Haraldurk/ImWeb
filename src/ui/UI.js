@@ -383,8 +383,10 @@ export function buildMappingPanels(ps, contextMenu) {
       ps.get('acorp.hop'), ps.get('acorp.window'),
       ps.get('acorp.analyse'), ps.get('acorp.cancel'),
     ].filter(Boolean),
-    'audio-grain-params': pick('agrain', ['part', 'on', 'size', 'rate', 'pitch',
-      'spray', 'level', 'unsafe']),
+    // `pos` sits next to `part`: it is a POSITION within that partition, and it
+    // is the control an LFO gets attached to for time stretch.
+    'audio-grain-params': pick('agrain', ['part', 'pos', 'on', 'size', 'rate',
+      'pitch', 'spray', 'level', 'unsafe']),
     'audio-voice-params': pick('avoice', ['on', 'src', 'wave', 'pitch', 'fmRatio',
       'fmIndex', 'colour', 'cut', 'res', 'ftype', 'drive', 'level']),
   };

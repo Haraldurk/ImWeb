@@ -1,160 +1,65 @@
-# ImWeb v0.21.0 — The Resolution
+# ImWeb v0.21.1 — Reaching the Second Screen
 
 *Released 2026-08-15*
 
-A beta tester on a 4K monitor said the Rutt-Etra was "not convincing" and asked
-for higher output resolution. Both halves of that were true. Neither was the
-whole story.
+v0.21.0 raised the output ceiling to 4K. It also left the one display that
+matters most to a performer still capped at 1080p, and nobody would have noticed
+from the release notes, because the setting that did it does not look like a
+resolution setting.
 
-He had also mentioned, separately and never in writing, that he changes his
-monitor's resolution in order to use ImWeb at all — because the interface is
-drawn in 8 and 10 pixel type, and on a 4K panel addressed at its native
-3840×2160 that is about half the physical size it was designed to be. So he
-dropped the display to 1080p to read the panel, and *that* is what made the
-picture soft: a smaller canvas, then stretched back across a 4K screen.
-
-One cause, two symptoms, and the symptom that got reported was the downstream
-one. This release is about resolution in three senses — the interface at a
-legible size, the output at the size your screen can actually show, and a
-Rutt-Etra scan that keeps gaining detail across the whole range of its Lines
-knob instead of quietly stopping a third of the way up.
+Both items here came back from the tester v0.21.0 was built for, within hours of
+him pulling it.
 
 ---
 
-## An interface that survives a dense display
+## The second screen can actually receive 4K
 
-There is a new **UI Size** control in the I/O panel: **Auto**, or 100% through
-200%.
+`2Display` is a different list from `Display` and `Record`, and it was never
+extended. It offered `Same / 1080p / 720p / 540p` and **defaulted to 1080p** — so
+a 4K project was quietly downscaled on its way to the projector. The picture the
+audience sees was the one place the new resolutions could not reach.
 
-**Auto is the interesting setting.** The question it answers is not "is this
-screen big?" but "is this screen dense, and is the operating system already
-compensating?" — because those have opposite answers on the same monitor. A 4K
-panel in macOS's scaled HiDPI mode reports a 1920-pixel-wide screen at device
-pixel ratio 2, and every measurement in the interface is already the right
-physical size; nothing should happen. The *same panel* run at native 3840×2160
-reports ratio 1, and everything is half size. Auto looks at the panel's real
-pixel count and at what the OS is already doing, and asks only for the
-remainder. On every display where the OS is doing its job, it does nothing at
-all.
+It now runs `Same / 4K / 1440p / 1080p / 720p / 540p`.
 
-Your choice is stored per browser, not in your project. The right value is a
-property of the monitor in front of you, not of the patch — a scale saved into a
-Display State would be wrong the moment the project opened on a different
-machine.
+**The default is deliberately unchanged at 1080p.** Raising a ceiling is not the
+same as raising a default: the frame is read back off the GPU and transferred to
+the other window, so 4K on every other frame is a real cost that should be asked
+for rather than assumed. If you are driving a 4K projector, set it to `4K` or to
+`Same`.
 
-## 1440p and 4K output
+## …and it says what it is
 
-The **Display** and **Record** resolution menus now reach **2560×1440** and
-**3840×2160**.
+The first question asked about that row was "what exactly does it refer to?",
+which was entirely fair — it was a set of resolution-shaped values with nothing
+saying what they applied to.
 
-These are fixed render sizes rather than anything derived from your screen. The
-canvas gets a true 4K backing buffer and is letterboxed into whatever space it
-has, which means a 4K display is needed to *see* the result at 1:1 but not to
-*produce* it — the recorder follows the same setting, so 4K capture works from a
-laptop.
+It is **not** the second screen's resolution. It is the size the picture is
+resized to *before being sent* to that window: a detail-versus-transfer-cost
+dial, where `Same` means no resize at all. Both the label and the control now
+explain that on hover.
 
-They are at the end of the menu rather than in numeric order, deliberately.
-These menu values are stored in your saved states as positions in the list, so
-inserting anything in the middle would silently repoint every project you have.
+## Fullscreen on the second screen, without the white bar
 
-## Rutt-Etra, at a density worth looking at
+The output window asked for fullscreen on `<body>` rather than on the document
+element, which leaves the page's root element visible behind it as a strip along
+the top. Reported in Brave and Zen; Safari happened to tolerate it, which is
+exactly how a bug like this survives being tested in one browser.
 
-The Lines knob went to 480. It now goes to **1080** — and more importantly, it
-now does something across its whole range.
-
-The scan's horizontal sampling was capped at 512 columns. Above 256 lines, then,
-the scan got finer vertically and stayed *exactly as coarse horizontally*: the
-top half of the knob bought nothing. Columns now follow the line count up to
-2048, and the slew history follows them, so nothing else becomes the limit
-first. Even at the old 480-line maximum this doubles the horizontal detail.
-
-The top of the range is genuinely heavy — 1080 lines is a 1080×2048 lattice of
-about 4.4 million vertices, and dragging Lines around up there will stall while
-the geometry rebuilds. That cost is paid only if you ask for it. The default is
-still 120.
-
-## The recorder records sound
-
-Every recording ImWeb has ever made had no audio track. Not a silent track — no
-track at all: `canvas.captureStream()` returns video only. This was confirmed
-against four real recordings, each of which reports a single video stream and
-nothing else.
-
-The recorder now taps the audio engine after its limiter and adds that as a real
-track on the same stream, writing `video/webm` with VP9 video and Opus audio at
-192 kbit/s. Monitoring keeps playing while you record. With the audio engine
-switched off you get a video-only file exactly as before, and the console says
-so — a track of digital silence would look like captured audio that came out
-empty, which is worse than no track.
-
----
-
-## Fixed
-
-**A display change no longer quadruples the cost of every frame.** ImWeb
-deliberately renders at pixel ratio 1: on a Retina display, ratio 2 doubles
-every dimension and quadruples the fill cost across more than 35 shader passes
-for no visible gain on moving video. But the handler watching for display
-changes adopted the new ratio, undoing that decision permanently the first time
-the window met a screen of a different density — with nothing to put it back.
-The picture is identical either way, so the only symptom was an instrument that
-became four times more expensive to draw at a moment that correlated with
-nothing. It was found by reading frame timestamps out of real recordings: the
-one file made at ratio 2 ran at 19 fps against 30 for files with half the pixels.
-
-**Floating surfaces land where you click them at any UI scale.** The parameter
-context menu, the controller popover, detached panels, the floating signal path,
-the on-screen keyboard and both slot menus all positioned themselves in screen
-coordinates written straight into a scaled element — which multiplies them
-again. At 200% the badge menu opened twice as far from the pointer as the click,
-and a detached panel opened past the right edge of a 4K screen taking its own
-drag handle with it. Found in code review rather than testing, because at 100%
-the two coordinate systems are identical and nothing is visibly wrong.
-
-**Modals fit the screen at any UI scale.** The documentation viewer's height was
-fixed at 80% of the window, which inside scaled chrome became 160% — clipping
-its own titlebar and close button off the top of the screen.
-
-**The large-display breakpoint no longer claims to fix type size.** A stylesheet
-rule aimed at exactly this problem set a base font size that was measured to
-reach zero elements on screen, because every one of the 198 font sizes in the
-interface is set directly and a direct setting always beats an inherited one. It
-was growing the spacing while leaving every letter the same size.
-
----
-
-## Under the hood
-
-Three new invariant audits run on every commit. One pins the pixel-ratio
-decision, so the four-times-cost regression cannot come back unnoticed. One
-covers UI scale end to end — including a rule that had to be written as a pure
-function and unit-tested, because the display it exists for cannot be reproduced
-on the machine it was written on.
-
-The third lesson is about the audits themselves. The first version of the UI
-scale audit listed the five full-screen overlays it checked. There were seven,
-and one of them contained a live instance of the very bug the audit existed to
-prevent — and the audit reported all clear. An audit that enumerates its
-subjects can only pass while that list is complete, which is the one thing
-nothing checks. It now derives them from the stylesheet instead.
+The main window has always fullscreened the document element. The popup was the
+only place that did not, and now it matches.
 
 ---
 
 ## Upgrading
 
-Nothing to do. Saved projects, banks and states load unchanged: the new
-resolutions were appended rather than inserted, and the Rutt-Etra Lines maximum
-is a number rather than a menu position, so a project that saved 240 still means
-240.
+Nothing to do, and nothing to re-save. The `2Display` setting is per-session and
+was never stored in your projects, so reordering its list cannot affect a saved
+file.
 
-The service worker cache is now named **`imweb-v0.21.0`**. **If you self-host,
+The service worker cache is now named **`imweb-v0.21.1`**. **If you self-host,
 deploy a fresh `npm run build`** — a returning visitor's browser serves the
-cached `index.html` until that constant changes, and a stale one points at
-bundle hashes that no longer exist on disk.
-
-If your interface suddenly looks larger after updating, that is Auto deciding
-your display is dense and unscaled. Set **UI Size** to 100% in the I/O panel if
-you preferred it as it was.
+cached `index.html` until that constant changes, and a stale one points at bundle
+hashes that no longer exist.
 
 ## Credits
 

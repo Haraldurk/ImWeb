@@ -3,7 +3,7 @@
 ![ImWeb Preview](assets/preview.png)
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
-[![Version](https://img.shields.io/badge/version-v0.21.0-brightgreen)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-v0.21.1-brightgreen)](CHANGELOG.md)
 [![Live Demo](https://img.shields.io/badge/demo-live-orange)](https://imweb.image-ine.org)
 
 **ImWeb is Image/ine — reimagined** — The legendary real-time video synthesis instrument created by Tom Demeyer and Steina Vasulka at STEIM Amsterdam, rebuilt for the modern browser and pointed toward what comes next. Free, open source, no installation required.
@@ -15,7 +15,7 @@
 
 ## Contents
 
-[What This Is](#what-this-is) · [Quick Start](#quick-start) · [Features](#features-v0210) · [Keyboard Reference](#keyboard-reference) · [Architecture](#architecture) · [Roadmap](#roadmap) · [Contributing](#contributing) · [Credits](#credits) · [License](#license) · [Support](#support)
+[What This Is](#what-this-is) · [Quick Start](#quick-start) · [Features](#features-v0211) · [Keyboard Reference](#keyboard-reference) · [Architecture](#architecture) · [Roadmap](#roadmap) · [Contributing](#contributing) · [Credits](#credits) · [License](#license) · [Support](#support)
 
 ---
 
@@ -61,7 +61,7 @@ Firefox and Safari supported in WebGL mode with minor limitations.
 
 ---
 
-## Features (v0.21.0)
+## Features (v0.21.1)
 
 ### Input Sources
 

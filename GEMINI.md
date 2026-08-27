@@ -202,6 +202,12 @@ Making the change:
    confirm the visual result
 5. Commit, push the branch, and open a PR with `gh pr create`
 6. **Opening the PR is where the task ends.** Do not merge unless asked.
+7. **Name yourself on the commit** — end the message with
+   `Co-Authored-By: Gemini 3 Pro <noreply@ai-assisted.invalid>`, using the model
+   you actually are. The `prepare-commit-msg` hook does this for you when
+   `AI_MODEL` is exported; append it by hand if it is not. Claude Code stamps
+   itself and nothing else did, so the history credited one model for work six
+   tools shared — do not let that go on being true.
 7. Report: what changed, what the screenshot confirms, any console warnings
 
 > The previous revision ended step 3 with `git add … && git commit && git push`

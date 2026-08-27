@@ -1,16 +1,23 @@
 # The output recorder's frame rate — what five real recordings say
 
-Investigation. **No frame-rate fix is applied in this PR**, but the question is
-now answered: see *The answer*. The capture/encode path is the limiter, not the
-render loop, and it is limited by pixel count. One contributing cause — a DPR
-regression that quadrupled fill cost after any display change — was found on the
-way and *is* fixed here.
+Investigation. **No frame-rate fix has been applied**, and after the VP8
+measurement below, the codec half of the proposed fix is ruled out rather than
+pending. The capture/encode path is the limiter, not the render loop, and it is
+limited by pixel count. One contributing cause — a DPR regression that
+quadrupled fill cost after any display change — was found on the way and *is*
+fixed (PR #65).
 
 Companion to the audio-track change in `src/main.js` (`btn-record`).
 
-**One conclusion in the first draft of this document was wrong and is corrected
-in place below**, marked as a correction rather than quietly edited, because the
-reasoning that produced it is the reusable part.
+**Two conclusions in this document have been wrong and are corrected in place**,
+marked as corrections rather than quietly edited, because the reasoning that
+produced them is the reusable part:
+
+1. *"A tight gap distribution rules out encoder backpressure."* It does not —
+   see the correction under *What the numbers rule out*.
+2. *"Promote VP8 to first choice; it is a cheaper codec."* Measured, and it is
+   catastrophically slower above ~2048 px wide, including at the 1440p preset
+   v0.21.0 shipped — see *The VP8 experiment*.
 
 ---
 
@@ -169,16 +176,85 @@ output resolution before it gets there.
 
 Not render performance — the loop is already at 60. In the recorder:
 
-1. **A cheaper codec.** `video/webm;codecs=vp8,opus` is already in the fallback
+1. ~~**A cheaper codec.** `video/webm;codecs=vp8,opus` is already in the fallback
    list the audio change added; promoting it to first choice is a one-line
-   experiment with a measurable answer.
+   experiment with a measurable answer.~~ **Measured, and REJECTED — see below.**
 2. **A fixed export resolution**, capturing through an intermediate canvas rather
    than the live output, so the recording's cost stops depending on how large the
-   user happened to leave the window.
+   user happened to leave the window. **Still the recommended direction**, and now
+   the only one, since the codec swap is off the table.
 
-Neither is done here. Both should be measured the same way this was — by reading
-the PTS distribution out of the produced file, not by asking the page how it
-feels.
+Measure any of it the same way this was — by reading the PTS distribution out of
+the produced file, not by asking the page how it feels.
+
+---
+
+## The VP8 experiment: measured, and it must NOT be shipped
+
+Recommendation 1 above was wrong. Keeping it struck through rather than deleting
+it, because "the obvious cheap fix is the wrong fix" is the reusable part.
+
+`VideoEncoder` (WebCodecs) throughput on the owner's machine, 8 Mbit/s target,
+60 fps, moving synthetic content, three repeats per cell, one encoder alive at a
+time. Median frames encoded per second:
+
+| output | MP | VP8 | VP9 | VP8 vs VP9 |
+|---|---|---|---|---|
+| 683×846 | 0.58 | **117.5** | 67.1 | **1.75× faster** |
+| 1964×1048 | 2.06 | **71.2** | 44.0 | **1.62× faster** |
+| 2048×1280 | 2.62 | 7.7 | **26.8** | 0.29× — 3.5× SLOWER |
+| 2560×1440 (**1440p preset**) | 3.69 | 3.2 | **21.6** | 0.15× — 6.8× SLOWER |
+| 2646×1766 | 4.67 | 17.2 | **27.1** | 0.63× |
+
+**VP8 falls off a cliff somewhere between 1964 and 2048 pixels wide.** Below it
+VP8 is the clear win; above it VP8 is unusable. At the **1440p preset v0.21.0
+just shipped**, promoting VP8 to first choice would have taken recordings from
+about 20 fps to about 3 fps — a change sold as a performance fix, landing as a
+7× regression, at one of the two headline resolutions of the release that
+introduced it.
+
+That is the whole reason this got measured before it got written: recommendation
+1 was a one-line change, it was already justified in a merged document, and it
+was wrong in exactly the region the project had just expanded into.
+
+### Why the model predicted the real files, and what that buys
+
+Take "captured fps = the largest vsync divisor at or below encoder throughput".
+Against the three real recordings, using the VP9 column:
+
+| output | VP9 throughput | predicted | measured |
+|---|---|---|---|
+| 0.58 MP | 67.1 | 60 | **57.6** |
+| 2.06 MP | 44.0 | 30 | **30.3** |
+| 4.67 MP | 27.1 | 20 | **19.0** |
+
+Three for three. That is independent confirmation that encoder throughput is the
+limiter — the conclusion this document reached from PTS gaps alone, now reached
+again from a completely different measurement.
+
+### What is NOT established
+
+- **This is WebCodecs, not MediaRecorder.** Both sit on the same libvpx in
+  Chrome, but they are not the same code path. The direction is not in doubt at
+  this margin; the exact numbers are a proxy.
+- **One machine** (Intel MBP, AMD 5500M, no VP9 or VP8 hardware encoder). The
+  cliff's position is a property of that libvpx build and those cores.
+- **The 4.67 MP row does not fit.** VP8 does 17.2 fps at 2646×1766 but only
+  3.2 fps at the *smaller* 2560×1440, which is not monotonic in pixels and is
+  unexplained. Both rows repeated tightly. Recorded rather than smoothed over —
+  it does not change the conclusion (VP8 loses in both), but it means the cliff
+  is not a simple function of area and nobody should model it as one.
+- **A width-conditional codec choice was considered and not built.** It would
+  hard-code a machine-specific threshold discovered on one laptop, which is
+  exactly the kind of constant that is right once and silently wrong afterwards.
+
+### The standing consequence
+
+VP9 manages about 21.6 fps at 1440p and less at 4K on this hardware, so
+recordings at the new high presets will be slow *and there is no codec swap that
+rescues them*. If recording at 1440p/4K needs to be good, the answer is
+recommendation 2 — capture through an intermediate canvas at a fixed export
+size — not a different encoder.
 
 ### Still unexplained
 
