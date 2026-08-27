@@ -263,7 +263,7 @@ Deck B mirrors every parameter below under the `movieB.` prefix
 |-----------|-------|-------------|
 | `movie.active` | TOGGLE | Enable playback |
 | `movie.speed` | −5 – 5 | Playback speed; negative = reverse (manual frame stepping); 0 = pause |
-| `movie.pos` | 0–100% | Frame scrub — a fraction *of* the Start–End window, so moving either mark re-seeks the playhead to keep Pos and the picture in agreement; assign LFO/MIDI to scan through frames (overrides MovieSpeed when a controller is active) |
+| `movie.pos` | 0–100% | Frame scrub — a fraction *of* the Start–End window. Moving a mark does not disturb a playing head unless the trim passes it, in which case the head steps back inside; assign LFO/MIDI to scan through frames (overrides MovieSpeed when a controller is active) |
 | `movie.start` | 0–100% | Loop range start |
 | `movie.end` | 0–100% | Loop range end |
 | `movie.len` | 0–100% | **MovieLen.** Two-way view of (End − Start): dial it to set the window's length directly, anchored on MovieStart; it re-reads whenever either mark moves |

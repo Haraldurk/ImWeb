@@ -50,13 +50,14 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
   symmetric so a controller's normalized centre is still 0.
 
 ### Fixed
-- **Moving MovieStart or MovieEnd now re-seeks the playhead.** MoviePos is a
+- **Trimming a loop no longer strands the playhead outside it.** MoviePos is a
   fraction *of* the Start–End window, but the seek only fired when Pos itself
-  changed — so dragging either mark left the slider reading 50 % while the
-  picture sat wherever the old window had put it, and the two only agreed
-  again once Pos was touched. Nudging MovieStart while the clip plays
-  therefore now auditions the loop from Pos, which is the point of moving the
-  mark. Unchanged when SlideRange is on, where Pos drives the window instead.
+  changed, so raising MovieStart past a playing head left it behind the loop
+  with nothing to recover it — Loop's wrap test only looks at the *end*.
+  Moving a mark now leaves a playing head alone as long as it is still inside
+  the window, and steps it back to the nearest edge only when the trim passes
+  it. Trim while it plays and it keeps playing; trim past it and it steps in.
+  Unchanged when SlideRange is on, where Pos drives the window instead.
 - **MovieSpeed 0 threw inside the render loop.** `v.playbackRate =
   Math.max(0.01, speed)` wrote 0.01 whenever speed was 0 — the documented
   "0 = pause" — and Chrome raises `NotSupportedError` for any rate outside

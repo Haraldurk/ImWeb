@@ -421,16 +421,27 @@ export class MovieInput {
     // window and carry the playhead with it — seeking again here would drag
     // the head to a fraction WITHIN the window it just moved, which is the
     // other mode's meaning and would fight it every frame Pos changes.
-    // Re-seeks on a Start/End move too, not only on a Pos move. MoviePos is a
-    // fraction OF the window, so dragging either mark changes where a given Pos
-    // points; without this the slider read 50 while the picture sat wherever the
-    // old window had put it, and the two only agreed again once Pos was touched.
-    // Nudging MovieStart while the clip plays therefore now auditions the loop
-    // from Pos, which is the point of moving the mark.
+    // Moving Pos is a scrub: seek to the fraction it names, always.
+    //
+    // Moving Start or End is NOT. It used to re-seek to the Pos fraction too,
+    // which kept slider and picture in agreement but yanked the playhead on
+    // every nudge — with Pos at 0, each tweak of a mark restarted the loop
+    // mid-performance. So the window is now allowed to move out from under a
+    // playing head, and only a head that ends up OUTSIDE the new window is
+    // brought back, to the nearest edge. Trim a loop while it plays and it
+    // keeps playing; trim past the head and it steps back in.
+    //
+    // The `below start` case is the one that matters. Loop mode's wrap test
+    // above only looks at `>= endT`, so a head left behind a raised Start is
+    // never recovered by it — nothing else pulls it forward.
     const posVal = posParam.value;
-    if (!slideMode && (posVal !== this._lastPos || rangeMoved)) {
-      this._lastPos = posVal;
-      v.currentTime = startT + (posVal / 100) * range;
+    if (!slideMode) {
+      if (posVal !== this._lastPos) {
+        this._lastPos = posVal;
+        v.currentTime = startT + (posVal / 100) * range;
+      } else if (rangeMoved && (v.currentTime < startT || v.currentTime > endT)) {
+        v.currentTime = v.currentTime < startT ? startT : endT;
+      }
     }
 
     // Upload if playback produced a new frame this tick
