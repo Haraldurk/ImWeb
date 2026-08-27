@@ -65,6 +65,7 @@ import { StepSequencer } from "./controls/StepSequencer.js";
 import { CameraInput } from "./inputs/CameraInput.js";
 import { MovieInput, MAX_CLIPS } from "./inputs/MovieInput.js";
 import { MovieCues, CUE_SLOTS } from "./inputs/MovieCues.js";
+import { CueBank } from "./core/CueBank.js";
 
 /**
  * How many catalogue entries to rack into Deck A at boot.
@@ -390,6 +391,12 @@ async function main() {
   const movieInput = new MovieInput();
   const movieInputB = new MovieInput('movieB');
   const movieCues = new MovieCues(ps, { movie: movieInput, movieB: movieInputB });
+  // The Playback Zone's eight region cues. `part` FIRST in the key order —
+  // recall writes in this order, and Start/Length are fractions of the
+  // partition, so writing them before `part` resolves them against the old one.
+  // No afterRecall hook: every one of these takes effect on write, unlike a
+  // movie deck's Pos, which needs the seek forced.
+  const playCues = new CueBank(ps, { banks: ["aplay"], keys: ["part", "start", "len"] });
   // Dev-only console access — Deck B has no UI until v0.12 Step 4
   if (import.meta.env.DEV) window.__decks = { movieInput, movieInputB, ps, movieLibrary, movieCues };
   ctrl._movieInput = movieInput;
@@ -2654,6 +2661,7 @@ async function main() {
   const projectFile = new ProjectFile(ps, presetMgr, tableManager, {
     warpEditor,
     movieCues,
+    playCues,
     drawLayer,
     strokeLooper,
     stillsBuffer,
@@ -3836,7 +3844,11 @@ async function main() {
   // Alt clears it. Recall routes through the cueSlot param rather than calling
   // movieCues.recall() directly, so a MIDI note mapped to CueSlot and a click
   // take exactly the same path.
-  const buildCueRow = (prefix, containerId) => {
+  //
+  // Takes the BANK as an argument rather than closing over movieCues: the
+  // Playback Zone has the same eight slots and the same button grammar, and a
+  // second copy of this row would be a second place to fix the modifier logic.
+  const buildCueRow = (bank, prefix, containerId, { name, describe }) => {
     const el = document.getElementById(containerId);
     if (!el) return () => {};
     const btns = [];
@@ -3846,16 +3858,16 @@ async function main() {
       b.textContent = String(i + 1);
       b.addEventListener("click", (e) => {
         if (e.altKey) {
-          movieCues.clear(prefix, i);
+          bank.clear(prefix, i);
           return;
         }
-        if (e.shiftKey || !movieCues.has(prefix, i)) {
-          movieCues.store(prefix, i);
-          showModeOSD(`${prefix === "movieB" ? "Deck B" : "Deck A"}: cue ${i + 1} stored`);
+        if (e.shiftKey || !bank.has(prefix, i)) {
+          bank.store(prefix, i);
+          showModeOSD(`${name}: cue ${i + 1} stored`);
           return;
         }
         // Already on this slot? onChange won't fire, so recall directly.
-        if (ps.get(`${prefix}.cueSlot`).value === i) movieCues.recall(prefix, i);
+        if (ps.get(`${prefix}.cueSlot`).value === i) bank.recall(prefix, i);
         else ps.set(`${prefix}.cueSlot`, i);
       });
       btns.push(b);
@@ -3864,28 +3876,50 @@ async function main() {
     return () => {
       const sel = Math.round(ps.get(`${prefix}.cueSlot`).value);
       btns.forEach((b, i) => {
-        const filled = movieCues.has(prefix, i);
+        const filled = bank.has(prefix, i);
         b.classList.toggle("filled", filled);
         b.classList.toggle("active", filled && i === sel);
-        const cue = movieCues.get(prefix, i);
+        const cue = bank.get(prefix, i);
         b.title = cue
-          ? `Cue ${i + 1}: in ${cue.start.toFixed(1)}% · out ${cue.end.toFixed(1)}% · pos ${cue.pos.toFixed(1)}%` +
+          ? `Cue ${i + 1}: ${describe(cue)}` +
             `\nClick recalls · Shift-click overwrites · Alt-click clears`
-          : `Cue ${i + 1} empty — click to store the current Start/End/Pos`;
+          : `Cue ${i + 1} empty — click to store the current ${describe(null)}`;
       });
     };
   };
-  const _refreshCuesA = buildCueRow("movie", "clip-cues");
-  const _refreshCuesB = buildCueRow("movieB", "clipB-cues");
-  const _refreshCues = () => { _refreshCuesA(); _refreshCuesB(); };
+  const deckCue = {
+    name: "Deck A",
+    describe: (c) => (c
+      ? `in ${c.start.toFixed(1)}% · out ${c.end.toFixed(1)}% · pos ${c.pos.toFixed(1)}%`
+      : "Start/End/Pos"),
+  };
+  const _refreshCuesA = buildCueRow(movieCues, "movie", "clip-cues", deckCue);
+  const _refreshCuesB = buildCueRow(movieCues, "movieB", "clipB-cues",
+    { ...deckCue, name: "Deck B" });
+
+  // The Playback Zone's own eight. Region only — Partition, Start and Length —
+  // so a recall moves WHERE the zone reads without touching Rate, Level,
+  // Unsafe or Run. Partition is in the set because Start and Length are
+  // fractions OF it: a region recalled without its partition points at a
+  // different piece of tape, which is the same trap as a movie in/out without
+  // its playhead.
+  const _refreshCuesPlay = buildCueRow(playCues, "aplay", "aplay-cues", {
+    name: "Playback Zone",
+    describe: (c) => (c
+      ? `P${Math.round(c.part)} · start ${(c.start * 100).toFixed(1)}% · len ${(c.len * 100).toFixed(1)}%`
+      : "Partition/Start/Length"),
+  });
+
+  const _refreshCues = () => { _refreshCuesA(); _refreshCuesB(); _refreshCuesPlay(); };
   movieCues.onChange = _refreshCues;
-  for (const prefix of ["movie", "movieB"]) {
+  playCues.onChange = _refreshCues;
+  for (const [bank, prefix] of [[movieCues, "movie"], [movieCues, "movieB"], [playCues, "aplay"]]) {
     ps.get(`${prefix}.cueSlot`).onChange((v) => {
-      movieCues.recall(prefix, Math.round(v));
+      bank.recall(prefix, Math.round(v));
       _refreshCues();
     });
     ps.get(`${prefix}.cueStore`).onChange(() => {
-      movieCues.store(prefix, Math.round(ps.get(`${prefix}.cueSlot`).value));
+      bank.store(prefix, Math.round(ps.get(`${prefix}.cueSlot`).value));
     });
   }
   _refreshCues();

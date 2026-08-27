@@ -6917,6 +6917,15 @@ export function registerCoreParameters(ps) {
       // address for it. Defaults to 1 so adding this changes nothing audible
       // for anyone who never touches it.
       { key: "level", label: "Level", min: 0, max: 1, value: 1, step: 0.01 },
+      // Eight region cues, the same eight the movie decks have. Both are group
+      // 'global', which overrides the `group: prefix` at the registration site
+      // below, so Display States cannot capture them — a state already captures
+      // part/start/len directly, and capturing the slot index too would give
+      // those three a second writer whose onChange fires after the restore.
+      // See core/CueBank.js.
+      { key: "cueSlot", label: "CueSlot", type: PARAM_TYPE.SELECT, value: 0, group: "global",
+        options: ["1", "2", "3", "4", "5", "6", "7", "8"] },
+      { key: "cueStore", label: "CueStore", type: PARAM_TYPE.TRIGGER, group: "global" },
     ] },
   ].forEach(({ prefix, suffix, extra }) => {
     [...ZONE_COMMON, ...extra].forEach(({ key, label, ...rest }) => {
