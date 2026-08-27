@@ -9,6 +9,7 @@
  *   - All display states (128 snapshots per preset)
  *   - All user response curves (Tables)
  *   - Active preset index
+ *   - Detached panel windows (which sections are floating, and where)
  *   - App metadata (version, date, name)
  *
  * NOT saved (session-only):
@@ -151,6 +152,10 @@ export class ProjectFile {
       stills:       stillsMetadata,
       scene3d:      scene3dMetadata,
       glsl:         this.extras.glsl ? this.extras.glsl.capture() : null,
+      // Which panel sections are open as floating windows, and where. NOT in
+      // Display States — see src/ui/layout/PanelLayout.js for why. Positions
+      // are viewport px and are re-clamped to the opening machine's screen.
+      panelLayout:  this.extras.panelLayout ? this.extras.panelLayout.capture() : null,
     };
   }
 
@@ -329,6 +334,16 @@ export class ProjectFile {
     if (data.glsl) {
       if (this.extras.glsl) this.extras.glsl.restore(data.glsl);
       else this.pendingGlsl = data.glsl;
+    }
+
+    // Detached-panel layout. Same pending stash as `glsl`, and for the same
+    // reason: the hook registers after the panels that can be detached are
+    // built, which is later than the first-launch import. Absent in every file
+    // written before this feature — and absent means "leave the windows alone",
+    // not "close them all", so the key is only honoured when present.
+    if (data.panelLayout) {
+      if (this.extras.panelLayout) this.extras.panelLayout.restore(data.panelLayout);
+      else this.pendingPanelLayout = data.panelLayout;
     }
 
     return data._name ?? data.name ?? 'project';

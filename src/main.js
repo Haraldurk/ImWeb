@@ -183,7 +183,17 @@ import {
   storedUiScale as _storedUiScale,
   elementZoom,
   setViewportPos,
+  setViewportSize,
 } from "./ui/layout/LayoutManager.js";
+import {
+  sectionKey,
+  sectionTitle,
+  clampPos,
+  clampSize,
+  loadPanelLayout,
+  savePanelLayout,
+  normalizeLayout,
+} from "./ui/layout/PanelLayout.js";
 import { version as APP_VERSION } from "../package.json";
 
 function _applyUiScale() {
@@ -1505,7 +1515,7 @@ async function main() {
   // Detached panel drag — pointer events (mouse + touch + pen). Pointer
   // capture keeps the drag even when the finger leaves the title bar;
   // touch-action:none stops the browser claiming the gesture for scroll.
-  function _makeDraggable(panel, handle) {
+  function _makeDraggable(panel, handle, onMoved) {
     let ox = 0,
       oy = 0,
       pid = null;
@@ -1531,18 +1541,74 @@ async function main() {
       setViewportPos(panel, e.clientX - ox, e.clientY - oy, z);
     });
     const _endDrag = (e) => {
-      if (pid === e.pointerId) pid = null;
+      if (pid !== e.pointerId) return;
+      pid = null;
+      onMoved?.();
     };
     handle.addEventListener("pointerup", _endDrag);
     handle.addEventListener("pointercancel", _endDrag);
   }
 
-  // Detach a panel-section into a floating window
-  function _detachSection(section) {
-    const title =
-      section
-        .querySelector(".section-header")
-        ?.childNodes[0]?.textContent.trim() ?? "Panel";
+  // ── Detached-panel layout, persisted ──────────────────────────────────────
+  //
+  // One live registry of open windows, keyed by sectionKey(). Both the
+  // per-origin autosave and the .imweb capture read THIS — they are two
+  // destinations for one fact, not two records that have to be kept in step.
+  // See src/ui/layout/PanelLayout.js for why this is not a Display State.
+  const _openPanels = new Map(); // key -> { panel, section, reattach }
+
+  /** Geometry of every open window, in viewport px (see PanelLayout.js). */
+  function _capturePanelLayout() {
+    const out = [];
+    _openPanels.forEach(({ panel }, key) => {
+      const b = panel.getBoundingClientRect();
+      out.push({
+        key,
+        x: Math.round(b.left),
+        y: Math.round(b.top),
+        w: Math.round(b.width),
+        h: Math.round(b.height),
+      });
+    });
+    return out;
+  }
+
+  // Written on every mutation — detach, drag end, resize, re-attach. Coalesced
+  // because `resize: both` fires the observer continuously while the corner is
+  // dragged. Deliberately NOT a save on beforeunload: this app registers its
+  // own beforeunload confirm, and a layout that only survives a clean exit is
+  // one that silently forgets after a crash or a force-quit.
+  let _layoutSaveT = null;
+  function _savePanelLayoutSoon() {
+    clearTimeout(_layoutSaveT);
+    _layoutSaveT = setTimeout(() => savePanelLayout(_capturePanelLayout()), 200);
+  }
+
+  /**
+   * Put a window at a saved geometry, clamped to the CURRENT viewport — the
+   * second-monitor case: a window detached at x=3000 must not restore
+   * off-screen on the laptop alone. Size first, then measure, then position:
+   * clampPos needs the size the window actually ended up with.
+   */
+  function _placePanel(panel, geom) {
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    const z = elementZoom(panel);
+    const size = clampSize(geom.w, geom.h, vw, vh);
+    setViewportSize(panel, size.w, size.h, z);
+    const b = panel.getBoundingClientRect();
+    const pos = clampPos(geom.x, geom.y, b.width, b.height, vw, vh);
+    setViewportPos(panel, pos.x, pos.y, z);
+  }
+
+  // Detach a panel-section into a floating window.
+  // `geom` (viewport px) restores a saved window; omitted, the window opens
+  // beside the section it came from, which is what the ⊞ button does.
+  function _detachSection(section, geom = null) {
+    if (!section) return;
+    const key = sectionKey(section);
+    if (key && _openPanels.has(key)) return; // already open — never two windows
+    const title = sectionTitle(section) || "Panel";
     const origParent = section.parentElement;
     const origNext = section.nextSibling;
 
@@ -1568,11 +1634,19 @@ async function main() {
     closeBtn.textContent = "✕";
     closeBtn.title = "Re-attach";
 
+    // Declared here, assigned once the panel is in the DOM — reattach() closes
+    // over it and must be able to disconnect the observer, or a re-attached
+    // window keeps rewriting the autosave from a node nobody can see.
+    let ro = null;
+
     const reattach = () => {
       placeholder.replaceWith(section);
+      ro?.disconnect();
       panel.remove();
       section.classList.remove("collapsed");
       section.querySelector(".section-header")?.classList.remove("collapsed");
+      if (key) _openPanels.delete(key);
+      _savePanelLayoutSoon();
     };
     closeBtn.addEventListener("click", reattach);
     placeholder.addEventListener("click", reattach);
@@ -1581,6 +1655,13 @@ async function main() {
 
     const panelBody = document.createElement("div");
     panelBody.className = "detached-panel-body";
+    // `.panel-section.collapsed` hides everything but the header, so a window
+    // built from a collapsed section is an empty title bar. That is guaranteed
+    // on the restore path — _collapseToDefaultOpen() collapses every section at
+    // boot, which is precisely when a saved layout is applied — so expand on
+    // the way out, mirroring what reattach() does on the way back.
+    section.classList.remove("collapsed");
+    section.querySelector(".section-header")?.classList.remove("collapsed");
     panelBody.appendChild(section);
 
     panel.appendChild(titleBar);
@@ -1594,11 +1675,53 @@ async function main() {
     // the old hardcoded 300: that constant was a fair guess at a 280px panel,
     // but the panel is --ctrl-w × scale wide, so at 2× it is ~560 and the old
     // number left a quarter of it hanging off the right edge.
-    const pw = panel.getBoundingClientRect().width || 300;
-    setViewportPos(panel,
-      Math.min(rect.right + 8, window.innerWidth - pw - 8),
-      Math.max(4, rect.top));
-    _makeDraggable(panel, titleBar);
+    if (geom) {
+      _placePanel(panel, geom);
+    } else {
+      const pw = panel.getBoundingClientRect().width || 300;
+      setViewportPos(panel,
+        Math.min(rect.right + 8, window.innerWidth - pw - 8),
+        Math.max(4, rect.top));
+    }
+    _makeDraggable(panel, titleBar, _savePanelLayoutSoon);
+
+    // `resize: both` has no event of its own, and the user resizing a window is
+    // exactly the layout change worth remembering. The observer also fires once
+    // on registration, which is harmless — it records the geometry just set.
+    ro = new ResizeObserver(() => _savePanelLayoutSoon());
+    ro.observe(panel);
+
+    if (key) _openPanels.set(key, { panel, section, reattach });
+    _savePanelLayoutSoon();
+  }
+
+  /**
+   * Make the open windows match `panels` (see PanelLayout.js for the shape).
+   *
+   * Windows the incoming layout does not name are CLOSED: importing a project
+   * must give that project's arrangement, not its arrangement plus whatever
+   * happened to be open. Keys that match no section are skipped silently —
+   * a renamed or not-yet-built section, and re-attached is the safe direction.
+   */
+  function _applyPanelLayout(panels) {
+    const byKey = new Map();
+    // Detached sections are still in the DOM (inside their window), so this
+    // sweep finds them too — that is what makes the "already open, just move
+    // it" branch below reachable.
+    document.querySelectorAll(".panel-section").forEach((sec) => {
+      const k = sectionKey(sec);
+      if (k && !byKey.has(k)) byKey.set(k, sec);
+    });
+    const want = new Set(panels.map((p) => p.key));
+    [..._openPanels.keys()].forEach((k) => {
+      if (!want.has(k)) _openPanels.get(k).reattach();
+    });
+    panels.forEach((p) => {
+      const open = _openPanels.get(p.key);
+      if (open) _placePanel(open.panel, p);
+      else if (byKey.has(p.key)) _detachSection(byKey.get(p.key), p);
+    });
+    _savePanelLayoutSoon();
   }
 
   let _allCollapsed = false;
@@ -7399,6 +7522,35 @@ void main() {
 
   // Always collapse all sections except Layers for clean first impression
   _collapseToDefaultOpen();
+
+  // ── Detached-panel layout: project hook, then restore ────────────────────
+  // Registered here rather than beside the ProjectFile constructor because the
+  // two sections built at runtime (I/O, Hypercube) do not exist until this
+  // point, and a restore that ran before them would silently drop their
+  // windows. Same pending-stash shape as the `glsl` hook for the same reason:
+  // the first-launch MasterProject import runs long before this line.
+  projectFile.extras.panelLayout = {
+    capture: () => ({ v: 1, panels: _capturePanelLayout() }),
+    restore: (d) => _applyPanelLayout(normalizeLayout(d)),
+  };
+  {
+    // Precedence: a project imported before the hook existed wins (first
+    // launch, where localStorage is empty anyway); otherwise the per-origin
+    // autosave, which is what a plain reload is asking for.
+    const pending = projectFile.pendingPanelLayout;
+    projectFile.pendingPanelLayout = null;
+    _applyPanelLayout(pending ? normalizeLayout(pending) : loadPanelLayout());
+  }
+  // A window sized to one display is not necessarily on the next one. Re-clamp
+  // on resize so unplugging a monitor cannot strand a window's title bar — the
+  // only handle it has — outside the viewport.
+  window.addEventListener("resize", () => {
+    if (!_openPanels.size) return;
+    _capturePanelLayout().forEach((g) => {
+      const open = _openPanels.get(g.key);
+      if (open) _placePanel(open.panel, g);
+    });
+  });
 
   // Auto-start camera on first load (silently; user can stop it)
   camera3d.start(null).then((ok) => {

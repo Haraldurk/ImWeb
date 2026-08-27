@@ -120,6 +120,23 @@ export function setViewportPos(el, x, y, zoom = elementZoom(el)) {
   if (y !== null && y !== undefined) el.style.top = `${y / zoom}px`;
 }
 
+/**
+ * Size a floating element in VIEWPORT px — the same seam as setViewportPos.
+ *
+ * `resize: both` writes `style.width/height` in ELEMENT-LOCAL px, while the
+ * gBCR the size was measured from is viewport px. Restoring a saved size
+ * without this conversion grows a window by the UI scale on every reload,
+ * which reads as "the panel remembers the wrong size" rather than as a units
+ * bug — and, being multiplicative, it is invisible at scale 1.
+ *
+ * Pass `zoom` explicitly when several elements are written in one pass to
+ * avoid a style recalc each time.
+ */
+export function setViewportSize(el, w, h, zoom = elementZoom(el)) {
+  if (w !== null && w !== undefined) el.style.width = `${w / zoom}px`;
+  if (h !== null && h !== undefined) el.style.height = `${h / zoom}px`;
+}
+
 /** null = follow autoUiScale(); a number = the user's explicit choice. */
 export function storedUiScale(raw = localStorage.getItem(UI_SCALE_KEY)) {
   if (raw === null || raw === "auto") return null;
