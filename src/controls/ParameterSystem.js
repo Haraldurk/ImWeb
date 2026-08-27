@@ -924,6 +924,25 @@ export class ParameterSystem extends EventTarget {
     return r;
   }
 
+  /**
+   * Controller records with the VALUE removed — what a session autosave wants.
+   *
+   * `serialize()` carries `value`, and `deserialize()` applies it, so persisting
+   * the controller bag persists the current value of every mapped parameter
+   * too. That is right for a preset, a bank and a project, which are all
+   * snapshots of a performance. It is wrong for "remember my MIDI", which
+   * should restore what the hardware is wired to and nothing else — see
+   * src/state/MappingAutosave.js.
+   */
+  serializeMappings() {
+    const r = this.serializeControllers();
+    for (const id of Object.keys(r)) {
+      const { value, ...rest } = r[id];
+      r[id] = rest;
+    }
+    return r;
+  }
+
   deserializeControllers(data) {
     Object.entries(data).forEach(([id, d]) => {
       const p = this.params.get(id);
