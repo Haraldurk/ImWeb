@@ -9,6 +9,23 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
 ## [Unreleased]
 
 ### Added
+- **Eight region cues for the Playback Zone**, the same eight the movie decks
+  have, in a row under the Playback Zone panel. Same grammar: an empty slot
+  stores, a filled slot recalls, Shift overwrites, Alt clears. `aplay.cueSlot`
+  and `aplay.cueStore` are mappable, so a MIDI note recalls a region.
+  A cue is **Partition + Start + Length** — where the zone reads, not how it
+  sounds. Rate, Level, Unsafe and Run are untouched by a recall, so you can
+  jump regions without stopping the zone or changing its speed. Partition is in
+  the set because Start and Length are fractions *of* it: a region recalled
+  without its partition points at a different piece of tape entirely, which is
+  the same trap as a movie in/out without its playhead.
+  Contents travel in the `.imweb` project file, not localStorage, so slot 3 is
+  the same slot wherever the project is opened. The slot index stays out of
+  Display States — a state already captures part/start/len directly, and
+  capturing the index too would give them a second writer.
+  The mechanism moved to `src/core/CueBank.js`; `MovieCues` is now a
+  configuration of it rather than a second copy, with its behaviour, exports
+  and stored JSON unchanged.
 - **Level Play — the Playback zone finally has a fader.** `aplay.level`, 0–1,
   defaulting to 1, sitting after Rate in the Playback Zone panel. It is a real
   controller target, so an LFO on it is a tremolo or a fade and a MIDI CC on it

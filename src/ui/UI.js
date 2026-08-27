@@ -362,7 +362,10 @@ export function buildMappingPanels(ps, contextMenu) {
     // the Voice panel's "source → controls → level" note below — the fader is
     // the last thing the sound passes through, and Unsafe/Run are not chain
     // stages at all.
-    'audio-play-params': pick('aplay', ['part', 'start', 'len', 'rate', 'level', 'unsafe', 'on']),
+    // ...plus cueSlot/cueStore, appended by id for the same stated reason the
+    // decks' are: they are group 'global', so pick() cannot reach them.
+    'audio-play-params': [...pick('aplay', ['part', 'start', 'len', 'rate', 'level', 'unsafe', 'on']),
+      ps.get('aplay.cueSlot'), ps.get('aplay.cueStore')].filter(Boolean),
     // Signal order, not registration order: source → its own controls → filter
     // → saturator → level, so the row list reads as the chain it is.
     // The spectral writer (§4.5). Destination first, then the musical decision

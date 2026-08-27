@@ -88,6 +88,11 @@ export class ProjectFile {
     // project rather than localStorage on purpose — unlike warpSlots above,
     // a cue must mean the same thing wherever the project is opened.
     const movieCues = this.extras.movieCues ? this.extras.movieCues.serialize() : null;
+    // The Playback Zone's eight region cues, under their OWN key rather than
+    // folded into movieCues: the two banks capture different key sets, so one
+    // combined blob would make a short/legacy bank indistinguishable from a
+    // bank of the other kind on the way back in.
+    const playCues = this.extras.playCues ? this.extras.playCues.serialize() : null;
 
     // StillsBuffer metadata (thumbnails + protection)
     // We don't save full-res frames to JSON as it would be too large (>100MB)
@@ -140,6 +145,7 @@ export class ProjectFile {
       warpMap,
       warpSlots,
       movieCues,
+      playCues,
       drawData,
       strokeLoops,
       stills:       stillsMetadata,
@@ -251,6 +257,11 @@ export class ProjectFile {
     // existed; MovieCues.restore() also tolerates a short or partial bank.
     if (data.movieCues && this.extras.movieCues) {
       this.extras.movieCues.restore(data.movieCues);
+    }
+    // Same, for the Playback Zone. Absent in every file written before this
+    // feature, which restore() treats as an empty bank rather than an error.
+    if (data.playCues && this.extras.playCues) {
+      this.extras.playCues.restore(data.playCues);
     }
 
     // Restore DrawLayer
