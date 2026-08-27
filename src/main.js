@@ -6825,10 +6825,16 @@ void main() {
       return;
     }
 
-    // Shift+0 = Neutral State (reset all params, leave controllers intact)
+    // Shift+0 = Neutral State (reset all params, leave controllers intact).
+    // It sits one key from ⇧1–8 clip select and does something far larger, and
+    // it used to do it in total silence — the whole patch reverts to defaults,
+    // which paints the neutral red, and nothing says why. Reported as "⇧0 for
+    // Movie 0 resets the screen to red". Naming it does not make the key less
+    // destructive, but it does make it legible as a thing you pressed.
     if (e.shiftKey && e.code === 'Digit0' && !e.target.closest('input,textarea')) {
       e.preventDefault();
       presetMgr.dispatchEvent(new CustomEvent('neutralState'));
+      showModeOSD('Neutral State — all parameters reset');
       return;
     }
 

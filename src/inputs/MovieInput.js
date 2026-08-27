@@ -420,6 +420,44 @@ export class MovieInput {
     this._lastStartT = startT;
     this._lastEndT   = endT;
 
+    // Keep the OUTGOING clip moving for the length of a dissolve. Leaving it to
+    // its own devices only works while the deck is free-running: the moment a
+    // controller owns MoviePos, pos-drive pauses the deck every tick and the
+    // outgoing clip has nothing driving it at all, so the dissolve mixes a live
+    // picture into a frozen one. That is not a rare setup — MasterProject ships
+    // an LFO on movie.pos — so it is the normal case, not the edge.
+    //
+    // The outgoing clip is driven the same way the current one is about to be,
+    // against ITS OWN duration: Start/End are percentages, and two clips of
+    // different lengths do not share seconds.
+    if (this._fadeFrom >= 0 && this._fadeFrom !== this._current) {
+      const out = this.clips[this._fadeFrom];
+      const od  = out?.duration;
+      if (out && Number.isFinite(od) && od > 0) {
+        const ov = out.video;
+        const oa = (params.get(`${P}.start`).value / 100) * od;
+        const ob = (params.get(`${P}.end`).value   / 100) * od;
+        const oStart = Math.min(oa, ob);
+        const oRange = Math.max(Math.max(oa, ob) - oStart, 0.001);
+        const speedNow = params.get(`${P}.speed`).value;
+        if (posParam.controller && !slideMode) {
+          // Pos owns the scrub on both sides, so both sides scrub together.
+          if (!ov.paused) ov.pause();
+          ov.currentTime = oStart + (posParam.value / 100) * oRange;
+        } else if (speedNow > 0) {
+          try { ov.playbackRate = Math.min(Math.max(speedNow, 0.0625), 16); } catch { /* keep */ }
+          if (ov.paused) ov.play().catch(() => {});
+          // Its own loop points, so a short outgoing clip does not run off the
+          // end and freeze halfway through the dissolve.
+          if (ov.currentTime >= Math.max(oa, ob) || ov.ended) ov.currentTime = oStart;
+        } else if (!ov.paused) {
+          // Speed 0 holds a frame on the current clip; hold one here too, or
+          // the dissolve contradicts the transport.
+          ov.pause();
+        }
+      }
+    }
+
     if (!slideMode && posParam.controller) {
       // ── Pos-drive mode ─────────────────────────────────────────────────────
       // When a controller (LFO, MIDI, etc.) is assigned to movie.pos, pos owns

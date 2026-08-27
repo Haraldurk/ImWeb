@@ -16,6 +16,10 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
   holding a frozen frame. Switching again mid-fade retires whatever was
   fading out and anchors the new dissolve on the clip being left, so chaining
   1→2→3 never leaves three videos decoding.
+  The outgoing clip is driven the same way the incoming one is, against its
+  own duration — including under a controller on MoviePos, where the deck is
+  paused every tick and the outgoing clip would otherwise have nothing driving
+  it at all.
   The dissolve is substituted for the deck's texture before any source is
   resolved, so layers, all three mix buses and the TimeDisplace capture path
   get it without knowing it happened — no new source index; a deck mid-fade
@@ -70,6 +74,11 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
   the window, and steps it back to the nearest edge only when the trim passes
   it. Trim while it plays and it keeps playing; trim past it and it steps in.
   Unchanged when SlideRange is on, where Pos drives the window instead.
+- **Shift+0 says what it did.** It resets every parameter to defaults — which
+  paints the neutral red — and it sits one key away from `Shift+1–8` clip
+  select while doing something far larger. It used to do it in total silence.
+  It now flashes "Neutral State — all parameters reset". The binding is
+  unchanged; only the silence is.
 - **MovieSpeed 0 threw inside the render loop.** `v.playbackRate =
   Math.max(0.01, speed)` wrote 0.01 whenever speed was 0 — the documented
   "0 = pause" — and Chrome raises `NotSupportedError` for any rate outside
