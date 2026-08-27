@@ -666,6 +666,14 @@ export class Parameter {
       "midi-note": c.channel
         ? `${c.channel}:N${c.note ?? "?"}`
         : `N${c.note ?? "?"}`,
+      // One CC per option. The badge reports how many options are BOUND, not
+      // how many exist — a half-mapped bank is a normal intermediate state
+      // while you are learning buttons one at a time, and it should look
+      // different from a finished one.
+      "midi-cc-map": (() => {
+        const n = (c.ccs ?? []).filter((x) => x != null).length;
+        return c.channel ? `${c.channel}:CC×${n}` : `CC×${n}`;
+      })(),
       "lfo-sine": "LFO~",
       "lfo-triangle": "LFO△",
       "lfo-sawtooth": "LFO⊿",

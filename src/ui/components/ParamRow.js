@@ -336,16 +336,39 @@ export function buildParamRow(param, contextMenu) {
         const abbr = opt.includes('-') ? opt.split('-').pop().slice(0, 6)
                    : opt.length <= 6   ? opt : opt.slice(0, 4);
         btn.textContent = abbr;
-        btn.title = opt;
         btn.addEventListener('click', () => {
           param.value = i;
           btns.forEach((b, j) => b.classList.toggle('active', j === param.value));
           updateDisplay();
         });
+        // Right-click ONE option to learn a control for it. The row badge
+        // assigns a controller to the whole parameter — one CC sweeping every
+        // option — which is the wrong grammar for a bank of buttons, and
+        // impossible on a controller with no pads. Same gesture as the badge,
+        // one level in.
+        btn.addEventListener('contextmenu', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          const cm = contextMenu?.ctrl;
+          if (!cm?.startMIDILearn) return;
+          group.querySelectorAll('.param-opt-btn.learning')
+            .forEach(el => el.classList.remove('learning'));
+          btn.classList.add('learning');
+          cm.startMIDILearn(param.id, i, () => { paintOpts(); updateDisplay(); });
+        });
         group.appendChild(btn);
         return btn;
       });
-      binding.sync(() => btns.forEach((b, j) => b.classList.toggle('active', j === param.value)));
+      const paintOpts = () => btns.forEach((b, j) => {
+        const c = param.controller;
+        const cc = c?.type === 'midi-cc-map' ? c.ccs?.[j] : null;
+        b.classList.toggle('active', j === param.value);
+        b.classList.toggle('mapped', cc != null);
+        b.title = cc != null
+          ? `${opts[j]} — CC${cc}${c.channel ? ` ch${c.channel}` : ''}\nRight-click to re-learn`
+          : `${opts[j]}\nRight-click to learn a MIDI control for this option`;
+      });
+      binding.sync(paintOpts);
       valueEl.appendChild(group);
     } else {
       // Custom dark dropdown for large option sets
