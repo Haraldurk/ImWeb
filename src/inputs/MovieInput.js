@@ -264,9 +264,21 @@ export class MovieInput {
       return;
     }
 
-    // Range bounds
-    const startT = (params.get(`${P}.start`).value / 100) * clip.duration;
-    const endT   = (params.get(`${P}.end`).value   / 100) * clip.duration;
+    // Range bounds. MovieStart and MovieEnd are two independent 0–100 params
+    // with nothing stopping End from being dragged below Start, so order them
+    // here rather than trusting the pair. Inverted, the old `Math.max(end -
+    // start, 0.001)` collapsed range to a millisecond: MoviePos mapped every
+    // value onto startT and went inert, and Loop's `currentTime >= endT -
+    // lookahead` was true on arrival so it re-seeked to startT every frame.
+    // A frozen picture and a dead Pos slider — indistinguishable from a broken
+    // control, which is how it gets reported. Ordering the pair (rather than
+    // clamping the params) leaves whatever the user typed intact and never
+    // fights a drag in progress: an inverted range simply plays as the window
+    // between the two marks.
+    const aT = (params.get(`${P}.start`).value / 100) * clip.duration;
+    const bT = (params.get(`${P}.end`).value   / 100) * clip.duration;
+    const startT = Math.min(aT, bT);
+    const endT   = Math.max(aT, bT);
     const range  = Math.max(endT - startT, 0.001);
 
     // ── Pos-drive mode ───────────────────────────────────────────────────────
