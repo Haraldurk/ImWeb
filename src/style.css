@@ -1357,6 +1357,47 @@ body.dnd-active::after {
     border-color: var(--accent-dim);
 }
 
+/* ── MOVIE CUE SLOTS ─────────────────────────────────────────────────────── */
+/* Eight Start/End/Pos cues per deck. Deliberately the same shape as
+   .warp-slot-btn — both are "eight numbered memories for this panel", and a
+   performer should not have to learn two visual grammars for one idea. The
+   difference that matters is filled vs empty, which warp slots do not show. */
+.cue-row {
+    display: flex;
+    gap: 4px;
+    flex-wrap: wrap;
+    padding: 4px 8px 6px;
+}
+.cue-btn {
+    font-family: var(--mono);
+    font-size: 10px;
+    flex: 1 1 0;
+    min-width: 22px;
+    padding: 3px 0;
+    background: var(--bg-3);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    /* Empty slots read as dimmed rather than hidden: the row has to show that
+       eight slots EXIST before any of them are used, or the feature is
+       invisible until you already know about it. */
+    color: var(--text-2);
+    cursor: pointer;
+    transition: all 0.1s;
+}
+.cue-btn:hover {
+    color: var(--accent);
+    border-color: var(--accent-dim);
+}
+.cue-btn.filled {
+    color: var(--text-1);
+    border-color: var(--accent-dim);
+}
+.cue-btn.active {
+    background: var(--accent-dim);
+    color: var(--bg-1);
+    border-color: var(--accent);
+}
+
 /* ── TABLES EDITOR ───────────────────────────────────────────────────────── */
 
 .table-list-row {
@@ -2478,8 +2519,13 @@ body.sp-floating #signal-path-docked-space {
     border-radius: 8px;
     padding: 20px 24px;
     box-shadow: 0 12px 48px rgba(0, 0, 0, 0.8);
-    min-width: 460px;
+    min-width: 680px;
     max-width: calc(90 * var(--vw));
+    /* Three columns of shortcuts overflow a short window; the box has no
+       intrinsic height limit, so cap it and let it scroll rather than let
+       the bottom rows fall off-screen with no way to reach them. */
+    max-height: calc(88 * var(--vh));
+    overflow-y: auto;
 }
 #kb-help-title {
     font-family: var(--mono);
@@ -2493,10 +2539,11 @@ body.sp-floating #signal-path-docked-space {
 }
 #kb-help-cols {
     display: flex;
+    flex-wrap: wrap;
     gap: 24px;
 }
 .kb-col {
-    flex: 1;
+    flex: 1 1 200px;
 }
 .kb-section {
     font-family: var(--mono);

@@ -22,7 +22,7 @@ FX Chain is **reorderable** by dragging nodes in the Signal Path display.
 |--------|-------|
 | **Camera** | WebRTC, auto-starts on load (`V` to toggle) |
 | **Movie Library** | Every movie you have — unlimited, thumbnails load lazily, filter box. `+ Add Movie`, or drop files on the canvas. Drag a row (or `→A`/`→B`) onto a deck to play it |
-| **Movie A / Movie B** | Two decks, 8 loaded slots each. `Shift+1–8` selects on A, `Option+1–8` on B. A full rack evicts its oldest clip, never the one playing. Both decks start off; routing a layer to one switches it on |
+| **Movie A / Movie B** | Two decks, 8 loaded slots each. `Shift+0–8` selects on A, `Option+0–8` on B (0 aliases clip 1). A full rack evicts its oldest clip, never the one playing. Both decks start off; routing a layer to one switches it on |
 | **Analog TV** | Self-contained 720×480 analog signal simulator: 4:3 cropping and base signal colour grading (hue, saturation, brightness, contrast). Routes as a standard layer source. **Teletext** is one of its signal types (`analog.sourceType` → Teletext), not a source of its own — selecting it reveals the page-navigation panel |
 | **Stills Buffer** | Up to 64 captured frames (configurable rows×cols grid, 1–8 each, default 4×4=16); `C` to capture; scan/blend between slots |
 | **Color** | Solid or gradient (H/V/radial); HSV + animated hue |

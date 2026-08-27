@@ -8,7 +8,109 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
 
 ## [Unreleased]
 
+### Added
+- **ClipFade — switching clips on a deck can dissolve instead of cutting.**
+  `movie.clipfade` / `movieB.clipfade` set the length in seconds; 0 is a hard
+  cut and stays the default. Jump from clip 1 to 3 and the deck crossfades,
+  with the outgoing clip still *playing* through the dissolve rather than
+  holding a frozen frame. Switching again mid-fade retires whatever was
+  fading out and anchors the new dissolve on the clip being left, so chaining
+  1→2→3 never leaves three videos decoding.
+  The outgoing clip is driven the same way the incoming one is, against its
+  own duration — including under a controller on MoviePos, where the deck is
+  paused every tick and the outgoing clip would otherwise have nothing driving
+  it at all.
+  The dissolve is substituted for the deck's texture before any source is
+  resolved, so layers, all three mix buses and the TimeDisplace capture path
+  get it without knowing it happened — no new source index; a deck mid-fade
+  is still that deck. Targets allocate on first use, so a project that never
+  sets ClipFade pays no VRAM.
+- **MovieLen — the loop window's length as a control instead of an outcome.**
+  A two-way view of (MovieEnd − MovieStart): dial it and End moves to
+  Start + Len; move either mark and Len re-reads, so it can never drift into
+  being a stale second copy. It anchors on MovieStart, so growing the window
+  keeps the in-point you just found. Pair it with SlideRange — set the length
+  you want, then MoviePos sweeps exactly that length through the clip. Cues
+  need no change to carry it: Len is derived, so recalling Start/End restores
+  it.
+- **SlideRange — MoviePos can drag the whole in/out window through the clip.**
+  By default MoviePos is a fraction *within* the Start–End window. With
+  `movie.posslide` on it becomes the window's *position*, and MovieStart and
+  MovieEnd move with it keeping their length: set a tight in/out — 28.4 % to
+  28.6 %, about 60 ms of a 30-second clip — and dragging Pos sweeps that short
+  loop through the whole piece. An LFO on MoviePos sweeps it on its own.
+  The window keeps its length rather than being squashed, so near the tail it
+  stops sliding at 100 % instead of collapsing, and the playhead travels with
+  the window by the same offset so a slide never restarts the loop. Default
+  off, so every existing project, controller mapping and cue keeps the old
+  meaning of MoviePos exactly.
+- **Eight cue slots per movie deck.** A cue captures MovieStart, MovieEnd and
+  MoviePos together — recalling an in/out pair without the playhead that
+  belongs to it lands you outside your own loop, so the three only mean
+  anything as a set. The row sits under each deck's rack: clicking an *empty*
+  slot stores (there is nothing to recall, so storing is the only thing a
+  click can mean), clicking a *filled* one recalls, Shift-click overwrites,
+  Alt-click clears. `movie.cueSlot` / `movieB.cueSlot` are real params, so a
+  MIDI note recalls a cue by exactly the path a click takes; `cueStore` is a
+  mappable trigger.
+  Cue contents live in the **`.imweb` project file**, not localStorage — the
+  deliberate difference from warp-map slots, whose per-origin contents mean
+  different things on 5173 and 4173. The slot *index* is still group `global`
+  and uncaptured, for a different reason: a Display State already captures
+  start/end/pos directly, and capturing the index too would give those three
+  values a second writer whose onChange fires after the restore.
+
 ### Changed
+- **MovieSpeed now spans −5 – 5** (was −3 – 3), on both decks. Saved projects
+  are unaffected: `captureState()` stores raw values, and the widening is
+  symmetric so a controller's normalized centre is still 0.
+
+### Fixed
+- **Trimming a loop no longer strands the playhead outside it.** MoviePos is a
+  fraction *of* the Start–End window, but the seek only fired when Pos itself
+  changed, so raising MovieStart past a playing head left it behind the loop
+  with nothing to recover it — Loop's wrap test only looks at the *end*.
+  Moving a mark now leaves a playing head alone as long as it is still inside
+  the window, and steps it back to the nearest edge only when the trim passes
+  it. Trim while it plays and it keeps playing; trim past it and it steps in.
+  Unchanged when SlideRange is on, where Pos drives the window instead.
+- **Shift+0 selects the first clip; Neutral State moved to Cmd+Shift+0.**
+  `Shift+0` used to reset the entire patch — no confirmation — from one key
+  away from `Shift+1–8` clip select, so reaching for the first clip repainted
+  the screen with the neutral palette (red). `Shift+0` is now an alias for
+  clip 1, and `Option+0` is the same on Deck B. Note the app already had a
+  second, *confirmed* reset on `Shift+Esc`, which additionally clears
+  controller assignments; Neutral State is the one that keeps them.
+- **Shift+0 says what it did.** It resets every parameter to defaults — which
+  paints the neutral red — and it sits one key away from `Shift+1–8` clip
+  select while doing something far larger. It used to do it in total silence.
+  It now flashes "Neutral State — all parameters reset". The binding is
+  unchanged; only the silence is.
+- **MovieSpeed 0 threw inside the render loop.** `v.playbackRate =
+  Math.max(0.01, speed)` wrote 0.01 whenever speed was 0 — the documented
+  "0 = pause" — and Chrome raises `NotSupportedError` for any rate outside
+  [0.0625, 16]. `tick()` runs in the render loop with nothing catching it.
+  Speed 0 now pauses, which is what holding a frame actually is; anything
+  below the browser's floor plays at the floor, and the assignment is guarded
+  so an engine with a narrower range can never kill the loop.
+- **An inverted MovieStart/MovieEnd froze the clip and killed MoviePos.**
+  Nothing stopped End being dragged below Start, and `Math.max(endT - startT,
+  0.001)` then collapsed the range to a millisecond: every MoviePos value
+  mapped onto startT, and Loop's wrap test was already true on arrival so it
+  re-seeked every frame. Both controls still moved, and neither did anything —
+  indistinguishable from a broken binding. The pair is now ordered at the one
+  read site, so an inverted range simply plays as the window between the marks
+  and whatever you typed is left intact.
+- **The keyboard help overlay listed 24 of the 34 bound keys.** `Option+1–8`
+  (Movie B clip select) was missing entirely and `Shift+1–8` was labelled
+  without naming Movie A, so the second deck read as having no keyboard at
+  all. Also added `g`, `i`, `u`, `⇧Esc`, `✱ 0–9`, `⌘O`, `⌘F`. The box had no
+  height limit, so a long list fell off short windows unreachable; it is now
+  three columns with `max-height` and scroll.
+- **Clip select on an empty slot said nothing.** `Shift+1–8` and `Option+1–8`
+  silently swallowed the key when the rack had no clip there — and Deck B's
+  rack is empty on every fresh launch, since only Deck A auto-loads from the
+  manifest. Both decks now flash the reason.
 - **The recorder writes MP4/H.264 in hardware instead of WebM/VP9 in software.**
   VP9 has no hardware encoder on Intel Macs with AMD graphics — it is libvpx on
   the CPU, and it was the measured limiter on recording frame rate (57.6 fps at

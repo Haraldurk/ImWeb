@@ -64,6 +64,7 @@ import { Automation } from "./controls/Automation.js";
 import { StepSequencer } from "./controls/StepSequencer.js";
 import { CameraInput } from "./inputs/CameraInput.js";
 import { MovieInput, MAX_CLIPS } from "./inputs/MovieInput.js";
+import { MovieCues, CUE_SLOTS } from "./inputs/MovieCues.js";
 
 /**
  * How many catalogue entries to rack into Deck A at boot.
@@ -388,8 +389,9 @@ async function main() {
 
   const movieInput = new MovieInput();
   const movieInputB = new MovieInput('movieB');
+  const movieCues = new MovieCues(ps, { movie: movieInput, movieB: movieInputB });
   // Dev-only console access — Deck B has no UI until v0.12 Step 4
-  if (import.meta.env.DEV) window.__decks = { movieInput, movieInputB, ps, movieLibrary };
+  if (import.meta.env.DEV) window.__decks = { movieInput, movieInputB, ps, movieLibrary, movieCues };
   ctrl._movieInput = movieInput;
 
   const stillsBuffer = new StillsBuffer(renderer, W, H);
@@ -2651,6 +2653,7 @@ async function main() {
   ctrl.setMontySignal(montyBridge._signal);
   const projectFile = new ProjectFile(ps, presetMgr, tableManager, {
     warpEditor,
+    movieCues,
     drawLayer,
     strokeLooper,
     stillsBuffer,
@@ -3776,6 +3779,117 @@ async function main() {
 
   refreshClipsList(); // show empty state on startup
 
+  // ── MovieLen: the window's length as a directly dialable control ──────────
+  // Start and End stay the stored range; MovieLen is a two-way VIEW of the gap
+  // between them. Dial it and End moves to Start + Len; move either mark and
+  // Len re-reads, so it can never drift into being a stale second copy.
+  //
+  // Anchoring on the LEFT edge is the choice that makes Len usable with
+  // SlideRange: growing the window keeps the in-point you already found and
+  // extends the out-point, and Pos then slides that whole length. Anchoring on
+  // the centre would move the in-point every time you changed length, which is
+  // the one thing you have just finished placing.
+  //
+  // The re-entrancy flag is real logic, not a timing guard: it is true only
+  // for the duration of a write this code is itself making, and false for
+  // every user or controller write, which is exactly the distinction needed.
+  for (const P of ["movie", "movieB"]) {
+    const sp = ps.get(`${P}.start`);
+    const ep = ps.get(`${P}.end`);
+    const lp = ps.get(`${P}.len`);
+    if (!sp || !ep || !lp) continue;
+    let syncing = false;
+    const clampPct = (v) => Math.min(Math.max(v, 0), 100);
+    const readLen = () => {
+      syncing = true;
+      lp.value = Math.abs(ep.value - sp.value);
+      syncing = false;
+    };
+    lp.onChange((v) => {
+      if (syncing) return;
+      syncing = true;
+      // Order the pair first: Start/End are independently draggable and may be
+      // inverted, and the length has to be applied from the LOWER mark or the
+      // window jumps when it is.
+      const lo = Math.min(sp.value, ep.value);
+      const len = clampPct(v);
+      // Length wins over position, so a window near the tail slides back to
+      // make room rather than being clipped short of the length asked for.
+      const start = Math.min(lo, 100 - len);
+      sp.value = start;
+      ep.value = start + len;
+      syncing = false;
+    });
+    sp.onChange(() => { if (!syncing) readLen(); });
+    ep.onChange(() => { if (!syncing) readLen(); });
+    readLen(); // seed from whatever the deck already holds
+  }
+
+  // ── Movie cue slots ───────────────────────────────────────────────────────
+  // Eight Start/End/Pos sets per deck. Contents live in the .imweb project
+  // (see MovieCues.js), the slot index is uncaptured so a Display State's own
+  // start/end/pos stay the only writer.
+  //
+  // Button grammar, chosen so the common case needs no modifier: an EMPTY slot
+  // stores (there is nothing to recall, so storing is the only sensible thing
+  // a click can mean), a FILLED slot recalls. Shift overwrites a filled slot,
+  // Alt clears it. Recall routes through the cueSlot param rather than calling
+  // movieCues.recall() directly, so a MIDI note mapped to CueSlot and a click
+  // take exactly the same path.
+  const buildCueRow = (prefix, containerId) => {
+    const el = document.getElementById(containerId);
+    if (!el) return () => {};
+    const btns = [];
+    for (let i = 0; i < CUE_SLOTS; i++) {
+      const b = document.createElement("button");
+      b.className = "cue-btn";
+      b.textContent = String(i + 1);
+      b.addEventListener("click", (e) => {
+        if (e.altKey) {
+          movieCues.clear(prefix, i);
+          return;
+        }
+        if (e.shiftKey || !movieCues.has(prefix, i)) {
+          movieCues.store(prefix, i);
+          showModeOSD(`${prefix === "movieB" ? "Deck B" : "Deck A"}: cue ${i + 1} stored`);
+          return;
+        }
+        // Already on this slot? onChange won't fire, so recall directly.
+        if (ps.get(`${prefix}.cueSlot`).value === i) movieCues.recall(prefix, i);
+        else ps.set(`${prefix}.cueSlot`, i);
+      });
+      btns.push(b);
+      el.appendChild(b);
+    }
+    return () => {
+      const sel = Math.round(ps.get(`${prefix}.cueSlot`).value);
+      btns.forEach((b, i) => {
+        const filled = movieCues.has(prefix, i);
+        b.classList.toggle("filled", filled);
+        b.classList.toggle("active", filled && i === sel);
+        const cue = movieCues.get(prefix, i);
+        b.title = cue
+          ? `Cue ${i + 1}: in ${cue.start.toFixed(1)}% · out ${cue.end.toFixed(1)}% · pos ${cue.pos.toFixed(1)}%` +
+            `\nClick recalls · Shift-click overwrites · Alt-click clears`
+          : `Cue ${i + 1} empty — click to store the current Start/End/Pos`;
+      });
+    };
+  };
+  const _refreshCuesA = buildCueRow("movie", "clip-cues");
+  const _refreshCuesB = buildCueRow("movieB", "clipB-cues");
+  const _refreshCues = () => { _refreshCuesA(); _refreshCuesB(); };
+  movieCues.onChange = _refreshCues;
+  for (const prefix of ["movie", "movieB"]) {
+    ps.get(`${prefix}.cueSlot`).onChange((v) => {
+      movieCues.recall(prefix, Math.round(v));
+      _refreshCues();
+    });
+    ps.get(`${prefix}.cueStore`).onChange(() => {
+      movieCues.store(prefix, Math.round(ps.get(`${prefix}.cueSlot`).value));
+    });
+  }
+  _refreshCues();
+
   /** Empty one deck's rack. The Library is untouched — Clear unloads, it does
    *  not delete, so anything cleared can be racked again from the Library. */
   function clearDeckRack(deckId) {
@@ -3963,6 +4077,10 @@ async function main() {
 
   // Movie toggle
   ps.get("movie.active").onChange((v) => {
+    // See the Deck B mirror below: tick() early-returns on an inactive deck
+    // ABOVE the fade clock, so a deck switched off mid-dissolve would leave the
+    // outgoing <video> decoding indefinitely.
+    if (!v) movieInput._retireFade();
     movieInput.active = !!v;
     if (v && movieInput.currentClip) {
       movieInput.currentClip.video.play().catch(() => {});
@@ -3977,6 +4095,11 @@ async function main() {
   });
   // Deck B mirrors of the above
   ps.get("movieB.active").onChange((v) => {
+    // Retiring the fade here, not in tick(): tick() early-returns on an
+    // inactive deck ABOVE the fade clock, so switching the deck off mid-
+    // dissolve left _fadeFrom set and the outgoing <video> decoding — and
+    // audible, if MuteMovie was off — until the deck was switched back on.
+    if (!v) movieInputB._retireFade();
     movieInputB.active = !!v;
     if (v && movieInputB.currentClip) {
       movieInputB.currentClip.video.play().catch(() => {});
@@ -6656,6 +6779,28 @@ void main() {
 
   // ── Keyboard shortcuts ────────────────────────────────────────────────────
 
+  /** Clip-select landed on a slot with nothing in it. Both decks used to just
+   *  swallow the key, which is indistinguishable from the shortcut being
+   *  unbound — the reported symptom was "Option+1–8 does not select Movie B",
+   *  from a session where Deck B's rack was simply empty (Deck A auto-loads
+   *  from the manifest, Deck B never does). Say which deck and why, using the
+   *  same blind-performance OSD as the `g` mode cycle. */
+  /** Digit code → clip index. ⇧0/⌥0 alias clip 1; ⇧1–8 are 1-based as printed.
+   *  Shared by both decks so the alias cannot exist on one and not the other. */
+  const _clipKeyIndex = (code) => {
+    const n = parseInt(code.replace("Digit", ""), 10);
+    return n === 0 ? 0 : n - 1;
+  };
+
+  const _flashEmptySlot = (deckId, idx, n) => {
+    const how = deckId === "B" ? "⇧-click a rack row" : "+ Add Clip";
+    showModeOSD(
+      n === 0
+        ? `Deck ${deckId}: no clips — ${how}`
+        : `Deck ${deckId}: slot ${idx + 1} empty — ${n} racked`,
+    );
+  };
+
   window.addEventListener("keydown", (e) => {
     // ⌘K / Ctrl+K — parameter search, the layout-independent way in. Must sit
     // ABOVE the modifier guard below. `/` is unreachable on Nordic layouts
@@ -6667,6 +6812,24 @@ void main() {
       e.preventDefault();
       if (searchEl && !searchEl.classList.contains("hidden")) closeParamSearch();
       else openParamSearch();
+      return;
+    }
+
+    // ⌘⇧0 / Ctrl+Shift+0 = Neutral State (reset all params, keep controllers).
+    // MUST sit ABOVE the modifier bail-out below, exactly as ⌘K does — placed
+    // anywhere after it, the handler has already returned and the chord would
+    // silently never fire.
+    //
+    // It moved here off ⇧0, which now selects the first clip like the rest of
+    // the ⇧-digit row. ⇧0 was one key from ⇧1 and reset the entire patch
+    // without asking; reaching for clip 1 and getting a red screen is exactly
+    // what happened. Note this is the UNCONFIRMED reset — ⇧Esc is the one that
+    // asks first, and it also clears controller assignments, which this does
+    // not.
+    if (e.code === "Digit0" && (e.metaKey || e.ctrlKey) && e.shiftKey && !e.altKey) {
+      e.preventDefault();
+      presetMgr.dispatchEvent(new CustomEvent('neutralState'));
+      showModeOSD('Neutral State — all parameters reset');
       return;
     }
 
@@ -6744,21 +6907,19 @@ void main() {
       return;
     }
 
-    // Shift+0 = Neutral State (reset all params, leave controllers intact)
-    if (e.shiftKey && e.code === 'Digit0' && !e.target.closest('input,textarea')) {
-      e.preventDefault();
-      presetMgr.dispatchEvent(new CustomEvent('neutralState'));
-      return;
-    }
-
-    // Shift+1–8 = Select movie clip (check first so Nordic /=Shift+7 doesn't bleed into search)
-    if (e.shiftKey && !e.metaKey && /^Digit[1-8]$/.test(e.code)) {
-      const idx = parseInt(e.code.replace("Digit", "")) - 1;
+    // Shift+0–8 = Select movie clip (check first so Nordic /=Shift+7 doesn't bleed into search).
+    // ⇧0 is an ALIAS for clip 1, not a ninth slot: the rack holds 8 and ⇧1–8
+    // already covers it. It exists because ⇧0 is where a hand reaching for the
+    // first clip lands, and because the key used to reset the whole patch.
+    if (e.shiftKey && !e.metaKey && /^Digit[0-8]$/.test(e.code)) {
+      const idx = _clipKeyIndex(e.code);
       if (idx < movieInput.clips.length) {
         movieInput.selectClip(idx);
         if (ps.get("movie.active").value)
           movieInput.clips[idx]?.video.play().catch(() => {});
         refreshClipsList();
+      } else {
+        _flashEmptySlot("A", idx, movieInput.clips.length);
       }
       e.preventDefault();
       return; // prevent other shortcuts (e.g. / on Nordic layout) from also firing
@@ -6767,13 +6928,15 @@ void main() {
     // Option/Alt+1–8 = Select Deck B clip. Matches on e.code, never e.key:
     // on macOS Option+digit emits ¡™£¢∞§¶• rather than a digit, but the code
     // stays DigitN. Guarded off Shift so ⇧⌥N doesn't drive both decks at once.
-    if (e.altKey && !e.shiftKey && !e.metaKey && /^Digit[1-8]$/.test(e.code)) {
-      const idx = parseInt(e.code.replace("Digit", "")) - 1;
+    if (e.altKey && !e.shiftKey && !e.metaKey && /^Digit[0-8]$/.test(e.code)) {
+      const idx = _clipKeyIndex(e.code);
       if (idx < movieInputB.clips.length) {
         movieInputB.selectClip(idx);
         if (ps.get("movieB.active").value)
           movieInputB.clips[idx]?.video.play().catch(() => {});
         refreshClipBStatus();
+      } else {
+        _flashEmptySlot("B", idx, movieInputB.clips.length);
       }
       e.preventDefault();
       return;
@@ -8185,6 +8348,15 @@ void main() {
       camera: camera3d.active ? camera3d.currentTexture : null,
       movie: movieInput.active ? movieInput.currentTexture : null,
       movieB: movieInputB.active ? movieInputB.currentTexture : null,
+      // Clip crossfade: the deck owns the fade STATE, Pipeline owns the pixels.
+      // Passed as plain inputs so Pipeline can substitute the dissolved texture
+      // for `movie`/`movieB` BEFORE anything resolves a source — which is what
+      // gets every consumer (layers, mix buses, TimeDisplace capture) the fade
+      // without any of them knowing it happened.
+      movieFadeFrom:  movieInput.active ? movieInput.fadeFromTexture : null,
+      movieFadeAmt:   movieInput.active ? movieInput.fadeAmount : 0,
+      movieBFadeFrom: movieInputB.active ? movieInputB.fadeFromTexture : null,
+      movieBFadeAmt:  movieInputB.active ? movieInputB.fadeAmount : 0,
       buffer: stillsBuffer.texture,
       buffer2: stillsBuffer.texture2,
       bg1: stillsBuffer.bgTexture(0),

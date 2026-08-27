@@ -33,7 +33,23 @@ export class MovieInput {
     this._current = -1;      // index of active clip
     this._pingDir  = 1;       // ping-pong direction: 1 = forward, -1 = backward
     this._lastPos  = -1;     // last seen movie.pos value (for change detection)
+    // Last resolved window, in seconds. MoviePos is a fraction OF this window,
+    // so moving Start or End changes where a given Pos points — the playhead
+    // has to be re-seeked or Pos and the picture silently disagree.
+    this._lastStartT = -1;
+    this._lastEndT   = -1;
     this._revAccum = 0;      // accumulator for reverse frame stepping (seconds)
+    // ── Clip crossfade ──────────────────────────────────────────────────────
+    // The deck owns the STATE of a dissolve; Pipeline owns the pixels. Kept
+    // apart because MovieInput has no renderer and should not grow one just to
+    // mix two textures it already exposes.
+    this._fadeFrom = -1;     // index of the outgoing clip, -1 when not fading
+    this._fadeT    = 0;      // seconds elapsed into the current fade
+    this._fadeDur  = 0;      // seconds the current fade was started with
+    // Mirrors `${prefix}.clipfade` each tick, because selectClip() is called
+    // from click handlers and key handlers that have no ParameterSystem to
+    // hand — and reading it at switch time is the only moment it matters.
+    this._fadeSec  = 0;
     // Idle-deck gating counters. Free (three integer increments per frame) and
     // always on, because the question they answer — does the gate actually fire
     // — is NOT answerable from frame timings: an unsaturated device sits pinned
@@ -167,6 +183,48 @@ export class MovieInput {
   /**
    * Select which clip is active.
    */
+  /**
+   * End any crossfade in progress and put the outgoing clip back to rest.
+   * Idempotent — called both when a fade completes and when one is superseded.
+   */
+  _retireFade() {
+    if (this._fadeFrom < 0) return;
+    const out = this.clips[this._fadeFrom];
+    if (out && this._fadeFrom !== this._current) {
+      out.video.pause();
+      out.video.preload = 'metadata';
+    }
+    this._fadeFrom = -1;
+    this._fadeT    = 0;
+    this._fadeDur  = 0;
+  }
+
+  /**
+   * Make the next tick re-seek from MoviePos even if Pos did not change.
+   *
+   * Cue recall needs this. `recall()` writes start/end/pos, but the manual seek
+   * is gated on `pos !== _lastPos`, and the common cue — stored while Pos sat
+   * at its default 0 — sets Pos to the value it already holds. Nothing fires,
+   * and the playhead stays where free-run playback left it, which is precisely
+   * the "in/out without the playhead that belongs to it" the cues exist to
+   * prevent.
+   */
+  forcePosSeek() {
+    this._lastPos = -1;
+  }
+
+  /** 0..1 dissolve progress, or 0 when no fade is running. */
+  get fadeAmount() {
+    if (this._fadeFrom < 0 || this._fadeDur <= 0) return 0;
+    return Math.min(this._fadeT / this._fadeDur, 1);
+  }
+
+  /** The outgoing clip's texture during a fade, else null. */
+  get fadeFromTexture() {
+    if (this._fadeFrom < 0) return null;
+    return this.clips[this._fadeFrom]?.texture ?? null;
+  }
+
   selectClip(idx) {
     if (idx < 0 || idx >= this.clips.length) return;
     // Pause the old clip and stop it buffering ahead — only the clip actually
@@ -176,8 +234,24 @@ export class MovieInput {
     if (this._current >= 0 && this._current !== idx) {
       const prev = this.clips[this._current];
       if (prev) {
-        prev.video.pause();
-        prev.video.preload = 'metadata';
+        if (this._fadeSec > 0) {
+          // Crossfading: the outgoing clip has to KEEP PLAYING, or the dissolve
+          // mixes a live picture into a frozen frame — which reads as a fault,
+          // not a transition. tick() retires it when the fade ends.
+          //
+          // A switch DURING a fade retires whatever was already fading out and
+          // anchors the new fade on the clip being left. Chaining 1→2→3 quickly
+          // therefore dissolves 2→3, dropping the tail of 1→2 rather than
+          // keeping three videos decoding to honour a blend nobody can see.
+          this._retireFade();
+          this._fadeFrom = this._current;
+          this._fadeT    = 0;
+          this._fadeDur  = this._fadeSec;
+        } else {
+          this._retireFade();
+          prev.video.pause();
+          prev.video.preload = 'metadata';
+        }
       }
     }
     this._current = idx;
@@ -186,11 +260,20 @@ export class MovieInput {
     // and the tick's per-frame play() picks it up as soon as data arrives.
     this.clips[idx].video.preload = 'auto';
     this._lastPos  = -1; // reset so pos scrub applies immediately on new clip
+    // A new clip has a new duration, so the same Start/End percentages resolve
+    // to different seconds. Reset rather than compare against the old clip's.
+    this._lastStartT = -1;
+    this._lastEndT   = -1;
     this._revAccum = 0;
   }
 
   removeClip(idx) {
     if (idx < 0 || idx >= this.clips.length) return;
+    // The splice below shifts every later index, and _fadeFrom is an index.
+    // Fixing it up the way _current is fixed up would still leave a dissolve
+    // running against a rack the user just changed, so end the fade outright:
+    // there is no correct picture to keep mixing here.
+    this._retireFade();
     const clip = this.clips[idx];
     clip.video.pause();
     clip.video.src = '';
@@ -240,6 +323,29 @@ export class MovieInput {
 
     const P = this.prefix;
 
+    // Mirror the fade length for selectClip(), which runs from handlers with no
+    // params to read, and advance any dissolve in progress. Both happen before
+    // the metadata guard below: a fade must still finish when the INCOMING clip
+    // is briefly unreadable, or a switch to a still-loading clip strands the
+    // deck mid-dissolve with the outgoing video playing forever.
+    this._fadeSec = params.get(`${P}.clipfade`)?.value ?? 0;
+    if (this._fadeFrom >= 0) {
+      this._fadeT += dt;
+      const outClip = this.clips[this._fadeFrom];
+      if (outClip) {
+        // Keep the outgoing frames arriving. Its texture is half the dissolve,
+        // so it needs the same upload the current clip gets — gated by the same
+        // `upload` flag, so an idle deck still pays nothing.
+        const ov = outClip.video;
+        if (upload && ov.readyState >= ov.HAVE_CURRENT_DATA &&
+            ov.currentTime !== outClip._lastUploadT) {
+          outClip._lastUploadT = ov.currentTime;
+          outClip.texture.needsUpdate = true;
+        }
+      }
+      if (this._fadeT >= this._fadeDur) this._retireFade();
+    }
+
     // A clip without metadata yet — or a failed source — has NaN duration.
     // startT/endT/range/targetT all derive from it, so every seek below
     // would write a non-finite currentTime and throw, killing the render
@@ -264,17 +370,127 @@ export class MovieInput {
       return;
     }
 
-    // Range bounds
-    const startT = (params.get(`${P}.start`).value / 100) * clip.duration;
-    const endT   = (params.get(`${P}.end`).value   / 100) * clip.duration;
-    const range  = Math.max(endT - startT, 0.001);
+    // Range bounds. MovieStart and MovieEnd are two independent 0–100 params
+    // with nothing stopping End from being dragged below Start, so order them
+    // here rather than trusting the pair. Inverted, the old `Math.max(end -
+    // start, 0.001)` collapsed range to a millisecond: MoviePos mapped every
+    // value onto startT and went inert, and Loop's `currentTime >= endT -
+    // lookahead` was true on arrival so it re-seeked to startT every frame.
+    // A frozen picture and a dead Pos slider — indistinguishable from a broken
+    // control, which is how it gets reported. Ordering the pair (rather than
+    // clamping the params) leaves whatever the user typed intact and never
+    // fights a drag in progress: an inverted range simply plays as the window
+    // between the two marks.
+    const aT = (params.get(`${P}.start`).value / 100) * clip.duration;
+    const bT = (params.get(`${P}.end`).value   / 100) * clip.duration;
+    let startT = Math.min(aT, bT);
+    let endT   = Math.max(aT, bT);
+    let range  = Math.max(endT - startT, 0.001);
 
-    // ── Pos-drive mode ───────────────────────────────────────────────────────
-    // When a controller (LFO, MIDI, etc.) is assigned to movie.pos, pos owns
-    // the scrub entirely — speed and loop are bypassed. This is the frame-scan
-    // / LFO scrub use case (independent of MovieSpeed).
     const posParam = params.get(`${P}.pos`);
-    if (posParam.controller) {
+
+    // ── Slide-range mode ─────────────────────────────────────────────────────
+    // MoviePos stops being a fraction WITHIN the window and becomes the
+    // window's POSITION in the clip: Start and End move with it, keeping their
+    // length. With a tight in/out that turns Pos into a scrub head that drags
+    // a short loop through the material — put an LFO on it and the loop sweeps
+    // the clip on its own.
+    //
+    // This runs BEFORE the pos-drive early return on purpose. That return
+    // exists to let a controller own the scrub, but in slide mode a controller
+    // on Pos should drive the WINDOW, which is the whole point of the mode —
+    // returning first would pause the deck and scrub inside a window that
+    // never moved.
+    const slideMode = params.get(`${P}.posslide`)?.value > 0.5;
+    if (slideMode) {
+      if (posParam.value !== this._lastPos) {
+        const prevPos = this._lastPos;
+        this._lastPos = posParam.value;
+        const sP = params.get(`${P}.start`);
+        const eP = params.get(`${P}.end`);
+        // Length is preserved, so position is what clamps: a window near the
+        // tail stops sliding at 100 rather than being squashed against it.
+        const lenPct   = Math.abs(eP.value - sP.value);
+        const oldStart = Math.min(sP.value, eP.value);
+        const newStart = Math.min(Math.max(posParam.value, 0), Math.max(0, 100 - lenPct));
+        sP.value = newStart;
+        eP.value = newStart + lenPct;
+        startT = (newStart / 100) * clip.duration;
+        endT   = ((newStart + lenPct) / 100) * clip.duration;
+        range  = Math.max(endT - startT, 0.001);
+        // Carry the playhead along by the same offset the window moved, so a
+        // slide does not restart the loop — it keeps playing the same relative
+        // frame. `_lastPos < 0` means "first tick on this clip", where there is
+        // no previous position to be relative to, so park at the window start.
+        const deltaT = ((newStart - oldStart) / 100) * clip.duration;
+        const target = prevPos < 0
+          ? startT
+          : Math.min(Math.max(v.currentTime + deltaT, startT), endT);
+        // Under the intended use — an LFO on MoviePos — this runs every frame,
+        // and an unconditional currentTime write is a seek storm on the video
+        // element (the reverse path above throttles for the same reason). A
+        // sub-frame move is not visible, so skip it: at 60fps that is ~16ms.
+        if (Math.abs(v.currentTime - target) > 1 / 60) v.currentTime = target;
+      }
+      // Fall through to normal speed/loop playback against the moved window.
+    }
+
+    // Did the window itself move? Compared AFTER the slide block so it sees the
+    // final bounds, and stored unconditionally so that leaving slide mode — or
+    // leaving pos-drive — does not read as a change and fire a stray seek.
+    const rangeMoved =
+      this._lastStartT >= 0 &&
+      (startT !== this._lastStartT || endT !== this._lastEndT);
+    this._lastStartT = startT;
+    this._lastEndT   = endT;
+
+    // Keep the OUTGOING clip moving for the length of a dissolve. Leaving it to
+    // its own devices only works while the deck is free-running: the moment a
+    // controller owns MoviePos, pos-drive pauses the deck every tick and the
+    // outgoing clip has nothing driving it at all, so the dissolve mixes a live
+    // picture into a frozen one. That is not a rare setup — MasterProject ships
+    // an LFO on movie.pos — so it is the normal case, not the edge.
+    //
+    // The outgoing clip is driven the same way the current one is about to be,
+    // against ITS OWN duration: Start/End are percentages, and two clips of
+    // different lengths do not share seconds.
+    if (this._fadeFrom >= 0 && this._fadeFrom !== this._current) {
+      const out = this.clips[this._fadeFrom];
+      const od  = out?.duration;
+      if (out && Number.isFinite(od) && od > 0) {
+        const ov = out.video;
+        const oa = (params.get(`${P}.start`).value / 100) * od;
+        const ob = (params.get(`${P}.end`).value   / 100) * od;
+        const oStart = Math.min(oa, ob);
+        const oRange = Math.max(Math.max(oa, ob) - oStart, 0.001);
+        const speedNow = params.get(`${P}.speed`).value;
+        if (posParam.controller && !slideMode) {
+          // Pos owns the scrub on both sides, so both sides scrub together.
+          if (!ov.paused) ov.pause();
+          // Same >0.001 threshold the current clip uses below: without it a
+          // parked or slow LFO re-seeks a second video every frame for the
+          // whole dissolve, for no visible change.
+          const oTarget = oStart + (posParam.value / 100) * oRange;
+          if (Math.abs(ov.currentTime - oTarget) > 0.001) ov.currentTime = oTarget;
+        } else if (speedNow > 0) {
+          try { ov.playbackRate = Math.min(Math.max(speedNow, 0.0625), 16); } catch { /* keep */ }
+          if (ov.paused) ov.play().catch(() => {});
+          // Its own loop points, so a short outgoing clip does not run off the
+          // end and freeze halfway through the dissolve.
+          if (ov.currentTime >= Math.max(oa, ob) || ov.ended) ov.currentTime = oStart;
+        } else if (!ov.paused) {
+          // Speed 0 holds a frame on the current clip; hold one here too, or
+          // the dissolve contradicts the transport.
+          ov.pause();
+        }
+      }
+    }
+
+    if (!slideMode && posParam.controller) {
+      // ── Pos-drive mode ─────────────────────────────────────────────────────
+      // When a controller (LFO, MIDI, etc.) is assigned to movie.pos, pos owns
+      // the scrub entirely — speed and loop are bypassed. This is the
+      // frame-scan / LFO scrub use case (independent of MovieSpeed).
       if (!v.paused) v.pause();
       const targetT = startT + (posParam.value / 100) * range;
       if (Math.abs(v.currentTime - targetT) > 0.001) v.currentTime = targetT;
@@ -305,8 +521,25 @@ export class MovieInput {
       }
     } else {
       this._revAccum = 0;
-      v.playbackRate = Math.max(0.01, speed);
-      if (v.paused && speed > 0) v.play().catch(() => {});
+      // `Math.max(0.01, speed)` THREW. Chrome only accepts a playbackRate in
+      // [0.0625, 16] and raises NotSupportedError outside it, so MovieSpeed 0
+      // — the documented "0 = pause" — threw inside tick() on every frame, and
+      // tick() runs in the render loop with nothing catching it.
+      //
+      // Speed 0 means hold the frame, and pause is what actually does that;
+      // writing a near-zero rate was only ever an attempt to avoid setting 0.
+      // Below the browser floor there is no rate to set, so it plays at the
+      // floor rather than throwing — an approximation, but a visible one, and
+      // slower creep is what the reverse accumulator above exists for.
+      if (speed <= 0) {
+        if (!v.paused) v.pause();
+      } else {
+        const rate = Math.min(Math.max(speed, 0.0625), 16);
+        // Guarded because the accepted range is the browser's, not the spec's:
+        // an engine with a narrower one must not be able to kill the loop.
+        try { v.playbackRate = rate; } catch { /* keep the previous rate */ }
+        if (v.paused) v.play().catch(() => {});
+      }
     }
 
     // Loop boundaries — Loop mode wraps in whichever direction speed points.
@@ -328,10 +561,31 @@ export class MovieInput {
 
     // ── Manual pos seek (no controller) ─────────────────────────────────────
     // Seek when the value changes (nudge mode); has no effect once released.
+    // Skipped in slide mode, which already consumed this change to move the
+    // window and carry the playhead with it — seeking again here would drag
+    // the head to a fraction WITHIN the window it just moved, which is the
+    // other mode's meaning and would fight it every frame Pos changes.
+    // Moving Pos is a scrub: seek to the fraction it names, always.
+    //
+    // Moving Start or End is NOT. It used to re-seek to the Pos fraction too,
+    // which kept slider and picture in agreement but yanked the playhead on
+    // every nudge — with Pos at 0, each tweak of a mark restarted the loop
+    // mid-performance. So the window is now allowed to move out from under a
+    // playing head, and only a head that ends up OUTSIDE the new window is
+    // brought back, to the nearest edge. Trim a loop while it plays and it
+    // keeps playing; trim past the head and it steps back in.
+    //
+    // The `below start` case is the one that matters. Loop mode's wrap test
+    // above only looks at `>= endT`, so a head left behind a raised Start is
+    // never recovered by it — nothing else pulls it forward.
     const posVal = posParam.value;
-    if (posVal !== this._lastPos) {
-      this._lastPos = posVal;
-      v.currentTime = startT + (posVal / 100) * range;
+    if (!slideMode) {
+      if (posVal !== this._lastPos) {
+        this._lastPos = posVal;
+        v.currentTime = startT + (posVal / 100) * range;
+      } else if (rangeMoved && (v.currentTime < startT || v.currentTime > endT)) {
+        v.currentTime = v.currentTime < startT ? startT : endT;
+      }
     }
 
     // Upload if playback produced a new frame this tick

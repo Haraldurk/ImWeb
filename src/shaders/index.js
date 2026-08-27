@@ -228,6 +228,22 @@ export const BLEND = /* glsl */ `
   }
 `;
 
+// Clip crossfade — the outgoing and incoming clips of ONE movie deck during a
+// ClipFade. Deliberately not the mixbus shader: this has no modes, no mask and
+// no displacement, because a deck switching clips is a dissolve and nothing
+// else, and borrowing a mode index from another feature is how the two drift.
+export const CLIP_FADE = /* glsl */ `
+  uniform sampler2D uFrom;
+  uniform sampler2D uTo;
+  uniform float     uMix;   // 0 = fully outgoing, 1 = fully incoming
+
+  varying vec2 vUv;
+
+  void main() {
+    gl_FragColor = mix(texture2D(uFrom, vUv), texture2D(uTo, vUv), uMix);
+  }
+`;
+
 // ── Feedback ──────────────────────────────────────────────────────────────────
 
 // Edge behaviour for the feedback passes, shared so the offset pass and the

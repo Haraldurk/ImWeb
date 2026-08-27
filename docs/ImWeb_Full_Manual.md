@@ -262,14 +262,71 @@ Deck B mirrors every parameter below under the `movieB.` prefix
 | Parameter | Range | Description |
 |-----------|-------|-------------|
 | `movie.active` | TOGGLE | Enable playback |
-| `movie.speed` | −1 – 3 | Playback speed; negative = reverse (manual frame stepping); 0 = pause |
-| `movie.pos` | 0–100% | Frame scrub — drag to seek; assign LFO/MIDI to scan through frames (overrides MovieSpeed when a controller is active) |
+| `movie.speed` | −5 – 5 | Playback speed; negative = reverse (manual frame stepping); 0 = pause |
+| `movie.pos` | 0–100% | Frame scrub — a fraction *of* the Start–End window. Moving a mark does not disturb a playing head unless the trim passes it, in which case the head steps back inside; assign LFO/MIDI to scan through frames (overrides MovieSpeed when a controller is active) |
 | `movie.start` | 0–100% | Loop range start |
 | `movie.end` | 0–100% | Loop range end |
+| `movie.len` | 0–100% | **MovieLen.** Two-way view of (End − Start): dial it to set the window's length directly, anchored on MovieStart; it re-reads whenever either mark moves |
+| `movie.posslide` | TOGGLE | **SlideRange.** Off (default): MoviePos is a fraction *within* the Start–End window. On: MoviePos is the window's *position*, and Start/End slide with it keeping their length |
 | `movie.loop` | SELECT | Off / Loop / Ping-pong — Loop wraps in whichever direction MovieSpeed points |
+| `movie.clipfade` | 0–5 s | **ClipFade.** Seconds to dissolve when the deck's clip selection changes. 0 = hard cut (default). The outgoing clip keeps playing through the dissolve |
 | `movie.mirror` | TOGGLE | Horizontal flip |
 | `movie.bpmsync` | TOGGLE | Lock playback to global BPM |
 | `movie.bpmbeats` | SELECT | ½ / 1 / 2 / 4 / 8 / 16 beats per loop |
+| `movie.cueSlot` | SELECT 1–8 | Selected cue slot; setting it recalls that cue. Uncaptured by Display States on purpose (see below) |
+| `movie.cueStore` | TRIGGER | Store current Start/End/Pos into the selected cue slot |
+
+### SlideRange — dragging the loop through the clip
+
+By default **MoviePos is a fraction of the Start–End window**: 0 % sits on
+MovieStart, 100 % on MovieEnd. Narrow the window and Pos scrubs inside it.
+
+Turn **SlideRange** on and the relationship inverts. MoviePos becomes the
+window's *position in the clip*, and MovieStart and MovieEnd move with it,
+**keeping their length**. Set that length with **MovieLen** rather than by
+placing two marks: dial MovieLen to the size of loop you want, switch
+SlideRange on, and MoviePos sweeps exactly that length through the clip. Set a tight in/out — say 28.4 % to 28.6 %, about
+60 ms of a 30-second clip — and dragging Pos sweeps that short loop through
+the whole piece. Assign an LFO to MoviePos and it sweeps on its own.
+
+The window keeps its length rather than being squashed, so near the tail it
+stops sliding at 100 % instead of collapsing. The playhead travels with the
+window by the same offset, so a slide never restarts the loop — it keeps
+playing the same relative frame.
+
+SlideRange is captured by Display States (it is a plain boolean, like
+MovieLoop), and it is per deck.
+
+### Cue slots
+
+Each deck carries **eight cues**. A cue is MovieStart, MovieEnd and MoviePos
+captured *together* — recalling an in/out pair without the playhead that
+belongs to it drops you outside your own loop, so the three only mean anything
+as a set.
+
+The row sits under each deck's rack:
+
+| Gesture | Effect |
+|---------|--------|
+| Click an **empty** slot | Store the current Start/End/Pos |
+| Click a **filled** slot | Recall it |
+| **Shift**-click | Overwrite with the current values |
+| **Alt**-click | Clear the slot |
+
+Recall routes through `movie.cueSlot`, so a MIDI note mapped to that param
+takes exactly the same path a click does. `movie.cueStore` is a mappable
+trigger that stores into whichever slot is selected.
+
+**Where cues live:** in the `.imweb` project file, so a cue means the same
+thing wherever the project is opened. This is deliberately unlike the warp-map
+slots, whose contents sit in per-origin `localStorage` and therefore differ
+between ports and machines.
+
+**Why Display States do not capture the slot index:** a state already captures
+`movie.start`, `.end` and `.pos` directly. Capturing `cueSlot` as well would
+give those three values a second writer — the slot's `onChange`, firing after
+the restore — and which one won would depend on restore order. Leaving the
+index out keeps the captured values the only writer.
 
 **Clip context menu:** Right-click a rack row to assign a MIDI controller to `movie.speed` or remove the clip.
 
@@ -2360,8 +2417,8 @@ Click the ⊞ button in any section header to detach it as a floating panel. Dra
 | `Q` | Cycle Foreground source — in the LAYERS dropdown's order |
 | `A` | Cycle Background source — same order |
 | `Z` | Cycle DisplaceSrc — same order |
-| `Shift+1–8` | Select clip 1–8 on the **Movie A** rack |
-| `Option+1–8` | Select clip 1–8 on the **Movie B** rack |
+| `Shift+0–8` | Select a clip on the **Movie A** rack — `Shift+0` is an alias for clip 1, not a ninth slot |
+| `Option+0–8` | Select a clip on the **Movie B** rack — `Option+0` is an alias for clip 1 |
 | `C` | Capture frame to stills buffer |
 
 `Q` / `A` / `Z` step through sources in exactly the order the Mix ▸ LAYERS
@@ -2383,7 +2440,7 @@ internal index order, so the keyboard and the menu always agree.
 | Key | Action |
 |-----|--------|
 | `0–9` | Recall State at index |
-| `Shift+0` | Neutral State (reset all params, keep controllers) |
+| `Cmd+Shift+0` | Neutral State (reset all params, keep controllers). Moved off `Shift+0`, which now selects a clip |
 | `Shift+S` | Quick-save State to next empty slot (auto-thumbnail) |
 | `+` / `−` | Next / previous Bank (Numpad) |
 

@@ -2566,15 +2566,52 @@ export function registerCoreParameters(ps) {
   // movieB.* (Deck B) can never drift. Deck A ids/labels/groups are unchanged.
   const MOVIE_DECK_PARAMS = [
     { key: "active", label: "MovieOn", type: PARAM_TYPE.TOGGLE, value: 0, feedbackVisible: true },
-    { key: "speed", label: "MovieSpeed", min: -3, max: 3, value: 1, feedbackVisible: true },
+    { key: "speed", label: "MovieSpeed", min: -5, max: 5, value: 1, feedbackVisible: true },
     { key: "pos", label: "MoviePos", min: 0, max: 100, value: 0, unit: "%" },
     { key: "start", label: "MovieStart", min: 0, max: 100, value: 0, unit: "%" },
     { key: "end", label: "MovieEnd", min: 0, max: 100, value: 100, unit: "%" },
+    // A two-way view of (End − Start): dial it to set the window's length
+    // directly, and it re-reads whenever either mark moves, so it is never a
+    // stale second copy of the truth. Start/End remain the stored range — this
+    // is a control surface over them, not a third piece of state.
+    //
+    // Group 'global', so Display States do NOT capture it — the same rule
+    // cueSlot follows, and for the same reason. A state already captures
+    // start/end; capturing len as well gives that pair a SECOND writer, since
+    // len's onChange rewrites End. It happens to be harmless today only
+    // because len is registered after start/end and restore follows
+    // registration order, so len already equals end−start by the time it is
+    // applied and no change fires. That is an accident of ordering, not a
+    // design: reorder this table and a recalled state silently loses its
+    // Start/End to a left-anchored window. Nothing is lost by excluding it —
+    // len is reconstructed from start/end on load by the sync in main.js.
+    { key: "len", label: "MovieLen", min: 0, max: 100, value: 100, unit: "%", group: "global" },
+    // Off: MoviePos is a fraction WITHIN the Start-End window (the v0.1
+    // meaning — every saved project, controller mapping and cue depends on
+    // it, so it stays the default). On: MoviePos is the window's POSITION in
+    // the clip, and Start/End slide with it keeping their length — drag Pos
+    // and a tight loop sweeps through the material. Group is the deck prefix,
+    // so Display States DO capture it: it is a code-stable boolean like
+    // MovieLoop, with no index that could drift.
+    { key: "posslide", label: "SlideRange", type: PARAM_TYPE.TOGGLE, value: 0 },
     { key: "loop", label: "MovieLoop", type: PARAM_TYPE.SELECT, value: 1, options: ["Off", "Loop", "Ping-pong"] },
+    // Seconds to dissolve from the outgoing clip to the incoming one when the
+    // deck's selection changes. 0 = hard cut, which is what every existing
+    // project expects, so it is the default.
+    { key: "clipfade", label: "ClipFade", min: 0, max: 5, value: 0, unit: "s" },
     // default muted — user opts in to audio
     { key: "mute", label: "MuteMovie", type: PARAM_TYPE.TOGGLE, value: 1 },
     { key: "bpmsync", label: "BPM Sync", type: PARAM_TYPE.TOGGLE, value: 0 },
     { key: "bpmbeats", label: "BeatLen", type: PARAM_TYPE.SELECT, value: 2, options: ["1 beat", "2 beats", "4 beats", "8 beats", "16 beats"] },
+    // Cue slots — eight Start/End/Pos sets per deck. Both are group 'global',
+    // which overrides the `group: prefix` below, so Display States cannot
+    // capture them. A state already captures start/end/pos directly; capturing
+    // the slot index too would give those three values a second writer whose
+    // onChange fires after the restore, and which one won would depend on
+    // restore order. See MovieCues.js.
+    { key: "cueSlot", label: "CueSlot", type: PARAM_TYPE.SELECT, value: 0, group: "global",
+      options: ["1", "2", "3", "4", "5", "6", "7", "8"] },
+    { key: "cueStore", label: "CueStore", type: PARAM_TYPE.TRIGGER, group: "global" },
   ];
   [
     { prefix: "movie", labelSuffix: "" },
