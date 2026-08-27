@@ -199,6 +199,20 @@ export class MovieInput {
     this._fadeDur  = 0;
   }
 
+  /**
+   * Make the next tick re-seek from MoviePos even if Pos did not change.
+   *
+   * Cue recall needs this. `recall()` writes start/end/pos, but the manual seek
+   * is gated on `pos !== _lastPos`, and the common cue — stored while Pos sat
+   * at its default 0 — sets Pos to the value it already holds. Nothing fires,
+   * and the playhead stays where free-run playback left it, which is precisely
+   * the "in/out without the playhead that belongs to it" the cues exist to
+   * prevent.
+   */
+  forcePosSeek() {
+    this._lastPos = -1;
+  }
+
   /** 0..1 dissolve progress, or 0 when no fade is running. */
   get fadeAmount() {
     if (this._fadeFrom < 0 || this._fadeDur <= 0) return 0;
@@ -255,6 +269,11 @@ export class MovieInput {
 
   removeClip(idx) {
     if (idx < 0 || idx >= this.clips.length) return;
+    // The splice below shifts every later index, and _fadeFrom is an index.
+    // Fixing it up the way _current is fixed up would still leave a dissolve
+    // running against a rack the user just changed, so end the fade outright:
+    // there is no correct picture to keep mixing here.
+    this._retireFade();
     const clip = this.clips[idx];
     clip.video.pause();
     clip.video.src = '';
@@ -404,9 +423,14 @@ export class MovieInput {
         // frame. `_lastPos < 0` means "first tick on this clip", where there is
         // no previous position to be relative to, so park at the window start.
         const deltaT = ((newStart - oldStart) / 100) * clip.duration;
-        v.currentTime = prevPos < 0
+        const target = prevPos < 0
           ? startT
           : Math.min(Math.max(v.currentTime + deltaT, startT), endT);
+        // Under the intended use — an LFO on MoviePos — this runs every frame,
+        // and an unconditional currentTime write is a seek storm on the video
+        // element (the reverse path above throttles for the same reason). A
+        // sub-frame move is not visible, so skip it: at 60fps that is ~16ms.
+        if (Math.abs(v.currentTime - target) > 1 / 60) v.currentTime = target;
       }
       // Fall through to normal speed/loop playback against the moved window.
     }
@@ -443,7 +467,11 @@ export class MovieInput {
         if (posParam.controller && !slideMode) {
           // Pos owns the scrub on both sides, so both sides scrub together.
           if (!ov.paused) ov.pause();
-          ov.currentTime = oStart + (posParam.value / 100) * oRange;
+          // Same >0.001 threshold the current clip uses below: without it a
+          // parked or slow LFO re-seeks a second video every frame for the
+          // whole dissolve, for no visible change.
+          const oTarget = oStart + (posParam.value / 100) * oRange;
+          if (Math.abs(ov.currentTime - oTarget) > 0.001) ov.currentTime = oTarget;
         } else if (speedNow > 0) {
           try { ov.playbackRate = Math.min(Math.max(speedNow, 0.0625), 16); } catch { /* keep */ }
           if (ov.paused) ov.play().catch(() => {});

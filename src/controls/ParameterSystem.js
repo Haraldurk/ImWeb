@@ -2574,7 +2574,18 @@ export function registerCoreParameters(ps) {
     // directly, and it re-reads whenever either mark moves, so it is never a
     // stale second copy of the truth. Start/End remain the stored range — this
     // is a control surface over them, not a third piece of state.
-    { key: "len", label: "MovieLen", min: 0, max: 100, value: 100, unit: "%" },
+    //
+    // Group 'global', so Display States do NOT capture it — the same rule
+    // cueSlot follows, and for the same reason. A state already captures
+    // start/end; capturing len as well gives that pair a SECOND writer, since
+    // len's onChange rewrites End. It happens to be harmless today only
+    // because len is registered after start/end and restore follows
+    // registration order, so len already equals end−start by the time it is
+    // applied and no change fires. That is an accident of ordering, not a
+    // design: reorder this table and a recalled state silently loses its
+    // Start/End to a left-anchored window. Nothing is lost by excluding it —
+    // len is reconstructed from start/end on load by the sync in main.js.
+    { key: "len", label: "MovieLen", min: 0, max: 100, value: 100, unit: "%", group: "global" },
     // Off: MoviePos is a fraction WITHIN the Start-End window (the v0.1
     // meaning — every saved project, controller mapping and cue depends on
     // it, so it stays the default). On: MoviePos is the window's POSITION in

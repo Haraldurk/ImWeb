@@ -389,7 +389,7 @@ async function main() {
 
   const movieInput = new MovieInput();
   const movieInputB = new MovieInput('movieB');
-  const movieCues = new MovieCues(ps);
+  const movieCues = new MovieCues(ps, { movie: movieInput, movieB: movieInputB });
   // Dev-only console access — Deck B has no UI until v0.12 Step 4
   if (import.meta.env.DEV) window.__decks = { movieInput, movieInputB, ps, movieLibrary, movieCues };
   ctrl._movieInput = movieInput;
@@ -4077,6 +4077,10 @@ async function main() {
 
   // Movie toggle
   ps.get("movie.active").onChange((v) => {
+    // See the Deck B mirror below: tick() early-returns on an inactive deck
+    // ABOVE the fade clock, so a deck switched off mid-dissolve would leave the
+    // outgoing <video> decoding indefinitely.
+    if (!v) movieInput._retireFade();
     movieInput.active = !!v;
     if (v && movieInput.currentClip) {
       movieInput.currentClip.video.play().catch(() => {});
@@ -4091,6 +4095,11 @@ async function main() {
   });
   // Deck B mirrors of the above
   ps.get("movieB.active").onChange((v) => {
+    // Retiring the fade here, not in tick(): tick() early-returns on an
+    // inactive deck ABOVE the fade clock, so switching the deck off mid-
+    // dissolve left _fadeFrom set and the outgoing <video> decoding — and
+    // audible, if MuteMovie was off — until the deck was switched back on.
+    if (!v) movieInputB._retireFade();
     movieInputB.active = !!v;
     if (v && movieInputB.currentClip) {
       movieInputB.currentClip.video.play().catch(() => {});

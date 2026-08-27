@@ -30,8 +30,16 @@ export const CUE_DECKS = ['movie', 'movieB'];
 const CUE_KEYS = ['start', 'end', 'pos'];
 
 export class MovieCues {
-  constructor(ps) {
+  /**
+   * @param {ParameterSystem} ps
+   * @param {Record<string, {forcePosSeek?: () => void}>} decks - prefix → deck.
+   *   Needed because writing pos is not enough to MOVE the playhead: the deck
+   *   only seeks when Pos CHANGES, and the most likely cue of all is one stored
+   *   while Pos sat at its default. See recall().
+   */
+  constructor(ps, decks = {}) {
     this.ps = ps;
+    this.decks = decks;
     /** @type {Record<string, Array<{start:number,end:number,pos:number}|null>>} */
     this.slots = {};
     for (const d of CUE_DECKS) this.slots[d] = new Array(CUE_SLOTS).fill(null);
@@ -79,6 +87,13 @@ export class MovieCues {
     // resolves it against the OLD range and lands the playhead somewhere the
     // cue never described.
     for (const k of CUE_KEYS) this.ps.set(`${prefix}.${k}`, cue[k]);
+    // Writing pos is not the same as moving the head. The manual seek is gated
+    // on `pos !== _lastPos`, so a cue stored with Pos at 0 — the default, and
+    // therefore the common case — writes a value the deck already holds,
+    // nothing fires, and the head stays where free-run playback left it. That
+    // is exactly the "in/out without the playhead that belongs to it" this
+    // module exists to prevent, so the recall forces the seek explicitly.
+    this.decks?.[prefix]?.forcePosSeek?.();
     return true;
   }
 

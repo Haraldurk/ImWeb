@@ -31,6 +31,13 @@ export function stripComments(src) {
       if (c === quote) quote = null;
       out += c; i++; continue;
     }
+    // A backslash escapes the next character OUTSIDE strings too — most often
+    // inside a regex literal. Without this, `s.replace(/\//g, '-')` parses as
+    // an escaped slash followed by the closing slash, i.e. `//`, and the rest
+    // of the line is deleted as a line comment. Every later assertion about
+    // that line then passes vacuously — the exact false negative this helper
+    // exists to remove, hidden inside the helper itself.
+    if (c === '\\') { out += c + (d ?? ''); i += 2; continue; }
     if (c === '"' || c === "'" || c === '`') { quote = c; out += c; i++; continue; }
     if (c === '/' && d === '*') {
       const end = src.indexOf('*/', i + 2);
