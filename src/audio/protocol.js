@@ -117,6 +117,10 @@ export const CLIENT_TO_ENGINE = Object.freeze({
   '/zone/<type>/<n>/on': '',
   '/zone/<type>/<n>/off': '',
   '/zone/play/<n>/rate': 'f',      // signed; negative reads backwards
+  '/zone/play/<n>/level': 'f',     // the performer's fader, 0..1; NOT the
+                                   // engine's anti-click gain ramp, which is
+                                   // driven by `on` and by partition swaps and
+                                   // has no address at all. They multiply.
   '/zone/rec/<n>/dynamic': 'T',    // length taken from where you stop
 
   // ── The spectral writer (§4.5) ──────────────────────────────────────────

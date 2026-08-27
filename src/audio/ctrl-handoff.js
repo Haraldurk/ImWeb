@@ -35,6 +35,10 @@ export const AUDIO_TARGETS = [
   { id: 'avoice.colour', address: '/voice/0/colour', map: 0 },
   { id: 'avoice.drive', address: '/voice/0/drive', map: 0 },
   { id: 'audio.outGain', address: '/bus/out/gain', map: 0 },
+  // APPENDED, never inserted: a slot is its INDEX in this array, so putting a
+  // new target anywhere but the end silently retargets every controller after
+  // it — the same append-only rule SOURCE_DEFS lives under, for the same reason.
+  { id: 'aplay.level', address: '/zone/play/0/level', map: 0 },
 ];
 
 /** `src/controls/LFO.js` shape names → the wire's integers, in its own order. */

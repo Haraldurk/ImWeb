@@ -1404,5 +1404,129 @@ console.log('\nworklet-resident controllers');
   }
 }
 
+// ── the Playback zone's fader ──────────────────────────────────────────────
+//
+// The fader multiplies the anti-click ramp rather than replacing it, and the
+// interesting failures are all about that pairing. `gainCur` is driven every
+// sample by `gainTgt = z.on && !z.pend ? 1 : 0` — a fader that reused it would
+// be overwritten before it was ever heard, and the check for that is not
+// "level 0.5 is quieter" but "level 0.5 SURVIVES a partition duck".
+console.log('\nthe Playback zone level (fader x anti-click ramp)');
+{
+  // `/engine/glide 0` does NOT mean instant — it is a floor, not an off switch,
+  // and the ramp still takes ~50 quanta to reach the 1e-6 snap. Settling 40
+  // left a 1.7e-7 residual that read as "level 0 is not quite silence"; 60 is
+  // exact. If these ever go marginal again, lengthen the settle before
+  // suspecting the DSP.
+  //
+  // SETTLE before measuring. `_approach` is exponential with a 1e-6 snap, so a
+  // window that starts at the fader's old value averages the ramp in and every
+  // ratio comes out high — 0.5 measured as 0.53, and "level 0 is silence"
+  // failing at rms 0.056 with the code entirely correct. The first draft of
+  // this section did exactly that. Same shape as the LEARNED 2026-07-30 entry
+  // on exponentials, one level up: the tail is not noise, it is the signal
+  // arriving, and a measurement that includes it is measuring the transition.
+  const rig = (level, quanta = 20, settle = 60) => {
+    const { send, run } = makeEngine();
+    send('/part/0/bounds', 0, SR);
+    send('/zone/play/0/part', 0);
+    send('/engine/glide', 0);
+    send('/zone/play/0/region', 0, 24000);
+    if (level !== null) send('/zone/play/0/level', level);
+    send('/zone/play/0/on');
+    run(settle);
+    return run(quanta);
+  };
+
+  const full = rig(null);
+  check('the DEFAULT is unity — an untouched fader changes nothing',
+    full.rms > 0.1 && full.nan === 0, `rms ${full.rms.toFixed(4)}`);
+
+  const half = rig(0.5);
+  check('level 0.5 halves the output',
+    Math.abs(half.rms / full.rms - 0.5) < 0.02,
+    `ratio ${(half.rms / full.rms).toFixed(4)}, want 0.5`);
+
+  const silent = rig(0);
+  check('level 0 is silence, not a floor', silent.rms === 0 && silent.peak === 0,
+    `rms ${silent.rms}, peak ${silent.peak}`);
+  check('level 0 produces no NaN', silent.nan === 0, `${silent.nan} NaN samples`);
+
+  // An explicit 1 must be indistinguishable from never having sent one. If
+  // these ever diverge the default and the wire disagree about unity.
+  const explicitOne = rig(1);
+  check('an explicit level 1 matches the untouched default',
+    Math.abs(explicitOne.rms - full.rms) < 1e-6,
+    `${explicitOne.rms} vs ${full.rms}`);
+
+  // The pairing check. Duck the zone by changing partition mid-flight: the
+  // engine ramps gainCur to 0 and back. The fader must still be 0.5 after.
+  {
+    const { p, send, run } = makeEngine();
+    send('/part/0/bounds', 0, SR / 2);
+    send('/part/1/bounds', SR / 2, SR / 2);
+    send('/zone/play/0/part', 0);
+    send('/engine/glide', 0);
+    send('/zone/play/0/region', 0, 12000);
+    send('/zone/play/0/level', 0.5);
+    send('/zone/play/0/on');
+    run(60);                                   // settle the fader to 0.5
+    const before = run(20);
+    send('/zone/play/0/part', 1);
+    run(120);                                  // through the duck and back up
+    const after = run(20);
+    check('the fader survives a partition duck',
+      Math.abs(after.rms - before.rms) < 0.02 && p._play[0].levelCur === 0.5,
+      `rms ${before.rms.toFixed(4)} -> ${after.rms.toFixed(4)}, levelCur ${p._play[0].levelCur}`);
+    check('the duck still reaches the zone — level did not replace the ramp',
+      p._play[0].gainCur > 0 && p._play[0].pend === false,
+      `gainCur ${p._play[0].gainCur}, pend ${p._play[0].pend}`);
+  }
+
+  // Off must be silent whatever the fader says, or Run stops meaning anything.
+  {
+    const { send, run } = makeEngine();
+    send('/part/0/bounds', 0, SR);
+    send('/zone/play/0/part', 0);
+    send('/engine/glide', 0);
+    send('/zone/play/0/region', 0, 24000);
+    send('/zone/play/0/level', 1);
+    send('/zone/play/0/on');
+    run(10);
+    send('/zone/play/0/off');
+    run(60);                                   // let the ramp reach its snap
+    const quiet = run(20);
+    check('Run off is silent regardless of level', quiet.rms === 0,
+      `rms ${quiet.rms}`);
+  }
+
+  // A controller on the fader. This is the path that makes it a real target
+  // rather than a slider: the value must arrive per sample from the ctrl buf,
+  // not once per quantum from the last write.
+  {
+    const { p, send, run } = makeEngine();
+    send('/part/0/bounds', 0, SR);
+    send('/zone/play/0/part', 0);
+    send('/engine/glide', 0);
+    send('/zone/play/0/region', 0, 24000);
+    send('/zone/play/0/on');
+    send('/ctrl/0/target', '/zone/play/0/level');
+    check('the fader is an accepted controller target',
+      p._play[0].levelCtrl === 0, `levelCtrl ${p._play[0].levelCtrl}`);
+    // Fixed at 0.25 via a zero-width LFO range, then confirm the output follows.
+    send('/ctrl/0/range', 0.25, 0.25, 0, 0);
+    run(60);
+    const driven = run(20);
+    check('a controller drives the fader',
+      Math.abs(driven.rms / full.rms - 0.25) < 0.02,
+      `ratio ${(driven.rms / full.rms).toFixed(4)}, want 0.25`);
+    // Unbinding must release the back-pointer, or the next slot to claim this
+    // target inherits a stale one — the bug `_ctrlDetach`'s scan exists for.
+    send('/ctrl/0/target', '');
+    check('unbinding releases the fader',
+      p._play[0].levelCtrl === -1, `levelCtrl ${p._play[0].levelCtrl}`);
+  }
+}
+
 console.log(failures ? `\n${failures} FAILURE(S)\n` : '\nAll audio DSP checks passed.\n');
 process.exit(failures ? 1 : 0);
