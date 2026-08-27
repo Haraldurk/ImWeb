@@ -8,7 +8,33 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
 
 ## [Unreleased]
 
+### Fixed
+- **A MIDI button no longer fires twice — once on press and again on release.**
+  Hardware buttons are momentary: a Korg nanoKONTROL2 sends CC 127 on press and
+  CC 0 on release, and the CC path fed both straight into the parameter. On a
+  toggle that meant press → on, release → off, so Run Rec only recorded while
+  you held the button. On a trigger it fired twice per press.
+  CC buttons now act on the **press** and ignore the release, which is what
+  MIDI notes and gamepad buttons have always done — MIDI CC was the one input
+  path that never got edge detection. Knobs and sliders are unaffected:
+  anything continuous still follows the value, including a legitimate return
+  to 0.
+
 ### Added
+- **One MIDI control per option on a button-group parameter.** Right-click P2
+  on Partition Rec → its button pulses → move any control → that button now
+  selects P2. Four buttons for four partitions, on a controller with no pads.
+  Previously a SELECT could only take one controller sweeping every option
+  across a CC's 0–127 range, which is the wrong grammar for a bank of buttons
+  and impossible on a nanoKONTROL2.
+  Works on every button-group SELECT, not just Partition — Tap, Monitoring,
+  CueSlot and the rest. A bound option gets an accent underline; the row badge
+  reads `1:CC×3` counting the options actually bound, so a half-mapped bank
+  looks different from a finished one. Re-using a control moves it rather than
+  leaving one button selecting two options.
+  Still exactly one controller object per parameter — it holds a CC per option
+  rather than a single CC — so serialization, Display States and the badge are
+  unchanged.
 - **Eight region cues for the Playback Zone**, the same eight the movie decks
   have, in a row under the Playback Zone panel. Same grammar: an empty slot
   stores, a filled slot recalls, Shift overwrites, Alt clears. `aplay.cueSlot`

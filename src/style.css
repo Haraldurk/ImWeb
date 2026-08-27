@@ -1109,6 +1109,26 @@ div.param-select .imw-sel-trigger {
     border-color: var(--accent);
     color: var(--accent);
 }
+/* An option with its own MIDI control. A bottom rule rather than a border or
+   background: `.active` already owns both, and a bound option that happens to
+   be selected must still read as bound — two states on one button that have to
+   be legible together, not one overriding the other. */
+.param-opt-btn.mapped {
+    border-bottom-width: 2px;
+    border-bottom-color: var(--accent);
+}
+/* Waiting for a control to move. Overrides .active deliberately: while learning,
+   which button is ARMED matters more than which is selected. */
+.param-opt-btn.learning {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: var(--bg-0);
+    animation: opt-learn-pulse 0.7s ease-in-out infinite;
+}
+@keyframes opt-learn-pulse {
+    0%, 100% { opacity: 1; }
+    50%      { opacity: 0.45; }
+}
 
 /* ── BUFFER CANVAS ───────────────────────────────────────────────────────── */
 
