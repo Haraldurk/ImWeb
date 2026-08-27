@@ -2566,7 +2566,7 @@ export function registerCoreParameters(ps) {
   // movieB.* (Deck B) can never drift. Deck A ids/labels/groups are unchanged.
   const MOVIE_DECK_PARAMS = [
     { key: "active", label: "MovieOn", type: PARAM_TYPE.TOGGLE, value: 0, feedbackVisible: true },
-    { key: "speed", label: "MovieSpeed", min: -3, max: 3, value: 1, feedbackVisible: true },
+    { key: "speed", label: "MovieSpeed", min: -5, max: 5, value: 1, feedbackVisible: true },
     { key: "pos", label: "MoviePos", min: 0, max: 100, value: 0, unit: "%" },
     { key: "start", label: "MovieStart", min: 0, max: 100, value: 0, unit: "%" },
     { key: "end", label: "MovieEnd", min: 0, max: 100, value: 100, unit: "%" },

@@ -262,7 +262,7 @@ Deck B mirrors every parameter below under the `movieB.` prefix
 | Parameter | Range | Description |
 |-----------|-------|-------------|
 | `movie.active` | TOGGLE | Enable playback |
-| `movie.speed` | −1 – 3 | Playback speed; negative = reverse (manual frame stepping); 0 = pause |
+| `movie.speed` | −5 – 5 | Playback speed; negative = reverse (manual frame stepping); 0 = pause |
 | `movie.pos` | 0–100% | Frame scrub — drag to seek; assign LFO/MIDI to scan through frames (overrides MovieSpeed when a controller is active) |
 | `movie.start` | 0–100% | Loop range start |
 | `movie.end` | 0–100% | Loop range end |
