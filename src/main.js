@@ -6608,6 +6608,21 @@ void main() {
 
   // ── Keyboard shortcuts ────────────────────────────────────────────────────
 
+  /** Clip-select landed on a slot with nothing in it. Both decks used to just
+   *  swallow the key, which is indistinguishable from the shortcut being
+   *  unbound — the reported symptom was "Option+1–8 does not select Movie B",
+   *  from a session where Deck B's rack was simply empty (Deck A auto-loads
+   *  from the manifest, Deck B never does). Say which deck and why, using the
+   *  same blind-performance OSD as the `g` mode cycle. */
+  const _flashEmptySlot = (deckId, idx, n) => {
+    const how = deckId === "B" ? "⇧-click a rack row" : "+ Add Clip";
+    showModeOSD(
+      n === 0
+        ? `Deck ${deckId}: no clips — ${how}`
+        : `Deck ${deckId}: slot ${idx + 1} empty — ${n} racked`,
+    );
+  };
+
   window.addEventListener("keydown", (e) => {
     // ⌘K / Ctrl+K — parameter search, the layout-independent way in. Must sit
     // ABOVE the modifier guard below. `/` is unreachable on Nordic layouts
@@ -6711,6 +6726,8 @@ void main() {
         if (ps.get("movie.active").value)
           movieInput.clips[idx]?.video.play().catch(() => {});
         refreshClipsList();
+      } else {
+        _flashEmptySlot("A", idx, movieInput.clips.length);
       }
       e.preventDefault();
       return; // prevent other shortcuts (e.g. / on Nordic layout) from also firing
@@ -6726,6 +6743,8 @@ void main() {
         if (ps.get("movieB.active").value)
           movieInputB.clips[idx]?.video.play().catch(() => {});
         refreshClipBStatus();
+      } else {
+        _flashEmptySlot("B", idx, movieInputB.clips.length);
       }
       e.preventDefault();
       return;
