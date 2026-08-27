@@ -39,6 +39,17 @@ export class MovieInput {
     this._lastStartT = -1;
     this._lastEndT   = -1;
     this._revAccum = 0;      // accumulator for reverse frame stepping (seconds)
+    // ── Clip crossfade ──────────────────────────────────────────────────────
+    // The deck owns the STATE of a dissolve; Pipeline owns the pixels. Kept
+    // apart because MovieInput has no renderer and should not grow one just to
+    // mix two textures it already exposes.
+    this._fadeFrom = -1;     // index of the outgoing clip, -1 when not fading
+    this._fadeT    = 0;      // seconds elapsed into the current fade
+    this._fadeDur  = 0;      // seconds the current fade was started with
+    // Mirrors `${prefix}.clipfade` each tick, because selectClip() is called
+    // from click handlers and key handlers that have no ParameterSystem to
+    // hand — and reading it at switch time is the only moment it matters.
+    this._fadeSec  = 0;
     // Idle-deck gating counters. Free (three integer increments per frame) and
     // always on, because the question they answer — does the gate actually fire
     // — is NOT answerable from frame timings: an unsaturated device sits pinned
@@ -172,6 +183,34 @@ export class MovieInput {
   /**
    * Select which clip is active.
    */
+  /**
+   * End any crossfade in progress and put the outgoing clip back to rest.
+   * Idempotent — called both when a fade completes and when one is superseded.
+   */
+  _retireFade() {
+    if (this._fadeFrom < 0) return;
+    const out = this.clips[this._fadeFrom];
+    if (out && this._fadeFrom !== this._current) {
+      out.video.pause();
+      out.video.preload = 'metadata';
+    }
+    this._fadeFrom = -1;
+    this._fadeT    = 0;
+    this._fadeDur  = 0;
+  }
+
+  /** 0..1 dissolve progress, or 0 when no fade is running. */
+  get fadeAmount() {
+    if (this._fadeFrom < 0 || this._fadeDur <= 0) return 0;
+    return Math.min(this._fadeT / this._fadeDur, 1);
+  }
+
+  /** The outgoing clip's texture during a fade, else null. */
+  get fadeFromTexture() {
+    if (this._fadeFrom < 0) return null;
+    return this.clips[this._fadeFrom]?.texture ?? null;
+  }
+
   selectClip(idx) {
     if (idx < 0 || idx >= this.clips.length) return;
     // Pause the old clip and stop it buffering ahead — only the clip actually
@@ -181,8 +220,24 @@ export class MovieInput {
     if (this._current >= 0 && this._current !== idx) {
       const prev = this.clips[this._current];
       if (prev) {
-        prev.video.pause();
-        prev.video.preload = 'metadata';
+        if (this._fadeSec > 0) {
+          // Crossfading: the outgoing clip has to KEEP PLAYING, or the dissolve
+          // mixes a live picture into a frozen frame — which reads as a fault,
+          // not a transition. tick() retires it when the fade ends.
+          //
+          // A switch DURING a fade retires whatever was already fading out and
+          // anchors the new fade on the clip being left. Chaining 1→2→3 quickly
+          // therefore dissolves 2→3, dropping the tail of 1→2 rather than
+          // keeping three videos decoding to honour a blend nobody can see.
+          this._retireFade();
+          this._fadeFrom = this._current;
+          this._fadeT    = 0;
+          this._fadeDur  = this._fadeSec;
+        } else {
+          this._retireFade();
+          prev.video.pause();
+          prev.video.preload = 'metadata';
+        }
       }
     }
     this._current = idx;
@@ -248,6 +303,29 @@ export class MovieInput {
     };
 
     const P = this.prefix;
+
+    // Mirror the fade length for selectClip(), which runs from handlers with no
+    // params to read, and advance any dissolve in progress. Both happen before
+    // the metadata guard below: a fade must still finish when the INCOMING clip
+    // is briefly unreadable, or a switch to a still-loading clip strands the
+    // deck mid-dissolve with the outgoing video playing forever.
+    this._fadeSec = params.get(`${P}.clipfade`)?.value ?? 0;
+    if (this._fadeFrom >= 0) {
+      this._fadeT += dt;
+      const outClip = this.clips[this._fadeFrom];
+      if (outClip) {
+        // Keep the outgoing frames arriving. Its texture is half the dissolve,
+        // so it needs the same upload the current clip gets — gated by the same
+        // `upload` flag, so an idle deck still pays nothing.
+        const ov = outClip.video;
+        if (upload && ov.readyState >= ov.HAVE_CURRENT_DATA &&
+            ov.currentTime !== outClip._lastUploadT) {
+          outClip._lastUploadT = ov.currentTime;
+          outClip.texture.needsUpdate = true;
+        }
+      }
+      if (this._fadeT >= this._fadeDur) this._retireFade();
+    }
 
     // A clip without metadata yet — or a failed source — has NaN duration.
     // startT/endT/range/targetT all derive from it, so every seek below

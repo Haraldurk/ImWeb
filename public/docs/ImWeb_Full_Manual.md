@@ -269,6 +269,7 @@ Deck B mirrors every parameter below under the `movieB.` prefix
 | `movie.len` | 0–100% | **MovieLen.** Two-way view of (End − Start): dial it to set the window's length directly, anchored on MovieStart; it re-reads whenever either mark moves |
 | `movie.posslide` | TOGGLE | **SlideRange.** Off (default): MoviePos is a fraction *within* the Start–End window. On: MoviePos is the window's *position*, and Start/End slide with it keeping their length |
 | `movie.loop` | SELECT | Off / Loop / Ping-pong — Loop wraps in whichever direction MovieSpeed points |
+| `movie.clipfade` | 0–5 s | **ClipFade.** Seconds to dissolve when the deck's clip selection changes. 0 = hard cut (default). The outgoing clip keeps playing through the dissolve |
 | `movie.mirror` | TOGGLE | Horizontal flip |
 | `movie.bpmsync` | TOGGLE | Lock playback to global BPM |
 | `movie.bpmbeats` | SELECT | ½ / 1 / 2 / 4 / 8 / 16 beats per loop |

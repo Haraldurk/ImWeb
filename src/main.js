@@ -8270,6 +8270,15 @@ void main() {
       camera: camera3d.active ? camera3d.currentTexture : null,
       movie: movieInput.active ? movieInput.currentTexture : null,
       movieB: movieInputB.active ? movieInputB.currentTexture : null,
+      // Clip crossfade: the deck owns the fade STATE, Pipeline owns the pixels.
+      // Passed as plain inputs so Pipeline can substitute the dissolved texture
+      // for `movie`/`movieB` BEFORE anything resolves a source — which is what
+      // gets every consumer (layers, mix buses, TimeDisplace capture) the fade
+      // without any of them knowing it happened.
+      movieFadeFrom:  movieInput.active ? movieInput.fadeFromTexture : null,
+      movieFadeAmt:   movieInput.active ? movieInput.fadeAmount : 0,
+      movieBFadeFrom: movieInputB.active ? movieInputB.fadeFromTexture : null,
+      movieBFadeAmt:  movieInputB.active ? movieInputB.fadeAmount : 0,
       buffer: stillsBuffer.texture,
       buffer2: stillsBuffer.texture2,
       bg1: stillsBuffer.bgTexture(0),

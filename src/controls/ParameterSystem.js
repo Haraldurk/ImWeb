@@ -2584,6 +2584,10 @@ export function registerCoreParameters(ps) {
     // MovieLoop, with no index that could drift.
     { key: "posslide", label: "SlideRange", type: PARAM_TYPE.TOGGLE, value: 0 },
     { key: "loop", label: "MovieLoop", type: PARAM_TYPE.SELECT, value: 1, options: ["Off", "Loop", "Ping-pong"] },
+    // Seconds to dissolve from the outgoing clip to the incoming one when the
+    // deck's selection changes. 0 = hard cut, which is what every existing
+    // project expects, so it is the default.
+    { key: "clipfade", label: "ClipFade", min: 0, max: 5, value: 0, unit: "s" },
     // default muted — user opts in to audio
     { key: "mute", label: "MuteMovie", type: PARAM_TYPE.TOGGLE, value: 1 },
     { key: "bpmsync", label: "BPM Sync", type: PARAM_TYPE.TOGGLE, value: 0 },

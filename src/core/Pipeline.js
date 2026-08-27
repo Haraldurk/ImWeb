@@ -23,7 +23,7 @@ import {
   PIXELATE, EDGE, RGBSHIFT, POSTERIZE, SOLARIZE, COLOR_CORRECT, CHROMA_KEY,
   VIGNETTE, BLOOM_EXTRACT, BLOOM_BLUR, BLOOM_COMPOSITE, KALEIDOSCOPE, PIXEL_SORT,
   FILM_GRAIN, FEEDBACK_ROTATE, QUAD_MIRROR, LEVELS, LUT3D, WHITE_BALANCE,
-  SHARPEN, MIXBUS,
+  SHARPEN, MIXBUS, CLIP_FADE,
   POLAR, WAVE, HALFTONE, DUOTONE, LENS,
 } from '../shaders/index.js';
 import { SOURCE_KEYS } from '../controls/ParameterSystem.js';
@@ -380,6 +380,7 @@ export class Pipeline {
     // feedback hazard. Allocated lazily: a project that never routes a bus
     // pays no VRAM, which matters at 2 targets × 3 buses × full res.
     this._mixRT  = [null, null, null]; // each: [RenderTarget, RenderTarget]
+    this._clipFadeRT = [null, null];   // one per movie deck, lazily allocated
     this._mixCur = [0, 0, 0];          // buffer index holding the LATEST output
 
     // Live GLSL custom effect (hot-swappable)
@@ -533,6 +534,34 @@ export class Pipeline {
         processedInputs = this._pInputs;
       }
       this._pInputs.buffer = blended;
+    }
+
+    // ── Movie deck clip crossfade ────────────────────────────────────────────
+    // Runs BEFORE the mix buses and before layer resolution, and substitutes
+    // the dissolved texture for `movie` / `movieB` in the inputs bag. That is
+    // the whole trick: every consumer resolves the deck through SOURCE_KEYS as
+    // it always did, so layers, all three buses and the TimeDisplace capture
+    // path get the fade without one of them being taught about it. No new
+    // source index — a deck mid-dissolve is still that deck.
+    //
+    // Targets allocate on first use, so a project that never sets ClipFade
+    // pays no VRAM, the same rule the mix buses follow.
+    for (let d = 0; d < 2; d++) {
+      const key  = d === 0 ? 'movie' : 'movieB';
+      const from = inputs[d === 0 ? 'movieFadeFrom' : 'movieBFadeFrom'];
+      const amt  = inputs[d === 0 ? 'movieFadeAmt' : 'movieBFadeAmt'] ?? 0;
+      const to   = processedInputs[key];
+      // Both textures must exist. A fade with only one side is not a dissolve
+      // to black — it is a missing input, and showing the side we have is the
+      // honest fallback.
+      if (!(amt > 0 && amt < 1 && from && to)) continue;
+      if (processedInputs === inputs) {
+        Object.assign(this._pInputs, inputs);
+        processedInputs = this._pInputs;
+      }
+      processedInputs[key] = this._passTo(this.m.clipFade, {
+        uFrom: from, uTo: to, uMix: amt,
+      }, this._ensureClipFadeRT(d));
     }
 
     // ── Mix buses ×3 (Phase 23 Steps 2 & 4) ──────────────────────────────────
@@ -1066,6 +1095,7 @@ export class Pipeline {
     this._bloomTargetH.setSize(hw, hh);
     this._bloomTargetV.setSize(hw, hh);
     this._mixRT.forEach(rt => rt && rt.forEach(t => t.setSize(w, h)));
+    this._clipFadeRT.forEach(t => t && t.setSize(w, h));
     this._fbRT?.forEach(t => t.setSize(w, h));
     if (w !== this._lastResW || h !== this._lastResH) {
       this.m.pixelate.uniforms.uResolution.value.set(w, h);
@@ -1166,6 +1196,14 @@ export class Pipeline {
   }
 
   /** Allocate a mix bus's double buffer on first use. */
+  /** Lazily allocate deck d's crossfade target — nothing until a fade runs. */
+  _ensureClipFadeRT(d) {
+    if (!this._clipFadeRT[d]) {
+      this._clipFadeRT[d] = this._makeTarget(this.width, this.height);
+    }
+    return this._clipFadeRT[d];
+  }
+
   _ensureMixRT(k) {
     if (!this._mixRT[k]) {
       this._mixRT[k] = [
@@ -1301,6 +1339,9 @@ export class Pipeline {
         uEdge:      { value: 0 },
       }),
       transfermode: this._mat(TRANSFERMODE, { uMode: { value: 0 }, uBlendAmount: { value: 1.0 }, uCurve: { value: 0 } }),
+      clipFade:     this._mat(CLIP_FADE, {
+        uFrom: { value: null }, uTo: { value: null }, uMix: { value: 0 },
+      }),
       mixbus:       this._mat(MIXBUS, {
         uMode:    { value: 0 },
         uXfade:   { value: 0 },

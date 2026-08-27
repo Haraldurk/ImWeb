@@ -9,6 +9,18 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
 ## [Unreleased]
 
 ### Added
+- **ClipFade — switching clips on a deck can dissolve instead of cutting.**
+  `movie.clipfade` / `movieB.clipfade` set the length in seconds; 0 is a hard
+  cut and stays the default. Jump from clip 1 to 3 and the deck crossfades,
+  with the outgoing clip still *playing* through the dissolve rather than
+  holding a frozen frame. Switching again mid-fade retires whatever was
+  fading out and anchors the new dissolve on the clip being left, so chaining
+  1→2→3 never leaves three videos decoding.
+  The dissolve is substituted for the deck's texture before any source is
+  resolved, so layers, all three mix buses and the TimeDisplace capture path
+  get it without knowing it happened — no new source index; a deck mid-fade
+  is still that deck. Targets allocate on first use, so a project that never
+  sets ClipFade pays no VRAM.
 - **MovieLen — the loop window's length as a control instead of an outcome.**
   A two-way view of (MovieEnd − MovieStart): dial it and End moves to
   Start + Len; move either mark and Len re-reads, so it can never drift into
