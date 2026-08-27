@@ -263,7 +263,7 @@ Deck B mirrors every parameter below under the `movieB.` prefix
 |-----------|-------|-------------|
 | `movie.active` | TOGGLE | Enable playback |
 | `movie.speed` | −5 – 5 | Playback speed; negative = reverse (manual frame stepping); 0 = pause |
-| `movie.pos` | 0–100% | Frame scrub — drag to seek; assign LFO/MIDI to scan through frames (overrides MovieSpeed when a controller is active) |
+| `movie.pos` | 0–100% | Frame scrub — a fraction *of* the Start–End window, so moving either mark re-seeks the playhead to keep Pos and the picture in agreement; assign LFO/MIDI to scan through frames (overrides MovieSpeed when a controller is active) |
 | `movie.start` | 0–100% | Loop range start |
 | `movie.end` | 0–100% | Loop range end |
 | `movie.posslide` | TOGGLE | **SlideRange.** Off (default): MoviePos is a fraction *within* the Start–End window. On: MoviePos is the window's *position*, and Start/End slide with it keeping their length |

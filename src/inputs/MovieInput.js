@@ -33,6 +33,11 @@ export class MovieInput {
     this._current = -1;      // index of active clip
     this._pingDir  = 1;       // ping-pong direction: 1 = forward, -1 = backward
     this._lastPos  = -1;     // last seen movie.pos value (for change detection)
+    // Last resolved window, in seconds. MoviePos is a fraction OF this window,
+    // so moving Start or End changes where a given Pos points — the playhead
+    // has to be re-seeked or Pos and the picture silently disagree.
+    this._lastStartT = -1;
+    this._lastEndT   = -1;
     this._revAccum = 0;      // accumulator for reverse frame stepping (seconds)
     // Idle-deck gating counters. Free (three integer increments per frame) and
     // always on, because the question they answer — does the gate actually fire
@@ -186,6 +191,10 @@ export class MovieInput {
     // and the tick's per-frame play() picks it up as soon as data arrives.
     this.clips[idx].video.preload = 'auto';
     this._lastPos  = -1; // reset so pos scrub applies immediately on new clip
+    // A new clip has a new duration, so the same Start/End percentages resolve
+    // to different seconds. Reset rather than compare against the old clip's.
+    this._lastStartT = -1;
+    this._lastEndT   = -1;
     this._revAccum = 0;
   }
 
@@ -322,7 +331,18 @@ export class MovieInput {
           : Math.min(Math.max(v.currentTime + deltaT, startT), endT);
       }
       // Fall through to normal speed/loop playback against the moved window.
-    } else if (posParam.controller) {
+    }
+
+    // Did the window itself move? Compared AFTER the slide block so it sees the
+    // final bounds, and stored unconditionally so that leaving slide mode — or
+    // leaving pos-drive — does not read as a change and fire a stray seek.
+    const rangeMoved =
+      this._lastStartT >= 0 &&
+      (startT !== this._lastStartT || endT !== this._lastEndT);
+    this._lastStartT = startT;
+    this._lastEndT   = endT;
+
+    if (!slideMode && posParam.controller) {
       // ── Pos-drive mode ─────────────────────────────────────────────────────
       // When a controller (LFO, MIDI, etc.) is assigned to movie.pos, pos owns
       // the scrub entirely — speed and loop are bypassed. This is the
@@ -401,8 +421,14 @@ export class MovieInput {
     // window and carry the playhead with it — seeking again here would drag
     // the head to a fraction WITHIN the window it just moved, which is the
     // other mode's meaning and would fight it every frame Pos changes.
+    // Re-seeks on a Start/End move too, not only on a Pos move. MoviePos is a
+    // fraction OF the window, so dragging either mark changes where a given Pos
+    // points; without this the slider read 50 while the picture sat wherever the
+    // old window had put it, and the two only agreed again once Pos was touched.
+    // Nudging MovieStart while the clip plays therefore now auditions the loop
+    // from Pos, which is the point of moving the mark.
     const posVal = posParam.value;
-    if (!slideMode && posVal !== this._lastPos) {
+    if (!slideMode && (posVal !== this._lastPos || rangeMoved)) {
       this._lastPos = posVal;
       v.currentTime = startT + (posVal / 100) * range;
     }
