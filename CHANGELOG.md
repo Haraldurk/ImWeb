@@ -9,6 +9,17 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
 ## [Unreleased]
 
 ### Added
+- **SlideRange — MoviePos can drag the whole in/out window through the clip.**
+  By default MoviePos is a fraction *within* the Start–End window. With
+  `movie.posslide` on it becomes the window's *position*, and MovieStart and
+  MovieEnd move with it keeping their length: set a tight in/out — 28.4 % to
+  28.6 %, about 60 ms of a 30-second clip — and dragging Pos sweeps that short
+  loop through the whole piece. An LFO on MoviePos sweeps it on its own.
+  The window keeps its length rather than being squashed, so near the tail it
+  stops sliding at 100 % instead of collapsing, and the playhead travels with
+  the window by the same offset so a slide never restarts the loop. Default
+  off, so every existing project, controller mapping and cue keeps the old
+  meaning of MoviePos exactly.
 - **Eight cue slots per movie deck.** A cue captures MovieStart, MovieEnd and
   MoviePos together — recalling an in/out pair without the playhead that
   belongs to it lands you outside your own loop, so the three only mean
@@ -31,6 +42,13 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
   symmetric so a controller's normalized centre is still 0.
 
 ### Fixed
+- **MovieSpeed 0 threw inside the render loop.** `v.playbackRate =
+  Math.max(0.01, speed)` wrote 0.01 whenever speed was 0 — the documented
+  "0 = pause" — and Chrome raises `NotSupportedError` for any rate outside
+  [0.0625, 16]. `tick()` runs in the render loop with nothing catching it.
+  Speed 0 now pauses, which is what holding a frame actually is; anything
+  below the browser's floor plays at the floor, and the assignment is guarded
+  so an engine with a narrower range can never kill the loop.
 - **An inverted MovieStart/MovieEnd froze the clip and killed MoviePos.**
   Nothing stopped End being dragged below Start, and `Math.max(endT - startT,
   0.001)` then collapsed the range to a millisecond: every MoviePos value

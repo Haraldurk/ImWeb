@@ -266,12 +266,32 @@ Deck B mirrors every parameter below under the `movieB.` prefix
 | `movie.pos` | 0–100% | Frame scrub — drag to seek; assign LFO/MIDI to scan through frames (overrides MovieSpeed when a controller is active) |
 | `movie.start` | 0–100% | Loop range start |
 | `movie.end` | 0–100% | Loop range end |
+| `movie.posslide` | TOGGLE | **SlideRange.** Off (default): MoviePos is a fraction *within* the Start–End window. On: MoviePos is the window's *position*, and Start/End slide with it keeping their length |
 | `movie.loop` | SELECT | Off / Loop / Ping-pong — Loop wraps in whichever direction MovieSpeed points |
 | `movie.mirror` | TOGGLE | Horizontal flip |
 | `movie.bpmsync` | TOGGLE | Lock playback to global BPM |
 | `movie.bpmbeats` | SELECT | ½ / 1 / 2 / 4 / 8 / 16 beats per loop |
 | `movie.cueSlot` | SELECT 1–8 | Selected cue slot; setting it recalls that cue. Uncaptured by Display States on purpose (see below) |
 | `movie.cueStore` | TRIGGER | Store current Start/End/Pos into the selected cue slot |
+
+### SlideRange — dragging the loop through the clip
+
+By default **MoviePos is a fraction of the Start–End window**: 0 % sits on
+MovieStart, 100 % on MovieEnd. Narrow the window and Pos scrubs inside it.
+
+Turn **SlideRange** on and the relationship inverts. MoviePos becomes the
+window's *position in the clip*, and MovieStart and MovieEnd move with it,
+**keeping their length**. Set a tight in/out — say 28.4 % to 28.6 %, about
+60 ms of a 30-second clip — and dragging Pos sweeps that short loop through
+the whole piece. Assign an LFO to MoviePos and it sweeps on its own.
+
+The window keeps its length rather than being squashed, so near the tail it
+stops sliding at 100 % instead of collapsing. The playhead travels with the
+window by the same offset, so a slide never restarts the loop — it keeps
+playing the same relative frame.
+
+SlideRange is captured by Display States (it is a plain boolean, like
+MovieLoop), and it is per deck.
 
 ### Cue slots
 

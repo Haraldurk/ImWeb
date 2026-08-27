@@ -277,16 +277,56 @@ export class MovieInput {
     // between the two marks.
     const aT = (params.get(`${P}.start`).value / 100) * clip.duration;
     const bT = (params.get(`${P}.end`).value   / 100) * clip.duration;
-    const startT = Math.min(aT, bT);
-    const endT   = Math.max(aT, bT);
-    const range  = Math.max(endT - startT, 0.001);
+    let startT = Math.min(aT, bT);
+    let endT   = Math.max(aT, bT);
+    let range  = Math.max(endT - startT, 0.001);
 
-    // ── Pos-drive mode ───────────────────────────────────────────────────────
-    // When a controller (LFO, MIDI, etc.) is assigned to movie.pos, pos owns
-    // the scrub entirely — speed and loop are bypassed. This is the frame-scan
-    // / LFO scrub use case (independent of MovieSpeed).
     const posParam = params.get(`${P}.pos`);
-    if (posParam.controller) {
+
+    // ── Slide-range mode ─────────────────────────────────────────────────────
+    // MoviePos stops being a fraction WITHIN the window and becomes the
+    // window's POSITION in the clip: Start and End move with it, keeping their
+    // length. With a tight in/out that turns Pos into a scrub head that drags
+    // a short loop through the material — put an LFO on it and the loop sweeps
+    // the clip on its own.
+    //
+    // This runs BEFORE the pos-drive early return on purpose. That return
+    // exists to let a controller own the scrub, but in slide mode a controller
+    // on Pos should drive the WINDOW, which is the whole point of the mode —
+    // returning first would pause the deck and scrub inside a window that
+    // never moved.
+    const slideMode = params.get(`${P}.posslide`)?.value > 0.5;
+    if (slideMode) {
+      if (posParam.value !== this._lastPos) {
+        const prevPos = this._lastPos;
+        this._lastPos = posParam.value;
+        const sP = params.get(`${P}.start`);
+        const eP = params.get(`${P}.end`);
+        // Length is preserved, so position is what clamps: a window near the
+        // tail stops sliding at 100 rather than being squashed against it.
+        const lenPct   = Math.abs(eP.value - sP.value);
+        const oldStart = Math.min(sP.value, eP.value);
+        const newStart = Math.min(Math.max(posParam.value, 0), Math.max(0, 100 - lenPct));
+        sP.value = newStart;
+        eP.value = newStart + lenPct;
+        startT = (newStart / 100) * clip.duration;
+        endT   = ((newStart + lenPct) / 100) * clip.duration;
+        range  = Math.max(endT - startT, 0.001);
+        // Carry the playhead along by the same offset the window moved, so a
+        // slide does not restart the loop — it keeps playing the same relative
+        // frame. `_lastPos < 0` means "first tick on this clip", where there is
+        // no previous position to be relative to, so park at the window start.
+        const deltaT = ((newStart - oldStart) / 100) * clip.duration;
+        v.currentTime = prevPos < 0
+          ? startT
+          : Math.min(Math.max(v.currentTime + deltaT, startT), endT);
+      }
+      // Fall through to normal speed/loop playback against the moved window.
+    } else if (posParam.controller) {
+      // ── Pos-drive mode ─────────────────────────────────────────────────────
+      // When a controller (LFO, MIDI, etc.) is assigned to movie.pos, pos owns
+      // the scrub entirely — speed and loop are bypassed. This is the
+      // frame-scan / LFO scrub use case (independent of MovieSpeed).
       if (!v.paused) v.pause();
       const targetT = startT + (posParam.value / 100) * range;
       if (Math.abs(v.currentTime - targetT) > 0.001) v.currentTime = targetT;
@@ -317,8 +357,25 @@ export class MovieInput {
       }
     } else {
       this._revAccum = 0;
-      v.playbackRate = Math.max(0.01, speed);
-      if (v.paused && speed > 0) v.play().catch(() => {});
+      // `Math.max(0.01, speed)` THREW. Chrome only accepts a playbackRate in
+      // [0.0625, 16] and raises NotSupportedError outside it, so MovieSpeed 0
+      // — the documented "0 = pause" — threw inside tick() on every frame, and
+      // tick() runs in the render loop with nothing catching it.
+      //
+      // Speed 0 means hold the frame, and pause is what actually does that;
+      // writing a near-zero rate was only ever an attempt to avoid setting 0.
+      // Below the browser floor there is no rate to set, so it plays at the
+      // floor rather than throwing — an approximation, but a visible one, and
+      // slower creep is what the reverse accumulator above exists for.
+      if (speed <= 0) {
+        if (!v.paused) v.pause();
+      } else {
+        const rate = Math.min(Math.max(speed, 0.0625), 16);
+        // Guarded because the accepted range is the browser's, not the spec's:
+        // an engine with a narrower one must not be able to kill the loop.
+        try { v.playbackRate = rate; } catch { /* keep the previous rate */ }
+        if (v.paused) v.play().catch(() => {});
+      }
     }
 
     // Loop boundaries — Loop mode wraps in whichever direction speed points.
@@ -340,8 +397,12 @@ export class MovieInput {
 
     // ── Manual pos seek (no controller) ─────────────────────────────────────
     // Seek when the value changes (nudge mode); has no effect once released.
+    // Skipped in slide mode, which already consumed this change to move the
+    // window and carry the playhead with it — seeking again here would drag
+    // the head to a fraction WITHIN the window it just moved, which is the
+    // other mode's meaning and would fight it every frame Pos changes.
     const posVal = posParam.value;
-    if (posVal !== this._lastPos) {
+    if (!slideMode && posVal !== this._lastPos) {
       this._lastPos = posVal;
       v.currentTime = startT + (posVal / 100) * range;
     }

@@ -2570,6 +2570,14 @@ export function registerCoreParameters(ps) {
     { key: "pos", label: "MoviePos", min: 0, max: 100, value: 0, unit: "%" },
     { key: "start", label: "MovieStart", min: 0, max: 100, value: 0, unit: "%" },
     { key: "end", label: "MovieEnd", min: 0, max: 100, value: 100, unit: "%" },
+    // Off: MoviePos is a fraction WITHIN the Start-End window (the v0.1
+    // meaning — every saved project, controller mapping and cue depends on
+    // it, so it stays the default). On: MoviePos is the window's POSITION in
+    // the clip, and Start/End slide with it keeping their length — drag Pos
+    // and a tight loop sweeps through the material. Group is the deck prefix,
+    // so Display States DO capture it: it is a code-stable boolean like
+    // MovieLoop, with no index that could drift.
+    { key: "posslide", label: "SlideRange", type: PARAM_TYPE.TOGGLE, value: 0 },
     { key: "loop", label: "MovieLoop", type: PARAM_TYPE.SELECT, value: 1, options: ["Off", "Loop", "Ping-pong"] },
     // default muted — user opts in to audio
     { key: "mute", label: "MuteMovie", type: PARAM_TYPE.TOGGLE, value: 1 },
