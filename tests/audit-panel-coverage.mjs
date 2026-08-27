@@ -19,6 +19,7 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
+import { sectionBetween } from './lib/source.mjs';
 import { ParameterSystem, registerCoreParameters } from '../src/controls/ParameterSystem.js';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -79,8 +80,15 @@ for (const [prefix, keys] of placed) {
 // rather than as a missing table entry.
 console.log('\npost-FX chain:');
 const { DEFAULT_FX_ORDER } = await import('../src/core/Pipeline.js');
-const nodeBlock = ui.slice(ui.indexOf('const _FX_NODE_INFO = {'), ui.indexOf('export class SignalPath'));
-const nodeIds = new Set([...nodeBlock.matchAll(/^\s{2}(\w+):\s*\{\s*label:/gm)].map(m => m[1]));
+// Guarded: slice() off a -1 would silently hand the regex below either one
+// character or most of UI.js, and "0 effects have flow nodes" / "all of them
+// do" are both wrong answers that look like findings.
+const nodeBlock = sectionBetween(ui, 'const _FX_NODE_INFO = {', 'export class SignalPath');
+if (nodeBlock === null) {
+  console.error('  FAIL _FX_NODE_INFO / SignalPath markers moved in UI.js — cannot locate the node table');
+  failures++;
+}
+const nodeIds = new Set([...(nodeBlock ?? '').matchAll(/^\s{2}(\w+):\s*\{\s*label:/gm)].map(m => m[1]));
 const noNode = DEFAULT_FX_ORDER.filter(id => !nodeIds.has(id));
 console.log(`  ${DEFAULT_FX_ORDER.length} effects in DEFAULT_FX_ORDER, ${nodeIds.size} with flow nodes`);
 if (noNode.length) {

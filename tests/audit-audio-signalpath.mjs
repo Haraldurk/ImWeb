@@ -44,6 +44,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 import { describeAudioGraph } from '../src/audio/graph-view.js';
+import { inOrder } from './lib/source.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const read = (p) => readFileSync(resolve(root, p), 'utf8');
@@ -161,13 +162,14 @@ console.log('\nthe row names every link, so it says which one to open');
   ['mic', 'rec', 'tape', 'read', 'voice', 'limit', 'out'].forEach(k => {
     check(`there is a '${k}' node`, keys.includes(k), keys.join(','));
   });
-  check('and they are in signal order',
-    keys.indexOf('mic') < keys.indexOf('rec')
-      && keys.indexOf('rec') < keys.indexOf('tape')
-      && keys.indexOf('tape') < keys.indexOf('read')
-      && keys.indexOf('read') < keys.indexOf('limit')
-      && keys.indexOf('limit') < keys.indexOf('out'),
-    keys.join(' → '));
+  // Via inOrder(), not a chain of `<`: a missing key indexOf()s to -1, and -1
+  // is less than every real position, so the chain reported "in signal order"
+  // for a graph with no 'mic' node at all.
+  const order = inOrder(keys.join('\u0000') + '\u0000',
+    ['mic\u0000', 'rec\u0000', 'tape\u0000', 'read\u0000', 'limit\u0000', 'out\u0000']);
+  check('and they are in signal order', order.ok,
+    order.missing.length ? `missing: ${order.missing.join(',').replace(/\u0000/g, '')}`
+                         : keys.join(' → '));
   // §4.11: the limiter is not bypassable, and the thing that bounds the damage
   // belongs in the same picture as the thing that causes it.
   check('the limiter is drawn even with nothing else running',
@@ -459,9 +461,14 @@ console.log('\nthe strip makes room, and hiding it still wins');
   check('body.sp-audio widens the strip', /body\.sp-audio\s*\{[^}]*--signal-h/.test(css));
   // Both selectors are (0,1,1), so ORDER decides. Getting this backwards means
   // starting the audio engine un-hides a strip the performer hid.
+  // Guarded: with either selector absent, `-1 < n` is true and this passed on
+  // a stylesheet missing the rule entirely — the very failure this check
+  // exists to catch. (The lesson that named THIS check: LEARNED 2026-08-14.)
+  const spOrder = inOrder(css, ['body.sp-audio', 'body.signalpath-hidden']);
   check('and is declared BEFORE body.signalpath-hidden, so hiding still wins',
-    css.indexOf('body.sp-audio') < css.indexOf('body.signalpath-hidden'),
-    `${css.indexOf('body.sp-audio')} vs ${css.indexOf('body.signalpath-hidden')}`);
+    spOrder.ok,
+    spOrder.missing.length ? `absent from the stylesheet: ${spOrder.missing.join(', ')}`
+      : `${css.indexOf('body.sp-audio')} vs ${css.indexOf('body.signalpath-hidden')}`);
   check('the class is toggled on every render, not merely added',
     /classList\.toggle\('sp-audio', nodes\.length > 0\)/.test(read('src/ui/UI.js')));
   ['.sp-audio-row', '.sp-loop-return', '.sp-loop-head', '.sp-loop-tag'].forEach(sel => {

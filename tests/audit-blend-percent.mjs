@@ -20,6 +20,7 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
+import { sectionBetween } from './lib/source.mjs';
 import {
   ParameterSystem, registerCoreParameters,
   PARAM_SCHEMA, migrateBlendPercent, migrateStatesBlendPercent,
@@ -160,13 +161,28 @@ console.log('\ndisplay states');
 // ── 6. Every write path stamps, every read path migrates ─────────────────────
 // The source-level half. A conversion that is correct in isolation is worthless
 // if one of the four file formats never carries the stamp.
+
+// A section window built from raw indexOf() lies twice over: slice(-1, n) is
+// the LAST CHARACTER, and slice(i, -1) is nearly the WHOLE FILE — so a renamed
+// method silently makes every assertion about that window either vacuous or
+// answered by unrelated code. sectionBetween() returns null instead, and a
+// null section is reported as a failure naming the marker that moved.
+const sectionOf = (src, from, to, what) => {
+  const sec = sectionBetween(src, from, to);
+  if (sec === null) {
+    ok(`${what}: source markers still present ("${from}" … "${to}")`, false);
+    return '';
+  }
+  return sec;
+};
+
 console.log('\nstamps on every write path');
 {
   const preset = read('src/state/Preset.js');
   const project = read('src/io/ProjectFile.js');
-  const serialize  = preset.slice(preset.indexOf('serialize()'), preset.indexOf('exportBank'));
-  const exportBank = preset.slice(preset.indexOf('exportBank('), preset.indexOf('static importBank'));
-  const exportState = preset.slice(preset.indexOf('exportState('), preset.indexOf('importState('));
+  const serialize  = sectionOf(preset, 'serialize()', 'exportBank', 'Preset.serialize');
+  const exportBank = sectionOf(preset, 'exportBank(', 'static importBank', 'Preset.exportBank');
+  const exportState = sectionOf(preset, 'exportState(', 'importState(', 'Preset.exportState');
   ok('Preset.serialize stamps',  /schema:\s*PARAM_SCHEMA/.test(serialize));
   ok('Preset.exportBank stamps', /schema:\s*PARAM_SCHEMA/.test(exportBank));
   ok('PresetManager.exportState stamps', /schema:\s*PARAM_SCHEMA/.test(exportState));
@@ -177,10 +193,14 @@ console.log('\nreads on every load path');
 {
   const preset = read('src/state/Preset.js');
   const project = read('src/io/ProjectFile.js');
-  const deserialize = preset.slice(preset.indexOf('static deserialize'), preset.indexOf('async save()'));
-  const importBank  = preset.slice(preset.indexOf('static importBank'), preset.indexOf('static deserialize'));
-  const importState = preset.slice(preset.indexOf('importState('), preset.indexOf('exportState(') > preset.indexOf('importState(')
-                        ? preset.length : preset.indexOf('importState(') + 1500);
+  const deserialize = sectionOf(preset, 'static deserialize', 'async save()', 'Preset.deserialize');
+  const importBank  = sectionOf(preset, 'static importBank', 'static deserialize', 'Preset.importBank');
+  // importState has no stable following marker — exportState may sit either
+  // side of it — so it is bounded by length rather than by a second index.
+  // Still guarded: a missing start is reported, not turned into slice(-1).
+  const importStateAt = preset.indexOf('importState(');
+  ok('Preset.importState is still present to check', importStateAt !== -1);
+  const importState = importStateAt === -1 ? '' : preset.slice(importStateAt, importStateAt + 1500);
   ok('Preset.deserialize migrates states (IndexedDB + .imweb banks)',
      /migrateStatesBlendPercent\(\s*p\.states,\s*data\.schema/.test(deserialize));
   ok('Preset.deserialize migrates the bank-level controller bag',
