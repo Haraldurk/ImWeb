@@ -59,6 +59,65 @@ await Promise.race([
 ]);
 ```
 
+## Critical gotcha: `computer` input can land NOWHERE, silently
+
+Known for keys since 2026-08-26. **It is also true of clicks** (2026-08-27):
+two `left_click` calls at coordinates `document.elementFromPoint()` confirmed
+were the right element produced ZERO events on a capture-phase listener. The
+tool reports `Clicked at (x, y)` and succeeds either way, so there is nothing
+to notice — it reads as "the app ignores this control".
+
+**The tell is the screenshot.** When `screenshot` returns *"script injection
+timed out — the page is busy"*, the render loop is saturating the main thread
+and the whole input path is unreliable. Do not interpret a non-response to a
+click while screenshots are timing out.
+
+**Prove input arrives before testing behaviour:**
+
+```js
+window.__clicks = [];
+document.addEventListener('click', e =>
+  window.__clicks.push({ x: e.clientX, y: e.clientY, tag: e.target.tagName, trusted: e.isTrusted }),
+  true);
+// ...issue ONE computer left_click, then read window.__clicks.
+// Empty array ⇒ the harness is the problem, not the app.
+```
+
+**Fall back to `el.click()` from `javascript_tool`.** Before assuming that is
+insufficient, check whether the path under test actually needs a *trusted*
+gesture — most do not. Audio is the usual worry and usually a false one: the
+worklet-load failure happens at `addModule()`, before any
+`AudioContext.resume()`, so a synthetic click verified it completely and the
+autoplay policy never entered into it. Say plainly which parts went unverified
+at OS level.
+
+## Critical gotcha: panels build ~1.5 s AFTER `readyState: "complete"`
+
+Read the DOM before that and every `*-params` container has 0 children and
+`#output-canvas` is still at its default 300x150 — indistinguishable from the
+"module graph failed to load" symptom CLAUDE.md warns about, and it sent one
+session hunting a boot failure that did not exist. Console capture showed
+nothing because there was no error.
+
+Poll for a built panel before reading anything:
+
+```js
+for (let i = 0; i < 40 && !document.querySelector('#audio-engine-params')?.children.length; i++)
+  await new Promise(r => setTimeout(r, 100));
+```
+
+To catch a REAL boot error, inject an error probe into `dist/index.html` ahead
+of the module script — `dist` is gitignored, so instrumenting it touches no
+source:
+
+```html
+<script>
+window.__errs = [];
+addEventListener('error', e => window.__errs.push({ msg: e.message, src: e.filename, line: e.lineno }));
+addEventListener('unhandledrejection', e => window.__errs.push({ msg: String(e.reason?.message ?? e.reason) }));
+</script>
+```
+
 ## Driving the custom `.imw-sel` dropdowns
 
 These are not `<select>` elements, and two properties of them have each cost a
