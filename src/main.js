@@ -6728,6 +6728,13 @@ void main() {
    *  from a session where Deck B's rack was simply empty (Deck A auto-loads
    *  from the manifest, Deck B never does). Say which deck and why, using the
    *  same blind-performance OSD as the `g` mode cycle. */
+  /** Digit code → clip index. ⇧0/⌥0 alias clip 1; ⇧1–8 are 1-based as printed.
+   *  Shared by both decks so the alias cannot exist on one and not the other. */
+  const _clipKeyIndex = (code) => {
+    const n = parseInt(code.replace("Digit", ""), 10);
+    return n === 0 ? 0 : n - 1;
+  };
+
   const _flashEmptySlot = (deckId, idx, n) => {
     const how = deckId === "B" ? "⇧-click a rack row" : "+ Add Clip";
     showModeOSD(
@@ -6748,6 +6755,24 @@ void main() {
       e.preventDefault();
       if (searchEl && !searchEl.classList.contains("hidden")) closeParamSearch();
       else openParamSearch();
+      return;
+    }
+
+    // ⌘⇧0 / Ctrl+Shift+0 = Neutral State (reset all params, keep controllers).
+    // MUST sit ABOVE the modifier bail-out below, exactly as ⌘K does — placed
+    // anywhere after it, the handler has already returned and the chord would
+    // silently never fire.
+    //
+    // It moved here off ⇧0, which now selects the first clip like the rest of
+    // the ⇧-digit row. ⇧0 was one key from ⇧1 and reset the entire patch
+    // without asking; reaching for clip 1 and getting a red screen is exactly
+    // what happened. Note this is the UNCONFIRMED reset — ⇧Esc is the one that
+    // asks first, and it also clears controller assignments, which this does
+    // not.
+    if (e.code === "Digit0" && (e.metaKey || e.ctrlKey) && e.shiftKey && !e.altKey) {
+      e.preventDefault();
+      presetMgr.dispatchEvent(new CustomEvent('neutralState'));
+      showModeOSD('Neutral State — all parameters reset');
       return;
     }
 
@@ -6825,22 +6850,12 @@ void main() {
       return;
     }
 
-    // Shift+0 = Neutral State (reset all params, leave controllers intact).
-    // It sits one key from ⇧1–8 clip select and does something far larger, and
-    // it used to do it in total silence — the whole patch reverts to defaults,
-    // which paints the neutral red, and nothing says why. Reported as "⇧0 for
-    // Movie 0 resets the screen to red". Naming it does not make the key less
-    // destructive, but it does make it legible as a thing you pressed.
-    if (e.shiftKey && e.code === 'Digit0' && !e.target.closest('input,textarea')) {
-      e.preventDefault();
-      presetMgr.dispatchEvent(new CustomEvent('neutralState'));
-      showModeOSD('Neutral State — all parameters reset');
-      return;
-    }
-
-    // Shift+1–8 = Select movie clip (check first so Nordic /=Shift+7 doesn't bleed into search)
-    if (e.shiftKey && !e.metaKey && /^Digit[1-8]$/.test(e.code)) {
-      const idx = parseInt(e.code.replace("Digit", "")) - 1;
+    // Shift+0–8 = Select movie clip (check first so Nordic /=Shift+7 doesn't bleed into search).
+    // ⇧0 is an ALIAS for clip 1, not a ninth slot: the rack holds 8 and ⇧1–8
+    // already covers it. It exists because ⇧0 is where a hand reaching for the
+    // first clip lands, and because the key used to reset the whole patch.
+    if (e.shiftKey && !e.metaKey && /^Digit[0-8]$/.test(e.code)) {
+      const idx = _clipKeyIndex(e.code);
       if (idx < movieInput.clips.length) {
         movieInput.selectClip(idx);
         if (ps.get("movie.active").value)
@@ -6856,8 +6871,8 @@ void main() {
     // Option/Alt+1–8 = Select Deck B clip. Matches on e.code, never e.key:
     // on macOS Option+digit emits ¡™£¢∞§¶• rather than a digit, but the code
     // stays DigitN. Guarded off Shift so ⇧⌥N doesn't drive both decks at once.
-    if (e.altKey && !e.shiftKey && !e.metaKey && /^Digit[1-8]$/.test(e.code)) {
-      const idx = parseInt(e.code.replace("Digit", "")) - 1;
+    if (e.altKey && !e.shiftKey && !e.metaKey && /^Digit[0-8]$/.test(e.code)) {
+      const idx = _clipKeyIndex(e.code);
       if (idx < movieInputB.clips.length) {
         movieInputB.selectClip(idx);
         if (ps.get("movieB.active").value)

@@ -2417,8 +2417,8 @@ Click the ⊞ button in any section header to detach it as a floating panel. Dra
 | `Q` | Cycle Foreground source — in the LAYERS dropdown's order |
 | `A` | Cycle Background source — same order |
 | `Z` | Cycle DisplaceSrc — same order |
-| `Shift+1–8` | Select clip 1–8 on the **Movie A** rack |
-| `Option+1–8` | Select clip 1–8 on the **Movie B** rack |
+| `Shift+0–8` | Select a clip on the **Movie A** rack — `Shift+0` is an alias for clip 1, not a ninth slot |
+| `Option+0–8` | Select a clip on the **Movie B** rack — `Option+0` is an alias for clip 1 |
 | `C` | Capture frame to stills buffer |
 
 `Q` / `A` / `Z` step through sources in exactly the order the Mix ▸ LAYERS
@@ -2440,7 +2440,7 @@ internal index order, so the keyboard and the menu always agree.
 | Key | Action |
 |-----|--------|
 | `0–9` | Recall State at index |
-| `Shift+0` | Neutral State (reset all params, keep controllers) |
+| `Cmd+Shift+0` | Neutral State (reset all params, keep controllers). Moved off `Shift+0`, which now selects a clip |
 | `Shift+S` | Quick-save State to next empty slot (auto-thumbnail) |
 | `+` / `−` | Next / previous Bank (Numpad) |
 

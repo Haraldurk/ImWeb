@@ -74,6 +74,13 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
   the window, and steps it back to the nearest edge only when the trim passes
   it. Trim while it plays and it keeps playing; trim past it and it steps in.
   Unchanged when SlideRange is on, where Pos drives the window instead.
+- **Shift+0 selects the first clip; Neutral State moved to Cmd+Shift+0.**
+  `Shift+0` used to reset the entire patch — no confirmation — from one key
+  away from `Shift+1–8` clip select, so reaching for the first clip repainted
+  the screen with the neutral palette (red). `Shift+0` is now an alias for
+  clip 1, and `Option+0` is the same on Deck B. Note the app already had a
+  second, *confirmed* reset on `Shift+Esc`, which additionally clears
+  controller assignments; Neutral State is the one that keeps them.
 - **Shift+0 says what it did.** It resets every parameter to defaults — which
   paints the neutral red — and it sits one key away from `Shift+1–8` clip
   select while doing something far larger. It used to do it in total silence.
