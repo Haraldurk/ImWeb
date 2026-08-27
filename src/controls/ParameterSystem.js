@@ -6916,6 +6916,17 @@ export function registerCoreParameters(ps) {
       // decision at a different point in the chain, and the engine exposes no
       // address for it. Defaults to 1 so adding this changes nothing audible
       // for anyone who never touches it.
+      // The playhead. A fraction OF THE REGION (Start→Start+Length), matching
+      // MoviePos being a fraction of the in/out window. A SEEK rather than a
+      // slewed target: sliding the read position continuously is what moving
+      // Start already does, so this is for landing somewhere. The engine ducks
+      // it, because moving the read head mid-flight is a click.
+      //
+      // `snap: false` for the reason agrain.pos carries it — the region can be
+      // minutes long, so a 0.01 step is a coarse grid over it and two nearby
+      // seeks would collapse to the same value and drop the engine write. 0.01
+      // stays the drag increment.
+      { key: "pos", label: "Pos", min: 0, max: 1, value: 0, step: 0.01, snap: false },
       { key: "level", label: "Level", min: 0, max: 1, value: 1, step: 0.01 },
       // Eight region cues, the same eight the movie decks have. Both are group
       // 'global', which overrides the `group: prefix` at the registration site

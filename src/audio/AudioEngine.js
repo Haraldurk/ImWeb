@@ -436,6 +436,7 @@ export class AudioEngine {
   grainSpray(i, samples) { this._send(`/zone/grain/${i}/spray`, samples); }
   grainLevel(i, level) { this._send(`/zone/grain/${i}/level`, level); }
   playLevel(i, level) { this._send(`/zone/play/${i}/level`, level); }
+  playPos(i, frac) { this._send(`/zone/play/${i}/pos`, frac); }
 
   /**
    * Ask for an envelope over an explicit span. **Never resample a envelope you
