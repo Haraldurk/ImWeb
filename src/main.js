@@ -66,6 +66,7 @@ import { CameraInput } from "./inputs/CameraInput.js";
 import { MovieInput, MAX_CLIPS } from "./inputs/MovieInput.js";
 import { MovieCues, CUE_SLOTS } from "./inputs/MovieCues.js";
 import { CueBank } from "./core/CueBank.js";
+import { MappingAutosave } from "./state/MappingAutosave.js";
 
 /**
  * How many catalogue entries to rack into Deck A at boot.
@@ -2719,6 +2720,26 @@ async function main() {
     await _loadMasterProject();
   }
 
+  /**
+   * Learned MIDI mappings, restored LAST — after whatever bank or project the
+   * boot above put in place.
+   *
+   * Order is the whole design here, because both write `p.controller`. The
+   * autosave is the more recent truth: it is what the rig looked like when you
+   * last had the app open, while a bank carries whatever was mapped when it was
+   * last SAVED. A user-initiated import afterwards still wins outright, and is
+   * picked up as the new autosave within a second.
+   *
+   * Mappings only — never values. See MappingAutosave.js for why that
+   * distinction is load-bearing rather than tidy.
+   */
+  const mappingAutosave = new MappingAutosave(ps, {
+    onStatus: (msg) => setStatus(msg, 'var(--text-2)'),
+  });
+  mappingAutosave.restore();
+  mappingAutosave.start();
+  if (import.meta.env.DEV) window.__mappings = mappingAutosave;
+
   // Click OSC indicator → prompt for WebSocket URL and connect
   document.getElementById("status-osc")?.addEventListener("click", () => {
     if (oscBridge.active) {
@@ -2789,6 +2810,10 @@ async function main() {
             style="width:100%;border-color:var(--text-2);color:var(--text-2);font-size:9px;opacity:0.6;"
             title="[DEV] Download current project as MasterProject.imweb — place in public/Projects/ to update factory defaults">
             📤 Save as MasterProject  [DEV]</button>
+          <button id="btn-clear-mappings" class="import-btn"
+            style="width:100%;border-color:var(--text-2);color:var(--text-2);font-size:9px;opacity:0.7;"
+            title="Forget the MIDI mappings remembered for this origin. Live mappings are untouched until the next reload.">
+            ⌫ Clear saved MIDI mappings</button>
           <div id="project-file-status" style="font-family:var(--mono);font-size:10px;color:var(--text-2);min-height:14px;"></div>
           <input id="project-file-input" type="file" accept=".imweb,application/json" style="display:none;" />
         </div>
@@ -2802,6 +2827,18 @@ async function main() {
           el.style.color = color;
         }
       };
+
+      // Autosave is a convenience, so it must never be a trap: a mapping you
+      // want gone has to be gone in one click, without hunting through
+      // localStorage. Live mappings are deliberately left alone — clearing is
+      // about what comes back NEXT reload, and silently unmapping the rig
+      // mid-session would be its own surprise.
+      document
+        .getElementById("btn-clear-mappings")
+        ?.addEventListener("click", () => {
+          mappingAutosave.clear();
+          setStatus("Saved mappings cleared — live mappings unchanged until reload");
+        });
 
       document
         .getElementById("btn-export-project")
