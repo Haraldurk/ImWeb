@@ -2570,6 +2570,11 @@ export function registerCoreParameters(ps) {
     { key: "pos", label: "MoviePos", min: 0, max: 100, value: 0, unit: "%" },
     { key: "start", label: "MovieStart", min: 0, max: 100, value: 0, unit: "%" },
     { key: "end", label: "MovieEnd", min: 0, max: 100, value: 100, unit: "%" },
+    // A two-way view of (End − Start): dial it to set the window's length
+    // directly, and it re-reads whenever either mark moves, so it is never a
+    // stale second copy of the truth. Start/End remain the stored range — this
+    // is a control surface over them, not a third piece of state.
+    { key: "len", label: "MovieLen", min: 0, max: 100, value: 100, unit: "%" },
     // Off: MoviePos is a fraction WITHIN the Start-End window (the v0.1
     // meaning — every saved project, controller mapping and cue depends on
     // it, so it stays the default). On: MoviePos is the window's POSITION in

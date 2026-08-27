@@ -3731,6 +3731,52 @@ async function main() {
 
   refreshClipsList(); // show empty state on startup
 
+  // ── MovieLen: the window's length as a directly dialable control ──────────
+  // Start and End stay the stored range; MovieLen is a two-way VIEW of the gap
+  // between them. Dial it and End moves to Start + Len; move either mark and
+  // Len re-reads, so it can never drift into being a stale second copy.
+  //
+  // Anchoring on the LEFT edge is the choice that makes Len usable with
+  // SlideRange: growing the window keeps the in-point you already found and
+  // extends the out-point, and Pos then slides that whole length. Anchoring on
+  // the centre would move the in-point every time you changed length, which is
+  // the one thing you have just finished placing.
+  //
+  // The re-entrancy flag is real logic, not a timing guard: it is true only
+  // for the duration of a write this code is itself making, and false for
+  // every user or controller write, which is exactly the distinction needed.
+  for (const P of ["movie", "movieB"]) {
+    const sp = ps.get(`${P}.start`);
+    const ep = ps.get(`${P}.end`);
+    const lp = ps.get(`${P}.len`);
+    if (!sp || !ep || !lp) continue;
+    let syncing = false;
+    const clampPct = (v) => Math.min(Math.max(v, 0), 100);
+    const readLen = () => {
+      syncing = true;
+      lp.value = Math.abs(ep.value - sp.value);
+      syncing = false;
+    };
+    lp.onChange((v) => {
+      if (syncing) return;
+      syncing = true;
+      // Order the pair first: Start/End are independently draggable and may be
+      // inverted, and the length has to be applied from the LOWER mark or the
+      // window jumps when it is.
+      const lo = Math.min(sp.value, ep.value);
+      const len = clampPct(v);
+      // Length wins over position, so a window near the tail slides back to
+      // make room rather than being clipped short of the length asked for.
+      const start = Math.min(lo, 100 - len);
+      sp.value = start;
+      ep.value = start + len;
+      syncing = false;
+    });
+    sp.onChange(() => { if (!syncing) readLen(); });
+    ep.onChange(() => { if (!syncing) readLen(); });
+    readLen(); // seed from whatever the deck already holds
+  }
+
   // ── Movie cue slots ───────────────────────────────────────────────────────
   // Eight Start/End/Pos sets per deck. Contents live in the .imweb project
   // (see MovieCues.js), the slot index is uncaptured so a Display State's own

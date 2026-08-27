@@ -266,6 +266,7 @@ Deck B mirrors every parameter below under the `movieB.` prefix
 | `movie.pos` | 0–100% | Frame scrub — a fraction *of* the Start–End window, so moving either mark re-seeks the playhead to keep Pos and the picture in agreement; assign LFO/MIDI to scan through frames (overrides MovieSpeed when a controller is active) |
 | `movie.start` | 0–100% | Loop range start |
 | `movie.end` | 0–100% | Loop range end |
+| `movie.len` | 0–100% | **MovieLen.** Two-way view of (End − Start): dial it to set the window's length directly, anchored on MovieStart; it re-reads whenever either mark moves |
 | `movie.posslide` | TOGGLE | **SlideRange.** Off (default): MoviePos is a fraction *within* the Start–End window. On: MoviePos is the window's *position*, and Start/End slide with it keeping their length |
 | `movie.loop` | SELECT | Off / Loop / Ping-pong — Loop wraps in whichever direction MovieSpeed points |
 | `movie.mirror` | TOGGLE | Horizontal flip |
@@ -281,7 +282,9 @@ MovieStart, 100 % on MovieEnd. Narrow the window and Pos scrubs inside it.
 
 Turn **SlideRange** on and the relationship inverts. MoviePos becomes the
 window's *position in the clip*, and MovieStart and MovieEnd move with it,
-**keeping their length**. Set a tight in/out — say 28.4 % to 28.6 %, about
+**keeping their length**. Set that length with **MovieLen** rather than by
+placing two marks: dial MovieLen to the size of loop you want, switch
+SlideRange on, and MoviePos sweeps exactly that length through the clip. Set a tight in/out — say 28.4 % to 28.6 %, about
 60 ms of a 30-second clip — and dragging Pos sweeps that short loop through
 the whole piece. Assign an LFO to MoviePos and it sweeps on its own.
 

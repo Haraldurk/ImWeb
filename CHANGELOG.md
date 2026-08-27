@@ -9,6 +9,14 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
 ## [Unreleased]
 
 ### Added
+- **MovieLen — the loop window's length as a control instead of an outcome.**
+  A two-way view of (MovieEnd − MovieStart): dial it and End moves to
+  Start + Len; move either mark and Len re-reads, so it can never drift into
+  being a stale second copy. It anchors on MovieStart, so growing the window
+  keeps the in-point you just found. Pair it with SlideRange — set the length
+  you want, then MoviePos sweeps exactly that length through the clip. Cues
+  need no change to carry it: Len is derived, so recalling Start/End restores
+  it.
 - **SlideRange — MoviePos can drag the whole in/out window through the clip.**
   By default MoviePos is a fraction *within* the Start–End window. With
   `movie.posslide` on it becomes the window's *position*, and MovieStart and
