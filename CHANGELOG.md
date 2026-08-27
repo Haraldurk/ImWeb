@@ -9,6 +9,19 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
 ## [Unreleased]
 
 ### Added
+- **Level Play — the Playback zone finally has a fader.** `aplay.level`, 0–1,
+  defaulting to 1, sitting after Rate in the Playback Zone panel. It is a real
+  controller target, so an LFO on it is a tremolo or a fade and a MIDI CC on it
+  is a hand on the zone.
+  It multiplies the engine's anti-click gain ramp rather than replacing it, and
+  that distinction is the whole design: `gainCur` is driven every sample from
+  `on` and ducked to swap partitions, so a fader that reused it would be
+  overwritten before it was ever heard. Turning the zone off is still silent
+  whatever the fader says, and the fader still reads 0.5 on the far side of a
+  partition change.
+  Only Playback gets one. A Recording zone's level would be an input gain — a
+  different decision at a different point in the chain — so no address reaches
+  the field on a Rec zone.
 - **ClipFade — switching clips on a deck can dissolve instead of cutting.**
   `movie.clipfade` / `movieB.clipfade` set the length in seconds; 0 is a hard
   cut and stays the default. Jump from clip 1 to 3 and the deck crossfades,

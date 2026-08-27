@@ -6895,6 +6895,12 @@ export function registerCoreParameters(ps) {
     ] },
     { prefix: "aplay", suffix: " Play", extra: [
       { key: "rate", label: "Rate", min: -4, max: 4, value: 1, step: 0.01 },
+      // The zone's fader. `extra` rather than ZONE_COMMON because only Playback
+      // has one — a Recording zone's level would be an input gain, a different
+      // decision at a different point in the chain, and the engine exposes no
+      // address for it. Defaults to 1 so adding this changes nothing audible
+      // for anyone who never touches it.
+      { key: "level", label: "Level", min: 0, max: 1, value: 1, step: 0.01 },
     ] },
   ].forEach(({ prefix, suffix, extra }) => {
     [...ZONE_COMMON, ...extra].forEach(({ key, label, ...rest }) => {

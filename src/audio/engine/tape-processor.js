@@ -265,6 +265,7 @@ const TGT_VOICE_DRIVE = 5;
 const TGT_OUT_GAIN = 6;
 const TGT_GRAIN_POS = 7;
 const TGT_GRAIN_LEVEL = 8;
+const TGT_PLAY_LEVEL = 9;
 
 /**
  * The render quantum. Fixed at 128 by the Web Audio spec, and allocated for
@@ -294,6 +295,12 @@ const LIMIT_RELEASE_S = 0.15;
  */
 const ZONE_SPECIFIC = new Set([
   '/zone/play/<n>/rate',
+  // Playback level (§4.11). Specific rather than common because ONLY Playback
+  // has one: a Recording zone's level would be an input gain, which is a
+  // different musical decision made at a different point in the signal path,
+  // and giving `makeZone`'s shared shape a common address would have handed
+  // Rec a fader that writes into the tape. Grain has its own, one line down.
+  '/zone/play/<n>/level',
   '/zone/rec/<n>/dynamic',
   '/zone/rec/<n>/length',
   // The grain player's own vocabulary (§4.6). Note `/zone/grain/<n>/rate` is
@@ -424,6 +431,22 @@ function makeZone() {
     on: false, dynamic: false,
     gainCur: 0, gainTgt: 0,
     rateCur: 1, rateTgt: 1, rateCtrl: -1,
+    /**
+     * The performer's fader, and deliberately NOT `gainCur`.
+     *
+     * `gainCur` is the anti-click ramp: the engine drives it to 0/1 from `on`
+     * and ducks it to swap partitions. A fader sharing it would be overwritten
+     * every sample by `gainTgt = z.on && !z.pend ? 1 : 0` — the two are
+     * multiplied instead, so the ramp keeps owning transitions and the level
+     * keeps owning loudness.
+     *
+     * Only Playback reads this today. The field lives here, in the shape Rec
+     * shares, because a Rec input level is a real feature someone may want and
+     * splitting the factory for three numbers would cost more than it saves —
+     * but no address reaches it, so on a Rec zone it is inert by construction
+     * rather than by convention.
+     */
+    levelCur: 1, levelTgt: 1, levelCtrl: -1,
     phase: 0, writePos: 0, recorded: 0,
     // §4.11 says zone BOUNDS are slewed at audio rate, like rate and level.
     // They were briefly ducked-and-reapplied instead, which is fine for a hand
@@ -752,6 +775,8 @@ class TapeProcessor extends AudioWorkletProcessor {
       case '/zone/<type>/<n>/off':    return this._zoneOn(type, idx[0], false);
       case '/zone/play/<n>/rate':
         return this._zoneSet('play', idx[0], 'rateTgt', v[0], 'rateCtrl', m.a);
+      case '/zone/play/<n>/level':
+        return this._zoneSet('play', idx[0], 'levelTgt', v[0], 'levelCtrl', m.a);
       case '/zone/rec/<n>/dynamic':   return this._zoneSet('rec', idx[0], 'dynamic', !!v[0]);
 
       // The spectral writer (§4.5). `/render` is generic over zone type by
@@ -917,8 +942,10 @@ class TapeProcessor extends AudioWorkletProcessor {
 
     const seg = String(address).split('/');      // '' , 'zone', 'play', '0', 'rate'
     let kind = TGT_NONE, index = 0;
-    if (seg[1] === 'zone' && seg[2] === 'play' && seg[4] === 'rate') {
-      kind = TGT_ZONE_RATE; index = Number(seg[3]);
+    if (seg[1] === 'zone' && seg[2] === 'play' && seg.length === 5
+        && (seg[4] === 'rate' || seg[4] === 'level')) {
+      kind = seg[4] === 'rate' ? TGT_ZONE_RATE : TGT_PLAY_LEVEL;
+      index = Number(seg[3]);
     } else if (seg[1] === 'zone' && seg[2] === 'grain' && seg.length === 5) {
       index = Number(seg[3]);
       // Position in SAMPLES, so a controller here scans the tape at audio rate
@@ -977,6 +1004,7 @@ class TapeProcessor extends AudioWorkletProcessor {
   /** Write this slot into its target's back-pointer. */
   _ctrlAttach(slot, c) {
     if (c.kind === TGT_ZONE_RATE) this._play[c.idx].rateCtrl = slot;
+    else if (c.kind === TGT_PLAY_LEVEL) this._play[c.idx].levelCtrl = slot;
     else if (c.kind === TGT_VOICE_FREQ) this._voices[c.idx].freqCtrl = slot;
     else if (c.kind === TGT_VOICE_LEVEL) this._voices[c.idx].levelCtrl = slot;
     else if (c.kind === TGT_VOICE_COLOUR) this._voices[c.idx].colourCtrl = slot;
@@ -1000,6 +1028,7 @@ class TapeProcessor extends AudioWorkletProcessor {
   _ctrlDetach(slot) {
     for (let i = 0; i < this._play.length; i++) {
       if (this._play[i].rateCtrl === slot) this._play[i].rateCtrl = -1;
+      if (this._play[i].levelCtrl === slot) this._play[i].levelCtrl = -1;
     }
     for (let i = 0; i < this._grain.length; i++) {
       if (this._grain[i].posCtrl === slot) this._grain[i].posCtrl = -1;
@@ -2933,9 +2962,16 @@ class TapeProcessor extends AudioWorkletProcessor {
     for (let i = 0; i < frames; i++) {
       // Both, so the value lands exactly — see the note in `_renderVoice`.
       if (z.rateCtrl >= 0) z.rateCur = z.rateTgt = this._ctrls[z.rateCtrl].buf[i];
+      if (z.levelCtrl >= 0) z.levelCur = z.levelTgt = this._ctrls[z.levelCtrl].buf[i];
       z.gainTgt = z.on && !z.pend ? 1 : 0;
       z.gainCur = this._approach(z.gainCur, z.gainTgt);
       z.rateCur = this._approach(z.rateCur, z.rateTgt);
+      // Slewed ABOVE the `gainCur === 0` early-out below, with rate, so a level
+      // moved while the zone is ducked or stopped has arrived by the time it
+      // speaks again. Slewing it after the early-out would leave the fader
+      // frozen at its old value through the silence and then ramp audibly on
+      // the first sample back — a fade-in nobody asked for.
+      z.levelCur = this._approach(z.levelCur, z.levelTgt);
       // Bounds slew per sample, so a controller sweeping Start slides the read
       // position continuously instead of restarting the zone.
       if (z.startRamp > 0) { z.startCur += z.startStep; z.startRamp--; }
@@ -3024,8 +3060,10 @@ class TapeProcessor extends AudioWorkletProcessor {
         r += this._cubic(1, pos, lo, count);
       }
       if (N > 1) { l /= N; r /= N; }
-      L[i] += l * z.gainCur;
-      R[i] += r * z.gainCur;
+      // gain × level: the ramp owns transitions, the fader owns loudness.
+      const g = z.gainCur * z.levelCur;
+      L[i] += l * g;
+      R[i] += r * g;
 
       // Wrap SYMMETRICALLY, and by modulo rather than by one subtraction. A
       // single `+= room` bounds the negative side only while |rate| < room, so a

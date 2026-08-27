@@ -358,7 +358,11 @@ export function buildMappingPanels(ps, contextMenu) {
       ps.get(`apart${i}.start`), ps.get(`apart${i}.len`),
     ]).filter(Boolean),
     'audio-rec-params':  pick('arec',  ['part', 'start', 'len', 'dynamic', 'unsafe', 'on']),
-    'audio-play-params': pick('aplay', ['part', 'start', 'len', 'rate', 'unsafe', 'on']),
+    // Level sits after Rate and before the two switches: signal order, same as
+    // the Voice panel's "source → controls → level" note below — the fader is
+    // the last thing the sound passes through, and Unsafe/Run are not chain
+    // stages at all.
+    'audio-play-params': pick('aplay', ['part', 'start', 'len', 'rate', 'level', 'unsafe', 'on']),
     // Signal order, not registration order: source → its own controls → filter
     // → saturator → level, so the row list reads as the chain it is.
     // The spectral writer (§4.5). Destination first, then the musical decision
