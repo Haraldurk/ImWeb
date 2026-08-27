@@ -167,7 +167,14 @@ export class AudioEngine {
           (r) => (r.ok ? 'the module loaded but did not evaluate' : `HTTP ${r.status}`),
           () => 'the server did not answer — restarted since this page loaded? reload it',
         );
-        throw new Error(`audio worklet did not load (${why})`);
+        // Carry the original through as `cause`. The probe explains the
+        // TRANSPORT; only `e` says what the browser actually refused, and the
+        // one failure the probe cannot describe is the module fetching fine
+        // and then throwing at evaluation — where `e` is the syntax error and
+        // this wrapper alone would report a cheerful "it loaded".
+        throw new Error(`audio worklet did not load (${why}): ${e?.message ?? e}`, {
+          cause: e,
+        });
       }
       this._moduleAdded = true;
     }

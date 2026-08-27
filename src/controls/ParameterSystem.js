@@ -229,6 +229,22 @@ export class Parameter {
     this.options = config.options ?? null; // for SELECT
     this.unit = config.unit ?? ""; // display unit string e.g. '°', '%'
     this.step = config.step ?? null; // optional snap step
+    /**
+     * Whether `step` also QUANTIZES the stored value, or is only the UI
+     * drag/arrow increment. Default true, because for most params the two are
+     * the same number and snapping is what you want.
+     *
+     * `snap: false` exists for params whose writer resolves a position more
+     * finely than any sensible drag increment. `agrain.pos` is the case: the
+     * corpus pad resolves a click to one grain — a sample-accurate offset into
+     * the tape — and a step of 0.001 buckets the whole partition into 1000
+     * positions. Two adjacent grains land in the same bucket, `changed` comes
+     * out false, and the listener that writes `/zone/grain/0/pos` never runs,
+     * so the second click does nothing at all. Dropping `step` entirely would
+     * fix the snap but hand shift-drag `param.step ?? 1` — a full-range jump —
+     * so the increment has to stay and only the quantization goes.
+     */
+    this.snap = config.snap !== false;
 
     this._value = config.value ?? this.min;
     this._target = this._value; // slew target
@@ -318,7 +334,7 @@ export class Parameter {
       );
     } else {
       clamped = Math.max(this.min, Math.min(this.max, v));
-      if (this.step) clamped = Math.round(clamped / this.step) * this.step;
+      if (this.step && this.snap) clamped = Math.round(clamped / this.step) * this.step;
     }
 
     const changed = clamped !== this._value;
@@ -7083,7 +7099,10 @@ export function registerCoreParameters(ps) {
    */
   ps.register({
     id: "agrain.pos", label: "Grain Pos", group: "agrain",
-    min: 0, max: 1, value: 0, step: 0.001,
+    // `snap: false` — the pad writes grain-accurate offsets; 0.001 is the drag
+    // increment only. See the `snap` field on Parameter for why snapping here
+    // silently swallowed every second click on the corpus pad.
+    min: 0, max: 1, value: 0, step: 0.001, snap: false,
   });
   ps.register({
     id: "agrain.size", label: "Grain Size", group: "agrain",

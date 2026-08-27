@@ -92,6 +92,12 @@ fi
 sed -i.bak -E \
   's/^([Cc]o-[Aa]uthored-[Bb]y: .+) <noreply@[A-Za-z0-9.-]+>[[:space:]]*$/\1 <noreply@ai-assisted.invalid>/' \
   "$MSG_FILE" && rm -f "$MSG_FILE.bak"
+
+# The hook's exit status is git's verdict on the commit, and without this the
+# last thing to run is the `sed && rm` above — so a failed rm (or a sed that
+# cannot write) aborts the commit over cleanup of a backup file nobody reads.
+# The rewrite is cosmetic; it must never be able to stop a commit.
+exit 0
 EOF
 chmod +x "$HOOK"
 echo "✓ prepare-commit-msg hook installed"
