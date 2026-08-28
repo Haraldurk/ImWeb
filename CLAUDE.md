@@ -29,7 +29,7 @@ The instrument composites video sources through a signal chain of effects and re
 
 ## Architecture Notes
 
-main.js is the integration hub (~7550 lines). Most feature wiring lives here. Do not split it without a clear architectural reason.
+main.js is the integration hub (~9580 lines). Most feature wiring lives here. Do not split it without a clear architectural reason.
 
 - Pipeline.js (src/core/Pipeline.js) owns the noise material uniform init block and the generateNoise() setter — NOT main.js. main.js only contains the call site and event listeners.
 - Noise shader lives at src/shaders/index.js (not src/core/shaders/)
@@ -102,9 +102,10 @@ main.js is the integration hub (~7550 lines). Most feature wiring lives here. Do
   consumer — do not copy the pattern, which is how seven near-duplicates accrued.
 
 ### UI structure (Phase 23)
-- Tabs follow signal flow: **Sources · Mix · Effects · Output | 3D · Analog · Draw ·
-  Project**. 3D/Analog/Draw are top-level because they are large *source editors*,
-  not a different taxonomic kind — do not silently “fix” this by folding them into Sources.
+- Tabs follow signal flow: **Sources · Mix · Effects · Output · Audio ·
+  Project**. Phase 24 retired 3D/Analog/Draw as top-level tabs — they are now
+  workspaces opened from their row in Sources; their `.tab-content` divs
+  remain in the DOM.
 - Section labels and order live in index.html. `buildMappingPanels()` (UI.js) is a
   container-id → params map with no labels and no ordering, so regrouping tabs needs
   no JS change as long as container ids are preserved.
