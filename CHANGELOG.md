@@ -8,6 +8,10 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
 
 ## [Unreleased]
 
+---
+
+## [0.22.0] — 2026-08-30 — Out of Focus
+
 ### Added
 - **Bokeh — a lens defocus in Effects › Optics.** Not a blur with a hole in it:
   bright points spread into real discs, and **Bokeh.Ring** decides where the
