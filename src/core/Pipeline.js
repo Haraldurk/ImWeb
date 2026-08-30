@@ -21,7 +21,8 @@ import {
   TRANSFERMODE, COLORSHIFT, NOISE_BFG, INTERLACE, MIRROR, WARP, FADE, PASSTHROUGH,
   BUFFER_TRANSFORM, INTERP,
   PIXELATE, EDGE, RGBSHIFT, POSTERIZE, SOLARIZE, COLOR_CORRECT, CHROMA_KEY,
-  VIGNETTE, BLOOM_EXTRACT, BLOOM_BLUR, BLOOM_COMPOSITE, KALEIDOSCOPE, PIXEL_SORT,
+  VIGNETTE, BLOOM_EXTRACT, BLOOM_BLUR, BLOOM_COMPOSITE, BOKEH_GATHER,
+  KALEIDOSCOPE, PIXEL_SORT,
   FILM_GRAIN, FEEDBACK_ROTATE, QUAD_MIRROR, LEVELS, LUT3D, WHITE_BALANCE,
   SHARPEN, MIXBUS, CLIP_FADE,
   POLAR, WAVE, HALFTONE, DUOTONE, LENS,
@@ -42,6 +43,18 @@ export const DEFAULT_FX_ORDER = [
   // point: it can be dragged in front of bloom or grain, which it could not be.
   'interlace',
 ];
+
+/**
+ * Bokeh gather sample counts, INDEX-ALIGNED to effect.bokehquality's options
+ * ["Draft", "Good", "Fine", "Max"]. One compiled material per entry, because
+ * GLSL ES 1.00 requires a constant loop bound and a uniform cannot supply one.
+ *
+ * All four gather at HALF resolution. Good (32) costs roughly one bloom in
+ * texture fetches, which is the only useful calibration available — bloom's
+ * cost is already known by feel. The counts double from there, so Max is about
+ * 4× a bloom rather than the 17× a full-res gather would have been.
+ */
+const BOKEH_TIERS = [16, 32, 64, 128];
 
 const _FX = {
   pixelate: (pipe, tex, p) => {
@@ -349,6 +362,19 @@ export class Pipeline {
     const hh = Math.ceil(height / 2);
     this._bloomTargetH = this._makeTarget(hw, hh);
     this._bloomTargetV = this._makeTarget(hw, hh);
+
+    // Bokeh gathers at half res too, and EVERY quality tier does — including
+    // Max. The phase plan had Max gathering at full res; at 1080p that is
+    // 265M texture fetches a frame against bloom's 15.6M, which is not a
+    // quality tier, it is a way to stop the instrument. Half res costs 4× less
+    // and loses very little, because the thing being resolved is a large soft
+    // disc. Keeping one size for all tiers also means quality can change
+    // without reallocating a target mid-session.
+    //
+    // Sharp regions are NOT degraded by this: the gather is composited back
+    // over the full-res original weighted by the same defocus term, so an
+    // in-focus pixel keeps its full-res value.
+    this._bokehTarget = this._makeTarget(hw, hh);
 
     // Feedback transform targets — dedicated, OUTSIDE the ping-pong pool, for
     // the same reason the mix buses are: a second target beats a guard.
@@ -1094,6 +1120,7 @@ export class Pipeline {
     const hh = Math.ceil(h / 2);
     this._bloomTargetH.setSize(hw, hh);
     this._bloomTargetV.setSize(hw, hh);
+    this._bokehTarget.setSize(hw, hh);
     this._mixRT.forEach(rt => rt && rt.forEach(t => t.setSize(w, h)));
     this._clipFadeRT.forEach(t => t && t.setSize(w, h));
     this._fbRT?.forEach(t => t.setSize(w, h));
@@ -1102,6 +1129,10 @@ export class Pipeline {
       this.m.edge.uniforms.uResolution.value.set(w, h);
       this.m.bloomBlurH.uniforms.uResolution.value.set(w, h);
       this.m.bloomBlurV.uniforms.uResolution.value.set(w, h);
+      // FULL dimensions, exactly as the bloom blurs do, even though the gather
+      // renders at half res: uRadius is then a radius in output pixels, so the
+      // blur does not silently double when the canvas is resized.
+      this.m.bokeh.forEach(m => m.uniforms.uResolution.value.set(w, h));
       this.m.pixelsort.uniforms.uResolution.value.set(w, h);
       this.m.sharpen.uniforms.uResolution.value.set(w, h);
       this.m.halftone.uniforms.uResolution.value.set(w, h);
@@ -1487,6 +1518,30 @@ export class Pipeline {
         uBloom:    { value: null },
         uStrength: { value: 1 },
       }),
+      // One material per quality tier, index-aligned to effect.bokehquality's
+      // options. This is not premature optimisation dressed as tiers: GLSL ES
+      // 1.00 requires CONSTANT loop bounds, so the sample count cannot be a
+      // uniform and a variant is the only way to make it adjustable at all.
+      //
+      // Compiled eagerly, all four, because a lazy compile would land the
+      // stall on the first frame after the user turns the knob — the worst
+      // possible moment for a live instrument. Four shader compiles at boot is
+      // cheap; a dropped frame mid-performance is not.
+      bokeh: BOKEH_TIERS.map(n => this._mat(
+        '#define BOKEH_SAMPLES ' + n + '\n' + BOKEH_GATHER,
+        {
+          uMask:       { value: null },
+          uResolution: { value: new THREE.Vector2(1280, 720) },
+          uRadius:     { value: 0 },
+          uFocus:      { value: 1 },
+          uFeather:    { value: 0.3 },
+          uBlades:     { value: 0 },
+          uIris:       { value: 0 },
+          uRing:       { value: 0 },
+          uHighlight:  { value: 0.5 },
+          uThreshold:  { value: 0.7 },
+        },
+      )),
       pixelsort: this._mat(PIXEL_SORT, {
         uResolution: { value: new THREE.Vector2(1280, 720) },
         uThreshold:  { value: 0.3 },
