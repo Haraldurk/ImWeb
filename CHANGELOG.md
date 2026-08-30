@@ -51,6 +51,21 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
   Bokeh sits immediately before Bloom in the chain, which is where a lens would
   put it — the boosted highlights feed Bloom's threshold and the two compose as
   one optical stage. It is fully reorderable like any other effect.
+- **Learned MIDI mappings survive a reload.** They used to live in memory until
+  you remembered to save a preset, bank or project; learn a control, refresh,
+  and it was gone. They are now remembered per origin and restored at startup.
+  **Mappings only — never values.** A controller record carries the parameter's
+  current value as well as its mapping, so persisting the whole thing would
+  boot the instrument into a partial version of however you left it: Run Rec
+  still on, a swept Level still where a knob left it. The value is stripped on
+  the way out and again on the way in.
+  Restored *after* the boot bank or project, because the autosave is the more
+  recent truth — a bank carries whatever was mapped when it was last saved.
+  Anything you import afterwards still wins, and becomes the new autosave.
+  **⌫ Clear saved MIDI mappings** in the Project panel forgets them; live
+  mappings are untouched until the next reload. The status line names the
+  origin they came from, because localStorage is per-origin and ":5173 vs
+  :4173" is the usual reason mappings look lost.
 
 ### Fixed
 - **A MIDI button no longer fires twice — once on press and again on release.**
