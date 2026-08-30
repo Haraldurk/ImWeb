@@ -22,7 +22,7 @@ import {
   BUFFER_TRANSFORM, INTERP,
   PIXELATE, EDGE, RGBSHIFT, POSTERIZE, SOLARIZE, COLOR_CORRECT, CHROMA_KEY,
   VIGNETTE, BLOOM_EXTRACT, BLOOM_BLUR, BLOOM_COMPOSITE, BOKEH_GATHER,
-  BOKEH_COMPOSITE, KALEIDOSCOPE, PIXEL_SORT,
+  BOKEH_COMPOSITE, BOKEH_MASK_SLEW, KALEIDOSCOPE, PIXEL_SORT,
   FILM_GRAIN, FEEDBACK_ROTATE, QUAD_MIRROR, LEVELS, LUT3D, WHITE_BALANCE,
   SHARPEN, MIXBUS, CLIP_FADE,
   POLAR, WAVE, HALFTONE, DUOTONE, LENS,
@@ -183,8 +183,31 @@ const _FX = {
     // substitute a fallback for a null sampler the way _pass does, so this
     // guard is load-bearing, not defensive noise: without it WebGL gets a null
     // sampler and the whole frame goes.
-    const maskTex = pipe._resolveSource(pipe._fxInputs, p.get('effect.bokehmask').value);
+    let maskTex = pipe._resolveSource(pipe._fxInputs, p.get('effect.bokehmask').value);
     if (!maskTex) return tex;
+
+    // Ease the MASK, not the picture. The gather is stateless, so without this
+    // defocus snaps on and off with every twitch of a motion matte; easing the
+    // mask makes focus drift in and let go, which is what a focus pull looks
+    // like. Double-buffered, not guarded: read one target, write the other,
+    // flip — the same bargain the mix buses make.
+    const smoothSec = p.get('effect.bokehsmooth')?.value ?? 0;
+    if (smoothSec > 0) {
+      const rt  = pipe._ensureBokehMaskRT();
+      const cur = pipe._bokehMaskCur;
+      const nxt = cur ^ 1;
+      // Same "time to visually gone" convention as MotionExtract: after T
+      // seconds, 2% of the old value remains. Two meanings of "seconds" in one
+      // instrument is what made Motion's own controls read as wrong.
+      const dt = pipe._fxDt ?? 1 / 60;
+      pipe._passTo(pipe.m.bokehMaskSlew, {
+        uMask:  maskTex,
+        uPrev:  rt[cur].texture,
+        uDecay: Math.pow(0.02, dt / smoothSec),
+      }, rt[nxt]);
+      pipe._bokehMaskCur = nxt;
+      maskTex = rt[nxt].texture;
+    }
 
     const q   = Math.max(0, Math.min(BOKEH_TIERS.length - 1,
                                      p.get('effect.bokehquality')?.value ?? 1));
@@ -953,6 +976,10 @@ export class Pipeline {
     // stale bag on the pipe and the mask would silently read the pre-processed
     // texture.
     this._fxInputs = processedInputs;
+    // Bokeh's mask smoother is an exponential decay over TIME, so it needs the
+    // frame delta or its time constant would silently mean something different
+    // at every frame rate — a "0.5 s" glide that is really 0.25 s at 120 fps.
+    this._fxDt = dt;
 
     let postOut = shifted;
     if (p.get('effect.enable')?.value !== 0) {
@@ -1200,6 +1227,8 @@ export class Pipeline {
     this._bloomTargetH.setSize(hw, hh);
     this._bloomTargetV.setSize(hw, hh);
     this._bokehTarget.setSize(hw, hh);
+    // Lazily allocated — the guard is the point, not defensive noise.
+    this._bokehMaskRT?.forEach(t => t.setSize(hw, hh));
     this._mixRT.forEach(rt => rt && rt.forEach(t => t.setSize(w, h)));
     this._clipFadeRT.forEach(t => t && t.setSize(w, h));
     this._fbRT?.forEach(t => t.setSize(w, h));
@@ -1232,6 +1261,40 @@ export class Pipeline {
       type: THREE.UnsignedByteType,
       generateMipmaps: false,
     });
+  }
+
+  /**
+   * Ping-pong pair for the bokeh mask smoother, allocated on first use so a
+   * project that never smooths pays no VRAM — the same bargain the mix buses
+   * make.
+   *
+   * FloatType, not the UnsignedByteType of _makeTarget, and that is a
+   * correctness requirement rather than a quality preference. This is an
+   * exponential accumulator: at a long time constant the per-frame change falls
+   * BELOW one 8-bit level, the write rounds to the value already stored, and
+   * the mask stops moving while still short of its target. It does not
+   * degrade gracefully — it freezes, and only at the slow settings, which is
+   * where the control is most worth having. Same reasoning that put
+   * MotionExtract's background and trail buffers in float.
+   *
+   * LinearFilter is kept: unlike MotionExtract's 1:1 accumulators this one is
+   * read at full res by the composite, so it wants interpolation.
+   */
+  _ensureBokehMaskRT() {
+    if (!this._bokehMaskRT) {
+      const w = Math.ceil(this.width / 2);
+      const h = Math.ceil(this.height / 2);
+      const mk = () => new THREE.WebGLRenderTarget(w, h, {
+        minFilter: THREE.LinearFilter,
+        magFilter: THREE.LinearFilter,
+        format: THREE.RGBAFormat,
+        type: THREE.FloatType,
+        generateMipmaps: false,
+      });
+      this._bokehMaskRT  = [mk(), mk()];
+      this._bokehMaskCur = 0;
+    }
+    return this._bokehMaskRT;
   }
 
   /** Run a shader pass, returns the output texture */
@@ -1621,6 +1684,11 @@ export class Pipeline {
           uThreshold:  { value: 0.7 },
         },
       )),
+      bokehMaskSlew: this._mat(BOKEH_MASK_SLEW, {
+        uMask:  { value: null },
+        uPrev:  { value: null },
+        uDecay: { value: 0 },
+      }),
       bokehComposite: this._mat(BOKEH_COMPOSITE, {
         uBokeh:   { value: null },
         uMask:    { value: null },

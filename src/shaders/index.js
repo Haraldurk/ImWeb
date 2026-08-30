@@ -1737,6 +1737,29 @@ export const BOKEH_GATHER = /* glsl */ `
   }
 `;
 
+// Temporal smoothing for the bokeh mask.
+//
+// The gather is stateless — it answers the mask instantly, frame by frame, so
+// defocus snaps on and off with every twitch of a motion matte. Easing the MASK
+// instead of the picture makes the discs glide: focus drifts in and lets go
+// rather than flicking, which is the whole character of a real focus pull.
+//
+// Symmetric on purpose. MOTION_MATTE already offers instant-attack /
+// exponential-release through its own uDecay, so an asymmetric curve here would
+// duplicate a control the mask source already has. This one eases BOTH
+// directions, which is the part nothing else provides.
+export const BOKEH_MASK_SLEW = /* glsl */ `
+  uniform sampler2D uMask;   // this frame's mask
+  uniform sampler2D uPrev;   // last frame's smoothed mask
+  uniform float     uDecay;  // per-frame retention; 0 = follow instantly
+  varying vec2 vUv;
+  void main() {
+    float m = texture2D(uMask, vUv).r;
+    float p = texture2D(uPrev, vUv).r;
+    gl_FragColor = vec4(vec3(mix(m, p, uDecay)), 1.0);
+  }
+`;
+
 // Full-res composite for the half-res gather.
 //
 // This exists so half-res gathering costs nothing in the SHARP regions: an

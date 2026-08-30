@@ -251,6 +251,7 @@ export function buildMappingPanels(ps, contextMenu) {
                                              'bloom', 'bloomthresh', 'bloomradius',
                                              'bokeh', 'bokehmask', 'bokehradius',
                                              'bokehfocus', 'bokehfeather',
+                                             'bokehsmooth',
                                              'bokehblades', 'bokehrotate', 'bokehring',
                                              'bokehhighlight', 'bokehthresh',
                                              'bokehquality',

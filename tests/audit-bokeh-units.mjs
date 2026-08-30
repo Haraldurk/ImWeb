@@ -145,6 +145,49 @@ if (handler && /const amt = p\.get\('effect\.bokeh'\)\.value \/ 100;\s*\n\s*if \
   fail('the bokeh handler does not early-return at amount 0');
 }
 
+// ── 4. The mask smoother is an exponential accumulator ──────────────────────
+//
+// Same wall the half-float-slew audit guards for MotionExtract. In 8 bits the
+// per-frame step at a long time constant falls below one quantisation level,
+// the write rounds to the value already stored, and the mask FREEZES short of
+// its target. Measured: it stalls at every setting in the 0-2s range, and gets
+// worse the slower the control — which is exactly where it is most wanted.
+
+const ensure = (() => {
+  // Anchor on the METHOD DEFINITION, not the name: the handler's call to
+  // pipe._ensureBokehMaskRT() sits earlier in the file, so a bare indexOf finds
+  // the call site and slices a window with no allocation in it — which reads as
+  // "the target is not FloatType" when it is. (Cost this audit one false
+  // failure before it was noticed.)
+  const i = pipeline.indexOf('\n  _ensureBokehMaskRT() {');
+  if (i < 0) return null;
+  const j = pipeline.indexOf('\n  }', i + 10);
+  return j < 0 ? pipeline.slice(i) : pipeline.slice(i, j);
+})();
+
+if (!ensure) {
+  fail('could not locate _ensureBokehMaskRT in Pipeline.js');
+} else if (/type:\s*THREE\.FloatType/.test(ensure)) {
+  ok('the bokeh mask accumulator is FloatType, so a slow smooth cannot stall');
+} else {
+  fail('the bokeh mask accumulator is not FloatType — an 8-bit exponential ' +
+       'accumulator freezes short of its target at long time constants');
+}
+
+if (handler && /Math\.pow\(0\.02, dt \/ smoothSec\)/.test(handler)) {
+  ok('mask decay uses the 0.02 "time to visually gone" base, as MotionExtract does');
+} else {
+  fail('mask decay does not use the same seconds convention as MotionExtract — ' +
+       'two meanings of "seconds" in one instrument is what made Motion read as wrong');
+}
+
+if (handler && /pipe\._fxDt/.test(handler)) {
+  ok('mask decay is driven by the frame delta, not a per-frame constant');
+} else {
+  fail('mask decay ignores dt — the time constant would mean something ' +
+       'different at every frame rate');
+}
+
 if (failed) {
   console.error('\nFAIL — a Bokeh numeric contract is broken.\n');
   process.exit(1);

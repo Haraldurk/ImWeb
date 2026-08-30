@@ -5050,6 +5050,25 @@ export function registerCoreParameters(ps) {
     value: 30,
     unit: "%",
   });
+  // Mask smoothing, in SECONDS, on the same "time to visually gone" convention
+  // MotionExtract uses: after T seconds 2% of the old value remains. Matching
+  // that convention matters more than picking a nicer curve — two different
+  // meanings of "seconds" in one instrument is what made Motion's own Bg-adapt
+  // and Trail read as simply wrong before they were reconciled.
+  //
+  // Easing the MASK rather than the picture is the point: it makes the discs
+  // glide instead of flicking, which is what a focus pull actually looks like.
+  // 0 disables the pass outright rather than approaching zero.
+  ps.register({
+    id: "effect.bokehsmooth",
+    label: "Bokeh.Smooth",
+    group: "effect",
+    min: 0,
+    max: 2,
+    value: 0.25,
+    step: 0.01,
+    unit: "s",
+  });
   ps.register({
     id: "effect.bokehblades",
     label: "Bokeh.Blades",
