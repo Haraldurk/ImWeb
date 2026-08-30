@@ -1770,17 +1770,32 @@ export const BOKEH_MASK_SLEW = /* glsl */ `
 export const BOKEH_COMPOSITE = /* glsl */ `
   uniform sampler2D uTexture;   // original, full resolution
   uniform sampler2D uBokeh;     // gathered, half resolution
+  uniform sampler2D uDiscs;     // gathered HIGHLIGHTS, half resolution
   uniform sampler2D uMask;
   uniform float     uFocus;
   uniform float     uFeather;
   uniform float     uAmount;    // master, crossfades the whole effect
+  uniform float     uDiscAmt;   // how hard the highlight discs are added back
   varying vec2 vUv;
   void main() {
     vec4  orig = texture2D(uTexture, vUv);
     vec3  blur = texture2D(uBokeh,   vUv).rgb;
     float m    = texture2D(uMask,    vUv).r;
     float coc  = smoothstep(0.0, max(uFeather, 0.001), abs(m - uFocus));
-    gl_FragColor = vec4(mix(orig.rgb, blur, coc * uAmount), orig.a);
+
+    vec3 col = mix(orig.rgb, blur, coc * uAmount);
+
+    // Discs are ADDED, not averaged, and that is the whole reason this branch
+    // exists. Spreading a point across a disc divides its energy by the sample
+    // count: measured, a 4px highlight over a 12px radius peaks at 13/255 —
+    // a disc too faint to see against anything. Adding the gathered highlights
+    // back with gain restores what the averaging took out.
+    //
+    // Scaled by coc so a highlight that is still in FOCUS does not sprout a
+    // disc it has no business having.
+    col += texture2D(uDiscs, vUv).rgb * uDiscAmt * coc * uAmount;
+
+    gl_FragColor = vec4(col, orig.a);
   }
 `;
 

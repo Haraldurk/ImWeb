@@ -31,6 +31,23 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
   the default and costs roughly one Bloom; a large radius at Draft will show
   rings, because radius and sample count are coupled by nature.
 
+  **Bokeh.Discs** is what makes discs appear on ordinary footage. A plain
+  gather images what is actually there, so it only forms a disc from a
+  highlight *smaller* than the blur radius — and spreading a point across a
+  disc divides its energy by the sample count, leaving a disc too faint to see.
+  Discs extracts the highlights above **Bokeh.Thresh**, gathers those
+  separately, and adds them back with gain. Raising Thresh shrinks each
+  highlight to its brightest core, which is what lets a large soft highlight
+  become a ring at all: measured on a highlight twice the blur radius, the
+  direct gather gives a rim/centre contrast of 1.00 (no ring possible) while
+  extracting at 93 % gives 14.19. **For visible discs, Thresh wants to be high
+  — 85 % or above — not low.** Set Discs to 0 for a purely optical defocus,
+  which also skips both extra passes.
+
+  **Bokeh.Smooth** eases the mask over time so focus glides in and lets go
+  instead of snapping with every twitch of a motion matte. In seconds, on the
+  same "time to visually gone" convention Motion Extraction uses.
+
   Bokeh sits immediately before Bloom in the chain, which is where a lens would
   put it — the boosted highlights feed Bloom's threshold and the two compose as
   one optical stage. It is fully reorderable like any other effect.

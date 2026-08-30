@@ -5120,6 +5120,31 @@ export function registerCoreParameters(ps) {
     value: 70,
     unit: "%",
   });
+  // Highlight discs, added back on top of the defocus.
+  //
+  // Why this is not just more Highlight: spreading a point across a disc
+  // DIVIDES its energy by the sample count. Measured on the real shader, a 4px
+  // highlight gathered at radius 12 peaks at 13/255 — a disc too faint to see
+  // against any real scene, which is why a correct gather can look like it is
+  // doing nothing. Extracting the highlights, gathering those separately and
+  // ADDING them back with gain restores exactly what the averaging removed.
+  //
+  // Thresh gates the extraction, so raising it shrinks each highlight to its
+  // brightest core — and a highlight only reads as a disc once it is small
+  // relative to the radius. Measured: rim/centre contrast is 5.17 when the
+  // highlight matches the radius and exactly 1.00 (no disc at all) by twice it.
+  //
+  // 0 skips the extract and the second gather entirely, so the honest optical
+  // defocus costs no more than it did before this existed.
+  ps.register({
+    id: "effect.bokehdiscs",
+    label: "Bokeh.Discs",
+    group: "effect",
+    min: 0,
+    max: 100,
+    value: 50,
+    unit: "%",
+  });
   // A SELECT, not a slider, and not by preference: GLSL ES 1.00 requires
   // CONSTANT loop bounds, so sample count cannot be a uniform. Each tier is a
   // separately compiled variant behind `#define BOKEH_SAMPLES n`.

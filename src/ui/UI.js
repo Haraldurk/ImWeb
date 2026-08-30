@@ -254,6 +254,7 @@ export function buildMappingPanels(ps, contextMenu) {
                                              'bokehsmooth',
                                              'bokehblades', 'bokehrotate', 'bokehring',
                                              'bokehhighlight', 'bokehthresh',
+                                             'bokehdiscs',
                                              'bokehquality',
                                              'vignette', 'vigradius', 'vigcx', 'vigcy',
                                              'vighue', 'vigtint']),

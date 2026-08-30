@@ -68,14 +68,31 @@ const handler = (() => {
 if (!handler) {
   fail('could not locate the bokeh handler in Pipeline.js (renamed? update this audit, do not delete it)');
 } else {
-  const radiusLine = handler.split('\n').find((l) => l.includes('uRadius:'));
-  if (!radiusLine) {
+  // Follow ONE level of indirection. The first version of this check required
+  // pipe.height on the uRadius: line itself, which is a syntactic accident
+  // rather than the invariant: hoisting the expression into a named const —
+  // necessary once a second gather pass needed the same value — preserved the
+  // invariant exactly and still failed the check. An audit that fails on a
+  // correct refactor teaches people to delete audits.
+  const radiusLines = handler.split('\n').filter((l) => l.includes('uRadius:'));
+  if (!radiusLines.length) {
     fail('the bokeh handler sets no uRadius');
-  } else if (/pipe\.(height|width)/.test(radiusLine)) {
-    ok('uRadius is scaled by a frame dimension, not passed raw');
   } else {
-    fail('uRadius is passed WITHOUT a pipe.height/width term — ' +
-         'the shader reads it as pixels, so this is a different blur at every canvas size');
+    const scaled = radiusLines.every((line) => {
+      if (/pipe\.(height|width)/.test(line)) return true;           // inline
+      const ident = line.match(/uRadius:\s*([A-Za-z_$][\w$]*)\s*,/); // via a const
+      if (!ident) return false;
+      const decl = handler.match(
+        new RegExp('(?:const|let)\\s+' + ident[1] + '\\s*=([^;]*);'),
+      );
+      return !!decl && /pipe\.(height|width)/.test(decl[1]);
+    });
+    if (scaled) {
+      ok(`uRadius is scaled by a frame dimension at all ${radiusLines.length} gather call(s)`);
+    } else {
+      fail('a uRadius is passed WITHOUT a pipe.height/width term — ' +
+           'the shader reads it as pixels, so this is a different blur at every canvas size');
+    }
   }
 
   // The shader must agree that it is receiving pixels.

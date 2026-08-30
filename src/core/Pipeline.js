@@ -219,6 +219,13 @@ const _FX = {
 
     const focus   = (p.get('effect.bokehfocus')?.value   ?? 100) / 100;
     const feather = (p.get('effect.bokehfeather')?.value ?? 30)  / 100;
+    const ring    = (p.get('effect.bokehring')?.value    ?? 0)   / 100;
+    const iris    = ((p.get('effect.bokehrotate')?.value ?? 0) * Math.PI) / 180;
+    const thresh  = (p.get('effect.bokehthresh')?.value  ?? 70)  / 100;
+    // Percent of frame height → pixels. 0.10 puts full travel at ~108px on a
+    // 1080p canvas, which is the scale the reference photographs sit at; the
+    // default 25 % is ~27px, unmistakably a defocus rather than a sharpen.
+    const radiusPx = ((p.get('effect.bokehradius')?.value ?? 25) / 100) * 0.10 * pipe.height;
 
     // 1. Gather at half res into the dedicated target. _passTo does not
     //    ping-pong, so this costs no flip — and the target is outside the
@@ -226,20 +233,59 @@ const _FX = {
     pipe._passTo(mat, {
       uTexture:   tex,
       uMask:      maskTex,
-      // Percent of frame height → pixels. 0.10 puts full travel at ~108px on a
-      // 1080p canvas, which is the scale the reference photographs sit at; the
-      // default 25 % is ~27px, unmistakably a defocus rather than a sharpen.
-      uRadius:    ((p.get('effect.bokehradius')?.value ?? 25) / 100) * 0.10 * pipe.height,
+      uRadius:    radiusPx,
       uFocus:     focus,
       uFeather:   feather,
       uBlades:    blades,
-      uIris:      ((p.get('effect.bokehrotate')?.value ?? 0) * Math.PI) / 180,
-      uRing:      (p.get('effect.bokehring')?.value ?? 0) / 100,
+      uIris:      iris,
+      uRing:      ring,
       uHighlight: (p.get('effect.bokehhighlight')?.value ?? 50) / 100,
-      uThreshold: (p.get('effect.bokehthresh')?.value ?? 70) / 100,
+      uThreshold: thresh,
     }, pipe._bokehTarget);
 
-    // 2. Composite at full res. ONE _pass, so this handler nets one flip —
+    // 2. Highlight discs. Extract above threshold, gather THAT with the same
+    //    kernel, and let the composite add it back with gain.
+    //
+    //    Averaging is why this is needed: spreading a point across a disc
+    //    divides its energy by the sample count, so a correct gather produces a
+    //    disc too faint to see and reads as "the effect does nothing". The
+    //    extract also shrinks each highlight to its brightest core, and a
+    //    highlight only reads as a disc once it is small relative to the radius
+    //    — measured, rim/centre contrast is 5.17 at parity and exactly 1.00 by
+    //    twice the radius.
+    //
+    //    Skipped entirely at 0, so the plain optical defocus pays nothing for
+    //    a branch it is not using.
+    const discAmt = (p.get('effect.bokehdiscs')?.value ?? 0) / 100;
+    let discTex = null;
+    if (discAmt > 0) {
+      const discRT = pipe._ensureBokehDiscRT();
+      // BLOOM_EXTRACT is exactly this operation and is already compiled. Both
+      // call sites set uThreshold before rendering, and bokeh runs before bloom
+      // in the chain, so sharing the material cannot leave a stale uniform.
+      pipe._passTo(pipe.m.bloomExtract, {
+        uTexture:   tex,
+        uThreshold: (p.get('effect.bokehthresh')?.value ?? 70) / 100,
+      }, pipe._bokehHiRT);
+      pipe._passTo(mat, {
+        uTexture:   pipe._bokehHiRT.texture,
+        uMask:      maskTex,
+        uRadius:    radiusPx,
+        uFocus:     focus,
+        uFeather:   feather,
+        uBlades:    blades,
+        uIris:      iris,
+        uRing:      ring,
+        // The extract has already done the thresholding, so the in-place boost
+        // is switched OFF here. Leaving it on would threshold twice and crush
+        // the disc's own falloff, which is the rim the Ring control shapes.
+        uHighlight: 0,
+        uThreshold: 1.5,
+      }, discRT);
+      discTex = discRT.texture;
+    }
+
+    // 3. Composite at full res. ONE _pass, so this handler nets one flip —
     //    the same parity as any single-pass effect, which is why it needs no
     //    manual _current correction the way bloom does.
     //
@@ -1229,6 +1275,8 @@ export class Pipeline {
     this._bokehTarget.setSize(hw, hh);
     // Lazily allocated — the guard is the point, not defensive noise.
     this._bokehMaskRT?.forEach(t => t.setSize(hw, hh));
+    this._bokehHiRT?.setSize(hw, hh);
+    this._bokehDiscRT?.setSize(hw, hh);
     this._mixRT.forEach(rt => rt && rt.forEach(t => t.setSize(w, h)));
     this._clipFadeRT.forEach(t => t && t.setSize(w, h));
     this._fbRT?.forEach(t => t.setSize(w, h));
@@ -1280,6 +1328,21 @@ export class Pipeline {
    * LinearFilter is kept: unlike MotionExtract's 1:1 accumulators this one is
    * read at full res by the composite, so it wants interpolation.
    */
+  /**
+   * Extract + disc-gather targets for the highlight branch, allocated on first
+   * use. UnsignedByte is fine here — unlike the mask smoother these hold a
+   * single frame's result, not an accumulator, so there is nothing to stall.
+   */
+  _ensureBokehDiscRT() {
+    if (!this._bokehDiscRT) {
+      const w = Math.ceil(this.width / 2);
+      const h = Math.ceil(this.height / 2);
+      this._bokehHiRT   = this._makeTarget(w, h);   // extracted highlights
+      this._bokehDiscRT = this._makeTarget(w, h);   // those highlights gathered
+    }
+    return this._bokehDiscRT;
+  }
+
   _ensureBokehMaskRT() {
     if (!this._bokehMaskRT) {
       const w = Math.ceil(this.width / 2);
