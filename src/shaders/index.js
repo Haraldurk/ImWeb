@@ -1668,6 +1668,13 @@ export const BOKEH_GATHER = /* glsl */ `
 
   float luma(vec3 c) { return dot(c, vec3(0.2126, 0.7152, 0.0722)); }
 
+  // Cheap per-pixel hash. Used to rotate the sample spiral, nothing else.
+  float hash12(vec2 p) {
+    vec3 p3 = fract(vec3(p.xyx) * 0.1031);
+    p3 += dot(p3, p3.yzx + 33.33);
+    return fract((p3.x + p3.y) * p3.z);
+  }
+
   void main() {
     vec4 centre = texture2D(uTexture, vUv);
 
@@ -1689,6 +1696,19 @@ export const BOKEH_GATHER = /* glsl */ `
     float p    = 1.0 + uHighlight * 2.0;
     float invP = 1.0 / p;
 
+    // Rotate the whole spiral by a per-pixel angle.
+    //
+    // Without this, every fragment samples the SAME set of offsets, so one
+    // bright point lands on a regular lattice of output pixels and the disc
+    // reads as a field of separate dots rather than a disc — worse the larger
+    // the radius, because the same sample count is spread over an area that
+    // grows with its square. Decorrelating the pattern per pixel converts that
+    // structured aliasing into noise, which the eye reads as grain.
+    //
+    // Keyed on gl_FragCoord, so the pattern is STATIC: it does not crawl or
+    // flicker between frames, which a time-seeded jitter would.
+    float jitter = hash12(gl_FragCoord.xy) * 6.28318531;
+
     vec3  acc  = vec3(0.0);
     float wsum = 0.0;
 
@@ -1699,7 +1719,11 @@ export const BOKEH_GATHER = /* glsl */ `
       // the centre and the disc reads as a soft blob rather than a disc.
       float t = (fi + 0.5) / float(BOKEH_SAMPLES);
       float r = sqrt(t);
-      float a = fi * GOLDEN + uIris;
+      // uIris is deliberately NOT in here. It orients the POLYGON below, and
+      // the jitter must not rotate that: a per-pixel iris rotation averages
+      // every blade count back into a circle, so Blades would stop working
+      // while still appearing to be set.
+      float a = fi * GOLDEN + jitter;
 
       // Bladed iris: push the unit disc out to the polygon boundary at this
       // angle. uBlades 0 leaves it circular.
@@ -1708,7 +1732,9 @@ export const BOKEH_GATHER = /* glsl */ `
         // not style, it is the difference between compiling and not.
         float seg     = 2.0 * PI / uBlades;
         float halfSeg = PI / uBlades;
-        r *= cos(halfSeg) / cos(mod(a, seg) - halfSeg);
+        // Evaluated at (a - uIris), so the iris is fixed in SCREEN space and
+        // turns only with uIris, while the samples inside it stay jittered.
+        r *= cos(halfSeg) / cos(mod(a - uIris, seg) - halfSeg);
       }
 
       vec2 off = vec2(cos(a), sin(a)) * r * texel;
