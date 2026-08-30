@@ -8,6 +8,33 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
 
 ## [Unreleased]
 
+### Added
+- **Bokeh — a lens defocus in Effects › Optics.** Not a blur with a hole in it:
+  bright points spread into real discs, and **Bokeh.Ring** decides where the
+  energy sits across each one. Positive puts a bright rim on every highlight and
+  reads as nearly hollow at the extreme — the soap-bubble bokeh of a fast lens
+  or a mirror lens. Negative is centre-weighted and soft. **Bokeh.Blades** shapes
+  the disc into a 5, 6 or 8-sided iris, with **Bokeh.Iris** to rotate it.
+
+  What decides *where* it defocuses is **Bokeh.Mask** — any routable source, not
+  a depth buffer. Video carries no depth, so the effect reads a mask instead and
+  does not care what the mask means: Motion by default, so a moving subject stays
+  sharp while the static background goes soft. **Bokeh.Focus** picks the mask
+  value that stays sharp, in either direction — 100 % keeps white sharp, 0 %
+  keeps black sharp, and a value in between keeps a band sharp and defocuses away
+  from it on both sides. That is why there is no Invert control; Focus already
+  covers both polarities.
+
+  **Bokeh.Radius** is a percentage of frame height rather than pixels, so a look
+  survives a change of resolution instead of halving in strength between 1080p
+  and 4K. **Bokeh.Quality** (Draft/Good/Fine/Max) sets the sample count. Good is
+  the default and costs roughly one Bloom; a large radius at Draft will show
+  rings, because radius and sample count are coupled by nature.
+
+  Bokeh sits immediately before Bloom in the chain, which is where a lens would
+  put it — the boosted highlights feed Bloom's threshold and the two compose as
+  one optical stage. It is fully reorderable like any other effect.
+
 ### Fixed
 - **A MIDI button no longer fires twice — once on press and again on release.**
   Hardware buttons are momentary: a Korg nanoKONTROL2 sends CC 127 on press and

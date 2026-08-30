@@ -5003,18 +5003,28 @@ export function registerCoreParameters(ps) {
     options: SOURCES,
     value: SOURCE_KEYS.indexOf("motion"),
   });
-  // Max circle of confusion, in the same tap-spacing spirit as bloomradius but
-  // with real taps behind it. Tops out at 8 because past that the sample count
-  // available at Good undersamples into visible rings.
+  // Max circle of confusion, as a PERCENTAGE OF FRAME HEIGHT — not pixels and
+  // not bloomradius's "×".
+  //
+  // It shipped once as 0.25-8 "×", copied from bloomradius. That range is right
+  // for bloom, where the number is a tap SPACING multiplier, and meaningless
+  // here, where it is a real radius: the handler read it as pixels, so the
+  // default 2 was a two-pixel blur on a 1900-pixel canvas. Invisible — while
+  // the highlight boost and the power gather still ran at full strength, so the
+  // effect looked exactly like bloom and nothing like defocus.
+  //
+  // Relative to height rather than absolute pixels so the look survives a
+  // resolution change: a fixed pixel radius halves in apparent strength going
+  // from 1080p to 4K, which is precisely the comparison this project gets
+  // judged on.
   ps.register({
     id: "effect.bokehradius",
     label: "Bokeh.Radius",
     group: "effect",
-    min: 0.25,
-    max: 8,
-    value: 2,
-    step: 0.05,
-    unit: "×",
+    min: 0,
+    max: 100,
+    value: 25,
+    unit: "%",
   });
   // The mask value that stays SHARP. Focus is a plane, not a side: 100 keeps
   // white sharp (a motion matte's moving subject), 0 keeps black sharp (its

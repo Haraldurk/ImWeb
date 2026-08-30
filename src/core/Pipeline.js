@@ -203,7 +203,10 @@ const _FX = {
     pipe._passTo(mat, {
       uTexture:   tex,
       uMask:      maskTex,
-      uRadius:    p.get('effect.bokehradius')?.value ?? 2,
+      // Percent of frame height → pixels. 0.10 puts full travel at ~108px on a
+      // 1080p canvas, which is the scale the reference photographs sit at; the
+      // default 25 % is ~27px, unmistakably a defocus rather than a sharpen.
+      uRadius:    ((p.get('effect.bokehradius')?.value ?? 25) / 100) * 0.10 * pipe.height,
       uFocus:     focus,
       uFeather:   feather,
       uBlades:    blades,
