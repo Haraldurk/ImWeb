@@ -22,7 +22,7 @@ import {
   BUFFER_TRANSFORM, INTERP,
   PIXELATE, EDGE, RGBSHIFT, POSTERIZE, SOLARIZE, COLOR_CORRECT, CHROMA_KEY,
   VIGNETTE, BLOOM_EXTRACT, BLOOM_BLUR, BLOOM_COMPOSITE, BOKEH_GATHER,
-  KALEIDOSCOPE, PIXEL_SORT,
+  BOKEH_COMPOSITE, KALEIDOSCOPE, PIXEL_SORT,
   FILM_GRAIN, FEEDBACK_ROTATE, QUAD_MIRROR, LEVELS, LUT3D, WHITE_BALANCE,
   SHARPEN, MIXBUS, CLIP_FADE,
   POLAR, WAVE, HALFTONE, DUOTONE, LENS,
@@ -35,7 +35,13 @@ const MIX_PREFIX = ['mix', 'mix2', 'mix3'];
 export const DEFAULT_FX_ORDER = [
   'pixelate','edge','sharpen','rgbshift',
   'wave','lens','polar','kaleidoscope','quadmirror','flip',
-  'posterize','solarize','halftone','duotone','vignette','bloom',
+  'posterize','solarize','halftone','duotone','vignette',
+  // Bokeh sits immediately BEFORE bloom on purpose: defocus is a lens
+  // phenomenon and bloom is the highlight half of the same lens, so blurring
+  // first lets the boosted highlights feed bloom's threshold and the two
+  // compose as one optical stage. Reversed, you bloom a sharp image and then
+  // smear the glow, which reads as a post-blur rather than a lens.
+  'bokeh','bloom',
   'outhsv','levels','lut','whitebal','pixelsort','grain',
   // Interlace used to run as a FIXED pass after the whole chain. It is an
   // effect, so it is in the chain now — placed last, which is exactly where it
@@ -166,6 +172,64 @@ const _FX = {
       uTexture: tex,
       uBloom:   pipe._bloomTargetV.texture,
       uStrength: amt * 3,
+    });
+  },
+  bokeh: (pipe, tex, p) => {
+    const amt = p.get('effect.bokeh').value / 100;
+    if (amt <= 0) return tex;
+
+    // The mask is a routable source, so it can be absent — a project saved
+    // before a source existed, or a deck with no clip loaded. _passTo does NOT
+    // substitute a fallback for a null sampler the way _pass does, so this
+    // guard is load-bearing, not defensive noise: without it WebGL gets a null
+    // sampler and the whole frame goes.
+    const maskTex = pipe._resolveSource(pipe._fxInputs, p.get('effect.bokehmask').value);
+    if (!maskTex) return tex;
+
+    const q   = Math.max(0, Math.min(BOKEH_TIERS.length - 1,
+                                     p.get('effect.bokehquality')?.value ?? 1));
+    const mat = pipe.m.bokeh[q];
+
+    // The SELECT stores a menu index; the shader wants a blade COUNT. Mapping
+    // by position in the same order the options are declared.
+    const blades = [0, 5, 6, 8][p.get('effect.bokehblades')?.value ?? 0] ?? 0;
+
+    const focus   = (p.get('effect.bokehfocus')?.value   ?? 100) / 100;
+    const feather = (p.get('effect.bokehfeather')?.value ?? 30)  / 100;
+
+    // 1. Gather at half res into the dedicated target. _passTo does not
+    //    ping-pong, so this costs no flip — and the target is outside the
+    //    ping-pong pool, so it can never alias tex.
+    pipe._passTo(mat, {
+      uTexture:   tex,
+      uMask:      maskTex,
+      uRadius:    p.get('effect.bokehradius')?.value ?? 2,
+      uFocus:     focus,
+      uFeather:   feather,
+      uBlades:    blades,
+      uIris:      ((p.get('effect.bokehrotate')?.value ?? 0) * Math.PI) / 180,
+      uRing:      (p.get('effect.bokehring')?.value ?? 0) / 100,
+      uHighlight: (p.get('effect.bokehhighlight')?.value ?? 50) / 100,
+      uThreshold: (p.get('effect.bokehthresh')?.value ?? 70) / 100,
+    }, pipe._bokehTarget);
+
+    // 2. Composite at full res. ONE _pass, so this handler nets one flip —
+    //    the same parity as any single-pass effect, which is why it needs no
+    //    manual _current correction the way bloom does.
+    //
+    //    Stating the aliasing case explicitly rather than trusting the guard:
+    //    the previous effect wrote targets[c] and left _current = c^1, so this
+    //    pass writes targets[c^1] while reading tex = targets[c]. They differ.
+    //    _bokehTarget is dedicated and never a ping-pong target. So nothing
+    //    aliases, and the identity guard should never fire here — if it does,
+    //    something upstream changed the flip count and that is the bug.
+    return pipe._pass(pipe.m.bokehComposite, {
+      uTexture: tex,
+      uBokeh:   pipe._bokehTarget.texture,
+      uMask:    maskTex,
+      uFocus:   focus,
+      uFeather: feather,
+      uAmount:  amt,
     });
   },
   levels: (pipe, tex, p) => {
@@ -875,6 +939,18 @@ export class Pipeline {
     // bypassed chain costs nothing at all — which is the point of having it on
     // a controller. Scope is the post-FX chain only: Blend & Feedback and the
     // colour shift are their own section and are not touched.
+    // Effect handlers are called as (pipe, tex, p) — self-contained on one
+    // texture. Bokeh is the first that reads a SECOND source (its mask), so the
+    // resolved inputs bag is stashed on the pipe here rather than widening the
+    // handler signature for one caller.
+    //
+    // It is set immediately before the loop and not at the declaration on
+    // purpose: `processedInputs` is a `let` that gets REASSIGNED to
+    // this._pInputs partway through render(), so stashing it early would park a
+    // stale bag on the pipe and the mask would silently read the pre-processed
+    // texture.
+    this._fxInputs = processedInputs;
+
     let postOut = shifted;
     if (p.get('effect.enable')?.value !== 0) {
       for (const fx of this.fxOrder) {
@@ -1542,6 +1618,13 @@ export class Pipeline {
           uThreshold:  { value: 0.7 },
         },
       )),
+      bokehComposite: this._mat(BOKEH_COMPOSITE, {
+        uBokeh:   { value: null },
+        uMask:    { value: null },
+        uFocus:   { value: 1 },
+        uFeather: { value: 0.3 },
+        uAmount:  { value: 0 },
+      }),
       pixelsort: this._mat(PIXEL_SORT, {
         uResolution: { value: new THREE.Vector2(1280, 720) },
         uThreshold:  { value: 0.3 },

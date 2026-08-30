@@ -1348,6 +1348,7 @@ const _FX_NODE_INFO = {
   posterize:   { label: 'poster',  isActive: p => p.get('effect.posterize').value < 32 },
   solarize:    { label: 'solar',   isActive: p => p.get('effect.solarize').value < 100 },
   vignette:    { label: 'vign',    isActive: p => p.get('effect.vignette').value > 0 },
+  bokeh:       { label: 'bokeh',   isActive: p => p.get('effect.bokeh').value > 0 },
   bloom:       { label: 'bloom',   isActive: p => p.get('effect.bloom').value > 0 },
   levels:      { label: 'levels',  isActive: p => p.get('effect.lvblack').value > 0 || p.get('effect.lvwhite').value < 100 || p.get('effect.lvgamma').value !== 100 },
   // The only entry that needs more than the params: LUT Amount defaults above

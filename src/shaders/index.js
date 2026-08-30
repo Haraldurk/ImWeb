@@ -1737,6 +1737,30 @@ export const BOKEH_GATHER = /* glsl */ `
   }
 `;
 
+// Full-res composite for the half-res gather.
+//
+// This exists so half-res gathering costs nothing in the SHARP regions: an
+// in-focus pixel takes the full-res original verbatim and never sees the
+// downsampled buffer. The defocus term is recomputed here rather than passed
+// through the gather's output, because a half-res alpha channel would carry
+// the same downsampling the composite is here to avoid.
+export const BOKEH_COMPOSITE = /* glsl */ `
+  uniform sampler2D uTexture;   // original, full resolution
+  uniform sampler2D uBokeh;     // gathered, half resolution
+  uniform sampler2D uMask;
+  uniform float     uFocus;
+  uniform float     uFeather;
+  uniform float     uAmount;    // master, crossfades the whole effect
+  varying vec2 vUv;
+  void main() {
+    vec4  orig = texture2D(uTexture, vUv);
+    vec3  blur = texture2D(uBokeh,   vUv).rgb;
+    float m    = texture2D(uMask,    vUv).r;
+    float coc  = smoothstep(0.0, max(uFeather, 0.001), abs(m - uFocus));
+    gl_FragColor = vec4(mix(orig.rgb, blur, coc * uAmount), orig.a);
+  }
+`;
+
 export const BUFFER_TRANSFORM = /* glsl */ `
   uniform sampler2D uTexture;
   uniform float uPanX;

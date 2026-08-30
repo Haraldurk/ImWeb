@@ -7901,10 +7901,23 @@ void main() {
     const _pmCap = PARTICLE_MASK_SRC[ps.get("particle.masksrc").value] ?? null;
     const _pmIdx = _pmCap == null ? -1 : _captureIdx(_pmCap);
 
+    // The bokeh mask is a real consumer of whatever it points at, the same
+    // shape as the keyer's external key: only while the effect is actually
+    // doing something. Gated on effect.enable as well, because the master
+    // bypass skips the whole FX loop, so a bypassed bokeh pulls nothing.
+    //
+    // No _captureIdx here — bokehmask is declared `options: SOURCES`, so its
+    // value is already a direct SOURCE_DEFS index. _captureIdx is for the
+    // CAPTURE_SOURCES params, whose menu carries the indirect tail.
+    const _cBokeh =
+      ps.get("effect.enable").value !== 0 && ps.get("effect.bokeh").value > 0
+        ? ps.get("effect.bokehmask").value
+        : -1;
+
     const _direct = (i) =>
       _cFg === i || _cBg === i || _cDs === i || _cTd === i || _cTdMap === i ||
       _cSlit === i || _cVwarp === i || _cDelay === i || _cRutt === i ||
-      _cSdfTex === i || _cSdfRef === i || _cKeySrc === i;
+      _cSdfTex === i || _cSdfRef === i || _cKeySrc === i || _cBokeh === i;
 
     // Per-bus inputs. Which one can actually reach the bus output? MIXBUS
     // computes mix(a, modeResult, xfade): xfade=0 is pure srcA (srcB hidden),
