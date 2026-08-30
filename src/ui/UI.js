@@ -436,6 +436,32 @@ export function buildMappingPanels(ps, contextMenu) {
     }
   }
 
+  // ── Bokeh: Iris does nothing while Blades is Circle ───────────────────────
+  // uIris is referenced in exactly one place in BOKEH_GATHER, inside
+  // `if (uBlades >= 3.0)` — a circle is rotationally symmetric, so there is
+  // genuinely nothing for a rotation to change. Without this the slider moves,
+  // the readout counts to 360°, and the picture does not change, which reads as
+  // a broken control rather than an inapplicable one. It was reported as one.
+  //
+  // Dimmed rather than hidden, and left interactive — see .param-na in
+  // style.css for why.
+  {
+    const opticsEl = document.getElementById('effect-optics-params');
+    const irisRow  = opticsEl?.querySelector('[data-param-id="effect.bokehrotate"]');
+    const bladesParam = ps.get('effect.bokehblades');
+    if (irisRow && bladesParam) {
+      const CIRCLE = 0;
+      const refreshBokehIrisRow = () => {
+        const na = bladesParam.value === CIRCLE;
+        irisRow.classList.toggle('param-na', na);
+        if (na) irisRow.title = 'No effect while Bokeh.Blades is Circle — a circular iris has no orientation. Choose 5, 6 or 8 blades.';
+        else    irisRow.removeAttribute('title');
+      };
+      refreshBokehIrisRow();
+      bladesParam.onChange(refreshBokehIrisRow);
+    }
+  }
+
   // ── Particle panel: grouped by function ──────────────────────────────────────
   const allParticleP = ps.getGroup('particle');
   const _pById = Object.fromEntries(allParticleP.map(p => [p.id, p]));

@@ -722,6 +722,16 @@ button.ws-open:hover {
     font-size: 9px;
     margin-left: 3px;
 }
+/* A control that is real and settable but has nothing to act on given another
+   parameter's current value — Bokeh.Iris while Blades is Circle. Dimmed, NOT
+   hidden: a row that vanishes reads as a missing feature, and hiding it would
+   also reflow every row beneath it each time the other control moves, which is
+   the last thing wanted mid-performance. Interaction is deliberately left
+   alone, so the value can still be pre-set or driven by a controller and takes
+   effect the moment the condition clears. The row carries a title saying why. */
+.param-row.param-na {
+    opacity: 0.45;
+}
 .section-header.collapsed::after {
     content: " ▸";
 }
