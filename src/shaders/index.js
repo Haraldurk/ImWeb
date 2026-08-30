@@ -1632,6 +1632,111 @@ export const BLOOM_COMPOSITE = /* glsl */ `
   }
 `;
 
+// Variable-radius bokeh gather.
+//
+// BLOOM_BLUR cannot be reused and its own comment says why: it widens tap
+// SPACING rather than adding taps, which is what makes its radius nearly free.
+// That trick cannot work here — a bladed iris kernel is non-separable by
+// definition — so this pass spends real taps distributed across a disc, and
+// sample count is the cost knob.
+//
+// BOKEH_SAMPLES is a preprocessor constant, not a uniform, because GLSL ES 1.00
+// requires CONSTANT loop bounds. Pipeline compiles one material per quality
+// tier by prefixing this source with a #define; the #ifndef below only keeps
+// the bare export compiling on its own.
+export const BOKEH_GATHER = /* glsl */ `
+  #ifndef BOKEH_SAMPLES
+  #define BOKEH_SAMPLES 32
+  #endif
+
+  uniform sampler2D uTexture;
+  uniform sampler2D uMask;
+  uniform vec2      uResolution;
+  uniform float     uRadius;      // max circle of confusion, in pixels
+  uniform float     uFocus;       // 0-1 mask value that stays sharp
+  uniform float     uFeather;     // 0-1 transition width around focus
+  uniform float     uBlades;      // 0 = circle, else blade count
+  uniform float     uIris;        // iris rotation, radians
+  uniform float     uRing;        // -1..1 apodization
+  uniform float     uHighlight;   // 0-1 highlight dominance
+  uniform float     uThreshold;   // 0-1 what counts as a highlight
+
+  varying vec2 vUv;
+
+  const float GOLDEN = 2.39996323;
+  const float PI     = 3.14159265;
+
+  float luma(vec3 c) { return dot(c, vec3(0.2126, 0.7152, 0.0722)); }
+
+  void main() {
+    vec4 centre = texture2D(uTexture, vUv);
+
+    // Focus is a PLANE, not a side: distance from the focus value in either
+    // direction defocuses, so uFocus 0 and 1 cover both polarities of a mask
+    // and a mid value keeps a band sharp. This is why there is no Invert.
+    float m   = texture2D(uMask, vUv).r;
+    float coc = smoothstep(0.0, max(uFeather, 0.001), abs(m - uFocus));
+
+    float radiusPx = uRadius * coc;
+    if (radiusPx < 0.5) { gl_FragColor = centre; return; }
+
+    vec2 texel = radiusPx / uResolution;
+
+    // Highlights must DOMINATE the disc, not average into it, or overlapping
+    // discs turn to mush exactly where a real lens gives structure. Gathering
+    // in a power space and taking the root back out preserves highlight energy,
+    // so a bright sample survives being averaged with dark neighbours.
+    float p    = 1.0 + uHighlight * 2.0;
+    float invP = 1.0 / p;
+
+    vec3  acc  = vec3(0.0);
+    float wsum = 0.0;
+
+    for (int i = 0; i < BOKEH_SAMPLES; i++) {
+      float fi = float(i);
+
+      // sqrt keeps the spiral EQUAL-AREA: without it the samples bunch toward
+      // the centre and the disc reads as a soft blob rather than a disc.
+      float t = (fi + 0.5) / float(BOKEH_SAMPLES);
+      float r = sqrt(t);
+      float a = fi * GOLDEN + uIris;
+
+      // Bladed iris: push the unit disc out to the polygon boundary at this
+      // angle. uBlades 0 leaves it circular.
+      if (uBlades >= 3.0) {
+        // 'half' is a RESERVED word in GLSL ES 1.00 — naming this halfSeg is
+        // not style, it is the difference between compiling and not.
+        float seg     = 2.0 * PI / uBlades;
+        float halfSeg = PI / uBlades;
+        r *= cos(halfSeg) / cos(mod(a, seg) - halfSeg);
+      }
+
+      vec2 off = vec2(cos(a), sin(a)) * r * texel;
+      vec3 c   = max(texture2D(uTexture, vUv + off).rgb, 0.0);
+
+      // Apodization — where the energy sits across the disc. Positive puts a
+      // bright rim on every highlight (spherical aberration, or a mirror lens)
+      // and reads as nearly hollow at the extreme; negative is centre-weighted
+      // and smooth. This is what separates an optical effect from a soft one.
+      float w = 1.0;
+      if (uRing >= 0.0) w = mix(1.0, pow(r, 4.0),      uRing);
+      else              w = mix(1.0, 1.0 - r * r,     -uRing);
+
+      // Threshold decides what is a specular worth blooming into a disc, so a
+      // merely light-coloured region does not.
+      float hl = smoothstep(uThreshold - 0.08, uThreshold + 0.08, luma(c));
+      c *= 1.0 + uHighlight * 2.0 * hl;
+
+      acc  += pow(c, vec3(p)) * w;
+      wsum += w;
+    }
+
+    // wsum can go small when uRing drives the weights toward the rim.
+    vec3 col = pow(acc / max(wsum, 0.0001), vec3(invP));
+    gl_FragColor = vec4(col, centre.a);
+  }
+`;
+
 export const BUFFER_TRANSFORM = /* glsl */ `
   uniform sampler2D uTexture;
   uniform float uPanX;
