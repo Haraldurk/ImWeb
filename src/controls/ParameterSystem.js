@@ -4342,10 +4342,36 @@ export function registerCoreParameters(ps) {
   });
   ps.register({
     id: "text.font",
-    label: "FontStyle",
+    label: "Font",
     group: "text",
     type: PARAM_TYPE.SELECT,
-    options: ["Sans", "Serif", "Mono", "Bold", "Italic"],
+    // MUST stay in the same order as FONTS in src/inputs/TextLayer.js, and
+    // APPEND-ONLY: this is persisted as an integer index by every saved state,
+    // bank, .imweb file and MIDI mapping. "Bold" and "Italic" are indices 3/4
+    // from before text.weight/text.italic existed and stay exactly where they
+    // are — reordering them silently restyles every project ever saved.
+    options: [
+      "Sans", "Serif", "Mono", "Bold", "Italic",
+      "Inter", "Grotesk", "Archivo", "Oswald", "Playfair",
+      "JetBrains", "Bebas", "Anton", "Orbitron", "Monoton",
+      "MajorMono", "VT323", "DotGothic", "Silkscreen",
+    ],
+    value: 0,
+  });
+  ps.register({
+    id: "text.weight",
+    label: "Weight",
+    group: "text",
+    min: 100,
+    max: 900,
+    value: 400,
+    step: 1,
+  });
+  ps.register({
+    id: "text.italic",
+    label: "Italic",
+    group: "text",
+    type: PARAM_TYPE.TOGGLE,
     value: 0,
   });
   ps.register({

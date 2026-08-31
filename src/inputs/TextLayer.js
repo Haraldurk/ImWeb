@@ -18,12 +18,36 @@ import * as THREE from 'three';
 // param. 512 was the historical fixed size and is kept as the floor.
 const SIZE = 512;
 const RES_OPTS = [512, 1024, 2048];
+// APPEND-ONLY, forever. text.font is a SELECT persisted as an integer index
+// into this list by every .imweb, .imbank, .imstate and MIDI mapping — the
+// same rule that governs SOURCE_DEFS. Indices 0–4 are the original five and
+// must keep their exact meaning; indices 3 and 4 are weight/style masquerading
+// as families, which is why text.weight/text.italic exist from index 5 on and
+// why _fontString() still honours the old two as special cases.
 const FONTS = [
   'sans-serif',
   'serif',
   '"IBM Plex Mono", monospace',
   'bold sans-serif',
   'italic serif',
+  // Bundled faces (public/fonts, @font-face in style.css). The generic after
+  // each is a real fallback, not decoration: font-display:block plus the load
+  // guarantee should prevent it ever being used, but a corrupt cache must
+  // still draw letters.
+  '"IW Inter", sans-serif',
+  '"IW Grotesk", sans-serif',
+  '"IW Archivo", sans-serif',
+  '"IW Oswald", sans-serif',
+  '"IW Playfair", serif',
+  '"IW JetBrains", monospace',
+  '"IW Bebas", sans-serif',
+  '"IW Anton", sans-serif',
+  '"IW Orbitron", sans-serif',
+  '"IW Monoton", cursive',
+  '"IW MajorMono", monospace',
+  '"IW VT323", monospace',
+  '"IW DotGothic", monospace',
+  '"IW Silkscreen", monospace',
 ];
 const ALIGNS = ['center', 'left', 'right'];
 
@@ -61,6 +85,8 @@ export class TextLayer {
     this._bg      = 0;
     this._align   = 0;
     this._font    = 0;
+    this._weight  = 400;
+    this._italic  = 0;
     this._outline = 0;
     this._spacing = 1.2;
 
@@ -105,6 +131,9 @@ export class TextLayer {
     this._resIdx = RES_OPTS.indexOf(SIZE);
 
     this._render();
+    // The bundled faces are not there yet on the first frame; re-render once
+    // they are, or the boot texture keeps the fallback face forever.
+    document.fonts?.ready?.then(() => this._render()).catch?.(() => {});
   }
 
   /**
@@ -161,6 +190,8 @@ export class TextLayer {
     const bg      = get('text.bg');
     const align   = Math.round(get('text.align'));
     const font    = Math.round(get('text.font'));
+    const weight  = Math.round(get('text.weight')) || 400;
+    const italic  = get('text.italic') ? 1 : 0;
     const outline = get('text.outline');
     const spacing = get('text.spacing') || 1.2;
 
@@ -199,7 +230,9 @@ export class TextLayer {
     if (y       !== this._y)       { this._y       = y;       dirty = true; }
     if (bg      !== this._bg)      { this._bg      = bg;      dirty = true; }
     if (align   !== this._align)   { this._align   = align;   dirty = true; }
-    if (font    !== this._font)    { this._font    = font;    dirty = true; }
+    if (font    !== this._font)    { this._font    = font;    dirty = true; this._ensureFont(); }
+    if (weight  !== this._weight)  { this._weight  = weight;  dirty = true; this._ensureFont(); }
+    if (italic  !== this._italic)  { this._italic  = italic;  dirty = true; this._ensureFont(); }
     if (outline !== this._outline) { this._outline = outline; dirty = true; }
     if (spacing !== this._spacing) { this._spacing = spacing; dirty = true; }
 
@@ -423,10 +456,7 @@ export class TextLayer {
     ctx.fillStyle   = `hsl(${this._hue}, ${satPct}%, ${lightPct}%)`;
     ctx.globalAlpha = this._opacity / 100;
 
-    const fontStr  = FONTS[this._font] ?? 'sans-serif';
-    const isBold   = this._font === 3;
-    const isItalic = this._font === 4;
-    ctx.font         = `${isItalic ? 'italic ' : ''}${isBold ? 'bold ' : ''}${fs}px ${fontStr}`;
+    ctx.font         = this._fontString(fs);
     ctx.textBaseline = 'middle';
     ctx.textAlign    = ALIGNS[this._align] ?? 'center';
 
@@ -539,6 +569,34 @@ export class TextLayer {
     ctx.shadowBlur = ctx.shadowOffsetX = ctx.shadowOffsetY = 0;
     ctx.globalAlpha = 1;
     this.texture.needsUpdate = true;
+  }
+
+  /**
+   * Build the CSS font shorthand. Indices 3 and 4 keep their legacy baked-in
+   * bold/italic so states saved before text.weight existed still look the way
+   * they did; every other index takes its weight and slant from the params.
+   */
+  _fontString(fs) {
+    const family = FONTS[this._font] ?? 'sans-serif';
+    const legacyBold   = this._font === 3;
+    const legacyItalic = this._font === 4;
+    const italic = legacyItalic || this._italic ? 'italic ' : '';
+    const weight = legacyBold ? 'bold ' : `${Math.round(this._weight)} `;
+    return `${italic}${weight}${fs}px ${family}`;
+  }
+
+  /**
+   * ctx.font with a family the browser has not loaded yet fails SILENTLY —
+   * Canvas 2D substitutes the default face, and because _render() only runs
+   * when something is dirty, that wrong face stays rasterised into the texture
+   * for good. So every font/weight/italic change schedules a re-render for
+   * when the face actually arrives. document.fonts.load() resolves immediately
+   * for an already-loaded face, so the common path costs one microtask.
+   */
+  _ensureFont() {
+    if (!document.fonts?.load) return;
+    const spec = this._fontString(64);
+    document.fonts.load(spec).then(() => this._render()).catch(() => {});
   }
 
   _applyOutlineStyle(ctx, satPct, lightPct) {
