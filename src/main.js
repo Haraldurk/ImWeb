@@ -2734,7 +2734,31 @@ async function main() {
    * distinction is load-bearing rather than tidy.
    */
   const mappingAutosave = new MappingAutosave(ps, {
-    onStatus: (msg) => setStatus(msg, 'var(--text-2)'),
+    // Self-contained on purpose. This referenced `setStatus`, which is declared
+    // ~90 lines below inside the Project panel's BUILDER and is not in scope
+    // here — so the moment restore() had something to report it threw
+    // `ReferenceError: setStatus is not defined` inside main(), aborting boot
+    // and leaving the app blank. It only fired for users who actually had saved
+    // mappings, which is why it shipped: a fresh profile restores nothing, so
+    // `if (n && this.onStatus)` never ran.
+    //
+    // It also cannot simply paint immediately: restore() runs long before the
+    // panels exist. So resolve the element at call time and, if it is not there
+    // yet, wait a bounded while rather than dropping the message.
+    onStatus: (msg) => {
+      const paint = () => {
+        const el = document.getElementById('project-file-status');
+        if (!el) return false;
+        el.textContent = msg;
+        el.style.color = 'var(--text-2)';
+        return true;
+      };
+      if (paint()) return;
+      let tries = 0;
+      const t = setInterval(() => {
+        if (paint() || ++tries > 40) clearInterval(t);
+      }, 100);
+    },
   });
   mappingAutosave.restore();
   mappingAutosave.start();
