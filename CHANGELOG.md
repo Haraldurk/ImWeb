@@ -8,6 +8,48 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
 
 ## [Unreleased]
 
+### Fixed
+- **Text is clean now without turning BlackBG on.** Glyph edges were hard and
+  blocky the moment the Text source was switched on, and the only known cure was
+  a black background. The layer draws onto a transparent canvas, and the blend
+  modes composite RGB only — so every antialiased edge pixel arrived at full
+  colour intensity no matter how little of it the glyph actually covered, and
+  the antialiasing was thrown away before it reached the screen. Switching
+  BlackBG on did the compositing inside the canvas instead, which is why it
+  worked. The texture is now uploaded premultiplied, so the edge softening
+  survives to the output whatever the background is.
+
+  If you have projects that use BlackBG purely to make text legible, you can
+  turn it off — the text will look the same or better, and whatever is behind it
+  will come back.
+
+### Added
+- **Fourteen typefaces**, bundled with the app rather than fetched from the web,
+  so they work offline and in a venue: Inter, Space Grotesk, Archivo, Oswald,
+  Playfair, JetBrains Mono, Bebas, Anton, Orbitron, Monoton, Major Mono, VT323,
+  DotGothic16 and Silkscreen. The five original options are untouched and keep
+  their places, so nothing you have saved changes.
+- **Weight and Italic are their own controls.** Weight is continuous across
+  100–900, which means an LFO or a MIDI fader can play it.
+- **Resolution** (512 / 1024 / 2048, defaulting to 1024). Text was rendered at
+  512 and stretched to your output; at 1024 it is sharp. Sizes, spacing, shadow
+  and outline all scale with it, so raising it sharpens the text without
+  resizing anything.
+- **Stagger** — the transition runs across the glyphs one at a time instead of
+  moving the line as a block, from the Start, Center, End or in Random order.
+  It works with every existing In and Out mode. The transition still takes
+  exactly as long as AnimDur says.
+- **Glitch** (AnimMode) scrambles characters continuously, and **Decode**
+  (AnimIn) resolves the text out of noise as it enters. Four character sets:
+  Symbols, ASCII, Blocks, Katakana.
+
+### Changed
+- **The Text preview is playable.** Drag it to move the text, Shift+drag to
+  rotate, wheel to size, Alt+wheel for weight — it was already showing the live
+  layer, it just could not be touched.
+- **The Text panel is in four sections** — Type, Colour, Motion, Transition —
+  instead of one list of thirty-nine rows.
+
 ---
 
 ## [0.22.1] — 2026-08-31 — The Mapping You Had
