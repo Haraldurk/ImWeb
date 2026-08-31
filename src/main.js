@@ -4885,7 +4885,73 @@ async function main() {
     textPreviewEl.replaceWith(textLayer.canvas);
     textLayer.canvas.id = "text-preview";
     textLayer.canvas.style.cssText =
-      "display:block;width:100%;image-rendering:pixelated;border:1px solid var(--border);background:#000;";
+      "display:block;width:100%;image-rendering:pixelated;border:1px solid var(--border);" +
+      "background:#000;touch-action:none;cursor:move;";
+
+    // Play the text where you can see it. This element IS the live layer
+    // canvas (it replaced the placeholder above), so a pointer on it is a
+    // pointer on the thing being performed:
+    //   drag        → text.x / text.y      Shift+drag → text.rotation
+    //   wheel       → text.size            Alt+wheel  → text.weight
+    // Everything writes through ps.set, so controllers, Display States, MIDI
+    // and the numeric rows all see the change — never poke textLayer._x.
+    let _txDrag = null;
+    const _txNorm = (e) => {
+      const r = textLayer.canvas.getBoundingClientRect();
+      // Normalized against the ELEMENT's box, not the canvas backing store:
+      // text.res changes the backing store under the same CSS size, and a
+      // drag that reads canvas.width would change gain when it did.
+      return {
+        x: ((e.clientX - r.left) / r.width) * 100,
+        y: (1 - (e.clientY - r.top) / r.height) * 100,
+      };
+    };
+    textLayer.canvas.addEventListener("pointerdown", (e) => {
+      if (e.button !== 0) return;
+      const n = _txNorm(e);
+      _txDrag = {
+        id: e.pointerId,
+        rotate: e.shiftKey,
+        startX: e.clientX,
+        rot0: ps.get("text.rotation").value,
+        // Grab offset, so the text does not jump to the cursor on the first
+        // pixel of a drag meant to nudge it.
+        dx: ps.get("text.x").value - n.x,
+        dy: ps.get("text.y").value - n.y,
+      };
+      textLayer.canvas.setPointerCapture(e.pointerId);
+      e.preventDefault();
+    });
+    textLayer.canvas.addEventListener("pointermove", (e) => {
+      if (!_txDrag || e.pointerId !== _txDrag.id) return;
+      // getCoalescedEvents() EXISTS and returns [] for untrusted events, so
+      // `?? [e]` never fires and a scripted drag draws nothing — guard on
+      // .length instead (docs/LEARNED.md; same trap as attachDrawSurface).
+      const pts = e.getCoalescedEvents?.() ?? [];
+      const last = pts.length ? pts[pts.length - 1] : e;
+      if (_txDrag.rotate) {
+        ps.set("text.rotation", _txDrag.rot0 + (last.clientX - _txDrag.startX) * 0.5);
+      } else {
+        const n = _txNorm(last);
+        ps.set("text.x", Math.max(0, Math.min(100, n.x + _txDrag.dx)));
+        ps.set("text.y", Math.max(0, Math.min(100, n.y + _txDrag.dy)));
+      }
+      e.preventDefault();
+    });
+    const _txEnd = (e) => {
+      if (!_txDrag || e.pointerId !== _txDrag.id) return;
+      textLayer.canvas.releasePointerCapture?.(e.pointerId);
+      _txDrag = null;
+    };
+    textLayer.canvas.addEventListener("pointerup", _txEnd);
+    textLayer.canvas.addEventListener("pointercancel", _txEnd);
+    textLayer.canvas.addEventListener("wheel", (e) => {
+      const id = e.altKey ? "text.weight" : "text.size";
+      const p  = ps.get(id);
+      const step = e.altKey ? 10 : 2;
+      ps.set(id, Math.max(p.min, Math.min(p.max, p.value - Math.sign(e.deltaY) * step)));
+      e.preventDefault();
+    }, { passive: false });
   }
 
   const textContentEl = document.getElementById("text-content");
