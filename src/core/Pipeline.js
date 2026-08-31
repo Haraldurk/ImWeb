@@ -22,7 +22,7 @@ import {
   BUFFER_TRANSFORM, INTERP,
   PIXELATE, EDGE, RGBSHIFT, POSTERIZE, SOLARIZE, COLOR_CORRECT, CHROMA_KEY,
   VIGNETTE, BLOOM_EXTRACT, BLOOM_BLUR, BLOOM_COMPOSITE, BOKEH_GATHER,
-  BOKEH_COMPOSITE, BOKEH_MASK_SLEW, KALEIDOSCOPE, PIXEL_SORT,
+  BOKEH_COMPOSITE, BOKEH_MASK_SLEW, BOKEH_DOWNSAMPLE, KALEIDOSCOPE, PIXEL_SORT,
   FILM_GRAIN, FEEDBACK_ROTATE, QUAD_MIRROR, LEVELS, LUT3D, WHITE_BALANCE,
   SHARPEN, MIXBUS, CLIP_FADE,
   POLAR, WAVE, HALFTONE, DUOTONE, LENS,
@@ -227,11 +227,33 @@ const _FX = {
     // default 25 % is ~27px, unmistakably a defocus rather than a sharpen.
     const radiusPx = ((p.get('effect.bokehradius')?.value ?? 25) / 100) * 0.10 * pipe.height;
 
-    // 1. Gather at half res into the dedicated target. _passTo does not
-    //    ping-pong, so this costs no flip — and the target is outside the
-    //    ping-pong pool, so it can never alias tex.
+    // WIDE MODE. Past this radius the gather is scattering its taps far enough
+    // apart to miss texture cache on nearly every one, which is why measured
+    // cost runs above the fetch-count arithmetic rather than on it. Dropping to
+    // a quarter-res source and target cuts fragments 4× AND shrinks the texture
+    // being randomly walked by 16×.
+    //
+    // The threshold is deliberately well above the point where it becomes
+    // invisible: detail finer than four pixels cannot survive a 32-pixel blur,
+    // so there is nothing to see at the switch. In-focus pixels never reach
+    // this path — the composite takes them from the full-res original.
+    const WIDE_PX = 32;
+    const wide = radiusPx >= WIDE_PX ? pipe._ensureBokehWideRT() : null;
+
+    // What the gathers SAMPLE, and what they render INTO. One decision, so the
+    // base and disc passes cannot disagree about which resolution they are on.
+    let gatherSrc = tex;
+    if (wide) {
+      pipe._passTo(pipe.m.bokehDownsample, { uTexture: tex }, wide.src);
+      gatherSrc = wide.src.texture;
+    }
+    const baseRT = wide ? wide.gather : pipe._bokehTarget;
+
+    // 1. Gather into the dedicated target. _passTo does not ping-pong, so this
+    //    costs no flip — and the target is outside the ping-pong pool, so it
+    //    can never alias tex.
     pipe._passTo(mat, {
-      uTexture:   tex,
+      uTexture:   gatherSrc,
       uMask:      maskTex,
       uRadius:    radiusPx,
       uFocus:     focus,
@@ -241,7 +263,7 @@ const _FX = {
       uRing:      ring,
       uHighlight: (p.get('effect.bokehhighlight')?.value ?? 50) / 100,
       uThreshold: thresh,
-    }, pipe._bokehTarget);
+    }, baseRT);
 
     // 2. Highlight discs. Extract above threshold, gather THAT with the same
     //    kernel, and let the composite add it back with gain.
@@ -259,16 +281,20 @@ const _FX = {
     const discAmt = (p.get('effect.bokehdiscs')?.value ?? 0) / 100;
     let discTex = null;
     if (discAmt > 0) {
-      const discRT = pipe._ensureBokehDiscRT();
+      // Both stages follow the base gather's resolution — extracting at half
+      // res only to gather it at quarter would spend the cost the wide path
+      // exists to avoid.
+      const hiRT   = wide ? wide.hi   : pipe._bokehHiRT;
+      const discRT = wide ? wide.disc : pipe._ensureBokehDiscRT();
       // BLOOM_EXTRACT is exactly this operation and is already compiled. Both
       // call sites set uThreshold before rendering, and bokeh runs before bloom
       // in the chain, so sharing the material cannot leave a stale uniform.
       pipe._passTo(pipe.m.bloomExtract, {
-        uTexture:   tex,
-        uThreshold: (p.get('effect.bokehthresh')?.value ?? 70) / 100,
-      }, pipe._bokehHiRT);
+        uTexture:   gatherSrc,
+        uThreshold: thresh,
+      }, hiRT);
       pipe._passTo(mat, {
-        uTexture:   pipe._bokehHiRT.texture,
+        uTexture:   hiRT.texture,
         uMask:      maskTex,
         uRadius:    radiusPx,
         uFocus:     focus,
@@ -297,7 +323,16 @@ const _FX = {
     //    something upstream changed the flip count and that is the bug.
     return pipe._pass(pipe.m.bokehComposite, {
       uTexture: tex,
-      uBokeh:   pipe._bokehTarget.texture,
+      // Whichever target the gather actually rendered into. vUv is normalised,
+      // so the composite does not care which resolution it was — but it does
+      // care that this is not left pointing at the half-res target while the
+      // wide path filled the quarter-res one, which would silently composite
+      // last frame's defocus.
+      uBokeh:   baseRT.texture,
+      // null when Discs is 0 — _pass substitutes the fallback texture, so the
+      // sampler is never left unbound.
+      uDiscs:   discTex,
+      uDiscAmt: discAmt,
       uMask:    maskTex,
       uFocus:   focus,
       uFeather: feather,
@@ -1277,6 +1312,12 @@ export class Pipeline {
     this._bokehMaskRT?.forEach(t => t.setSize(hw, hh));
     this._bokehHiRT?.setSize(hw, hh);
     this._bokehDiscRT?.setSize(hw, hh);
+    if (this._bokehWide) {
+      const qw = Math.ceil(w / 4);
+      const qh = Math.ceil(h / 4);
+      for (const t of Object.values(this._bokehWide)) t.setSize(qw, qh);
+    }
+    this.m.bokehDownsample.uniforms.uTexel.value.set(1 / w, 1 / h);
     this._mixRT.forEach(rt => rt && rt.forEach(t => t.setSize(w, h)));
     this._clipFadeRT.forEach(t => t && t.setSize(w, h));
     this._fbRT?.forEach(t => t.setSize(w, h));
@@ -1333,6 +1374,38 @@ export class Pipeline {
    * use. UnsignedByte is fine here — unlike the mask smoother these hold a
    * single frame's result, not an accumulator, so there is nothing to stall.
    */
+  /**
+   * Quarter-resolution working set for the WIDE-radius bokeh path.
+   *
+   * Cost here is fragments × samples, and at a large radius both terms hurt at
+   * once: the gather runs a hundred-plus taps per fragment, and those taps are
+   * scattered far enough apart to miss texture cache on nearly every one. A
+   * quarter-res gather cuts the fragments 4×, and reading a pre-downsampled
+   * source cuts the misses, because a 16×-smaller texture keeps far more of
+   * itself resident.
+   *
+   * It costs nothing visually at the radii where it engages. Detail finer than
+   * four pixels cannot survive a thirty-pixel blur, and in-focus pixels never
+   * see this path at all — the composite takes them from the full-res original,
+   * weighted by the same defocus term.
+   *
+   * Allocated lazily and as a set, so a project that never opens the aperture
+   * that far pays no VRAM for any of it.
+   */
+  _ensureBokehWideRT() {
+    if (!this._bokehWide) {
+      const w = Math.ceil(this.width / 4);
+      const h = Math.ceil(this.height / 4);
+      this._bokehWide = {
+        src:    this._makeTarget(w, h),   // downsampled scene
+        gather: this._makeTarget(w, h),   // base defocus
+        hi:     this._makeTarget(w, h),   // extracted highlights
+        disc:   this._makeTarget(w, h),   // those highlights gathered
+      };
+    }
+    return this._bokehWide;
+  }
+
   _ensureBokehDiscRT() {
     if (!this._bokehDiscRT) {
       const w = Math.ceil(this.width / 2);
@@ -1747,6 +1820,9 @@ export class Pipeline {
           uThreshold:  { value: 0.7 },
         },
       )),
+      bokehDownsample: this._mat(BOKEH_DOWNSAMPLE, {
+        uTexel: { value: new THREE.Vector2(1 / 1280, 1 / 720) },
+      }),
       bokehMaskSlew: this._mat(BOKEH_MASK_SLEW, {
         uMask:  { value: null },
         uPrev:  { value: null },
@@ -1754,6 +1830,13 @@ export class Pipeline {
       }),
       bokehComposite: this._mat(BOKEH_COMPOSITE, {
         uBokeh:   { value: null },
+        // uDiscs/uDiscAmt were declared in the shader and NOT here, which is
+        // silent: three.js only uploads uniforms the material knows about, so
+        // uDiscAmt sat at the GL default of 0 and the whole highlight-disc
+        // branch contributed nothing — while still running an extract and a
+        // second full gather every frame and discarding the result.
+        uDiscs:   { value: null },
+        uDiscAmt: { value: 0 },
         uMask:    { value: null },
         uFocus:   { value: 1 },
         uFeather: { value: 0.3 },

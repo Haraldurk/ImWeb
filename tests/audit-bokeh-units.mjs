@@ -205,6 +205,77 @@ if (handler && /pipe\._fxDt/.test(handler)) {
        'different at every frame rate');
 }
 
+// ── 5. Every uniform a Bokeh shader declares is bound by its material ───────
+//
+// three.js uploads only the uniforms present in `material.uniforms`. A uniform
+// declared in GLSL but missing there is not an error and not a warning — it
+// sits at the GL default, 0 for a float and unit 0 for a sampler. `uDiscAmt`
+// shipped that way: the shader multiplied by it, the material never declared
+// it, so the entire highlight-disc branch contributed exactly nothing while
+// still running an extract and a second full gather every frame and throwing
+// the result away. It cost roughly half the effect's frame time to compute a
+// value that was multiplied by zero.
+//
+// The tell that was available and unread: the feature "worked" because the base
+// gather's own apodization produces discs too, so the visible result was
+// plausible and the branch under test never ran.
+
+const shaderUniforms = (name) => {
+  const i = shaders.indexOf(`export const ${name} =`);
+  if (i < 0) return null;
+  const j = shaders.indexOf('\n`;', i);
+  const body = shaders.slice(i, j < 0 ? undefined : j);
+  return [...new Set([...body.matchAll(/^\s*uniform\s+\w+\s+(u\w+)/gm)].map(m => m[1]))];
+};
+
+// The base uniforms _mat() gives every material for free.
+const MAT_BASE = ['uTexture', 'uFG', 'uBG', 'uDS'];
+
+const matUniforms = (matName) => {
+  const i = pipeline.indexOf(`${matName}: this._mat(`);
+  if (i < 0) return null;
+  // Span to the close of this material's argument list.
+  const j = pipeline.indexOf('\n      }),', i);
+  const body = pipeline.slice(i, j < 0 ? i + 1200 : j);
+  return [...new Set([...body.matchAll(/^\s*(u\w+):\s*\{/gm)].map(m => m[1]))];
+};
+
+for (const [shaderName, matName] of [
+  ['BOKEH_COMPOSITE', 'bokehComposite'],
+  ['BOKEH_MASK_SLEW', 'bokehMaskSlew'],
+  ['BOKEH_DOWNSAMPLE', 'bokehDownsample'],
+]) {
+  const declared = shaderUniforms(shaderName);
+  const bound = matUniforms(matName);
+  if (!declared || !bound) {
+    fail(`could not pair ${shaderName} with this.m.${matName} (renamed? update this audit)`);
+    continue;
+  }
+  const missing = declared.filter(u => !bound.includes(u) && !MAT_BASE.includes(u));
+  if (missing.length) {
+    fail(`${shaderName} declares ${missing.join(', ')} but this.m.${matName} does not — ` +
+         'three.js leaves those at 0 / unit 0 silently, so that code path computes nothing');
+  } else {
+    ok(`every uniform in ${shaderName} is bound by this.m.${matName} (${declared.length})`);
+  }
+}
+
+// The gather is built per tier through BOKEH_TIERS.map, so it is paired once.
+{
+  const declared = shaderUniforms('BOKEH_GATHER');
+  const i = pipeline.indexOf('bokeh: BOKEH_TIERS.map(');
+  const body = i < 0 ? '' : pipeline.slice(i, pipeline.indexOf('\n      )),', i));
+  const bound = [...new Set([...body.matchAll(/^\s*(u\w+):\s*\{/gm)].map(m => m[1]))];
+  const missing = (declared ?? []).filter(u => !bound.includes(u) && !MAT_BASE.includes(u));
+  if (!declared || !body) {
+    fail('could not pair BOKEH_GATHER with the tier materials');
+  } else if (missing.length) {
+    fail(`BOKEH_GATHER declares ${missing.join(', ')} but the tier materials do not bind them`);
+  } else {
+    ok(`every uniform in BOKEH_GATHER is bound by the tier materials (${declared.length})`);
+  }
+}
+
 if (failed) {
   console.error('\nFAIL — a Bokeh numeric contract is broken.\n');
   process.exit(1);
