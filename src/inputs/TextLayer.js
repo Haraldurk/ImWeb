@@ -13,7 +13,11 @@
 
 import * as THREE from 'three';
 
+// Default render resolution. text.res selects among RES_OPTS at runtime; this
+// is only the size the canvas is born at, before the first tick() reads the
+// param. 512 was the historical fixed size and is kept as the floor.
 const SIZE = 512;
+const RES_OPTS = [512, 1024, 2048];
 const FONTS = [
   'sans-serif',
   'serif',
@@ -25,13 +29,24 @@ const ALIGNS = ['center', 'left', 'right'];
 
 export class TextLayer {
   constructor() {
+    this._size2d = SIZE;
     this.canvas = document.createElement('canvas');
-    this.canvas.width = this.canvas.height = SIZE;
+    this.canvas.width = this.canvas.height = this._size2d;
     this.ctx = this.canvas.getContext('2d', { willReadFrequently: false });
 
     this.texture = new THREE.CanvasTexture(this.canvas);
     this.texture.minFilter = THREE.LinearFilter;
     this.texture.magFilter = THREE.LinearFilter;
+    // Canvas 2D keeps its backing store PREMULTIPLIED. With the default
+    // UNPACK_PREMULTIPLY_ALPHA=false the browser has to UN-premultiply on
+    // upload, which divides every antialiased edge pixel's RGB by a small
+    // alpha and quantizes it into a dark, blocky fringe — and TRANSFERMODE
+    // blends RGB only (blendMix takes a vec3), so that fringe is exactly what
+    // reached the screen. Turning text.bg on hid it by making alpha 1
+    // everywhere; that was a workaround, not the fix. Uploading premultiplied
+    // gives RGB = colour × coverage, the form the RGB-only blend modes want,
+    // and leaves fg.a intact for the keyer's Alpha mode.
+    this.texture.premultiplyAlpha = true;
 
     this._text    = 'ImWeb';
     this._units   = ['ImWeb'];
@@ -86,7 +101,23 @@ export class TextLayer {
     this._contentList = [];
     this._contentIdx  = 0;
 
+    // Render resolution (index into RES_OPTS)
+    this._resIdx = RES_OPTS.indexOf(SIZE);
+
     this._render();
+  }
+
+  /**
+   * Resize the render canvas. Setting canvas.width/height RESETS every piece
+   * of 2D context state (font, alpha, transform, letterSpacing), so this may
+   * only be called from tick() immediately before a _render() that rebuilds
+   * all of it — never mid-draw.
+   */
+  _setRes(idx) {
+    const n = RES_OPTS[idx] ?? SIZE;
+    if (n === this._size2d) return;
+    this._size2d = n;
+    this.canvas.width = this.canvas.height = n;
   }
 
   setContent(str) {
@@ -154,6 +185,11 @@ export class TextLayer {
 
     // Content list index
     const contentIdx = Math.max(0, Math.min(63, Math.round(get('text.contentIdx'))));
+
+    // Render resolution — _setRes wipes the 2D context, so it is applied here
+    // and the render that rebuilds the state follows at the end of tick().
+    const resIdx = Math.max(0, Math.min(RES_OPTS.length - 1, Math.round(get('text.res'))));
+    if (resIdx !== this._resIdx) { this._resIdx = resIdx; this._setRes(resIdx); dirty = true; }
 
     if (size    !== this._size)    { this._size    = size;    dirty = true; }
     if (hue     !== this._hue)     { this._hue     = hue;     dirty = true; }
@@ -317,34 +353,34 @@ export class TextLayer {
     }
   }
 
-  _applyEntranceTransform(ctx, mode, phase, alignX, py) {
+  _applyEntranceTransform(ctx, mode, phase, alignX, py, k = 1) {
     const e = this._easePhase(phase);
     switch (mode) {
       case 1: ctx.globalAlpha *= e; break;                                  // Fade
-      case 2: ctx.globalAlpha *= e; ctx.translate(0, (1-e)*40); break;      // FadeUp
-      case 3: ctx.globalAlpha *= e; ctx.translate(0, -(1-e)*40); break;     // FadeDown
+      case 2: ctx.globalAlpha *= e; ctx.translate(0, (1-e)*40*k); break;    // FadeUp
+      case 3: ctx.globalAlpha *= e; ctx.translate(0, -(1-e)*40*k); break;   // FadeDown
       case 4: // Scale
         ctx.translate(alignX, py);
         ctx.scale(Math.max(0.001, e), Math.max(0.001, e));
         ctx.translate(-alignX, -py);
         break;
-      case 5: ctx.filter = `blur(${(1-e)*12}px)`; break;                    // Blur
+      case 5: ctx.filter = `blur(${(1-e)*12*k}px)`; break;                  // Blur
       // TypeOn handled in caller by slicing chars
     }
   }
 
-  _applyExitTransform(ctx, mode, phase, alignX, py) {
+  _applyExitTransform(ctx, mode, phase, alignX, py, k = 1) {
     const e = this._easePhase(phase); // phase 0→1 means going away
     switch (mode) {
       case 1: ctx.globalAlpha *= (1 - e); break;                            // Fade
-      case 2: ctx.globalAlpha *= (1-e); ctx.translate(0, -(e*40)); break;   // FadeDown
-      case 3: ctx.globalAlpha *= (1-e); ctx.translate(0, e*40); break;      // FadeUp
+      case 2: ctx.globalAlpha *= (1-e); ctx.translate(0, -(e*40*k)); break; // FadeDown
+      case 3: ctx.globalAlpha *= (1-e); ctx.translate(0, e*40*k); break;    // FadeUp
       case 4:
         ctx.translate(alignX, py);
         ctx.scale(Math.max(0.001, 1-e*0.5), Math.max(0.001, 1-e*0.5));
         ctx.translate(-alignX, -py);
         break;
-      case 5: ctx.filter = `blur(${e*12}px)`; break;
+      case 5: ctx.filter = `blur(${e*12*k}px)`; break;
       case 6: ctx.globalAlpha = 0; break;                                   // Vanish
     }
   }
@@ -363,17 +399,25 @@ export class TextLayer {
       unit = unit.slice(0, Math.floor(this._typerChars));
     }
 
-    ctx.clearRect(0, 0, SIZE, SIZE);
+    const S = this._size2d;
+
+    ctx.clearRect(0, 0, S, S);
     if (this._bg) {
       ctx.globalAlpha = this._bgOpacity / 100;
       ctx.fillStyle = '#000000';
-      ctx.fillRect(0, 0, SIZE, SIZE);
+      ctx.fillRect(0, 0, S, S);
       ctx.globalAlpha = 1;
     }
 
     if (!unit.trim()) { this.texture.needsUpdate = true; return; }
 
-    const fs       = Math.max(8, Math.min(this._size, SIZE - 4));
+    // Every pixel-valued param (size, letterspacing, shadow, outline, the
+    // animation offsets) is authored against the historical 512 grid and
+    // scaled by k. Without this, raising text.res would SHRINK the text
+    // relative to the frame instead of sharpening it — a resolution knob that
+    // silently rescales every saved project is not a resolution knob.
+    const k        = S / SIZE;
+    const fs       = Math.max(8, Math.min(this._size * k, S - 4));
     const satPct   = Math.round(this._sat);
     const lightPct = 70 - Math.round(this._sat * 0.2);
     ctx.fillStyle   = `hsl(${this._hue}, ${satPct}%, ${lightPct}%)`;
@@ -387,16 +431,16 @@ export class TextLayer {
     ctx.textAlign    = ALIGNS[this._align] ?? 'center';
 
     // Letter spacing (Canvas API, Chrome 99+ / Safari 17+; gracefully ignored on older)
-    if ('letterSpacing' in ctx) ctx.letterSpacing = this._letterspacing + 'px';
+    if ('letterSpacing' in ctx) ctx.letterSpacing = (this._letterspacing * k) + 'px';
 
-    const alignX = (this._x / 100) * SIZE;
-    const py     = (1 - this._y / 100) * SIZE;
+    const alignX = (this._x / 100) * S;
+    const py     = (1 - this._y / 100) * S;
 
     // Draw exit animation of previous unit (behind current)
     if (this._animOutMode > 0 && this._exitPhase < 1 && this._prevUnit) {
       ctx.save();
       ctx.globalAlpha = this._opacity / 100;
-      this._applyExitTransform(ctx, this._animOutMode, this._exitPhase, alignX, py);
+      this._applyExitTransform(ctx, this._animOutMode, this._exitPhase, alignX, py, k);
       if (ctx.globalAlpha > 0.01) {
         const prevLines = this._prevUnit.split('\n');
         const lineH2 = fs * this._spacing;
@@ -416,9 +460,9 @@ export class TextLayer {
 
     // Shadow
     if (this._shadowBlur > 0 || this._shadowX !== 0 || this._shadowY !== 0) {
-      ctx.shadowBlur    = this._shadowBlur;
-      ctx.shadowOffsetX = this._shadowX;
-      ctx.shadowOffsetY = -this._shadowY;
+      ctx.shadowBlur    = this._shadowBlur * k;
+      ctx.shadowOffsetX = this._shadowX * k;
+      ctx.shadowOffsetY = -this._shadowY * k;
       ctx.shadowColor   = ctx.fillStyle;
     }
 
@@ -426,7 +470,7 @@ export class TextLayer {
     const doEntrance = this._animInMode > 0 && this._animPhase < 1;
     if (doEntrance) {
       ctx.save();
-      this._applyEntranceTransform(ctx, this._animInMode, this._animPhase, alignX, py);
+      this._applyEntranceTransform(ctx, this._animInMode, this._animPhase, alignX, py, k);
     }
 
     // Apply rotation around text anchor
@@ -467,7 +511,7 @@ export class TextLayer {
 
           if (this._outline > 0) {
             this._applyOutlineStyle(ctx, satPct, lightPct);
-            ctx.lineWidth = this._outline * 2;
+            ctx.lineWidth = this._outline * 2 * k;
             ctx.lineJoin  = 'round';
             ctx.strokeText(ch, cx, charY);
             ctx.fillStyle = `hsl(${this._hue}, ${satPct}%, ${lightPct}%)`;
@@ -479,7 +523,7 @@ export class TextLayer {
       } else {
         if (this._outline > 0) {
           this._applyOutlineStyle(ctx, satPct, lightPct);
-          ctx.lineWidth = this._outline * 2;
+          ctx.lineWidth = this._outline * 2 * k;
           ctx.lineJoin  = 'round';
           ctx.strokeText(line, alignX, baseY);
           ctx.fillStyle = `hsl(${this._hue}, ${satPct}%, ${lightPct}%)`;

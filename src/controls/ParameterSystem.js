@@ -4269,6 +4269,18 @@ export function registerCoreParameters(ps) {
   }
 
   // ── Text ──────────────────────────────────────────────────────────────────
+  // Render resolution of the text canvas. group 'text' and therefore CAPTURED
+  // by Display States: the option list is code-defined and append-only, so an
+  // index means the same thing on every machine and every origin (contrast
+  // displace.warpSlot, whose contents are per-origin localStorage).
+  ps.register({
+    id: "text.res",
+    label: "Resolution",
+    group: "text",
+    type: PARAM_TYPE.SELECT,
+    options: ["512", "1024", "2048"],
+    value: 1,
+  });
   ps.register({
     id: "text.size",
     label: "TextSize",
