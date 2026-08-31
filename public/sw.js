@@ -8,7 +8,7 @@
 // content hash for the bundle each time — so a stale cached index.html points
 // at an asset that no longer exists on disk. That fails as a BLANK APP, not as
 // "my change didn't show up" (see docs/LEARNED.md, 2026-07-31).
-const CACHE = 'imweb-v0.22.0'; // bumped: v0.22.0 — Bokeh (Effects › Optics)
+const CACHE = 'imweb-v0.22.1'; // bumped: v0.22.1 — boot crash with saved MIDI mappings
 
 // The /src/* entries only exist on the DEV server; a production build bundles
 // them into /assets/* under hashed names. That matters because addAll() is

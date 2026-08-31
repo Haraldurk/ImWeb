@@ -10,6 +10,41 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
 
 ---
 
+## [0.22.1] — 2026-08-31 — The Mapping You Had
+
+### Fixed
+- **ImWeb no longer fails to start if you have saved MIDI mappings.** v0.22.0
+  introduced remembering learned mappings across a reload, and the code that
+  reports what it restored called a function that was not in scope where it was
+  called — `ReferenceError: setStatus is not defined`, thrown during startup, so
+  the app came up blank.
+
+  The reference was always wrong; the crash was not always reached. Restoring
+  only announces itself when it actually restored something, so a fresh install
+  started perfectly, the test suite passed, and every automated check was clean.
+  It broke only for people who had already learned a mapping — that is, only for
+  people using the feature it shipped with.
+
+  If you hit it: this release fixes it outright, and no mappings were lost. They
+  were being restored correctly; it was the message about them that failed.
+
+### Changed
+- **Bokeh is much cheaper at large radii.** Past about a third of the Radius
+  range the effect now works at quarter resolution off a downsampled copy of the
+  picture. Nothing visible changes — detail finer than a few pixels cannot
+  survive a blur that wide — but there are four times fewer pixels to compute
+  and the sampling stops thrashing the GPU's texture cache. Measured on the
+  development machine: **21 fps back to 60** at Max quality with a wide radius.
+
+- **Bokeh.Discs now does something.** Its two shader inputs were never connected,
+  so the control had no effect at all — while still running a highlight extract
+  and a second full gather every frame and discarding the result, which was most
+  of the cost above. The discs you could already see were coming from
+  **Bokeh.Ring** alone. With this connected, settings from v0.22.0 will read
+  stronger; pull Discs down rather than Ring if it is too much.
+
+---
+
 ## [0.22.0] — 2026-08-30 — Out of Focus
 
 ### Added
