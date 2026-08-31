@@ -4502,7 +4502,8 @@ export function registerCoreParameters(ps) {
     label: "AnimMode",
     group: "text",
     type: PARAM_TYPE.SELECT,
-    options: ["None", "Bounce", "Wave", "Fade", "Typewriter"],
+    // APPEND-ONLY — persisted as an integer index. "Glitch" is index 5.
+    options: ["None", "Bounce", "Wave", "Fade", "Typewriter", "Glitch"],
     value: 0,
   });
   ps.register({
@@ -4554,7 +4555,8 @@ export function registerCoreParameters(ps) {
     label: "AnimIn",
     group: "text",
     type: PARAM_TYPE.SELECT,
-    options: ["None", "Fade", "FadeUp", "FadeDown", "Scale", "Blur", "TypeOn"],
+    // APPEND-ONLY — persisted as an integer index. "Decode" is index 7.
+    options: ["None", "Fade", "FadeUp", "FadeDown", "Scale", "Blur", "TypeOn", "Decode"],
     value: 0,
   });
   ps.register({
@@ -4574,6 +4576,31 @@ export function registerCoreParameters(ps) {
     value: 0.3,
     step: 0.01,
     unit: "s",
+  });
+  ps.register({
+    id: "text.stagger",
+    label: "Stagger",
+    group: "text",
+    min: 0,
+    max: 100,
+    value: 0,
+    unit: "%",
+  });
+  ps.register({
+    id: "text.staggerFrom",
+    label: "StaggerFrom",
+    group: "text",
+    type: PARAM_TYPE.SELECT,
+    options: ["Start", "Center", "End", "Random"],
+    value: 0,
+  });
+  ps.register({
+    id: "text.glitchSet",
+    label: "GlitchSet",
+    group: "text",
+    type: PARAM_TYPE.SELECT,
+    options: ["Symbols", "ASCII", "Blocks", "Katakana"],
+    value: 0,
   });
   ps.register({
     id: "text.anim.ease",

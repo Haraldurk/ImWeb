@@ -51,6 +51,30 @@ const FONTS = [
 ];
 const ALIGNS = ['center', 'left', 'right'];
 
+// Glitch substitution charsets, indexed by text.glitchSet. Katakana is not in
+// the bundled Latin subsets — the browser falls back per glyph to a system CJK
+// face, which is what makes the look work on a normal machine and what makes
+// it degrade to tofu on one with no CJK font installed. That is the trade the
+// option is offering; the other three are safe everywhere.
+const GLITCH_SETS = [
+  '!<>-_\\/[]{}=+*^?#$%&@~|',                                  // Symbols
+  'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789', // ASCII
+  '░▒▓█▄▀▐▌■□▪▫◆◇○●',                                          // Blocks
+  'ｱｲｳｴｵｶｷｸｹｺｻｼｽｾｿﾀﾁﾂﾃﾄﾅﾆﾇﾈﾉﾊﾋﾌﾍﾎﾏﾐﾑﾒﾓﾔﾕﾖﾗﾘﾙﾚﾛﾜﾝ',              // Katakana
+];
+
+/**
+ * Integer hash → [0,1). Deterministic on purpose: the glitch substitution has
+ * to be stable for the whole of one scramble STEP. Math.random() per frame
+ * would re-roll every glyph at 60 Hz no matter what text.animSpeed said, so
+ * the speed control would do nothing and the result would be white noise.
+ */
+const hash01 = (n) => {
+  n = Math.imul(n ^ (n >>> 15), 0x2c1b3c6d);
+  n = Math.imul(n ^ (n >>> 12), 0x297a2d39);
+  return ((n ^ (n >>> 15)) >>> 0) / 4294967296;
+};
+
 export class TextLayer {
   constructor() {
     this._size2d = SIZE;
@@ -130,6 +154,13 @@ export class TextLayer {
     // Render resolution (index into RES_OPTS)
     this._resIdx = RES_OPTS.indexOf(SIZE);
 
+    // Per-glyph stagger + glitch
+    this._stagger     = 0;   // % of anim.dur spread across the glyphs
+    this._staggerFrom = 0;   // 0 Start · 1 Center · 2 End · 3 Random
+    this._glitchSet   = 0;
+    this._animSeed    = 0;   // bumped on every unit change — reseeds Random
+    this._permCache   = null;
+
     this._render();
     // The bundled faces are not there yet on the first frame; re-render once
     // they are, or the boot texture keeps the fallback face forever.
@@ -173,6 +204,7 @@ export class TextLayer {
     this._animPhase = 0;
     this._idx = (this._idx + 1) % this._units.length;
     this._typerChars = 0;
+    this._animSeed = (this._animSeed + 1) | 0;  // reseed Random stagger/glitch
     this._render();
   }
 
@@ -246,6 +278,14 @@ export class TextLayer {
     if (outlineSat    !== this._outlineSat)    { this._outlineSat    = outlineSat;    dirty = true; }
 
     if (animMode  !== this._animMode)  { this._animMode  = animMode;  dirty = true; }
+
+    // Per-glyph stagger + glitch
+    const stagger     = get('text.stagger');
+    const staggerFrom = Math.round(get('text.staggerFrom'));
+    const glitchSet   = Math.round(get('text.glitchSet'));
+    if (stagger     !== this._stagger)     { this._stagger     = stagger;     dirty = true; }
+    if (staggerFrom !== this._staggerFrom) { this._staggerFrom = staggerFrom; dirty = true; }
+    if (glitchSet   !== this._glitchSet)   { this._glitchSet   = glitchSet;   dirty = true; }
     if (animSpeed !== this._animSpeed) { this._animSpeed = animSpeed; }
     if (animAmt   !== this._animAmt)   { this._animAmt   = animAmt;   dirty = true; }
 
@@ -272,6 +312,7 @@ export class TextLayer {
         this._animPhase = 0;
         this._idx       = targetIdx;
         this._typerChars = 0;
+        this._animSeed  = (this._animSeed + 1) | 0;
         dirty = true;
       }
     }
@@ -386,6 +427,112 @@ export class TextLayer {
     }
   }
 
+  /**
+   * Order key for glyph i of n under text.staggerFrom, normalized to [0,1].
+   * Random draws from a permutation that is regenerated ONLY when the unit
+   * changes (_animSeed) — re-rolling it per frame makes the glyphs reshuffle
+   * every 16 ms, which does not read as a stagger, it reads as noise.
+   */
+  _staggerOrder(i, n) {
+    if (n <= 1) return 0;
+    switch (this._staggerFrom) {
+      case 1: { // Center — outward from the middle
+        const mid = (n - 1) / 2;
+        return Math.abs(i - mid) / mid;
+      }
+      case 2: return (n - 1 - i) / (n - 1);                    // End
+      case 3: {                                                // Random
+        if (!this._permCache || this._permCache.n !== n ||
+            this._permCache.seed !== this._animSeed) {
+          const perm = [...Array(n).keys()];
+          for (let j = n - 1; j > 0; j--) {
+            const r = Math.floor(hash01(this._animSeed * 7919 + j) * (j + 1));
+            [perm[j], perm[r]] = [perm[r], perm[j]];
+          }
+          this._permCache = { n, seed: this._animSeed, perm };
+        }
+        return this._permCache.perm[i] / (n - 1);
+      }
+      default: return i / (n - 1);                             // Start
+    }
+  }
+
+  /**
+   * Map the whole-block transition phase to glyph i's own phase.
+   * `spread` is the fraction of anim.dur handed over to the delay ramp, so the
+   * transition still finishes in exactly anim.dur however wide the stagger is:
+   * the last glyph starts at `spread` and runs over the remaining (1-spread).
+   */
+  _glyphPhase(phase, i, n, spread) {
+    if (spread <= 0) return phase;
+    const delay = spread * this._staggerOrder(i, n);
+    return Math.max(0, Math.min(1, (phase - delay) / (1 - spread)));
+  }
+
+  /** The substituted glyph for a continuous scramble, or the original. */
+  _glitchChar(ch, i, amt) {
+    if (!ch.trim()) return ch;
+    const set  = GLITCH_SETS[this._glitchSet] ?? GLITCH_SETS[0];
+    const step = Math.floor(this._animTime * Math.max(0.01, this._animSpeed));
+    const pick = i * 7919 + step * 104729 + this._animSeed * 31;
+    if (hash01(pick) >= amt) return ch;
+    return set[Math.floor(hash01(pick * 3 + 1) * set.length)] ?? ch;
+  }
+
+  /**
+   * Per-character draw with the align compensation and advance loop that used
+   * to live inline in the Wave branch. Wave, stagger and glitch all render
+   * through here.
+   *
+   * The advance is ALWAYS taken from the original character, never the drawn
+   * one — a substituted glyph of a different width would make the whole line
+   * breathe, which reads as the text wobbling rather than as glyphs changing.
+   *
+   * `perGlyph({ch, i, n, x, adv, ctx})` returns `{ch, dx, dy}` (any field
+   * optional) or `false` to skip the glyph. It is called inside a save/restore
+   * pair, so it may transform ctx freely — which is how the entrance/exit
+   * transforms get applied per glyph rather than per block.
+   */
+  _drawGlyphs(ctx, line, alignX, baseY, style, perGlyph) {
+    const { satPct, lightPct, k } = style;
+    let cx = alignX;
+    const w = ctx.measureText(line).width;
+    if (this._align === 0)      cx -= w / 2;
+    else if (this._align === 2) cx -= w;
+
+    const savedAlign = ctx.textAlign;
+    const savedAlpha = ctx.globalAlpha;
+    ctx.textAlign = 'left';
+
+    const n = line.length;
+    for (let i = 0; i < n; i++) {
+      const src = line[i];
+      const adv = ctx.measureText(src).width;
+      ctx.save();
+      const g = perGlyph({ ch: src, i, n, x: cx, adv, ctx });
+      if (g !== false) {
+        const ch = g?.ch ?? src;
+        const gx = cx + (g?.dx ?? 0);
+        const gy = baseY + (g?.dy ?? 0);
+        if (ch.trim() && ctx.globalAlpha > 0.004) {
+          if (this._outline > 0) {
+            this._applyOutlineStyle(ctx, satPct, lightPct);
+            ctx.lineWidth = this._outline * 2 * k;
+            ctx.lineJoin  = 'round';
+            ctx.strokeText(ch, gx, gy);
+            ctx.fillStyle = `hsl(${this._hue}, ${satPct}%, ${lightPct}%)`;
+          }
+          ctx.fillText(ch, gx, gy);
+        }
+      }
+      ctx.restore();
+      cx += adv;
+    }
+
+    ctx.textAlign   = savedAlign;
+    ctx.globalAlpha = savedAlpha;
+  }
+
   _applyEntranceTransform(ctx, mode, phase, alignX, py, k = 1) {
     const e = this._easePhase(phase);
     switch (mode) {
@@ -466,21 +613,39 @@ export class TextLayer {
     const alignX = (this._x / 100) * S;
     const py     = (1 - this._y / 100) * S;
 
+    const exitSpread = Math.min(0.95, Math.max(0, this._stagger / 100));
+
     // Draw exit animation of previous unit (behind current)
     if (this._animOutMode > 0 && this._exitPhase < 1 && this._prevUnit) {
-      ctx.save();
-      ctx.globalAlpha = this._opacity / 100;
-      this._applyExitTransform(ctx, this._animOutMode, this._exitPhase, alignX, py, k);
-      if (ctx.globalAlpha > 0.01) {
-        const prevLines = this._prevUnit.split('\n');
-        const lineH2 = fs * this._spacing;
-        const totalH2 = lineH2 * prevLines.length;
+      const prevLines = this._prevUnit.split('\n');
+      const lineH2 = fs * this._spacing;
+      const totalH2 = lineH2 * prevLines.length;
+
+      if (exitSpread > 0) {
+        // Per-glyph exit: the transform runs inside the glyph loop, so there is
+        // no block-level save/transform to wrap it in.
         prevLines.forEach((line, i) => {
           const baseY2 = py - totalH2 / 2 + lineH2 * (i + 0.5);
-          ctx.fillText(line, alignX, baseY2);
+          this._drawGlyphs(ctx, line, alignX, baseY2, { satPct, lightPct, k },
+            ({ i: gi, n, x, adv, ctx: g }) => {
+              g.globalAlpha = this._opacity / 100;
+              const local = this._glyphPhase(this._exitPhase, gi, n, exitSpread);
+              this._applyExitTransform(g, this._animOutMode, local, x + adv / 2, baseY2, k);
+              return {};
+            });
         });
+      } else {
+        ctx.save();
+        ctx.globalAlpha = this._opacity / 100;
+        this._applyExitTransform(ctx, this._animOutMode, this._exitPhase, alignX, py, k);
+        if (ctx.globalAlpha > 0.01) {
+          prevLines.forEach((line, i) => {
+            const baseY2 = py - totalH2 / 2 + lineH2 * (i + 0.5);
+            ctx.fillText(line, alignX, baseY2);
+          });
+        }
+        ctx.restore();
       }
-      ctx.restore();
       ctx.filter = 'none';
     }
 
@@ -496,8 +661,17 @@ export class TextLayer {
       ctx.shadowColor   = ctx.fillStyle;
     }
 
-    // Entrance animation transform
-    const doEntrance = this._animInMode > 0 && this._animPhase < 1;
+    const style = { satPct, lightPct, k };
+
+    // Entrance animation. With stagger the transform runs per glyph inside
+    // _drawGlyphs instead, so the block-level transform must NOT also apply —
+    // it would move the whole line on top of the per-glyph motion.
+    const spread     = Math.min(0.95, Math.max(0, this._stagger / 100));
+    const isDecode   = this._animInMode === 7 && this._animPhase < 1;
+    const staggered  = this._animInMode > 0 && this._animInMode !== 6 && !isDecode &&
+                       this._animPhase < 1 && spread > 0;
+    const doEntrance = this._animInMode > 0 && this._animPhase < 1 &&
+                       !staggered && !isDecode;
     if (doEntrance) {
       ctx.save();
       this._applyEntranceTransform(ctx, this._animInMode, this._animPhase, alignX, py, k);
@@ -526,30 +700,35 @@ export class TextLayer {
       }
 
       if (this._animMode === 2) {
-        // Wave — per-character rendering with sin Y offset
-        let cx = alignX;
-        if (this._align === 0) {
-          cx -= ctx.measureText(line).width / 2;
-        } else if (this._align === 2) {
-          cx -= ctx.measureText(line).width;
-        }
-        const savedAlign = ctx.textAlign;
-        ctx.textAlign = 'left';
-        for (let ci = 0; ci < line.length; ci++) {
-          const ch = line[ci];
-          const charY = baseY + Math.sin(ci * 0.5 + this._animTime * this._animSpeed * Math.PI * 2) * (this._animAmt / 100) * fs * 0.4;
-
-          if (this._outline > 0) {
-            this._applyOutlineStyle(ctx, satPct, lightPct);
-            ctx.lineWidth = this._outline * 2 * k;
-            ctx.lineJoin  = 'round';
-            ctx.strokeText(ch, cx, charY);
-            ctx.fillStyle = `hsl(${this._hue}, ${satPct}%, ${lightPct}%)`;
-          }
-          ctx.fillText(ch, cx, charY);
-          cx += ctx.measureText(ch).width;
-        }
-        ctx.textAlign = savedAlign;
+        // Wave — per-character sin Y offset
+        this._drawGlyphs(ctx, line, alignX, baseY, style, ({ i }) => ({
+          dy: Math.sin(i * 0.5 + this._animTime * this._animSpeed * Math.PI * 2)
+              * (this._animAmt / 100) * fs * 0.4,
+        }));
+      } else if (this._animMode === 5) {
+        // Glitch — continuous scramble, animAmt = fraction of glyphs replaced
+        const amt = this._animAmt / 100;
+        this._drawGlyphs(ctx, line, alignX, baseY, style, ({ ch, i }) => ({
+          ch: this._glitchChar(ch, i, amt),
+        }));
+      } else if (isDecode) {
+        // Decode entrance — each glyph scrambles until its own phase resolves.
+        // A decode where every glyph settles on the same frame is a cut, not a
+        // decode, so this keeps a floor under the spread even at stagger 0.
+        const dSpread = Math.max(spread, 0.6);
+        this._drawGlyphs(ctx, line, alignX, baseY, style, ({ ch, i, n }) => {
+          const local = this._glyphPhase(this._animPhase, i, n, dSpread);
+          return { ch: local >= 1 ? ch : this._glitchChar(ch, i, 1) };
+        });
+      } else if (staggered) {
+        // Per-glyph entrance — the same in-transform, run once per glyph and
+        // anchored on the glyph's own centre so Scale grows each letter in
+        // place rather than the block as a whole.
+        this._drawGlyphs(ctx, line, alignX, baseY, style, ({ i, n, x, adv, ctx: g }) => {
+          const local = this._glyphPhase(this._animPhase, i, n, spread);
+          this._applyEntranceTransform(g, this._animInMode, local, x + adv / 2, baseY, k);
+          return {};
+        });
       } else {
         if (this._outline > 0) {
           this._applyOutlineStyle(ctx, satPct, lightPct);
