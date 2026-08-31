@@ -1763,6 +1763,26 @@ export const BOKEH_GATHER = /* glsl */ `
   }
 `;
 
+// Quarter-resolution box downsample, for the wide-radius bokeh path.
+//
+// Four taps at ±1 full-res texel, each of which is itself a bilinear 2×2
+// average — so this is a 4×4 box, not a point sample. That matters: a bare
+// bilinear stretch into a quarter-res target only reads 4 of every 16 source
+// pixels, which aliases, and aliasing in the SOURCE of a blur shows up as
+// shimmer under motion rather than as softness.
+export const BOKEH_DOWNSAMPLE = /* glsl */ `
+  uniform sampler2D uTexture;
+  uniform vec2      uTexel;   // 1 / full resolution
+  varying vec2 vUv;
+  void main() {
+    vec4 c = texture2D(uTexture, vUv + uTexel * vec2(-1.0, -1.0))
+           + texture2D(uTexture, vUv + uTexel * vec2( 1.0, -1.0))
+           + texture2D(uTexture, vUv + uTexel * vec2(-1.0,  1.0))
+           + texture2D(uTexture, vUv + uTexel * vec2( 1.0,  1.0));
+    gl_FragColor = c * 0.25;
+  }
+`;
+
 // Temporal smoothing for the bokeh mask.
 //
 // The gather is stateless — it answers the mask instantly, frame by frame, so
