@@ -57,6 +57,18 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
 > T-Disp Source to *Displace Layer* to restore it exactly.
 
 ### Added
+- **Mapping — the seamless projection is no longer Noise-only.** Whether a
+  texture was projected seamlessly used to be *inferred* from the source: you
+  got it if and only if you picked Noise. So the mapping that removes the pinch
+  at a sphere's poles was unreachable for a movie or the camera, which pinch
+  just as badly. It is now a control on the material: *UV* follows the model's
+  own coordinates, *Seamless* projects from three axes and blends, and *Auto*
+  (the default) reproduces the old rule exactly, so nothing existing moves.
+  Both explicit modes earn their place — Seamless has no poles and no seam, but
+  it mirrors the far side of the object and softens the 45° diagonals, which is
+  right for noise and texture and wrong for a picture with faces or text in it.
+  The displacement path follows the same choice, so relief and picture stay in
+  the same projection.
 - **Fourteen typefaces**, bundled with the app rather than fetched from the web,
   so they work offline and in a venue: Inter, Space Grotesk, Archivo, Oswald,
   Playfair, JetBrains Mono, Bebas, Anton, Orbitron, Monoton, Major Mono, VT323,

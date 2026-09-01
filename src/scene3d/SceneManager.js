@@ -326,7 +326,7 @@ export class SceneManager {
       shader.uniforms.uTDisplace    = { value: 0 };
       shader.uniforms.uDispTexScale = { value: 1 };
       shader.uniforms.uDispTexProj  = { value: 0 };
-      shader.uniforms.uObjNoiseDisp = { value: 0 };
+      shader.uniforms.uTriplanarDisp = { value: 0 };
       shader.uniforms.uRimAmount  = { value: 0 };
       shader.uniforms.uRimColor   = { value: new THREE.Color(0xffffff) };
       mat._shader = shader;
@@ -345,7 +345,7 @@ export class SceneManager {
         uniform float uTDisplace;
         uniform float uDispTexScale;
         uniform float uDispTexProj;
-        uniform float uObjNoiseDisp;
+        uniform float uTriplanarDisp;
         varying vec3 vObjPos;
         varying vec3 vObjNormal;
         ${TRIPLANAR_GLSL}
@@ -376,7 +376,7 @@ export class SceneManager {
           float mathNoise = _dispNoise(pos * uDispScale + tOff) * uDisplace;
           if (uTDisplace == 0.0) return mathNoise;
           float texVal;
-          if (uObjNoiseDisp > 0.5) {
+          if (uTriplanarDisp > 0.5) {
             // Triplanar. uDispTexScale is honoured HERE too — it used to be
             // computed into finalUv, which this branch never reads, so
             // Disp. Tex Scale was silently inert whenever the seamless path
@@ -484,7 +484,7 @@ export class SceneManager {
         '#include <map_fragment>',
         `
         #ifdef USE_MAP
-          #ifdef USE_OBJ_NOISE
+          #ifdef USE_TRIPLANAR
             vec4 sampledDiffuseColor = _triSample(map, vObjPos, vObjNormal, 1.0);
             diffuseColor *= sampledDiffuseColor;
           #else
@@ -504,7 +504,7 @@ export class SceneManager {
       );
     };
     mat.customProgramCacheKey = () =>
-      'warpblobrimdispvtfv4' + (mat.defines?.USE_OBJ_NOISE ? '_tri' : '');
+      'warpblobrimdispvtfv5' + (mat.defines?.USE_TRIPLANAR ? '_tri' : '');
   }
 
   _rebuildMaterial(type) {
@@ -976,10 +976,28 @@ export class SceneManager {
 
       // Live texture source on mesh surface
       const texSrcIdx = p.get('scene3d.mat.texsrc')?.value ?? 0;
-      const _useObjNoise = texSrcIdx === 6;
-      if (!!this.material.defines?.USE_OBJ_NOISE !== _useObjNoise) {
-        if (_useObjNoise) this.material.defines.USE_OBJ_NOISE = true;
-        else delete this.material.defines.USE_OBJ_NOISE;
+
+      // Which projection maps a texture onto the mesh. This used to be inferred
+      // — triplanar if and only if the source was Noise — so the seamless
+      // mapping that removes the pinch at a sphere's poles was unreachable for
+      // a movie or the camera, which pinch just as badly. Auto keeps that old
+      // rule so no existing render moves; UV and Seamless override it.
+      //
+      // Both remain useful: triplanar projects from three axes and blends, so
+      // it is seamless and pole-free, but it MIRRORS the far side of the object
+      // and softens the 45-degree seams. Ideal for noise and texture, wrong for
+      // a picture with faces or text in it. Hence a choice, not a rule.
+      const MAPPING_AUTO = 0, MAPPING_UV = 1, MAPPING_TRI = 2;
+      const mappingSel = p.get('scene3d.mat.mapping')?.value ?? MAPPING_AUTO;
+      const resolveTriplanar = (srcIdx) =>
+        mappingSel === MAPPING_TRI ? true :
+        mappingSel === MAPPING_UV  ? false :
+        srcIdx === 6;   // Auto — Noise is procedural, so it costs nothing to wrap
+
+      const _useTriplanar = resolveTriplanar(texSrcIdx);
+      if (!!this.material.defines?.USE_TRIPLANAR !== _useTriplanar) {
+        if (_useTriplanar) this.material.defines.USE_TRIPLANAR = true;
+        else delete this.material.defines.USE_TRIPLANAR;
         this.material.needsUpdate = true;
       }
       const texSrcMap = [null, inputs.camera, inputs.movie, inputs.screen, inputs.draw, inputs.buffer, inputs.noise];
@@ -1077,11 +1095,11 @@ export class SceneManager {
           m._shader.uniforms.uTDisplace.value      = tDisplaceAmt;
           m._shader.uniforms.uDispTexScale.value   = displaceTexScale;
           m._shader.uniforms.uDispTexProj.value    = displaceTexProj;
-          if (m._shader.uniforms.uObjNoiseDisp !== undefined)
+          if (m._shader.uniforms.uTriplanarDisp !== undefined)
             // The displace path follows ITS OWN source's projection, not the
             // surface's. With dispsrc = Same as Surface the two coincide,
             // which is what makes the bumps land on the texture.
-            m._shader.uniforms.uObjNoiseDisp.value = dispTexSrcIdx === 6 ? 1.0 : 0.0;
+            m._shader.uniforms.uTriplanarDisp.value = resolveTriplanar(dispTexSrcIdx) ? 1.0 : 0.0;
         }
       };
       updateDisplace(this.material);

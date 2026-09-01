@@ -3014,6 +3014,25 @@ export function registerCoreParameters(ps) {
     value: 0,
   });
   ps.register({
+    // How the texture is projected onto the mesh. This used to be inferred —
+    // triplanar if and only if the source was Noise — which left the seamless,
+    // pole-free mapping unreachable for a movie or the camera, both of which
+    // pinch at a sphere's poles just as badly.
+    //
+    // Auto reproduces the old rule exactly, so no saved project moves. The two
+    // explicit modes are both worth having: triplanar projects from three axes
+    // and blends, so it is seamless, but it MIRRORS the far side of the object
+    // and softens the 45-degree seams — right for noise and texture, wrong for
+    // a picture containing faces or text.
+    id: "scene3d.mat.mapping",
+    label: "Mapping",
+    group: "scene3d",
+    type: PARAM_TYPE.SELECT,
+    select: true,
+    options: ["Auto", "UV", "Seamless"],
+    value: 0,
+  });
+  ps.register({
     id: "scene3d.mat.type",
     label: "Material Shader",
     group: "scene3d",
