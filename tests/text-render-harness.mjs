@@ -37,7 +37,7 @@ export const REST = {
   'text.pathUpright': 0, 'text.pathFlip': 0,
   'text.audioTarget': 0, 'text.audioBand': 0, 'text.audioAmt': 80,
   'text.audioSmooth': 10, 'text.audioLo': 80, 'text.audioHi': 6000,
-  'text.audioGain': 50,
+  'text.audioGain': 50, 'text.audioFocus': 0,
 };
 
 /**

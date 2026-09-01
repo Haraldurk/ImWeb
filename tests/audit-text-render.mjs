@@ -383,6 +383,90 @@ const BANDS = (i) => (i < 2 ? 0.50 : i < 19 ? 0.20 : i < 148 ? 0.08 : 0.03);
     c.map(d => d.scale));
 }
 
+// ── Focus, and spaces ───────────────────────────────────────────────────────
+//
+// The owner's own statement of the goal: with "IMWEB FUTURE", a bass sound
+// should move the I and not the whole of IMWEB. That is a selectivity control,
+// and these are the checks that say whether it works.
+
+{
+  // A bass note over a broadband floor — a real sound, not a lab tone. This is
+  // the owner's case: the low peak should claim the front of the word and the
+  // rest should settle, rather than the whole sentence shimmering.
+  //
+  // Note what this canNOT do, deliberately: a genuinely FLAT band of energy
+  // gives several letters identical readings, and nothing should separate
+  // them. Focus sharpens a peak; it does not invent one.
+  const tone = (i) => Math.max(0.2, 1 - i / 25);
+  const o = { 'text.audioTarget': 1, 'text.audioAmt': 100, 'text.audioSmooth': 0,
+              'text.audioLo': 30, 'text.audioHi': 20000 };
+
+  const broad = await makeLayer('ABCDEFGH');
+  broad.setAudio(audioFrame(tone));
+  const cb = settle(broad, { ...o, 'text.audioFocus': 0 });
+
+  const tight = await makeLayer('ABCDEFGH');
+  tight.setAudio(audioFrame(tone));
+  const ct = settle(tight, { ...o, 'text.audioFocus': 100 });
+
+  const moving = (c) => c.filter(d => d.scale > 1.02).length;
+  check('Focus narrows a tone onto FEWER letters',
+    cb.length === 8 && ct.length === 8 && moving(ct) < moving(cb),
+    { broad: moving(cb), tight: moving(ct) });
+  check('…and it leaves a front-to-back gradient, not a flat block',
+    ct[0].scale > ct[2].scale && ct[2].scale > ct[4].scale,
+    ct.map(d => +d.scale.toFixed(2)));
+}
+
+{
+  // Broadband sound is the case narrow filters alone cannot fix: every letter
+  // has something to react to. Competition is what makes one win.
+  const o = { 'text.audioTarget': 1, 'text.audioAmt': 100, 'text.audioSmooth': 0,
+              'text.audioLo': 30, 'text.audioHi': 20000 };
+  const shaped = (i) => (i < 3 ? 0.9 : 0.35);   // energy everywhere, a bass peak
+
+  const broad = await makeLayer('ABCDEFGH');
+  broad.setAudio(audioFrame(shaped));
+  const cb = settle(broad, { ...o, 'text.audioFocus': 0 });
+
+  const tight = await makeLayer('ABCDEFGH');
+  tight.setAudio(audioFrame(shaped));
+  const ct = settle(tight, { ...o, 'text.audioFocus': 100 });
+
+  const spread = (c) => Math.max(...c.map(d => d.scale)) - Math.min(...c.map(d => d.scale));
+  check('on BROADBAND sound, Focus still separates the letters',
+    cb.length === 8 && ct.length === 8 && spread(ct) > spread(cb),
+    { broad: +spread(cb).toFixed(3), tight: +spread(ct).toFixed(3) });
+}
+
+{
+  // Focus 0 must remain the old broad behaviour, so the control is additive
+  // rather than a change to what everyone already has.
+  const t = await makeLayer('ABCDEFGH');
+  t.setAudio(audioFrame(() => 0.5));
+  const c = settle(t, { ...{ 'text.audioTarget': 1, 'text.audioAmt': 100, 'text.audioSmooth': 0,
+              'text.audioLo': 30, 'text.audioHi': 20000 }, 'text.audioFocus': 0 });
+  check('Focus 0 leaves every letter live (the broad behaviour is intact)',
+    c.length === 8 && c.every(d => d.scale > 1.05), c.map(d => +d.scale.toFixed(2)));
+}
+
+{
+  // Spaces must not consume a slice of the spectrum: a four-word line would
+  // otherwise spend three of its bands on characters that never draw.
+  const o = { ...{ 'text.audioTarget': 1, 'text.audioAmt': 100, 'text.audioSmooth': 0,
+              'text.audioLo': 30, 'text.audioHi': 20000 }, 'text.audioFocus': 0 };
+  const spaced = await makeLayer('AB CD');
+  spaced.setAudio(audioFrame(() => 0.5));
+  const cs = settle(spaced, o);
+  const plain = await makeLayer('ABCD');
+  plain.setAudio(audioFrame(() => 0.5));
+  const cn = settle(plain, o);
+  check('spaces take no share of the spectrum — four letters band identically',
+    cs.length === 4 && cn.length === 4 &&
+    cs.every((d, i) => Math.abs(d.scale - cn[i].scale) < 1e-6),
+    { spaced: cs.map(d => +d.scale.toFixed(3)), plain: cn.map(d => +d.scale.toFixed(3)) });
+}
+
 {
   const t = await makeLayer('ABCDEFGH');
   t.setAudio(audioFrame(() => 0));

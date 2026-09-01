@@ -5043,6 +5043,20 @@ export function registerCoreParameters(ps) {
     value: 0,
   });
   ps.register({
+    // How narrow the pitch-to-letter mapping is — the control for "a bass note
+    // should move one letter, not half the sentence". 0 is broad averaging;
+    // 100 watches a sliver of spectrum per letter and lets only the strongest
+    // letter through. Narrow filters alone are not enough, because real sound
+    // is broadband: the competition is what makes one letter win.
+    id: "text.audioFocus",
+    label: "AudioFocus",
+    group: "text",
+    min: 0,
+    max: 100,
+    value: 50,
+    unit: "%",
+  });
+  ps.register({
     id: "text.audioAmt",
     label: "AudioAmt",
     group: "text",
