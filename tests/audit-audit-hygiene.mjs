@@ -174,6 +174,99 @@ console.log('\nOrdering checks guard a missing needle');
   console.log(`  note  ${ordering} live two-indexOf site(s) in the suite, all guarded`);
 }
 
+// ── Collection assertions guard an EMPTY collection ─────────────────────────
+//
+// The same fail-open as the ordering check above, one level up: an assertion
+// about every member of a collection is vacuously TRUE when the collection is
+// empty. `[].every(...)` is true. `new Set([]).size === [].length` is true.
+// `[].some(...)` is false, so a negated some passes too.
+//
+// This is not hypothetical. Three checks in audit-text-render shipped green
+// while asserting nothing at all: the layer stops re-rendering once its audio
+// envelope converges — correctly — so the final tick recorded no draws, and
+// every assertion about those draws passed against an empty array. The feature
+// could have been entirely broken and the suite would have said "ok".
+//
+// The guard is cheap and total: assert the SIZE too. Any nearby comparison of
+// `.length` or `.size` against something counts, so the natural fix registers.
+console.log('\nCollection assertions guard an empty collection');
+{
+  // Scoped to the case that actually fails: a collection **produced by running
+  // the code under test**, which is the only kind that can legitimately come
+  // back empty. A statically-sized fixture (`[...L]` over a seven-element
+  // literal in audit-audio-dsp) cannot, and flagging it would fail a correct
+  // check — the expensive direction, per LEARNED 2026-08-14. So the receiver
+  // must be a bare identifier assigned from a CALL nearby.
+  const vacuous = (line, ctx) => {
+    // Only inside an assertion — a bare .every() in a helper is not a claim.
+    if (!/\b(check|ok|assert)\s*\(/.test(line)) return false;
+
+    const setShape = /new Set\([^;]*\)\.size\s*===\s*([A-Za-z_$][\w$]*)\.length/;
+    const m = line.match(/([A-Za-z_$][\w$]*)\.every\s*\(/)
+           || line.match(/!\s*([A-Za-z_$][\w$]*)\.some\s*\(/)
+           || line.match(setShape);
+    if (!m) return false;
+    const recv = m[1];
+
+    const around = ctx ?? line;
+    // Produced by a call? `const c = settle(...)`, `= tick(...)`, `= run(...)`.
+    if (!new RegExp(`\\b${recv}\\s*=\\s*[^;\\n]*\\w\\s*\\(`).test(around)) return false;
+
+    // The set-size shape IS the assertion, so its own `.size ===` must not be
+    // read as the guard — remove it before looking for one.
+    const guardText = around.replace(setShape, '');
+    return !new RegExp(
+      `${recv}\\.(length|size)\\s*(===|!==|==|!=|>=|<=|>|<)`
+      + `|(===|!==|>=|<=|>|<)\\s*${recv}\\.(length|size)`
+    ).test(guardText);
+  };
+
+  let sites = 0;
+  for (const f of auditFiles) {
+    if (f === 'audit-audit-hygiene.mjs') continue;
+    const lines = stripComments(readFileSync(join(ROOT, 'tests', f), 'utf8')).split('\n');
+    lines.forEach((line, i) => {
+      const ctx = lines.slice(Math.max(0, i - 3), i + 4).join('\n');
+      if (!/\.every\s*\(|\.some\s*\(|new Set\(/.test(line)) return;
+      if (!/\b(check|ok|assert)\s*\(/.test(line)) return;
+      sites++;
+      check(`${f}:${i + 1} collection assertion guards an empty collection`,
+        !vacuous(line, ctx),
+        `\`[].every(...)\` is TRUE, so this passes when the collection is empty — ` +
+        `which is what "the code drew nothing" looks like. Assert the count too`);
+    });
+  }
+
+  // Positive control, for the reason the ordering check states: once every
+  // live site is guarded, counting subjects cannot distinguish "clean" from
+  // "the detector broke".
+  const RUN = `const c = settle(t, o);\n`;
+  check('detector flags an unguarded every()',
+    vacuous(`check('all scaled', c.every(d => d.scale > 1));`,
+            RUN + `check('all scaled', c.every(d => d.scale > 1));`));
+  check('detector flags an unguarded negated some()',
+    vacuous(`check('none stale', !c.some(d => d.stale));`,
+            RUN + `check('none stale', !c.some(d => d.stale));`));
+  check('detector flags an unguarded set-size-vs-length',
+    vacuous(`check('all distinct', new Set(c.map(d => d.x)).size === c.length);`,
+            RUN + `check('all distinct', new Set(c.map(d => d.x)).size === c.length);`));
+  check('detector accepts a check that asserts the count as well',
+    !vacuous(`check('all scaled', c.length === 8 && c.every(d => d.scale > 1));`,
+             RUN + `check('all scaled', c.length === 8 && c.every(d => d.scale > 1));`));
+  check('detector accepts a guard on a nearby line',
+    !vacuous(`check('all scaled', c.every(d => d.scale > 1));`,
+             RUN + `if (c.length !== 8) fail('no draws');\ncheck('all scaled', c.every(d => d.scale > 1));`));
+  check('detector accepts a set-size check that also asserts the count',
+    !vacuous(`check('all distinct', c.length === 4 && new Set(c.map(d => d.x)).size === 4);`,
+             RUN + `check('all distinct', c.length === 4 && new Set(c.map(d => d.x)).size === 4);`));
+  check('detector ignores a non-assertion every()',
+    !vacuous(`const allBig = c.every(d => d.scale > 1);`, RUN + `const allBig = c.every(d => d.scale > 1);`));
+  check('detector ignores a statically-sized fixture',
+    !vacuous(`check('bounded', [...L].every((v) => v >= -1 && v <= 1));`,
+             `const L = new Float32Array([0.5, 5, -5]);\ncheck('bounded', [...L].every((v) => v >= -1 && v <= 1));`));
+  console.log(`  note  ${sites} collection assertion(s) in the suite, all guarded`);
+}
+
 function truncate(s) { return s.length > 46 ? s.slice(0, 43) + '…' : s; }
 
 console.log(failures
