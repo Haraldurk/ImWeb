@@ -210,7 +210,14 @@ export function buildMappingPanels(ps, contextMenu) {
     // its Audio In device row is injected from main.js instead.)
     'bg1-params':      [ps.get('screen.bg1')].filter(Boolean),
     'bg2-params':      [ps.get('screen.bg2')].filter(Boolean),
-    'transform-params': ps.getGroup('scene3d').filter(p => p.id.includes('rot') || p.id.includes('pos') || p.id.includes('scale') || p.id.includes('spin')),
+    // NOTE: 'transform-params' is deliberately NOT listed here. It is built
+    // explicitly further down this file (the Screen XY toggle, the world-units
+    // hint, then a fixed order), and a container filled by both writers renders
+    // every row twice. The substring filter this replaced was wrong twice over:
+    // it duplicated the whole section, and `id.includes('scale')` also swept in
+    // scene3d.clone.scale, clone.scalestep and blob.scale, so CloneScale,
+    // ScaleStep and Metaball Scale appeared under Transform as well as under
+    // the sections they belong to.
     'camera3d-params': ps.getGroup('scene3d').filter(p => p.id.includes('cam')),
     'material-params': ps.getGroup('scene3d').filter(p => p.id.includes('mat') || p.id.includes('wire') || p.id.includes('depth')),
     'lights-params':   ps.getGroup('lights3d'),
