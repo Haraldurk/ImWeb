@@ -135,6 +135,162 @@ const check = (m, cond, d) => (cond ? ok(m) : fail(m, d));
     hi[0].x === lo[0].x * 2 && hi[0].y === lo[0].y * 2, { lo: lo[0], hi: hi[0] });
 }
 
+// ── 7. Marquee ──────────────────────────────────────────────────────────────
+
+{
+  const t = await makeLayer('ABCD');
+  const c = tick(t, { 'text.scrollX': 25 }, 0.1);
+  check('scroll tiles the line so it can wrap',
+    c.length > 1 && new Set(c.map(d => d.x)).size === c.length, c.map(d => d.x));
+  check('scroll draws whole lines, not glyphs, when nothing per-glyph is on',
+    c.every(d => d.s === 'ABCD'), c.map(d => d.s));
+}
+
+{
+  // The repetition count is computed from the period, not hardcoded: a
+  // one-character marquee has a period of a few pixels and a fixed three
+  // repetitions would leave most of the canvas empty.
+  const t = await makeLayer('A');
+  const wide = await makeLayer('A'.repeat(40));
+  const cs = tick(t, { 'text.scrollX': 25, 'text.scrollGap': 0 }, 0.1);
+  const cw = tick(wide, { 'text.scrollX': 25, 'text.scrollGap': 0 }, 0.1);
+  check('a short marquee repeats more often than a long one',
+    cs.length > cw.length, { short: cs.length, long: cw.length });
+  check('the repetition count is capped, not unbounded', cs.length <= 66, cs.length);
+}
+
+{
+  // Coverage: at any phase in the cycle the tiling must reach both edges, or
+  // the crawl visibly stutters as it wraps.
+  const t = await makeLayer('ABCD');
+  let worstGapAtLeftEdge = -Infinity;
+  for (let i = 0; i < 12; i++) {
+    const c = tick(t, { 'text.scrollX': 60 }, 0.05);
+    worstGapAtLeftEdge = Math.max(worstGapAtLeftEdge, Math.min(...c.map(d => d.x)));
+  }
+  check('the tiling always reaches past the left edge, at every phase',
+    worstGapAtLeftEdge <= 0, worstGapAtLeftEdge);
+}
+
+{
+  const t = await makeLayer('ABCD');
+  const a = tick(t, { 'text.scrollX': 50 }, 0.1).map(d => d.x);
+  const b = tick(t, { 'text.scrollX': 50 }, 0.1).map(d => d.x);
+  check('the phase advances on dt, so the marquee actually moves',
+    a.join() !== b.join(), { a, b });
+}
+
+// ── 8. Paths ────────────────────────────────────────────────────────────────
+
+{
+  // Round ON SCREEN, not on the canvas: the compositor stretches the square
+  // source by the output aspect, so the canvas-space x must be pre-divided.
+  const t = await makeLayer('ABCDEFGH');
+  t.setOutputAspect(16 / 9);
+  const c = tick(t, { 'text.path': 1, 'text.pathRadius': 40 });
+  const cx = 256, cy = 256, R = 0.4 * 256;
+  const radii = c.map(d => Math.hypot((d.x - cx) * (16 / 9), d.y - cy));
+  const err = Math.max(...radii.map(r => Math.abs(r - R)));
+  check('Circle: every glyph lands on a circle that is round on screen',
+    c.length === 8 && err < R * 0.06, { R, radii: radii.map(r => +r.toFixed(1)) });
+  check('Circle: glyphs are rotated to face along the curve',
+    new Set(c.map(d => d.rot)).size === c.length, c.map(d => d.rot));
+}
+
+{
+  const t = await makeLayer('ABCDEFGH');
+  t.setOutputAspect(16 / 9);
+  const c = tick(t, { 'text.path': 1, 'text.pathRadius': 40, 'text.pathUpright': 1 });
+  check('pathUpright holds every glyph vertical while it still follows the ring',
+    c.every(d => d.rot === 0) && new Set(c.map(d => d.x)).size > 1, c.map(d => d.rot));
+}
+
+{
+  const t = await makeLayer('ABCDEFGH');
+  const c = tick(t, { 'text.path': 3, 'text.pathRadius': 20, 'text.pathTwist': 100 });
+  const r = c.map(d => Math.hypot(d.x - 256, d.y - 256));
+  check('Spiral: the radius grows monotonically along the string',
+    r.every((v, i) => i === 0 || v > r[i - 1] - 0.01), r.map(v => +v.toFixed(1)));
+}
+
+{
+  const t = await makeLayer('ABCDEFGH');
+  const circle = tick(t, { 'text.path': 1, 'text.pathRadius': 30, 'text.pathTwist': 100 });
+  const plain  = tick(t, { 'text.path': 1, 'text.pathRadius': 30, 'text.pathTwist': 0 });
+  check('pathTwist has exactly one owner — it does not deform Circle',
+    circle.map(d => `${d.x},${d.y}`).join() === plain.map(d => `${d.x},${d.y}`).join());
+}
+
+{
+  const t = await makeLayer('ABCD');
+  const a = tick(t, { 'text.path': 2, 'text.pathSpread': 90 });
+  const b = tick(t, { 'text.path': 2, 'text.pathSpread': 180 });
+  const mid = (c) => c.reduce((s, d) => s + d.x, 0) / c.length;
+  check('Arc centres its spread on pathAngle, so widening it keeps the arc put',
+    Math.abs(mid(a) - mid(b)) < 2, { narrow: +mid(a).toFixed(2), wide: +mid(b).toFixed(2) });
+}
+
+{
+  const t = await makeLayer('ABCDEFGH');
+  const off = tick(t, { 'text.path': 1, 'text.pathRadius': 40 });
+  const on  = tick(t, { 'text.path': 1, 'text.pathRadius': 40, 'text.pathFlip': 1 });
+  // Compare glyph CENTRES, not the recorded draw positions. fillText is given
+  // the glyph's left edge, and turning a glyph over swings that edge around to
+  // the far side — the origin moves by one advance while the centre has not
+  // moved at all. Asserting on the origin would fail correct code.
+  const centre = (d) => [
+    d.x + Math.cos(d.rot * Math.PI / 180) * CHAR_W / 2,
+    d.y + Math.sin(d.rot * Math.PI / 180) * CHAR_W / 2,
+  ];
+  const flipped = (a, b) => Math.abs(((((a - b) % 360) + 360) % 360) - 180) < 0.01;
+  check('pathFlip turns the glyphs over without moving them off the ring',
+    off.every((d, i) => {
+      const [ax, ay] = centre(d), [bx, by] = centre(on[i]);
+      return Math.abs(ax - bx) < 0.01 && Math.abs(ay - by) < 0.01;
+    }) && off.every((d, i) => flipped(d.rot, on[i].rot)),
+    { off: off.map(d => d.rot), on: on.map(d => d.rot) });
+}
+
+{
+  const t = await makeLayer('ABCD');
+  t.setOutputAspect(16 / 9);
+  const round = tick(t, { 'text.path': 1, 'text.pathRadius': 40 });
+  const wide  = tick(t, { 'text.path': 1, 'text.pathRadius': 40, 'text.pathWidth': 200 });
+  const spanX = (c) => Math.max(...c.map(d => d.x)) - Math.min(...c.map(d => d.x));
+  const spanY = (c) => Math.max(...c.map(d => d.y)) - Math.min(...c.map(d => d.y));
+  check('pathWidth stretches x only — an ellipse on purpose',
+    spanX(wide) > spanX(round) * 1.9 && Math.abs(spanY(wide) - spanY(round)) < 0.01,
+    { round: [spanX(round), spanY(round)], wide: [spanX(wide), spanY(wide)] });
+}
+
+// ── 9. Path and marquee compose ─────────────────────────────────────────────
+//
+// Scroll folds into the arc-length fraction, not into x. If it were added to x
+// every repetition would land at the same angles and draw on top of itself.
+
+{
+  const t = await makeLayer('ABCD');
+  const c = tick(t, { 'text.path': 1, 'text.pathRadius': 40, 'text.scrollX': 30 }, 0.1);
+  const pos = new Set(c.map(d => `${d.x.toFixed(2)},${d.y.toFixed(2)}`));
+  check('path + scroll: repetitions sit at DIFFERENT angles, not stacked',
+    c.length > 4 && pos.size === c.length, { draws: c.length, distinct: pos.size });
+}
+
+{
+  const t = await makeLayer('ABCD'); t.advance();
+  const c = tick(t, {
+    'text.path': 1, 'text.pathRadius': 40,
+    'text.animMode': 5, 'text.animSpeed': 2, 'text.animAmt': 100,
+    'text.anim.in': 1, 'text.stagger': 60,
+  }, 0.3);
+  check('path + glitch + stagger all compose in one pass',
+    c.length > 0 &&
+    c.every(d => d.rot !== 0) &&
+    c.filter((d, i) => d.s !== 'ABCD'[i]).length === c.length &&
+    c.some(d => d.a < 1),
+    c);
+}
+
 void REST;
 
 if (failed) {

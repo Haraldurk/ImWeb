@@ -42,6 +42,19 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
 - **Glitch** (AnimMode) scrambles characters continuously, and **Decode**
   (AnimIn) resolves the text out of noise as it enters. Four character sets:
   Symbols, ASCII, Blocks, Katakana.
+- **Marquee.** ScrollX and ScrollY crawl the text continuously and repeat it,
+  so a short word tiles across the frame and a long line runs on forever.
+  ScrollGap sets the space between repeats. You could already slide text by
+  putting a sawtooth LFO on TextX — what you could not do was make it wrap.
+- **Paths** — Circle, Arc, Spiral and Wave lay the text along a shape instead
+  of a line. PathAngle is the one to reach for: put an LFO on it and the ring
+  spins. PathFlip rights the glyphs along the bottom of a ring, PathUpright
+  keeps them vertical while their positions still follow the curve, and
+  PathWidth stretches the shape into an ellipse on purpose — at 100 % a circle
+  is round on screen, which it would not otherwise be, since the text canvas
+  is square and your output is not.
+
+  Scroll and paths combine: the text crawls **around** the ring.
 
 ### Changed
 - **The Text preview is playable.** Drag it to move the text, Shift+drag to

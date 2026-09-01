@@ -8280,7 +8280,12 @@ void main() {
       if (fade > 0) warpEditor.decay(fade * dt * 4);
     }
 
-    // Tick text layer (updates text rendering based on text.* params)
+    // Tick text layer (updates text rendering based on text.* params).
+    // The aspect goes in first: the text canvas is square and the compositor
+    // samples it at plain vUv, so it is stretched to fill the frame. Path
+    // layout divides its x extent by this to keep a circle round on screen.
+    // setOutputAspect early-returns unless the value actually changed.
+    textLayer.setOutputAspect(pipeline.width / Math.max(1, pipeline.height));
     textLayer.tick(ps, dt);
 
     // Update sound level texture
