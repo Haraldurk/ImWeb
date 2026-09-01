@@ -3014,6 +3014,25 @@ export function registerCoreParameters(ps) {
     value: 0,
   });
   ps.register({
+    // How the texture is projected onto the mesh. This used to be inferred —
+    // triplanar if and only if the source was Noise — which left the seamless,
+    // pole-free mapping unreachable for a movie or the camera, both of which
+    // pinch at a sphere's poles just as badly.
+    //
+    // Auto reproduces the old rule exactly, so no saved project moves. The two
+    // explicit modes are both worth having: triplanar projects from three axes
+    // and blends, so it is seamless, but it MIRRORS the far side of the object
+    // and softens the 45-degree seams — right for noise and texture, wrong for
+    // a picture containing faces or text.
+    id: "scene3d.mat.mapping",
+    label: "Mapping",
+    group: "scene3d",
+    type: PARAM_TYPE.SELECT,
+    select: true,
+    options: ["Auto", "UV", "Seamless"],
+    value: 0,
+  });
+  ps.register({
     id: "scene3d.mat.type",
     label: "Material Shader",
     group: "scene3d",
@@ -3137,6 +3156,30 @@ export function registerCoreParameters(ps) {
     max: 2,
     value: 0,
     step: 0.01,
+  });
+  ps.register({
+    // Index 0 keeps T-Displace on the SAME image the surface shows, which is
+    // what the control implies. Index 1 is the pre-v0.22.2 route (the global
+    // Displace Source layer) — kept because displacing by one source while
+    // showing another is a real technique, just a bad default. Indices 2+
+    // mirror scene3d.mat.texsrc's own list, offset by DISPSRC_TEX_BASE.
+    id: "scene3d.mat.dispsrc",
+    label: "T-Disp Source",
+    group: "scene3d",
+    type: PARAM_TYPE.SELECT,
+    select: true,
+    options: [
+      "Same as Surface",
+      "Displace Layer",
+      "None",
+      "Camera",
+      "Movie",
+      "Screen",
+      "Draw",
+      "Buffer",
+      "Noise",
+    ],
+    value: 0,
   });
   ps.register({
     id: "scene3d.mat.dispScale",

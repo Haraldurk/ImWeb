@@ -23,7 +23,52 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
   turn it off — the text will look the same or better, and whatever is behind it
   will come back.
 
+- **A texture on a Plane is recognisable again.** The seamless mapping that
+  removed the pinch at a sphere's poles took *both* its blend weights and its
+  sample coordinates from `normalize(position)` — the direction from the
+  object's centre. That is only meaningful where the surface is radial from
+  the origin, which is true of a sphere and of nothing else. A plane lies flat
+  in z=0, so that direction has z=0 everywhere: the weights collapsed onto two
+  planes that both sampled a single line of the texture, indexed by angle
+  around the middle. Measured over a 64×64 plane, 4096 surface points reached
+  just **46 distinct texels**, with up to **152 points landing on the same
+  one** — the picture smeared out of the centre with all radial detail gone.
+  Weights now come from the **normal** and coordinates from the **position**,
+  which is what triplanar mapping actually is; the same 4096 points now reach
+  4096 texels, one each. On the unit sphere position and normal coincide, so
+  that mapping is unchanged to 2.2e-16 — one double ulp, i.e. exactly.
+- **T-Displace displaces by the texture you can see.** It read the global
+  Displace Source layer (`layer.ds`), with a special case that switched to
+  Noise only when the *surface* was Noise — so by default the relief came from
+  a different image than the object was showing. New **T-Disp Source** control,
+  defaulting to *Same as Surface*; *Displace Layer* keeps the old route for
+  displacing by one source while showing another.
+- **Displacement follows the texture's own UVs.** The colour path samples
+  `vMapUv` — the uv after the map's offset/repeat, including the UVSpeedX/Y
+  scroll — while displacement sampled the raw `uv` attribute. Scrolling a
+  texture therefore slid the picture over bumps that stood still. Both now
+  read the same coordinates.
+- **Disp. Tex Scale works in seamless mode.** It was computed into a uv that
+  the triplanar branch never read, so the control was inert whenever the
+  seamless path was active while still reading as set.
+
+> **Note on existing projects:** T-Disp Source defaults to *Same as Surface*, so
+> a saved project whose T-Displace relied on the DS layer will change. Set
+> T-Disp Source to *Displace Layer* to restore it exactly.
+
 ### Added
+- **Mapping — the seamless projection is no longer Noise-only.** Whether a
+  texture was projected seamlessly used to be *inferred* from the source: you
+  got it if and only if you picked Noise. So the mapping that removes the pinch
+  at a sphere's poles was unreachable for a movie or the camera, which pinch
+  just as badly. It is now a control on the material: *UV* follows the model's
+  own coordinates, *Seamless* projects from three axes and blends, and *Auto*
+  (the default) reproduces the old rule exactly, so nothing existing moves.
+  Both explicit modes earn their place — Seamless has no poles and no seam, but
+  it mirrors the far side of the object and softens the 45° diagonals, which is
+  right for noise and texture and wrong for a picture with faces or text in it.
+  The displacement path follows the same choice, so relief and picture stay in
+  the same projection.
 - **Fourteen typefaces**, bundled with the app rather than fetched from the web,
   so they work offline and in a venue: Inter, Space Grotesk, Archivo, Oswald,
   Playfair, JetBrains Mono, Bebas, Anton, Orbitron, Monoton, Major Mono, VT323,

@@ -558,6 +558,7 @@ dark composite — reach for it before adding lights.
 | Parameter | Range | Description |
 |-----------|-------|-------------|
 | `scene3d.mat.texsrc` | SELECT | Live texture source (None / Camera / Movie / Screen / Draw / Buffer / Noise) |
+| `scene3d.mat.mapping` | SELECT | **Mapping** — how the texture is projected. *UV* follows the model's own coordinates and pinches at a sphere's poles. *Seamless* projects from three axes and blends: no poles, no seam, but it mirrors the far side of the object and softens the 45° diagonals — right for noise and texture, wrong for a picture with faces or text. *Auto* (default) uses Seamless for Noise and UV for everything else, which is what the app did before this control existed |
 | `scene3d.mat.uvSpeedX` | −2 – 2 | **UVSpeedX** — scrolls the texture across the surface |
 | `scene3d.mat.uvSpeedY` | −2 – 2 | **UVSpeedY** |
 
@@ -570,6 +571,7 @@ than just the shading. Two independent sources, which sum:
 | `scene3d.mat.dispScale` | 0.1–10 | **DispScale** — spatial frequency of that noise |
 | `scene3d.mat.dispSpeed` | −5 – 5 | **Disp. Speed** — how fast it evolves |
 | `scene3d.mat.tDisplace` | 0–2 | **T-Displace** — displacement driven by the *texture* instead, so the live picture becomes relief |
+| `scene3d.mat.dispsrc` | SELECT | **T-Disp Source** — which image T-Displace reads. *Same as Surface* (default) uses the texture the object is showing, so the relief lands on the picture; *Displace Layer* uses the global DS layer, which is what this did before v0.22.2; the rest name a source directly |
 | `scene3d.mat.dispTexScale` | 0.1–10 | **Disp. Tex Scale** |
 | `scene3d.mat.dispTexProj` | SELECT | **Disp. Projection** — *UV (Skin)* wraps with the model, *Screen (Projector)* stays fixed in frame while the object turns under it |
 
