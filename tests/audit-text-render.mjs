@@ -50,6 +50,14 @@ const settle = (layer, opts, frames = 40) => {
   return last;
 };
 
+/**
+ * A stepped spectrum: one level per glyph band when four glyphs span
+ * 30 Hz - 20 kHz. Bins are ~94 Hz apart at 48 kHz, so the boundaries below are
+ * the band edges, and the levels clear the noise gate without saturating after
+ * the spectral tilt.
+ */
+const BANDS = (i) => (i < 2 ? 0.50 : i < 19 ? 0.20 : i < 148 ? 0.08 : 0.03);
+
 // ── 1. The default case is untouched ────────────────────────────────────────
 
 {
@@ -342,7 +350,7 @@ const settle = (layer, opts, frames = 40) => {
   const t = await makeLayer('ABCDEFGH');
   t.setAudio(audioFrame((i) => (i >= 96 ? 1 : 0)));
   const o = { 'text.audioTarget': 1, 'text.audioAmt': 100, 'text.audioSmooth': 0,
-              'text.audioRange': 100 };
+              'text.audioLo': 30, 'text.audioHi': 20000 };
   const c = settle(t, o);
   check('Spectrum: a treble-only signal reaches the TRAILING glyphs',
     c.length === 8 && c[7].scale > 1.05 && c[0].scale < 1.01,
@@ -356,7 +364,7 @@ const settle = (layer, opts, frames = 40) => {
   const t = await makeLayer('ABCDEFGH');
   t.setAudio(audioFrame(() => 0.5));                       // flat spectrum
   const o = { 'text.audioTarget': 1, 'text.audioAmt': 100, 'text.audioSmooth': 0,
-              'text.audioRange': 100 };
+              'text.audioLo': 30, 'text.audioHi': 20000 };
   const c = settle(t, o);
   check('every glyph gets a live band — none is left permanently still',
     c.length === 8 && c.every(d => d.scale > 1.05), c.map(d => d.scale));
@@ -414,11 +422,13 @@ const settle = (layer, opts, frames = 40) => {
 
 {
   const t = await makeLayer('ABCD');
-  // Range 100 so the four glyphs span 50 Hz-24 kHz and land in clearly
-  // different bands; a rising ramp then gives each a distinct average.
+  // A STEPPED spectrum, one level per glyph band. A smooth ramp will not do:
+  // the tilt is designed to flatten a falling spectrum, so a ramp comes out
+  // nearly uniform and the check stops discriminating. Levels are chosen to
+  // clear the gate without saturating.
   const o = { 'text.audioTarget': 3, 'text.audioAmt': 100, 'text.audioSmooth': 0,
-              'text.audioRange': 100, 'text.outline': 4 };
-  t.setAudio(audioFrame((i, n) => i / n));
+              'text.audioLo': 30, 'text.audioHi': 20000, 'text.outline': 4 };
+  t.setAudio(audioFrame(BANDS));
   const c = settle(t, o);
   check('Hue: each glyph takes its own colour, and the OUTLINE pass keeps it',
     c.length === 4 && new Set(c.map(d => d.fill)).size === 4, c.map(d => d.fill));
@@ -427,8 +437,8 @@ const settle = (layer, opts, frames = 40) => {
 {
   const t = await makeLayer('ABCD');
   const o = { 'text.audioTarget': 4, 'text.audioAmt': 100, 'text.audioSmooth': 0,
-              'text.audioRange': 100 };
-  t.setAudio(audioFrame((i, n) => i / n));
+              'text.audioLo': 30, 'text.audioHi': 20000 };
+  t.setAudio(audioFrame(BANDS));
   const c = settle(t, o);
   check('Weight: each glyph gets its own weight, and the advance does NOT move',
     c.length === 4 && new Set(c.map(d => d.font)).size === 4 &&

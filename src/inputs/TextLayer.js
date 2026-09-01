@@ -189,9 +189,11 @@ export class TextLayer {
     this._audio       = null;
     this._audioTarget = 0;
     this._audioBand   = 0;
-    this._audioAmt    = 50;
-    this._audioSmooth = 40;
-    this._audioRange  = 50;
+    this._audioAmt    = 80;
+    this._audioSmooth = 10;
+    this._audioLo     = 80;     // Hz — low end of the span across the word
+    this._audioHi     = 6000;   // Hz — high end
+    this._audioGain   = 50;     // sensitivity
     // Per-glyph envelope followers, indexed by glyph. Grown on demand.
     this._audioEnv    = new Float32Array(0);
 
@@ -255,26 +257,33 @@ export class TextLayer {
       : this._audioBand === 3 ? (a?.mid   ?? 0)
       :                         (a?.high  ?? 0);
 
-    // Glyph → frequency is LOGARITHMIC, because hearing is and music is.
+    // Glyph → frequency is LOGARITHMIC, because hearing is and music is: every
+    // letter gets an equal share of the OCTAVES between Low and High, not an
+    // equal share of the hertz. A linear spread put ten of eleven letters above
+    // 1 kHz where a microphone has almost nothing, which is why the only usable
+    // setting was to squash the whole span into the bass.
     //
-    // The first version spread bins linearly: 256 bins over 0–24 kHz is ~94 Hz
-    // each, so eleven letters spanned 0–12 kHz and everything past the third
-    // letter sat in a band a real microphone leaves nearly empty. The only way
-    // to make it move was to wind the range down to 5 %, which crushes the
-    // whole word into the bottom 1.2 kHz and throws the top away — the
-    // workaround that proved the mapping was wrong.
-    //
-    // Log spacing gives every letter an equal share of the OCTAVES instead of
-    // an equal share of the hertz, so a word reads bass-to-treble the way a
-    // graphic EQ does. audioRange now sets the top of that span, also
-    // logarithmically: 100 % is the full spectrum, and the default sits around
-    // 4 kHz, which is where a voice or a mix actually stops.
+    // Low and High are two ends rather than one "range", because that is what
+    // tuning this actually needs: you point the word at the part of the
+    // spectrum the material lives in, from both sides.
     const nyq   = (a?.rate ?? 48000) / 2;
-    const F_LO  = 50;
-    const fTop  = F_LO * Math.pow(Math.max(F_LO * 2, nyq) / F_LO, this._audioRange / 100);
+    const fLo   = Math.max(20, Math.min(this._audioLo, nyq * 0.5));
+    const fHi   = Math.max(fLo * 1.5, Math.min(this._audioHi, nyq));
     const hzPer = nyq / Math.max(1, N);
-    const fAt   = (t) => F_LO * Math.pow(fTop / F_LO, t);
+    const fAt   = (t) => fLo * Math.pow(fHi / fLo, t);
     const binAt = (f) => Math.max(0, Math.min(N - 1, Math.round(f / hzPer)));
+
+    // Sensitivity, and the gate that makes it usable.
+    //
+    // Without a gate the letters never come to rest: a microphone's noise floor
+    // is not zero, the spectral tilt below multiplies it, and every glyph sits
+    // permanently a little bit ON — which reads as "rotated a bit by default",
+    // as movement that looks minimal (the useful travel is squashed above a
+    // raised floor), and as a response too broad to tell one letter from
+    // another. The gate subtracts the resting floor and re-normalises what is
+    // left, so silence is genuinely still and the whole travel is signal.
+    const gain = Math.pow(10, (this._audioGain - 50) / 50);   // 0.1x … 10x
+    const GATE = 0.08;
 
     const atkK = 1 - Math.exp(-dt / 0.02);
     const relK = 1 - Math.exp(-dt / (0.02 + (this._audioSmooth / 100) * 0.5));
@@ -300,6 +309,13 @@ export class TextLayer {
         const fc = (fAt(i / n) + fAt((i + 1) / n)) * 0.5;
         v = Math.min(1, v * Math.min(4, Math.max(1, Math.sqrt(fc / 250))));
       }
+      // Sensitivity, THEN the gate — in that order, so turning sensitivity up
+      // lifts the signal above a fixed floor instead of lifting the floor with
+      // it. Gating after the tilt matters too: the tilt multiplies hiss as
+      // readily as music, and ungated that is what held every letter slightly
+      // on at rest.
+      v = Math.max(0, Math.min(1, (v * gain - GATE) / (1 - GATE)));
+
       const e = this._audioEnv[i];
       const k = v > e ? atkK : relK;
       const next = e + (v - e) * k;
@@ -447,12 +463,16 @@ export class TextLayer {
     const audioBand   = Math.round(get('text.audioBand'));
     const audioAmt    = get('text.audioAmt');
     const audioSmooth = get('text.audioSmooth');
-    const audioRange  = get('text.audioRange');
+    const audioLo     = get('text.audioLo');
+    const audioHi     = get('text.audioHi');
+    const audioGain   = get('text.audioGain');
     if (audioTarget !== this._audioTarget) { this._audioTarget = audioTarget; dirty = true; }
     if (audioBand   !== this._audioBand)   { this._audioBand   = audioBand;   dirty = true; }
     if (audioAmt    !== this._audioAmt)    { this._audioAmt    = audioAmt;    dirty = true; }
     this._audioSmooth = audioSmooth;
-    this._audioRange  = audioRange;
+    this._audioLo     = audioLo;
+    this._audioHi     = audioHi;
+    if (audioGain !== this._audioGain) { this._audioGain = audioGain; dirty = true; }
     // The envelope is an integrator, so it advances on dt and re-renders while
     // it is still moving — including on the way DOWN, or the text would freeze
     // at its loudest and stay there.
@@ -1040,12 +1060,12 @@ export class TextLayer {
           const c = g.ctx;
           switch (this._audioTarget) {
             case 1: { // Scale
-              const s = 1 + e * amt * 1.5;
+              const s = 1 + e * amt * 2.5;
               c.translate(cx, lineY); c.scale(s, s); c.translate(-cx, -lineY);
               break;
             }
             case 2:   // Rise
-              c.translate(0, -e * amt * fs * 0.6);
+              c.translate(0, -e * amt * fs * 0.9);
               break;
             case 3:   // Hue — set here and preserved across the outline pass
               c.fillStyle = `hsl(${(this._hue + e * amt * 180) % 360}, `
@@ -1062,7 +1082,7 @@ export class TextLayer {
             }
             case 5:   // Rotate
               c.translate(cx, lineY);
-              c.rotate(e * amt * 0.6);
+              c.rotate(e * amt * 1.2);   // ~69 deg at full
               c.translate(-cx, -lineY);
               break;
             case 6:   // Opacity — quiet glyphs dim rather than loud ones brighten
