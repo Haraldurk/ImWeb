@@ -42,6 +42,16 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
   interactive, with a tooltip saying which shader they need.
 
 ### Added
+- **Disp. Smooth** — stops an animated texture boiling when it drives
+  displacement. A surface normal is the *derivative* of the height field, and
+  the normals were measured over a fixed baseline of half a percent of the
+  object's size — so a 0.001 wobble in the texture tilted the normal 11.3° and
+  swung a specular highlight by 47%. That is why noise which looks perfectly
+  calm as a background turns into a field of tiny fast glints the moment it is
+  displacing something: the derivative amplifies exactly the high-frequency
+  flicker the eye ignores in a flat image. At the new default the same wobble
+  gives 2.1° and 2%. **The geometry is untouched** — every bump stays, only the
+  shading is measured over a wider span. Set it to 0 for the old behaviour.
 - **Blend Sharp** — how abruptly Seamless mapping hands over between its three
   projections. It was fixed at 6, which is a reasonable choice for colour and a
   poor one for displacement: a sharp handover in geometry is a physical ridge,

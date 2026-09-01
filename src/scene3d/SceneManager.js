@@ -341,6 +341,7 @@ export class SceneManager {
       // hands both stages the same uniforms object, so one entry covers both
       // and they cannot disagree about the blend.
       shader.uniforms.uTriSharp   = { value: 6 };
+      shader.uniforms.uDispSmooth = { value: 0.3 };
       shader.uniforms.uRimAmount  = { value: 0 };
       shader.uniforms.uRimColor   = { value: new THREE.Color(0xffffff) };
       mat._shader = shader;
@@ -360,6 +361,7 @@ export class SceneManager {
         uniform float uDispTexScale;
         uniform float uDispTexProj;
         uniform float uTriplanarDisp;
+        uniform float uDispSmooth;
         varying vec3 vObjPos;
         varying vec3 vObjNormal;
         ${TRIPLANAR_GLSL}
@@ -450,7 +452,17 @@ export class SceneManager {
           transformed += objectNormal * dn;
 
           // ── Finite-difference normal recalculation ──────────────────────
-          float _eps   = 0.005;
+          // The normal is the DERIVATIVE of the height field, so the baseline
+          // this difference is taken over decides how much a small change in
+          // the texture moves the shading. At 0.005 — half a percent of a unit
+          // sphere — a 0.001 height wobble tilts the normal 11.3° and swings a
+          // specular highlight by 47%, which is why an animated noise texture
+          // that looks calm as a background boils with tiny fast glints once it
+          // drives displacement. At 0.04 the same wobble gives 1.4° and 1%.
+          //
+          // Widening this smooths the SHADING only; the geometry keeps every
+          // bump, since the height itself is untouched.
+          float _eps   = mix(0.005, 0.08, uDispSmooth);
           float _uvEps = 0.01;
           // Build object-space tangent frame from undisplaced normal
           vec3 _arbUp    = abs(objectNormal.x) > 0.9 ? vec3(0.0,1.0,0.0) : vec3(1.0,0.0,0.0);
@@ -1154,6 +1166,7 @@ export class SceneManager {
       const tDisplaceAmt     = p.get('scene3d.mat.tDisplace')?.value      ?? 0;
       const displaceTexScale = p.get('scene3d.mat.dispTexScale')?.value  ?? 1;
       const displaceTexProj  = p.get('scene3d.mat.dispTexProj')?.value   ?? 0;
+      const dispSmooth       = p.get('scene3d.mat.dispsmooth')?.value    ?? 0.3;
       const dispTex          = inputs.dispTex ?? null;
       // Which image does T-Displace read? Before this, the answer was "the
       // global Displace Source layer" (layer.ds) with a special case forcing
@@ -1183,7 +1196,9 @@ export class SceneManager {
             // The displace path follows ITS OWN source's projection, not the
             // surface's. With dispsrc = Same as Surface the two coincide,
             // which is what makes the bumps land on the texture.
-            m._shader.uniforms.uTriplanarDisp.value = resolveTriplanar(dispTexSrcIdx) ? 1.0 : 0.0;
+              m._shader.uniforms.uTriplanarDisp.value = resolveTriplanar(dispTexSrcIdx) ? 1.0 : 0.0;
+          if (m._shader.uniforms.uDispSmooth)
+            m._shader.uniforms.uDispSmooth.value = dispSmooth;
         }
       };
       updateDisplace(this.material);

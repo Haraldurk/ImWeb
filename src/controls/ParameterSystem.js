@@ -3445,6 +3445,26 @@ export function registerCoreParameters(ps) {
     value: 0,
   });
   ps.register({
+    // How wide a baseline the displaced surface's normals are measured over.
+    // A normal is the DERIVATIVE of the height field, so this decides how much
+    // a small change in the texture moves the SHADING — and an animated noise
+    // texture that looks calm as a background boils with tiny fast glints once
+    // it drives displacement, because the derivative amplifies exactly the
+    // high-frequency wobble the eye ignores in a flat image.
+    //
+    // Measured: a 0.001 height wobble tilts the normal 11.3° at the old fixed
+    // baseline and swings a specular highlight 47%. At this default it is 2.1°
+    // and 2%. The geometry is untouched either way — every bump stays, only
+    // the shading is measured over a wider span. 0 restores the old look.
+    id: "scene3d.mat.dispsmooth",
+    label: "Disp. Smooth",
+    group: "scene3d",
+    min: 0,
+    max: 1,
+    value: 0.3,
+    step: 0.01,
+  });
+  ps.register({
     id: "scene3d.mat.dispScale",
     label: "DispScale",
     group: "scene3d",

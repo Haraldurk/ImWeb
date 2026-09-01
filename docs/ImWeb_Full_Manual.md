@@ -580,6 +580,7 @@ than just the shading. Two independent sources, which sum:
 | Parameter | Range | Description |
 |-----------|-------|-------------|
 | `scene3d.mat.displace` | 0–2 | **Math Displace** — procedural noise displacement |
+| `scene3d.mat.dispsmooth` | 0–1 | **Disp. Smooth** — how wide a span the displaced surface's normals are measured over. Reach for it when an animated texture makes the surface boil with tiny fast glints: a normal is the derivative of the height, so it amplifies exactly the flicker you don't notice in a flat image. Smooths the shading only — the bumps themselves are unchanged. 0 is the pre-v0.22.2 look |
 | `scene3d.mat.dispScale` | 0.1–10 | **DispScale** — spatial frequency of that noise |
 | `scene3d.mat.dispSpeed` | −5 – 5 | **Disp. Speed** — how fast it evolves |
 | `scene3d.mat.tDisplace` | 0–2 | **T-Displace** — displacement driven by the *texture* instead, so the live picture becomes relief |
