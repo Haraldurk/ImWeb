@@ -9,6 +9,16 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
 ## [Unreleased]
 
 ### Fixed
+- **Keyer → Alpha no longer takes the background with it.** The emissive
+  composite emitted the *foreground's* alpha as the finished frame's alpha.
+  That was invisible for as long as every foreground was opaque — the two are
+  the same number when the foreground covers everything — but the moment a
+  source carried real coverage (the 3D scene's Transparent BG), the frame
+  reported itself as empty everywhere the object wasn't, and the background
+  vanished. It looks like the background is being keyed out, which is the wrong
+  layer to go looking in. The output alpha is now the composite's own coverage;
+  over an opaque background that is exactly 1, so nothing that composited
+  correctly before moves.
 - **Seamless mapping stays seamless with the emissive lighting.** Making
   Emissive follow the texture wired the same image in as an emissive map — and
   three samples that one with plain UV coordinates, so a UV-mapped copy of the

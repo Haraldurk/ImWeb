@@ -179,8 +179,21 @@ export const KEYER = /* glsl */ `
     // it OFF, mix() attenuates those edges a second time and the antialiasing
     // reads slightly thin. Everything at a=1 — which is all of the glyph but
     // its outermost pixel — is identical either way.
+    // OUTPUT ALPHA is the composite's own coverage, not the foreground's.
+    // This branch used to emit fg.a, which was invisible for as long as every
+    // foreground was opaque — fg.a was a constant 1, so "the fg's coverage" and
+    // "the result's coverage" were the same number. The moment a source carries
+    // real alpha (the 3D scene's Transparent BG), they diverge: outside the
+    // object fg.a is 0, so the whole frame went transparent and the BACKGROUND
+    // vanished, which is what it looks like — a black frame with only the
+    // subject in it. The background is not being keyed out; the composite is
+    // reporting that nothing is there.
+    //
+    // fg.a + bg.a*(1-fg.a) is "over" in premultiplied form, matching the RGB
+    // line above it. Over an opaque background it is exactly 1, so nothing that
+    // composited correctly before moves.
     gl_FragColor = uAlphaEmissive == 1
-      ? vec4(bg.rgb * (1.0 - alpha) + fg.rgb, fg.a)
+      ? vec4(bg.rgb * (1.0 - alpha) + fg.rgb, fg.a + bg.a * (1.0 - fg.a))
       : mix(bg, fg, alpha);
   }
 `;
