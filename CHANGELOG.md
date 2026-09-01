@@ -8,6 +8,32 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
 
 ## [Unreleased]
 
+### Fixed
+- **Putting a texture on the object no longer makes it darker.** An untextured
+  object got a free self-lit boost of 0.35; a textured one got whatever the
+  Emissive slider said, which is 0 by default — so switching a texture *on*
+  silently removed a lighting contribution. Emissive could not bring it back
+  either, because there was no emissive map outside the Hypercube path, so the
+  slider added flat colour instead of lighting the picture. **Emissive now
+  follows the texture** — it means "self-illuminate what is on the surface" —
+  and the 0.35 is a floor for every object rather than a special case.
+- **The 3D scene is lit properly out of the box.** three divides every diffuse
+  contribution by π (`BRDF_Lambert` returns `RECIPROCAL_PI * diffuseColor`), so
+  the old defaults of 1.0 directional and 0.4 ambient put the *brightest* point
+  of a textured object at 0.45 of the texture's own brightness, and the shadow
+  side at 0.13 — which is why everything looked dim until Light Int. was pushed
+  to 2. Defaults are now 1.6 and 0.45, derived rather than dialled: the lit peak
+  lands at 1.00 and the shadow side at 0.49, so the picture stays readable all
+  the way round. Saved projects keep their own values and are unaffected.
+- **Ambient reaches 5.** Its ceiling was 2, and hitting it was how you worked
+  around the dimness above. Now the same range as Light Int. and Point Int.
+- **Clearcoat, Transmit and IOR are dimmed unless the shader is Physical.**
+  They are the *only* things `MeshPhysicalMaterial` adds to Standard, and they
+  are applied nowhere else — so on every other shader the sliders moved and
+  nothing rendered differently. It also explains why Standard and Physical look
+  identical until one of them is raised. Dimmed, not hidden, and still
+  interactive, with a tooltip saying which shader they need.
+
 ### Added
 - **Roll** — the camera turns about its own view axis, so the whole image
   rotates while the viewpoint stays put. Orbit, Elevation and Distance place the

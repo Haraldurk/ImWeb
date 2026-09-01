@@ -3443,22 +3443,36 @@ export function registerCoreParameters(ps) {
     value: 1,
     step: 0.01,
   });
+  // Light defaults are derived, not dialled by eye. three's BRDF_Lambert
+  // returns RECIPROCAL_PI * diffuseColor, so EVERY diffuse contribution is
+  // divided by π — the old defaults (1.0 directional + 0.4 ambient) put the
+  // brightest point of a textured object at (1.0+0.4)/π ≈ 0.45 of the texture's
+  // own brightness, and most of the surface far below that. Correct physics,
+  // wrong default for an instrument where the texture IS the picture: it read
+  // as "everything is dim until Light Int is at 2".
+  //
+  // Solved for the brightest point reaching 1.0 alongside the 0.35 emissive
+  // floor: 0.35 + (1.6 + 0.45)/π = 1.002. The shadow side keeps
+  // 0.35 + 0.45/π = 0.49, so the texture stays readable all the way round
+  // instead of going black where the key light does not reach.
   ps.register({
     id: "scene3d.light.intensity",
     label: "Light Int.",
     group: "lights3d",
     min: 0,
     max: 5,
-    value: 1.0,
+    value: 1.6,
   });
   ps.register({
+    // Ceiling raised from 2: it was reachable, and reaching it was how you
+    // worked around the dimness above. 5 matches Light Int. and Point Int.
     id: "scene3d.light.ambient",
     label: "Ambient",
     group: "lights3d",
     min: 0,
-    max: 2,
+    max: 5,
     step: 0.01,
-    value: 0.4,
+    value: 0.45,
   });
   ps.register({
     id: "scene3d.light.point",

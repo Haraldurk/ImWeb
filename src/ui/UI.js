@@ -469,6 +469,37 @@ export function buildMappingPanels(ps, contextMenu) {
     }
   }
 
+  // ── Material: Clearcoat / Transmit / IOR exist only on Physical ───────────
+  // MeshPhysicalMaterial extends MeshStandardMaterial and adds exactly these
+  // three; SceneManager applies them under `if (matType === 1 &&
+  // isMeshPhysicalMaterial)`. So on every other shader the sliders move, the
+  // readouts count, and nothing renders differently — which is also why
+  // Standard and Physical look identical until one of them is raised. Reported
+  // as "I don't see any difference between Standard and Physical".
+  //
+  // Dimmed rather than hidden, and left interactive, for the reasons .param-na
+  // documents in style.css.
+  {
+    const matEl = document.getElementById('material-params');
+    const typeParam = ps.get('scene3d.mat.type');
+    const PHYSICAL = 1;
+    const physicalOnly = ['scene3d.mat.clearcoat', 'scene3d.mat.transmit', 'scene3d.mat.ior']
+      .map(id => matEl?.querySelector(`[data-param-id="${id}"]`))
+      .filter(Boolean);
+    if (typeParam && physicalOnly.length) {
+      const refreshPhysicalRows = () => {
+        const na = typeParam.value !== PHYSICAL;
+        for (const r of physicalOnly) {
+          r.classList.toggle('param-na', na);
+          if (na) r.title = 'Physical shader only — Clearcoat, Transmit and IOR are what Physical adds to Standard. Set Material Shader to Physical.';
+          else    r.removeAttribute('title');
+        }
+      };
+      refreshPhysicalRows();
+      typeParam.onChange(refreshPhysicalRows);
+    }
+  }
+
   // ── Bokeh: Iris does nothing while Blades is Circle ───────────────────────
   // uIris is referenced in exactly one place in BOKEH_GATHER, inside
   // `if (uBlades >= 3.0)` — a circle is rotationally symmetric, so there is

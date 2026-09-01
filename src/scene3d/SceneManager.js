@@ -929,19 +929,46 @@ export class SceneManager {
       if (this.material.emissive)
         this.material.emissive.setHSL(hue, sat, sat > 0 ? 0.5 : 0.0);
 
-      // Emissive: self-lit white when no texture; slider-driven when textured
+      // Emissive — self-illumination, and it now follows the texture.
+      //
+      // This used to give an UNtextured object a free white emissive of 0.35
+      // and a textured one whatever the Emissive slider said, which defaults to
+      // 0. So switching a texture on silently REMOVED a lighting contribution
+      // and the object got darker — the opposite of what putting a picture on
+      // something is for. Worse, Emissive could not recover it: there was no
+      // emissiveMap outside the adopted-mesh path, so the slider added flat
+      // colour rather than lighting the picture.
+      //
+      // Now emissiveMap follows map, so Emissive means "self-illuminate the
+      // texture", and 0.35 is a FLOOR rather than a special case. That constant
+      // is the one the untextured path already used — reusing it is what makes
+      // "a textured object is lit at least as well as an untextured one" true,
+      // which is the invariant that was broken.
       const emissiveAmt = p.get('scene3d.mat.emissive')?.value ?? 0;
       const emHue = (p.get('scene3d.mat.emissiveHue')?.value ?? 0) / 360;
       const emSat = (p.get('scene3d.mat.emissiveSat')?.value ?? 0) / 100;
-      if (!this.material.map) {
-        if (this.material.emissive) this.material.emissive.set(1, 1, 1);
-        this.material.emissiveIntensity = 0.35;
-      } else {
-        if (this.material.emissive) {
-          this.material.emissive.setHSL(emHue, emSat, 0.15 * emissiveAmt);
-        }
-        this.material.emissiveIntensity = emissiveAmt;
+      const EM_FLOOR = 0.35;
+      if (this.material.emissive) {
+        // White unless a tint is dialled in, so the texture's own colour
+        // survives by default — emissive MULTIPLIES emissiveMap, so a dark
+        // emissive colour would cancel the map entirely.
+        if (emSat > 0) this.material.emissive.setHSL(emHue, emSat, 0.5);
+        else           this.material.emissive.set(1, 1, 1);
       }
+      if (this.material.emissiveMap !== undefined) {
+        const wantEmissiveMap = this.material.map ?? null;
+        // Compare before assigning: USE_EMISSIVEMAP is a shader define, so
+        // touching this every frame would recompile the program every frame.
+        if (this.material.emissiveMap !== wantEmissiveMap) {
+          this.material.emissiveMap = wantEmissiveMap;
+          this.material.needsUpdate = true;
+        }
+      }
+      // Adopted meshes (the Hypercube instancer) were pinned at 1.0 by the
+      // texture-swap branch below; keeping that as their floor leaves them
+      // looking identical at Emissive 0 while the slider still does something.
+      this.material.emissiveIntensity =
+        (this._adoptedMesh ? 1.0 : EM_FLOOR) + emissiveAmt;
 
       if (this.material.roughness !== undefined) this.material.roughness = p.get('scene3d.mat.roughness').value;
       if (this.material.metalness !== undefined) this.material.metalness = p.get('scene3d.mat.metalness').value;
@@ -1013,13 +1040,10 @@ export class SceneManager {
         this.material.map = useTex
           ? Object.assign(useTex, { wrapS: THREE.RepeatWrapping, wrapT: THREE.RepeatWrapping })
           : null;
-        if (this._adoptedMesh) {
-          this.material.emissive?.set(1, 1, 1);
-          if (this.material.emissiveMap !== undefined)
-            this.material.emissiveMap = this.material.map;
-          this.material.emissiveIntensity = 1.0;
-          this.material.needsUpdate = true;
-        }
+        // The adopted-mesh branch used to set emissive / emissiveMap /
+        // intensity here as well. That is now done for every mesh in the
+        // emissive block above, and doing it in two places meant the two
+        // disagreed on the frames the texture changed.
       }
 
       // WarpMap displacement on UVs
