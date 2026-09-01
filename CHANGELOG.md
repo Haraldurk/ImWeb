@@ -9,6 +9,139 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
 ## [Unreleased]
 
 ### Fixed
+- **Keyer → Alpha no longer takes the background with it.** The emissive
+  composite emitted the *foreground's* alpha as the finished frame's alpha.
+  That was invisible for as long as every foreground was opaque — the two are
+  the same number when the foreground covers everything — but the moment a
+  source carried real coverage (the 3D scene's Transparent BG), the frame
+  reported itself as empty everywhere the object wasn't, and the background
+  vanished. It looks like the background is being keyed out, which is the wrong
+  layer to go looking in. The output alpha is now the composite's own coverage;
+  over an opaque background that is exactly 1, so nothing that composited
+  correctly before moves.
+- **Seamless mapping stays seamless with the emissive lighting.** Making
+  Emissive follow the texture wired the same image in as an emissive map — and
+  three samples that one with plain UV coordinates, so a UV-mapped copy of the
+  texture, seam and pole pinch included, was laid over the seamless triplanar
+  version at a third strength. The emissive map now goes through the same
+  projection as the diffuse map, from the same shader function, so the two
+  cannot disagree.
+- **Putting a texture on the object no longer makes it darker.** An untextured
+  object got a free self-lit boost of 0.35; a textured one got whatever the
+  Emissive slider said, which is 0 by default — so switching a texture *on*
+  silently removed a lighting contribution. Emissive could not bring it back
+  either, because there was no emissive map outside the Hypercube path, so the
+  slider added flat colour instead of lighting the picture. **Emissive now
+  follows the texture** — it means "self-illuminate what is on the surface" —
+  and the 0.35 is a floor for every object rather than a special case.
+- **The 3D scene is lit properly out of the box.** three divides every diffuse
+  contribution by π (`BRDF_Lambert` returns `RECIPROCAL_PI * diffuseColor`), so
+  the old defaults of 1.0 directional and 0.4 ambient put the *brightest* point
+  of a textured object at 0.45 of the texture's own brightness, and the shadow
+  side at 0.13 — which is why everything looked dim until Light Int. was pushed
+  to 2. Defaults are now 1.6 and 0.45, derived rather than dialled: the lit peak
+  lands at 1.00 and the shadow side at 0.49, so the picture stays readable all
+  the way round. Saved projects keep their own values and are unaffected.
+- **Ambient reaches 5.** Its ceiling was 2, and hitting it was how you worked
+  around the dimness above. Now the same range as Light Int. and Point Int.
+- **Clearcoat, Transmit and IOR are dimmed unless the shader is Physical.**
+  They are the *only* things `MeshPhysicalMaterial` adds to Standard, and they
+  are applied nowhere else — so on every other shader the sliders moved and
+  nothing rendered differently. It also explains why Standard and Physical look
+  identical until one of them is raised. Dimmed, not hidden, and still
+  interactive, with a tooltip saying which shader they need.
+
+### Added
+- **Disp. Smooth** — stops an animated texture boiling when it drives
+  displacement. A surface normal is the *derivative* of the height field, and
+  the normals were measured over a fixed baseline of half a percent of the
+  object's size — so a 0.001 wobble in the texture tilted the normal 11.3° and
+  swung a specular highlight by 47%. That is why noise which looks perfectly
+  calm as a background turns into a field of tiny fast glints the moment it is
+  displacing something: the derivative amplifies exactly the high-frequency
+  flicker the eye ignores in a flat image. At the new default the same wobble
+  gives 2.1° and 2%. **The geometry is untouched** — every bump stays, only the
+  shading is measured over a wider span. Set it to 0 for the old behaviour.
+- **Blend Sharp** — how abruptly Seamless mapping hands over between its three
+  projections. It was fixed at 6, which is a reasonable choice for colour and a
+  poor one for displacement: a sharp handover in geometry is a physical ridge,
+  which is the radial star that appears on a displaced sphere. Measured on a
+  sphere, 6 leaves 30.7% of the surface in a blend zone, 3 leaves 55.8%, 2
+  leaves 72.9% — wider is smoother but flatter, since it averages three samples
+  over more of the surface. No setting is free, which is why it is a control
+  rather than a better constant. One value drives colour *and* displacement, so
+  the relief cannot drift out of register with the picture on it. Defaults to 6,
+  so nothing existing moves.
+- **Transparent BG** — the 3D scene can render on nothing, so its layer carries
+  real alpha and **Opacity finally reveals what is underneath** instead of
+  fading the object into the scene's own dark backdrop, which read as "Opacity
+  turns the object black". Off by default, deliberately: it changes what the
+  compositor receives — empty space goes from opaque near-black to nothing — and
+  every existing project keys this layer by luma, so no saved project moves
+  until its author turns it on.
+
+  With it on, set **Keyer → Alpha** and **Alpha Emissive**. The target is
+  premultiplied, and `bg*(1-a)+fg` is the exact composite for premultiplied
+  sources — the same path the Text layer uses, for the same reason.
+- **Roll** — the camera turns about its own view axis, so the whole image
+  rotates while the viewpoint stays put. Orbit, Elevation and Distance place the
+  camera; Roll is the fourth degree of freedom, and nothing could reach it
+  before.
+- **Spin Orbit, Spin Elev and Spin Roll** turn the camera on their own, in
+  degrees per second — one per angular axis, the way the mesh has Spin X/Y/Z for
+  its three rotations. (A camera's three are not x/y/z: two carry it over the
+  sphere, the third turns it in place.) Each accumulates its own angle rather
+  than writing its parameter, so the angle stays a live offset you can still
+  move while it turns, and a saved state captures the angle you set rather than
+  wherever the spin had drifted to.
+
+### Changed
+- **Camera Distance reaches from 0.1 to 100, and slows down as it closes in.**
+  It ran 0.1–30 linearly, which put every close-up framing in the first
+  millimetre of the fader. Distance is perceived as a ratio — 1→2 is the same
+  move as 10→20 — so the control is now exponential: half the travel lands at
+  3.16 rather than 50, and the bottom tenth covers 0.1–0.20 where linear gave
+  0.1–10. Controllers sweep the same taper, so an LFO and a hand agree.
+- **Elevation no longer jumps, and now goes over the top.** At exactly 90° the
+  camera sits on the Y axis looking straight down it — parallel to the fixed up
+  vector three.js uses by default, where there is no basis to build and the
+  image flips. The camera now derives its up from the orbit frame instead, which
+  is a unit vector at *every* elevation (measured: the camera's right vector is
+  1.000000 throughout, against 0.000000 at the pole and 0.017 by 89° with a
+  fixed up). So the pole is simply gone: Elevation keeps its full ±180 and
+  sweeps continuously over the top and down the far side, with no clamp and no
+  twitchy zone approaching one. Level views are untouched — at elevation 0 the
+  derived up is exactly (0,1,0), the same vector as before.
+
+- **The 3D camera orbits.** It had Cam X / Y / Z in world units, but the camera
+  has always looked at the origin — so those three numbers were never a free
+  position, only a point on a sphere written in the least playable coordinates
+  available. Circling the object meant moving three sliders along a coordinated
+  arc, which is not doable by hand and is meaningless under a controller: an
+  LFO on Cam X slides the camera *through* the object, not around it. Now
+  **Orbit**, **Elevation** and **Distance** — put an LFO on Orbit and the scene
+  turns. Same names, ranges and defaults as the SDF camera, so the two cameras
+  in the instrument finally behave alike.
+
+  Saved projects convert automatically and open on the frame they were saved
+  on: the conversion is an exact inverse, verified against the renderer's own
+  placement over every camera in MasterProject and FactoryBank. Controllers,
+  rates and response tables move across with the parameter; **recall ranges are
+  reset**, because a min/max in world units means nothing on an axis that runs
+  to 360°.
+- **Math Displace and T-Displace are finely adjustable.** Both ran 0–2 in steps
+  of 0.01, but anything past ~0.15 turns the mesh inside out — so every usable
+  setting lived in the bottom 7% of the fader, and one step was worth a fifth of
+  a working value. Now 0–0.5 in steps of 0.001: the whole travel is playable and
+  the fine end is ten times finer.
+- **Value readouts show as many decimals as the control can actually move.**
+  The row picked its decimals from the range alone, so any parameter quantised
+  finer than that printed a column of identical numbers while the value really
+  moved — indistinguishable from a dead control. Fourteen parameters were
+  affected, including Grain Pos. None loses precision; the readout simply stops
+  hiding what the control is doing.
+
+### Fixed
 - **The 3D Transform section listed every control twice**, and included three
   that belong elsewhere. `#transform-params` was filled by two different
   builders — the container→params map *and* the explicit list further down —

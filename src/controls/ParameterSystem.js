@@ -229,6 +229,9 @@ export class Parameter {
     this.options = config.options ?? null; // for SELECT
     this.unit = config.unit ?? ""; // display unit string e.g. '°', '%'
     this.step = config.step ?? null; // optional snap step
+    // 'exp' taper for CONTINUOUS params — see toNorm/fromNorm. Anything else,
+    // including the default, is linear.
+    this.curve = config.curve ?? null;
     /**
      * Whether `step` also QUANTIZES the stored value, or is only the UI
      * drag/arrow increment. Default true, because for most params the two are
@@ -403,12 +406,35 @@ export class Parameter {
     this._listeners.forEach((fn) => fn(clamped, this));
   }
 
+  /**
+   * Value ↔ 0–1 mapping for CONTINUOUS params. Linear unless the param declares
+   * `curve: 'exp'`, which makes equal travel give equal RATIO rather than equal
+   * difference — the way distance, rate and scale are actually perceived, where
+   * 1→2 is the same move as 10→20. Without it, a 0.1–100 control spends 90% of
+   * its throw above 10 and cannot be placed at all down where the work happens.
+   *
+   * Needs a positive low bound: a ratio mapping cannot reach or cross zero. Any
+   * param that fails that falls back to linear rather than producing NaN, so a
+   * mis-declared curve degrades instead of breaking.
+   *
+   * These two MUST stay exact inverses — the slider reads one and writes the
+   * other, so a mismatch shows up as the thumb drifting on release.
+   */
+  toNorm(v, lo = this.min, hi = this.max) {
+    if (this.curve !== 'exp' || lo <= 0 || hi <= lo) return (v - lo) / (hi - lo);
+    return Math.log(Math.max(lo, v) / lo) / Math.log(hi / lo);
+  }
+  fromNorm(n, lo = this.min, hi = this.max) {
+    if (this.curve !== 'exp' || lo <= 0 || hi <= lo) return lo + n * (hi - lo);
+    return lo * Math.pow(hi / lo, n);
+  }
+
   // Normalized value in [0, 1]
   get normalized() {
     if (this.type === PARAM_TYPE.TOGGLE) return this._value;
     if (this.type === PARAM_TYPE.SELECT)
       return this._value / Math.max(1, (this.options?.length ?? 1) - 1);
-    return (this._value - this.min) / (this.max - this.min);
+    return this.toNorm(this._value);
   }
 
   /**
@@ -432,7 +458,9 @@ export class Parameter {
     } else {
       const lo = this.ctrlMin ?? this.min;
       const hi = this.ctrlMax ?? this.max;
-      const target = lo + applied * (hi - lo);
+      // Honours `curve` so a controller sweeps the same taper the fader does —
+      // otherwise an LFO on a curved param moves differently from a hand on it.
+      const target = this.fromNorm(applied, lo, hi);
       if (this.slew > 0) {
         // Arm a new segment ONLY when the previous one has landed. While a
         // segment is in flight the target may move freely — tickSlew re-aims at
@@ -647,7 +675,17 @@ export class Parameter {
     if (this.type === PARAM_TYPE.TOGGLE) return v ? "●" : "○";
     if (this.type === PARAM_TYPE.TRIGGER) return "▶";
     if (this.type === PARAM_TYPE.SELECT) return this.options?.[v] ?? v;
-    const decimals = this.max - this.min > 10 ? 1 : 2;
+    // Decimals must resolve the STEP, not only the range. Picking from the
+    // range alone means a param quantised finer than its row can print shows a
+    // column of identical numbers while the value genuinely moves — which is
+    // indistinguishable from a dead control, and makes the readout useless as
+    // a verification instrument (agrain.pos, step 0.001 on a 0–1 range, is the
+    // case this was learned on). Take whichever is finer; capped at 4 so a
+    // tiny step cannot stretch the row, and floored at the old result so no
+    // existing readout ever loses precision.
+    const rangeDec = this.max - this.min > 10 ? 1 : 2;
+    const stepDec  = this.step > 0 ? Math.ceil(-Math.log10(this.step)) : 0;
+    const decimals = Math.min(4, Math.max(rangeDec, stepDec));
     return v.toFixed(decimals) + (this.unit ? " " + this.unit : "");
   }
 
@@ -1328,6 +1366,114 @@ export function migrateSdfParams(values, recs) {
   migrateSdfCameraRecords(recs, values, eye);
   migrateSdfTile(values);
   return values;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 3D scene camera → orbit. Same shape as the SDF migration above, and no
+// version stamp for the same reason: it renames keys and deletes the originals,
+// so the data answers "has this run?" by itself.
+//
+// This one is a pure reparameterisation. SceneManager has always called
+// lookAt(0,0,0), so the Cartesian triple was already nothing but a point on a
+// sphere around the target — the conversion loses nothing except an eye sitting
+// exactly at the origin, which rendered nothing anyway.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const S3D_CAM_LEGACY = { 'scene3d.cam.x': 0, 'scene3d.cam.y': 0, 'scene3d.cam.z': 5 };
+const S3D_CAM_RENAME = {
+  'scene3d.cam.x': 'scene3d.cam.orbit',
+  'scene3d.cam.y': 'scene3d.cam.elev',
+  'scene3d.cam.z': 'scene3d.cam.dist',
+};
+// Must track the registered ranges above — these are what migrated recall
+// bounds are reset to, so a stale copy silently hands a controller a sweep the
+// parameter cannot express.
+const S3D_CAM_RANGE = {
+  'scene3d.cam.orbit': { min: 0,   max: 360 },
+  'scene3d.cam.elev':  { min: -180, max: 180 },
+  'scene3d.cam.dist':  { min: 0.1, max: 100 },
+};
+
+/**
+ * Cartesian eye → orbit/elevation/distance, for a camera that looks at the
+ * origin. The exact inverse of SceneManager's placement, so a migrated project
+ * opens on the identical frame. Negative z falls out of atan2 as azimuth 180°.
+ */
+export function scene3dCartesianToOrbit(x, y, z) {
+  const d = Math.hypot(x, y, z);
+  if (d < 1e-6) {
+    return { orbit: 0, elev: 0, dist: S3D_CAM_RANGE['scene3d.cam.dist'].min };
+  }
+  let az = Math.atan2(x, z) * 180 / Math.PI;
+  if (az < 0) az += 360;
+  const el = Math.asin(Math.max(-1, Math.min(1, y / d))) * 180 / Math.PI;
+  return { orbit: az, elev: el, dist: Math.max(S3D_CAM_RANGE['scene3d.cam.dist'].min, d) };
+}
+
+/** Read the legacy eye from a values map or a controller-record bag. */
+function _scene3dLegacyEye(values, recs) {
+  const read = (id) => {
+    if (values && id in values) return +values[id] || 0;
+    if (recs && recs[id] && typeof recs[id].value === 'number') return recs[id].value;
+    return S3D_CAM_LEGACY[id];
+  };
+  const present = (id) => (values && id in values) || (recs && !!recs[id]);
+  if (!Object.keys(S3D_CAM_LEGACY).some(present)) return null;
+  return { x: read('scene3d.cam.x'), y: read('scene3d.cam.y'), z: read('scene3d.cam.z') };
+}
+
+/** Rewrite a plain id → value map in place. */
+export function migrateScene3dCamera(values, recs, eye = _scene3dLegacyEye(values, recs)) {
+  if (!eye) return values;
+  const o = scene3dCartesianToOrbit(eye.x, eye.y, eye.z);
+  if (values) {
+    // Never clobber a value already written in the new form.
+    if (!('scene3d.cam.orbit' in values)) values['scene3d.cam.orbit'] = o.orbit;
+    if (!('scene3d.cam.elev'  in values)) values['scene3d.cam.elev']  = o.elev;
+    if (!('scene3d.cam.dist'  in values)) values['scene3d.cam.dist']  = o.dist;
+    delete values['scene3d.cam.x'];
+    delete values['scene3d.cam.y'];
+    delete values['scene3d.cam.z'];
+  }
+  return values;
+}
+
+/**
+ * Rewrite a controller-record bag in place. Carries what still means the same
+ * thing on the new axis — table, invert, cycle, slew, the live controller — and
+ * RESETS ctrlMin/ctrlMax, because recall bounds are a box in world units and a
+ * box in XYZ is not a box in azimuth/elevation/distance. Carrying the numbers
+ * would silently leave a ±20 sweep on an axis that runs to 360.
+ */
+export function migrateScene3dCameraRecords(recs, values, eye = _scene3dLegacyEye(values, recs)) {
+  if (!recs || !eye) return recs;
+  const o = scene3dCartesianToOrbit(eye.x, eye.y, eye.z);
+  for (const [oldId, newId] of Object.entries(S3D_CAM_RENAME)) {
+    const rec = recs[oldId];
+    delete recs[oldId];
+    if (!rec || recs[newId]) continue;
+    const range = S3D_CAM_RANGE[newId];
+    // 'scene3d.cam.orbit' → 'orbit', the key scene3dCartesianToOrbit returns.
+    recs[newId] = { ...rec, id: newId, value: o[newId.split('.').pop()],
+                    ctrlMin: range.min, ctrlMax: range.max };
+  }
+  return recs;
+}
+
+/** Both halves, reading the legacy eye ONCE before either starts deleting it. */
+export function migrateScene3dParams(values, recs) {
+  const eye = _scene3dLegacyEye(values, recs);
+  migrateScene3dCamera(values, recs, eye);
+  migrateScene3dCameraRecords(recs, values, eye);
+  return values;
+}
+
+/** migrateScene3dParams over a Display State array. Mutates and returns it. */
+export function migrateStatesScene3dParams(states) {
+  if (Array.isArray(states)) {
+    for (const s of states) if (s?.values) migrateScene3dParams(s.values, s.controllers);
+  }
+  return states;
 }
 
 /** migrateSdfParams over a Display State array. Mutates and returns `states`. */
@@ -2915,6 +3061,28 @@ export function registerCoreParameters(ps) {
     value: 2.0,
   });
   ps.register({
+    // Renders the scene on a transparent background so the target carries real
+    // ALPHA — which is what makes Opacity mean "see the layer underneath"
+    // rather than "fade into the 3D scene's own backdrop". Without it the scene
+    // clears to a near-black blue and a half-transparent object blends into it,
+    // so lowering Opacity just turns the object black.
+    //
+    // Off by default, deliberately. Turning it on changes what the compositor
+    // receives — empty space goes from opaque near-black to (0,0,0,0) — and
+    // every existing project keys the 3D layer by LUMA. Opt-in means no saved
+    // project moves until its author chooses.
+    //
+    // With it on, the target is PREMULTIPLIED (standard blending over a
+    // transparent clear produces premultiplied RGB), so the exact composite is
+    // Keyer → Alpha plus Alpha Emissive — the same path the Text layer uses and
+    // for the same reason. See the note above gl_FragColor in shaders/index.js.
+    id: "scene3d.mat.alphabg",
+    label: "Transparent BG",
+    group: "scene3d",
+    type: PARAM_TYPE.TOGGLE,
+    value: 0,
+  });
+  ps.register({
     id: "scene3d.wireframe",
     label: "Wireframe",
     group: "scene3d",
@@ -2930,30 +3098,94 @@ export function registerCoreParameters(ps) {
     value: 60,
     unit: "°",
   });
+  // The 3D camera is spherical, not Cartesian — SceneManager always calls
+  // lookAt(0,0,0), so cam.x/y/z was never a free position, only ever a point on
+  // a sphere around the target written in the least playable coordinates there
+  // are. Orbiting meant moving three sliders along a coordinated arc: not doable
+  // by hand, and meaningless under a controller, because an LFO on Cam X slides
+  // the camera through the object rather than around it.
+  //
+  // Same treatment sdf.camX/Y/Z got, and deliberately the same names, ranges and
+  // defaults, so the two cameras in this instrument behave alike. Saved projects
+  // are converted by migrateScene3dCamera() — an exact inverse, so a migrated
+  // project opens on the identical frame.
   ps.register({
-    id: "scene3d.cam.x",
-    label: "Cam X",
+    id: "scene3d.cam.orbit",
+    label: "Orbit",
     group: "scene3d",
-    min: -20,
-    max: 20,
+    min: 0,
+    max: 360,
     value: 0,
+    step: 0.5,
+    unit: "°",
   });
   ps.register({
-    id: "scene3d.cam.y",
-    label: "Cam Y",
+    // Full ±180, and it sweeps continuously over the top. An earlier cut of
+    // this clamped to ±89 because lookAt()'s fixed up vector of (0,1,0) goes
+    // parallel to the view direction at the pole and the basis collapses — but
+    // that was patching the symptom. SceneManager now DERIVES up from the orbit
+    // frame, which is well conditioned everywhere (the camera's right vector
+    // measures 1.0 at every elevation, against 0.0 at the pole with a fixed
+    // up), so there is no pole to avoid and no twitchy zone approaching one.
+    id: "scene3d.cam.elev",
+    label: "Elevation",
     group: "scene3d",
-    min: -20,
-    max: 20,
+    min: -180,
+    max: 180,
     value: 0,
+    step: 0.5,
+    unit: "°",
   });
   ps.register({
-    id: "scene3d.cam.z",
-    label: "Cam Z",
+    // The fourth degree of freedom, and the one no other control could reach:
+    // orbit/elevation/distance place the camera, roll turns it about its own
+    // view axis, so the whole IMAGE rotates while the viewpoint stays put.
+    id: "scene3d.cam.roll",
+    label: "Roll",
+    group: "scene3d",
+    min: -180,
+    max: 180,
+    value: 0,
+    step: 0.5,
+    unit: "°",
+  });
+  ps.register({
+    // Exponential: distance is perceived as a ratio, so equal travel should give
+    // equal ratio. Linear over 0.1–100 would spend 90% of the throw above 10 and
+    // make close-up framing unreachable — every useful near value crushed into
+    // the first millimetre. The taper puts 1.0 at the middle of the fader and
+    // slows right down as it approaches the object, which is the ask.
+    id: "scene3d.cam.dist",
+    label: "Distance",
     group: "scene3d",
     min: 0.1,
-    max: 30,
+    max: 100,
     value: 5,
+    step: 0.01,
+    curve: "exp",
   });
+  // One spin per angular degree of freedom, the way the mesh has Spin X/Y/Z for
+  // its three rotations. A camera's three are NOT x/y/z: orbit and elevation
+  // move it over the sphere, roll turns it in place. Each is degrees per second
+  // and accumulates internally, so its angle param stays live as an offset
+  // rather than being written every frame — which would fight a controller on
+  // it and fill Display States with wherever the spin happened to be.
+  for (const [suffix, label] of [
+    ['spinOrbit', 'Spin Orbit'],
+    ['spinElev',  'Spin Elev'],
+    ['spinRoll',  'Spin Roll'],
+  ]) {
+    ps.register({
+      id: `scene3d.cam.${suffix}`,
+      label,
+      group: "scene3d",
+      min: -180,
+      max: 180,
+      value: 0,
+      step: 0.1,
+      unit: "°/s",
+    });
+  }
   ps.register({
     id: "scene3d.mat.roughness",
     label: "Roughness",
@@ -3031,6 +3263,29 @@ export function registerCoreParameters(ps) {
     select: true,
     options: ["Auto", "UV", "Seamless"],
     value: 0,
+  });
+  ps.register({
+    // How abruptly Seamless hands over between its three projections. Higher is
+    // crisper; lower spreads the handover wider. It matters far more for
+    // DISPLACEMENT than for colour, because a sharp handover in geometry is a
+    // physical ridge — the radial star that shows up on a displaced sphere.
+    //
+    // Measured on a sphere: 6 leaves 30.7% of the surface in a blend zone,
+    // 3 leaves 55.8%, 2 leaves 72.9%. Wider is smoother but flatter, since it
+    // averages three samples across more of the surface. No setting is free,
+    // which is exactly why this is a knob and not a better constant. Default 6
+    // is the value it was hardcoded at, so nothing existing moves.
+    //
+    // Deliberately ONE control for colour and displacement: they read the same
+    // shader function, and letting them blend differently would put the relief
+    // out of register with the picture on it.
+    id: "scene3d.mat.triblend",
+    label: "Blend Sharp",
+    group: "scene3d",
+    min: 1,
+    max: 8,
+    value: 6,
+    step: 0.1,
   });
   ps.register({
     id: "scene3d.mat.type",
@@ -3139,23 +3394,31 @@ export function registerCoreParameters(ps) {
     value: 0,
     unit: "%",
   });
+  // Both displacement amounts ran 0–2 at step 0.01. In practice the whole
+  // useful range sits under ~0.15 — a sphere is radius 1, so displacing it by
+  // 2 turns the mesh inside out — which put every playable value in the bottom
+  // 7% of the fader, with one step worth a fifth of a working setting. Max 0.5
+  // is still well past anything recognisable and makes the travel usable;
+  // step 0.001 gives ten times the resolution where the control actually lives.
+  // Left linear rather than tapered: a taper would decouple the printed number
+  // from the fader position, and the range was the actual complaint.
   ps.register({
     id: "scene3d.mat.displace",
     label: "Math Displace",
     group: "scene3d",
     min: 0,
-    max: 2,
+    max: 0.5,
     value: 0,
-    step: 0.01,
+    step: 0.001,
   });
   ps.register({
     id: "scene3d.mat.tDisplace",
     label: "T-Displace",
     group: "scene3d",
     min: 0,
-    max: 2,
+    max: 0.5,
     value: 0,
-    step: 0.01,
+    step: 0.001,
   });
   ps.register({
     // Index 0 keeps T-Displace on the SAME image the surface shows, which is
@@ -3180,6 +3443,26 @@ export function registerCoreParameters(ps) {
       "Noise",
     ],
     value: 0,
+  });
+  ps.register({
+    // How wide a baseline the displaced surface's normals are measured over.
+    // A normal is the DERIVATIVE of the height field, so this decides how much
+    // a small change in the texture moves the SHADING — and an animated noise
+    // texture that looks calm as a background boils with tiny fast glints once
+    // it drives displacement, because the derivative amplifies exactly the
+    // high-frequency wobble the eye ignores in a flat image.
+    //
+    // Measured: a 0.001 height wobble tilts the normal 11.3° at the old fixed
+    // baseline and swings a specular highlight 47%. At this default it is 2.1°
+    // and 2%. The geometry is untouched either way — every bump stays, only
+    // the shading is measured over a wider span. 0 restores the old look.
+    id: "scene3d.mat.dispsmooth",
+    label: "Disp. Smooth",
+    group: "scene3d",
+    min: 0,
+    max: 1,
+    value: 0.3,
+    step: 0.01,
   });
   ps.register({
     id: "scene3d.mat.dispScale",
@@ -3225,22 +3508,36 @@ export function registerCoreParameters(ps) {
     value: 1,
     step: 0.01,
   });
+  // Light defaults are derived, not dialled by eye. three's BRDF_Lambert
+  // returns RECIPROCAL_PI * diffuseColor, so EVERY diffuse contribution is
+  // divided by π — the old defaults (1.0 directional + 0.4 ambient) put the
+  // brightest point of a textured object at (1.0+0.4)/π ≈ 0.45 of the texture's
+  // own brightness, and most of the surface far below that. Correct physics,
+  // wrong default for an instrument where the texture IS the picture: it read
+  // as "everything is dim until Light Int is at 2".
+  //
+  // Solved for the brightest point reaching 1.0 alongside the 0.35 emissive
+  // floor: 0.35 + (1.6 + 0.45)/π = 1.002. The shadow side keeps
+  // 0.35 + 0.45/π = 0.49, so the texture stays readable all the way round
+  // instead of going black where the key light does not reach.
   ps.register({
     id: "scene3d.light.intensity",
     label: "Light Int.",
     group: "lights3d",
     min: 0,
     max: 5,
-    value: 1.0,
+    value: 1.6,
   });
   ps.register({
+    // Ceiling raised from 2: it was reachable, and reaching it was how you
+    // worked around the dimness above. 5 matches Light Int. and Point Int.
     id: "scene3d.light.ambient",
     label: "Ambient",
     group: "lights3d",
     min: 0,
-    max: 2,
+    max: 5,
     step: 0.01,
-    value: 0.4,
+    value: 0.45,
   });
   ps.register({
     id: "scene3d.light.point",

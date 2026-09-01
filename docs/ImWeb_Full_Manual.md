@@ -508,7 +508,18 @@ to a 2×2×2 bounding box on load.
 | Parameter | Range | Description |
 |-----------|-------|-------------|
 | `scene3d.cam.fov` | 20–120° | Field of view |
-| `scene3d.cam.x/y/z` | −10 – 10 | Camera position |
+| `scene3d.cam.orbit` | 0–360° | **Orbit** — rotates the camera around the object. Put an LFO here and the scene turns |
+| `scene3d.cam.elev` | −180 – 180° | **Elevation** — latitude: 0° level with the object, +90° directly overhead, and onward continuously over the top |
+| `scene3d.cam.roll` | −180 – 180° | **Roll** — turns the camera about its own view axis, rotating the whole image without moving the viewpoint |
+| `scene3d.cam.dist` | 0.1–100 | **Distance** — how far back the camera sits. Exponential, so the fader slows as it closes in; half travel is ≈3.2, not 50 |
+| `scene3d.cam.spinOrbit` | −180 – 180 °/s | **Spin Orbit** — circles the object on its own. Adds to Orbit rather than overwriting it, so Orbit stays live as an offset |
+| `scene3d.cam.spinElev` | −180 – 180 °/s | **Spin Elev** — tumbles over the top, same offset grammar |
+| `scene3d.cam.spinRoll` | −180 – 180 °/s | **Spin Roll** — rotates the image, same offset grammar |
+
+> The camera is a turntable: Orbit is longitude, Elevation is latitude, Distance
+> is altitude, and Roll turns the head. Those four are the whole of what a
+> target-locked camera can do — there is no "Orbit Z", because two angles and a
+> radius already reach every point on the sphere.
 
 #### Parameters — Material
 
@@ -532,7 +543,8 @@ governs which of the parameters below do anything:
 | `scene3d.mat.sat` | 0–100% | Saturation (0 = white) |
 | `scene3d.mat.roughness` | 0–1 | Surface roughness |
 | `scene3d.mat.metalness` | 0–1 | Metallic quality |
-| `scene3d.mat.opacity` | 0–1 | Transparency |
+| `scene3d.mat.opacity` | 0–1 | Transparency. On its own it fades the object into the scene's own dark backdrop — turn on **Transparent BG** to have it reveal the layer underneath instead |
+| `scene3d.mat.alphabg` | TOGGLE | **Transparent BG** — renders the scene on nothing, so the 3D layer carries real alpha. Off by default: it changes what the compositor receives, and existing projects key this layer by luma. With it on, set **Keyer → Alpha** and **Alpha Emissive** — the target is premultiplied, and `bg*(1-a)+fg` is the exact composite for that (the same path the Text layer uses) |
 | `scene3d.mat.clearcoat` | 0–1 | **Physical only** — a lacquer layer over the base |
 | `scene3d.mat.transmit` | 0–1 | **Physical only** — light transmission. This is what makes glass |
 | `scene3d.mat.ior` | 1–3 | **Physical only** — index of refraction (1.5 ≈ glass, 2.4 ≈ diamond) |
@@ -568,12 +580,14 @@ than just the shading. Two independent sources, which sum:
 | Parameter | Range | Description |
 |-----------|-------|-------------|
 | `scene3d.mat.displace` | 0–2 | **Math Displace** — procedural noise displacement |
+| `scene3d.mat.dispsmooth` | 0–1 | **Disp. Smooth** — how wide a span the displaced surface's normals are measured over. Reach for it when an animated texture makes the surface boil with tiny fast glints: a normal is the derivative of the height, so it amplifies exactly the flicker you don't notice in a flat image. Smooths the shading only — the bumps themselves are unchanged. 0 is the pre-v0.22.2 look |
 | `scene3d.mat.dispScale` | 0.1–10 | **DispScale** — spatial frequency of that noise |
 | `scene3d.mat.dispSpeed` | −5 – 5 | **Disp. Speed** — how fast it evolves |
 | `scene3d.mat.tDisplace` | 0–2 | **T-Displace** — displacement driven by the *texture* instead, so the live picture becomes relief |
 | `scene3d.mat.dispsrc` | SELECT | **T-Disp Source** — which image T-Displace reads. *Same as Surface* (default) uses the texture the object is showing, so the relief lands on the picture; *Displace Layer* uses the global DS layer, which is what this did before v0.22.2; the rest name a source directly |
 | `scene3d.mat.dispTexScale` | 0.1–10 | **Disp. Tex Scale** |
-| `scene3d.mat.dispTexProj` | SELECT | **Disp. Projection** — *UV (Skin)* wraps with the model, *Screen (Projector)* stays fixed in frame while the object turns under it |
+| `scene3d.mat.dispTexProj` | SELECT | **Disp. Projection** — *UV (Skin)* wraps with the model, *Screen (Projector)* stays fixed in frame while the object turns under it. Dimmed while the displacement is Seamless: a triplanar projection has no UV to swap for a screen one |
+| `scene3d.mat.triblend` | 1–8 | **Blend Sharp** — how abruptly Seamless hands over between its three projections. Lower spreads the handover wider: smoother seams, flatter relief. Matters most with T-Displace, where a sharp handover becomes a physical ridge. Drives colour and displacement together, so the two stay in register. Dimmed while Mapping is UV |
 
 Displacement needs vertices to move: a low-poly geometry will show faceting
 rather than a smooth deformation.
