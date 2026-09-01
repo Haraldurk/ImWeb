@@ -229,6 +229,9 @@ export class Parameter {
     this.options = config.options ?? null; // for SELECT
     this.unit = config.unit ?? ""; // display unit string e.g. '°', '%'
     this.step = config.step ?? null; // optional snap step
+    // 'exp' taper for CONTINUOUS params — see toNorm/fromNorm. Anything else,
+    // including the default, is linear.
+    this.curve = config.curve ?? null;
     /**
      * Whether `step` also QUANTIZES the stored value, or is only the UI
      * drag/arrow increment. Default true, because for most params the two are
@@ -403,12 +406,35 @@ export class Parameter {
     this._listeners.forEach((fn) => fn(clamped, this));
   }
 
+  /**
+   * Value ↔ 0–1 mapping for CONTINUOUS params. Linear unless the param declares
+   * `curve: 'exp'`, which makes equal travel give equal RATIO rather than equal
+   * difference — the way distance, rate and scale are actually perceived, where
+   * 1→2 is the same move as 10→20. Without it, a 0.1–100 control spends 90% of
+   * its throw above 10 and cannot be placed at all down where the work happens.
+   *
+   * Needs a positive low bound: a ratio mapping cannot reach or cross zero. Any
+   * param that fails that falls back to linear rather than producing NaN, so a
+   * mis-declared curve degrades instead of breaking.
+   *
+   * These two MUST stay exact inverses — the slider reads one and writes the
+   * other, so a mismatch shows up as the thumb drifting on release.
+   */
+  toNorm(v, lo = this.min, hi = this.max) {
+    if (this.curve !== 'exp' || lo <= 0 || hi <= lo) return (v - lo) / (hi - lo);
+    return Math.log(Math.max(lo, v) / lo) / Math.log(hi / lo);
+  }
+  fromNorm(n, lo = this.min, hi = this.max) {
+    if (this.curve !== 'exp' || lo <= 0 || hi <= lo) return lo + n * (hi - lo);
+    return lo * Math.pow(hi / lo, n);
+  }
+
   // Normalized value in [0, 1]
   get normalized() {
     if (this.type === PARAM_TYPE.TOGGLE) return this._value;
     if (this.type === PARAM_TYPE.SELECT)
       return this._value / Math.max(1, (this.options?.length ?? 1) - 1);
-    return (this._value - this.min) / (this.max - this.min);
+    return this.toNorm(this._value);
   }
 
   /**
@@ -432,7 +458,9 @@ export class Parameter {
     } else {
       const lo = this.ctrlMin ?? this.min;
       const hi = this.ctrlMax ?? this.max;
-      const target = lo + applied * (hi - lo);
+      // Honours `curve` so a controller sweeps the same taper the fader does —
+      // otherwise an LFO on a curved param moves differently from a hand on it.
+      const target = this.fromNorm(applied, lo, hi);
       if (this.slew > 0) {
         // Arm a new segment ONLY when the previous one has landed. While a
         // segment is in flight the target may move freely — tickSlew re-aims at
@@ -1357,10 +1385,13 @@ const S3D_CAM_RENAME = {
   'scene3d.cam.y': 'scene3d.cam.elev',
   'scene3d.cam.z': 'scene3d.cam.dist',
 };
+// Must track the registered ranges above — these are what migrated recall
+// bounds are reset to, so a stale copy silently hands a controller a sweep the
+// parameter cannot express.
 const S3D_CAM_RANGE = {
-  'scene3d.cam.orbit': { min: 0,    max: 360 },
-  'scene3d.cam.elev':  { min: -180, max: 180 },
-  'scene3d.cam.dist':  { min: 0.1,  max: 30 },
+  'scene3d.cam.orbit': { min: 0,   max: 360 },
+  'scene3d.cam.elev':  { min: -89, max: 89 },
+  'scene3d.cam.dist':  { min: 0.1, max: 100 },
 };
 
 /**
@@ -3067,23 +3098,51 @@ export function registerCoreParameters(ps) {
     unit: "°",
   });
   ps.register({
+    // ±89, NOT ±180. At exactly 90 the camera sits on the Y axis looking
+    // straight down it, parallel to three.js's up vector, and lookAt() has no
+    // basis to build — the image flips. Past 90 the camera crosses to the far
+    // side, so z changes sign and a sweep through the pole jumps. (The SDF's
+    // orbitY runs ±180 because a raymarcher builds its own basis and tolerates
+    // it; copying that range here was wrong.) Nothing is lost: the migration
+    // reads elevation through Math.asin, which only ever returns ±90, so no
+    // saved project can hold a value outside this range.
     id: "scene3d.cam.elev",
     label: "Elevation",
     group: "scene3d",
-    min: -180,
-    max: 180,
+    min: -89,
+    max: 89,
     value: 0,
     step: 0.5,
     unit: "°",
   });
   ps.register({
+    // Exponential: distance is perceived as a ratio, so equal travel should give
+    // equal ratio. Linear over 0.1–100 would spend 90% of the throw above 10 and
+    // make close-up framing unreachable — every useful near value crushed into
+    // the first millimetre. The taper puts 1.0 at the middle of the fader and
+    // slows right down as it approaches the object, which is the ask.
     id: "scene3d.cam.dist",
     label: "Distance",
     group: "scene3d",
     min: 0.1,
-    max: 30,
+    max: 100,
     value: 5,
-    step: 0.05,
+    step: 0.01,
+    curve: "exp",
+  });
+  ps.register({
+    // Camera spin, same grammar as the mesh's Spin X/Y/Z: degrees per second,
+    // accumulated internally so the Orbit param stays live as an offset rather
+    // than being written every frame (which would fight a controller on it and
+    // fill Display States with whatever angle the spin happened to be at).
+    id: "scene3d.cam.spin",
+    label: "Cam Spin",
+    group: "scene3d",
+    min: -180,
+    max: 180,
+    value: 0,
+    step: 0.1,
+    unit: "°/s",
   });
   ps.register({
     id: "scene3d.mat.roughness",

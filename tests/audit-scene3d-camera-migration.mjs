@@ -66,6 +66,29 @@ const deg = scene3dCartesianToOrbit(0, 0, 0);
 ok(Number.isFinite(deg.orbit) && Number.isFinite(deg.elev) && Number.isFinite(deg.dist),
    'an eye at the origin yields finite values rather than NaN');
 
+console.log('\nElevation stays off the pole');
+
+// At exactly ±90 the eye sits on the Y axis, parallel to three.js's up vector,
+// and lookAt() has no basis to build. Past it the eye crosses to the far side
+// and z flips sign, so a sweep through the pole jumps. The registered range
+// must therefore stop short of 90 — and the migration must be incapable of
+// producing anything outside it, or a loaded project lands somewhere the
+// slider cannot represent.
+{
+  let worstEl = 0;
+  for (const e of eyes) {
+    const { elev } = scene3dCartesianToOrbit(e.x, e.y, e.z);
+    worstEl = Math.max(worstEl, Math.abs(elev));
+  }
+  ok(worstEl <= 90,
+     `asin bounds migrated elevation to ±90 (worst |elev| ${worstEl.toFixed(3)}°)`);
+  // Straight up must not be produced as a usable camera by any real file.
+  const poleZ = place({ orbit: 0, elev: 90, dist: 5 }).z;
+  const pastZ = place({ orbit: 0, elev: 100, dist: 5 }).z;
+  ok(Math.abs(poleZ) < 1e-9 && pastZ < 0,
+     `the pole is degenerate and past it z flips sign (z@90 ${poleZ.toExponential(1)}, z@100 ${pastZ.toFixed(3)}) — which is why the range stops at 89`);
+}
+
 console.log('\nKey rewriting');
 
 {
@@ -162,6 +185,49 @@ for (const file of ['public/Projects/MasterProject.imweb', 'public/Projects/Fact
     ok(maxErr < 1e-9,
        `${file}: all ${migrated} cameras land on the same point (worst ${maxErr.toExponential(2)})`);
   }
+}
+
+console.log('\nRegistered ranges, and the exp taper');
+
+{
+  // The migration resets recall bounds to these; a stale copy would hand a
+  // controller a sweep the parameter cannot express, silently.
+  const psSrc = readFileSync(new URL('../src/controls/ParameterSystem.js', import.meta.url), 'utf8');
+  const declared = (id) => {
+    const i = psSrc.indexOf(`id: "${id}"`);
+    if (i === -1) return null;
+    const body = psSrc.slice(i, i + 400);
+    const num = (k) => {
+      const m = new RegExp(`${k}:\\s*(-?[0-9.]+)`).exec(body);
+      return m ? parseFloat(m[1]) : undefined;
+    };
+    return { min: num('min'), max: num('max'), curve: /curve:\s*"exp"/.test(body) };
+  };
+  const elev = declared('scene3d.cam.elev');
+  const dist = declared('scene3d.cam.dist');
+  ok(!!elev && elev.min > -90 && elev.max < 90,
+     `Elevation stops short of the pole — declared ${elev?.min}..${elev?.max}`);
+  ok(!!dist && dist.min > 0 && dist.curve,
+     `Distance is exp-tapered with a positive floor — declared ${dist?.min}..${dist?.max}, curve ${dist?.curve}`);
+
+  // An exp taper is only usable if its two directions are exact inverses: the
+  // slider reads one and writes the other, so a mismatch drifts the thumb.
+  const lo = dist.min, hi = dist.max;
+  const toNorm = (v) => Math.log(Math.max(lo, v) / lo) / Math.log(hi / lo);
+  const fromNorm = (n) => lo * Math.pow(hi / lo, n);
+  let worstRT = 0;
+  for (let i = 0; i <= 1000; i++) {
+    const n = i / 1000;
+    worstRT = Math.max(worstRT, Math.abs(toNorm(fromNorm(n)) - n));
+  }
+  ok(worstRT < 1e-12, `taper round trips over 1001 positions (worst ${worstRT.toExponential(2)})`);
+  // The point of the taper: the low decade must get real travel.
+  const halfway = fromNorm(0.5);
+  ok(halfway > 2 && halfway < 4.5,
+     `half travel lands near the geometric mean, not 50 — got ${halfway.toFixed(3)}`);
+  const linearAtTenth = lo + 0.1 * (hi - lo);
+  ok(fromNorm(0.1) < linearAtTenth / 5,
+     `a tenth of the throw reaches ${fromNorm(0.1).toFixed(3)}, far below the linear ${linearAtTenth.toFixed(2)} — close framing is reachable`);
 }
 
 console.log(`\n${fail === 0 ? 'PASS' : 'FAIL'} — ${checks - fail}/${checks} checks\n`);

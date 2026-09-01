@@ -509,8 +509,9 @@ to a 2×2×2 bounding box on load.
 |-----------|-------|-------------|
 | `scene3d.cam.fov` | 20–120° | Field of view |
 | `scene3d.cam.orbit` | 0–360° | **Orbit** — rotates the camera around the object. Put an LFO here and the scene turns |
-| `scene3d.cam.elev` | −180 – 180° | **Elevation** — above or below the object |
-| `scene3d.cam.dist` | 0.1–30 | **Distance** — how far back the camera sits |
+| `scene3d.cam.elev` | −89 – 89° | **Elevation** — above or below the object. Stops short of straight up: at 90° the camera looks down its own up axis and the image flips |
+| `scene3d.cam.dist` | 0.1–100 | **Distance** — how far back the camera sits. Exponential, so the fader slows as it closes in; half travel is ≈3.2, not 50 |
+| `scene3d.cam.spin` | −180 – 180 °/s | **Cam Spin** — orbits on its own, in degrees per second. Adds to Orbit rather than overwriting it, so Orbit stays live as an offset |
 
 #### Parameters — Material
 

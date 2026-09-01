@@ -1150,8 +1150,18 @@ export class SceneManager {
     // Spherical placement — the exact inverse of scene3dCartesianToOrbit(), so
     // a migrated project opens on the frame it was saved on.
     {
-      const az = (p.get('scene3d.cam.orbit').value * Math.PI) / 180;
-      const el = (p.get('scene3d.cam.elev').value  * Math.PI) / 180;
+      // Cam Spin accumulates its own angle rather than writing Orbit, exactly
+      // as the mesh's Spin X/Y/Z leaves the rot params alone: Orbit stays a
+      // live offset you (or a controller) can still move while it turns, and
+      // Display States capture the angle you set, not wherever the spin drifted.
+      const camSpin = p.get('scene3d.cam.spin')?.value ?? 0;
+      if (camSpin !== 0) {
+        this._camSpin = ((this._camSpin ?? 0) + camSpin * dt) % 360;
+      } else if (this._camSpin) {
+        this._camSpin = 0; // back to Orbit alone the moment spin is switched off
+      }
+      const az = ((p.get('scene3d.cam.orbit').value + (this._camSpin ?? 0)) * Math.PI) / 180;
+      const el = (p.get('scene3d.cam.elev').value * Math.PI) / 180;
       const d  =  p.get('scene3d.cam.dist').value;
       const ch = Math.cos(el);
       this.camera.position.set(d * ch * Math.sin(az), d * Math.sin(el), d * ch * Math.cos(az));

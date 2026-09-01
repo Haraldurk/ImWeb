@@ -8,7 +8,27 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
 
 ## [Unreleased]
 
+### Added
+- **Cam Spin** turns the camera around the object on its own, in degrees per
+  second — the same grammar as the mesh's Spin X/Y/Z. It accumulates its own
+  angle rather than writing Orbit, so Orbit stays a live offset you can still
+  move while it turns, and a saved state captures the angle you set rather than
+  wherever the spin happened to be.
+
 ### Changed
+- **Camera Distance reaches from 0.1 to 100, and slows down as it closes in.**
+  It ran 0.1–30 linearly, which put every close-up framing in the first
+  millimetre of the fader. Distance is perceived as a ratio — 1→2 is the same
+  move as 10→20 — so the control is now exponential: half the travel lands at
+  3.16 rather than 50, and the bottom tenth covers 0.1–0.20 where linear gave
+  0.1–10. Controllers sweep the same taper, so an LFO and a hand agree.
+- **Elevation no longer jumps.** It ran ±180, but at exactly 90° the camera sits
+  on the Y axis looking straight down it — parallel to the up vector, where
+  `lookAt` has no basis to build and the image flips. Past 90 the camera crosses
+  to the far side, so sweeping through the pole jumped. Now ±89. Nothing is
+  lost: elevation is read through `asin`, which never returns beyond ±90, so no
+  saved project could hold a value outside the new range.
+
 - **The 3D camera orbits.** It had Cam X / Y / Z in world units, but the camera
   has always looked at the origin — so those three numbers were never a free
   position, only a point on a sphere written in the least playable coordinates

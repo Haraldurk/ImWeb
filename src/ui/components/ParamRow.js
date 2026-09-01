@@ -523,12 +523,17 @@ export function buildParamRow(param, contextMenu) {
     const slider = document.createElement('input');
     slider.type = 'range';
     slider.className = 'param-slider';
-    slider.min   = param.min;
-    slider.max   = param.max;
-    slider.step  = param.step ?? 'any';
-    slider.value = param.value;
+    // A curved param drives the slider in NORMALIZED space — the taper is the
+    // whole point of the fader, so mapping it here rather than only in
+    // setNormalized is what makes a hand and an LFO agree.
+    const curved = param.curve === 'exp';
+    slider.min   = curved ? 0 : param.min;
+    slider.max   = curved ? 1 : param.max;
+    slider.step  = curved ? 0.0001 : (param.step ?? 'any');
+    slider.value = curved ? param.toNorm(param.value) : param.value;
     slider.addEventListener('input', () => {
-      param.value = parseFloat(slider.value);
+      const raw = parseFloat(slider.value);
+      param.value = curved ? param.fromNorm(raw) : raw;
       updateDisplay();
     });
     // While the finger holds the slider it is the SOLE writer: the rAF
@@ -539,13 +544,14 @@ export function buildParamRow(param, contextMenu) {
       _sliderHeld = true;
       row._stopGlide?.(); // grabbing the thumb kills any running physics
     });
+    const _sliderPos = () => (curved ? param.toNorm(param.value) : param.value);
     const _sliderRelease = () => {
       _sliderHeld = false;
-      slider.value = param.value;
+      slider.value = _sliderPos();
     };
     slider.addEventListener('pointerup', _sliderRelease);
     slider.addEventListener('pointercancel', _sliderRelease);
-    binding.sync(() => { if (!_sliderHeld) slider.value = param.value; });
+    binding.sync(() => { if (!_sliderHeld) slider.value = _sliderPos(); });
     row.appendChild(slider);
   }
 
