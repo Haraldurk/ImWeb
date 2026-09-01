@@ -4578,6 +4578,163 @@ export function registerCoreParameters(ps) {
     unit: "s",
   });
   ps.register({
+    id: "text.scrollX",
+    label: "ScrollX",
+    group: "text",
+    min: -100,
+    max: 100,
+    value: 0,
+    step: 0.1,
+    unit: "%/s",
+  });
+  ps.register({
+    id: "text.scrollY",
+    label: "ScrollY",
+    group: "text",
+    min: -100,
+    max: 100,
+    value: 0,
+    step: 0.1,
+    unit: "%/s",
+  });
+  ps.register({
+    id: "text.scrollGap",
+    label: "ScrollGap",
+    group: "text",
+    min: 0,
+    max: 100,
+    value: 20,
+    unit: "%",
+  });
+  // ── Path layout ───────────────────────────────────────────────────────────
+  // APPEND-ONLY — persisted as an integer index. The four shapes are distinct
+  // rather than presets of one formula, so pathTwist has exactly one owner
+  // (Spiral) instead of quietly deforming Circle too.
+  ps.register({
+    id: "text.path",
+    label: "Path",
+    group: "text",
+    type: PARAM_TYPE.SELECT,
+    options: ["None", "Circle", "Arc", "Spiral", "Wave"],
+    value: 0,
+  });
+  ps.register({
+    id: "text.pathRadius",
+    label: "PathRadius",
+    group: "text",
+    min: 0,
+    max: 100,
+    value: 30,
+    unit: "%",
+  });
+  ps.register({
+    // Put an LFO on this and the ring spins — it is the animation control for
+    // the whole path family, not just a static offset.
+    id: "text.pathAngle",
+    label: "PathAngle",
+    group: "text",
+    min: 0,
+    max: 360,
+    value: 0,
+    unit: "°",
+  });
+  ps.register({
+    id: "text.pathSpread",
+    label: "PathSpread",
+    group: "text",
+    min: 0,
+    max: 360,
+    value: 360,
+    unit: "°",
+  });
+  ps.register({
+    // 100 % is round ON SCREEN — the aspect correction is already applied, so
+    // this is the control for making an ellipse on purpose.
+    id: "text.pathWidth",
+    label: "PathWidth",
+    group: "text",
+    min: 0,
+    max: 200,
+    value: 100,
+    unit: "%",
+  });
+  ps.register({
+    id: "text.pathTwist",
+    label: "PathTwist",
+    group: "text",
+    min: -100,
+    max: 100,
+    value: 30,
+    unit: "%",
+  });
+  ps.register({
+    id: "text.pathUpright",
+    label: "PathUpright",
+    group: "text",
+    type: PARAM_TYPE.TOGGLE,
+    value: 0,
+  });
+  ps.register({
+    id: "text.pathFlip",
+    label: "PathFlip",
+    group: "text",
+    type: PARAM_TYPE.TOGGLE,
+    value: 0,
+  });
+  ps.register({
+    // ── Audio reactivity ──────────────────────────────────────────────────────
+    // Per-GLYPH, which is the point: each letter reads its own slice of the
+    // spectrum, so a word becomes a meter bank. The other bands drive every
+    // glyph from one number and are much calmer.
+    // APPEND-ONLY — persisted as integer indices.
+    id: "text.audioTarget",
+    label: "AudioTarget",
+    group: "text",
+    type: PARAM_TYPE.SELECT,
+    options: ["Off", "Scale", "Rise", "Hue", "Weight", "Rotate", "Opacity"],
+    value: 0,
+  });
+  ps.register({
+    id: "text.audioBand",
+    label: "AudioBand",
+    group: "text",
+    type: PARAM_TYPE.SELECT,
+    options: ["Spectrum", "Level", "Bass", "Mid", "High"],
+    value: 0,
+  });
+  ps.register({
+    id: "text.audioAmt",
+    label: "AudioAmt",
+    group: "text",
+    min: 0,
+    max: 100,
+    value: 50,
+    unit: "%",
+  });
+  ps.register({
+    // Release time only — the attack is always fast. A filter slow enough to
+    // stop the flicker in both directions swallows every transient, and the
+    // transients are what makes it look played rather than animated.
+    id: "text.audioSmooth",
+    label: "AudioSmooth",
+    group: "text",
+    min: 0,
+    max: 100,
+    value: 40,
+    unit: "%",
+  });
+  ps.register({
+    // How much of the spectrum is spread across the word. The top of an FFT is
+    // nearly always empty, so spreading all of it leaves most glyphs still.
+    id: "text.audioRange",
+    label: "AudioRange",
+    group: "text",
+    min: 5,
+    max: 100,
+    value: 50,
+    unit: "%",
+  });
+  ps.register({
     id: "text.stagger",
     label: "Stagger",
     group: "text",

@@ -161,10 +161,130 @@ export class TextLayer {
     this._animSeed    = 0;   // bumped on every unit change — reseeds Random
     this._permCache   = null;
 
+    // Marquee. Phase is in CANVAS PIXELS and accumulates from dt, so the speed
+    // is frame-rate independent; it wraps on the line's own width, not the
+    // canvas width (see _render).
+    this._scrollX   = 0;
+    this._scrollY   = 0;
+    this._scrollGap = 20;
+    this._scrollPX  = 0;
+    this._scrollPY  = 0;
+
+    // Path layout
+    this._path        = 0;
+    this._pathRadius  = 30;
+    this._pathAngle   = 0;
+    this._pathSpread  = 360;
+    this._pathWidth   = 100;
+    this._pathTwist   = 0;
+    this._pathUpright = 0;
+    this._pathFlip    = 0;
+
+    // Output aspect (width/height), for keeping a circle round ON SCREEN.
+    this._aspect = 1;
+
+    // Audio reactivity. `_audio` is pushed in from the render loop (see
+    // setAudio) — this class never imports the audio half, the same injection
+    // rule ControllerManager and VectorscopeInput follow for the §8.6 tap.
+    this._audio       = null;
+    this._audioTarget = 0;
+    this._audioBand   = 0;
+    this._audioAmt    = 50;
+    this._audioSmooth = 40;
+    this._audioRange  = 50;
+    // Per-glyph envelope followers, indexed by glyph. Grown on demand.
+    this._audioEnv    = new Float32Array(0);
+
     this._render();
     // The bundled faces are not there yet on the first frame; re-render once
     // they are, or the boot texture keeps the fallback face forever.
     document.fonts?.ready?.then(() => this._render()).catch?.(() => {});
+  }
+
+  /**
+   * The output's width/height, pushed in from the render loop.
+   *
+   * The text canvas is square and the compositor samples it at plain vUv with
+   * no aspect correction anywhere in TRANSFERMODE or KEYER — so a square source
+   * is stretched to fill the frame, 1.78x wide at 16:9. That is the house
+   * convention (DrawLayer is square too) and is not changed here, but it means
+   * a circle authored in canvas space arrives on screen as an ellipse. Path
+   * layout divides its x extent by this so a circle is round WHERE IT IS SEEN.
+   *
+   * Defaults to 1 and is optional: the class must stay constructible with no
+   * pipeline at all, which is how the test harness drives it.
+   */
+  setOutputAspect(a) {
+    const v = Number.isFinite(a) && a > 0 ? a : 1;
+    if (v !== this._aspect) { this._aspect = v; this._render(); }
+  }
+
+  /**
+   * The current audio picture, pushed in once a frame by the render loop:
+   * `{ freq: Uint8Array, level, bass, mid, high }`, or null when nothing is
+   * listening. Injected rather than imported — this class must not learn what
+   * an AnalyserNode is, and the test harness has to be able to drive it with a
+   * plain object.
+   *
+   * Held by reference and read at render time. The array is the analyser's own
+   * buffer and is refilled in place every frame, which is exactly what we want:
+   * no copy, and never a stale frame.
+   */
+  setAudio(a) { this._audio = a || null; }
+
+  /**
+   * Advance the per-glyph envelope followers.
+   *
+   * Fast attack, slow release — a peak-hold, which is what makes a spectrum
+   * read as a bank of meters rather than as jitter. A symmetric filter slow
+   * enough to stop the flicker also swallows every transient, and transients
+   * are the whole point.
+   */
+  _tickAudio(dt) {
+    const n = (this._units[this._idx] ?? '').length;
+    if (!n) return false;
+    if (this._audioEnv.length < n) this._audioEnv = new Float32Array(n);
+
+    const a = this._audio;
+    const N = a?.freq?.length ?? 0;
+    // Spectrum spreads the band across the glyphs; the others drive every
+    // glyph from one number, which is still useful and much calmer.
+    const uniform = this._audioBand === 0 ? null
+      : this._audioBand === 1 ? (a?.level ?? 0)
+      : this._audioBand === 2 ? (a?.bass  ?? 0)
+      : this._audioBand === 3 ? (a?.mid   ?? 0)
+      :                         (a?.high  ?? 0);
+
+    // Only the bottom `audioRange` % of the spectrum is spread across the
+    // word. The top of an FFT is almost always empty, and spreading the whole
+    // thing leaves most of the glyphs permanently still.
+    const hi = Math.max(1, Math.floor(N * (this._audioRange / 100)));
+
+    const atkK = 1 - Math.exp(-dt / 0.02);
+    const relK = 1 - Math.exp(-dt / (0.02 + (this._audioSmooth / 100) * 0.5));
+
+    let moved = false;
+    for (let i = 0; i < n; i++) {
+      let v = 0;
+      if (uniform !== null) {
+        v = uniform;
+      } else if (N) {
+        // Average the glyph's whole slice, not one bin — with 256 bins and a
+        // short word, point-sampling picks an arbitrary spike and misses the
+        // energy either side of it.
+        const b0 = Math.floor((i / n) * hi);
+        const b1 = Math.max(b0 + 1, Math.floor(((i + 1) / n) * hi));
+        let s = 0;
+        for (let b = b0; b < b1; b++) s += a.freq[b];
+        v = s / ((b1 - b0) * 255);
+      }
+      const e = this._audioEnv[i];
+      const k = v > e ? atkK : relK;
+      const next = e + (v - e) * k;
+      if (Math.abs(next - e) > 0.0005) moved = true;
+      this._audioEnv[i] = next;
+    }
+    return moved;
   }
 
   /**
@@ -286,6 +406,53 @@ export class TextLayer {
     if (stagger     !== this._stagger)     { this._stagger     = stagger;     dirty = true; }
     if (staggerFrom !== this._staggerFrom) { this._staggerFrom = staggerFrom; dirty = true; }
     if (glitchSet   !== this._glitchSet)   { this._glitchSet   = glitchSet;   dirty = true; }
+
+    // Marquee. The phase is an integrator, so it advances on dt and NOT on a
+    // change comparison — a scroll that only redrew when its speed changed
+    // would sit still.
+    this._scrollX   = get('text.scrollX');
+    this._scrollY   = get('text.scrollY');
+    this._scrollGap = get('text.scrollGap');
+    if (this._scrollX !== 0 || this._scrollY !== 0) {
+      // %/s of the canvas width, scaled by k so text.res does not change speed.
+      this._scrollPX += (this._scrollX / 100) * SIZE * (this._size2d / SIZE) * dt;
+      this._scrollPY += (this._scrollY / 100) * SIZE * (this._size2d / SIZE) * dt;
+      dirty = true;
+    }
+
+    // Audio reactivity
+    const audioTarget = Math.round(get('text.audioTarget'));
+    const audioBand   = Math.round(get('text.audioBand'));
+    const audioAmt    = get('text.audioAmt');
+    const audioSmooth = get('text.audioSmooth');
+    const audioRange  = get('text.audioRange');
+    if (audioTarget !== this._audioTarget) { this._audioTarget = audioTarget; dirty = true; }
+    if (audioBand   !== this._audioBand)   { this._audioBand   = audioBand;   dirty = true; }
+    if (audioAmt    !== this._audioAmt)    { this._audioAmt    = audioAmt;    dirty = true; }
+    this._audioSmooth = audioSmooth;
+    this._audioRange  = audioRange;
+    // The envelope is an integrator, so it advances on dt and re-renders while
+    // it is still moving — including on the way DOWN, or the text would freeze
+    // at its loudest and stay there.
+    if (audioTarget > 0 && dt > 0 && this._tickAudio(dt)) dirty = true;
+
+    // Path layout
+    const path        = Math.round(get('text.path'));
+    const pathRadius  = get('text.pathRadius');
+    const pathAngle   = get('text.pathAngle');
+    const pathSpread  = get('text.pathSpread');
+    const pathWidth   = get('text.pathWidth');
+    const pathTwist   = get('text.pathTwist');
+    const pathUpright = get('text.pathUpright') ? 1 : 0;
+    const pathFlip    = get('text.pathFlip') ? 1 : 0;
+    if (path        !== this._path)        { this._path        = path;        dirty = true; }
+    if (pathRadius  !== this._pathRadius)  { this._pathRadius  = pathRadius;  dirty = true; }
+    if (pathAngle   !== this._pathAngle)   { this._pathAngle   = pathAngle;   dirty = true; }
+    if (pathSpread  !== this._pathSpread)  { this._pathSpread  = pathSpread;  dirty = true; }
+    if (pathWidth   !== this._pathWidth)   { this._pathWidth   = pathWidth;   dirty = true; }
+    if (pathTwist   !== this._pathTwist)   { this._pathTwist   = pathTwist;   dirty = true; }
+    if (pathUpright !== this._pathUpright) { this._pathUpright = pathUpright; dirty = true; }
+    if (pathFlip    !== this._pathFlip)    { this._pathFlip    = pathFlip;    dirty = true; }
     if (animSpeed !== this._animSpeed) { this._animSpeed = animSpeed; }
     if (animAmt   !== this._animAmt)   { this._animAmt   = animAmt;   dirty = true; }
 
@@ -500,6 +667,10 @@ export class TextLayer {
     if (this._align === 0)      cx -= w / 2;
     else if (this._align === 2) cx -= w;
 
+    // cx is the running pen and is mutated by the loop, so the line's start
+    // has to be captured before it moves.
+    const cx0 = cx;
+
     const savedAlign = ctx.textAlign;
     const savedAlpha = ctx.globalAlpha;
     ctx.textAlign = 'left';
@@ -509,18 +680,24 @@ export class TextLayer {
       const src = line[i];
       const adv = ctx.measureText(src).width;
       ctx.save();
-      const g = perGlyph({ ch: src, i, n, x: cx, adv, ctx });
+      // x0/w let a modifier work in FRACTIONS of the line (path placement needs
+      // "how far along am I", not "which pixel am I at").
+      const g = perGlyph({ ch: src, i, n, x: cx, adv, ctx, x0: cx0, w });
       if (g !== false) {
         const ch = g?.ch ?? src;
         const gx = cx + (g?.dx ?? 0);
         const gy = baseY + (g?.dy ?? 0);
         if (ch.trim() && ctx.globalAlpha > 0.004) {
           if (this._outline > 0) {
+            // Restore the fill the MODIFIERS left, not a freshly rebuilt base
+            // colour: recomputing it here would silently discard a per-glyph
+            // hue (audio Hue mode) every time an outline was switched on.
+            const fill = ctx.fillStyle;
             this._applyOutlineStyle(ctx, satPct, lightPct);
             ctx.lineWidth = this._outline * 2 * k;
             ctx.lineJoin  = 'round';
             ctx.strokeText(ch, gx, gy);
-            ctx.fillStyle = `hsl(${this._hue}, ${satPct}%, ${lightPct}%)`;
+            ctx.fillStyle = fill;
           }
           ctx.fillText(ch, gx, gy);
         }
@@ -531,6 +708,89 @@ export class TextLayer {
 
     ctx.textAlign   = savedAlign;
     ctx.globalAlpha = savedAlpha;
+  }
+
+  /**
+   * Where glyph fraction `t` ∈ (0,1) along a line sits under text.path, and
+   * which way it faces. Returns canvas-space coordinates relative to the path
+   * centre, plus the rotation to apply.
+   *
+   * The four shapes are deliberately distinct rather than four presets of one
+   * formula — pathTwist has exactly one owner (Spiral) so that turning it has a
+   * predictable effect instead of quietly deforming Circle as well:
+   *
+   *   Circle  starts at pathAngle and runs pathSpread degrees from there
+   *   Arc     CENTRES pathSpread on pathAngle, so widening an arc keeps it put
+   *   Spiral  Circle, with the radius growing by pathTwist over the sweep
+   *   Wave    a sine along the baseline, pathSpread degrees of it per line
+   *
+   * X is divided by the output aspect so the shape is round ON SCREEN — see
+   * setOutputAspect. pathWidth then scales x on top of that, which is how you
+   * ask for an ellipse on purpose.
+   */
+  _pathPoint(t, S) {
+    const R    = (this._pathRadius / 100) * (S / 2);
+    const rad  = Math.PI / 180;
+    const a0   = this._pathAngle * rad;
+    const span = this._pathSpread * rad;
+    const xs   = (this._pathWidth / 100) / this._aspect;
+
+    if (this._path === 4) {                       // Wave
+      const y = R * Math.sin(t * span);
+      // Slope of the sine, for the tangent when glyphs are not held upright.
+      const slope = R * span * Math.cos(t * span);
+      return { x: (t - 0.5) * S * (this._pathWidth / 100), y, rot: Math.atan2(slope, S) };
+    }
+
+    // Polar shapes. -90° so t=0 starts at the TOP, which is where anyone
+    // laying text around a circle expects it to start.
+    const a = -Math.PI / 2 + (this._path === 2 ? a0 + (t - 0.5) * span
+                                               : a0 + t * span);
+    const r = this._path === 3 ? R * (1 + (this._pathTwist / 100) * t) : R;
+    // Flip puts the glyphs on the other side of the curve — this is the control
+    // that rights the upside-down text along the bottom of a ring.
+    const rot = a + (this._pathFlip ? -Math.PI / 2 : Math.PI / 2);
+    return { x: r * Math.cos(a) * xs, y: r * Math.sin(a), rot };
+  }
+
+  /**
+   * Marquee repetition offsets for one block of text.
+   *
+   * The period is the LINE's own width plus the gap, not the canvas width:
+   * that way a short word repeats across the frame and a long line crawls
+   * continuously, which is what each case wants. The count is computed from
+   * the period rather than hardcoded — a one-character marquee has a period of
+   * a few pixels, and a fixed three repetitions would leave visible holes.
+   *
+   * The range is solved against the ANCHOR, not just the canvas size. The text
+   * sits at text.x/text.y, which can be anywhere, so "one repetition to the
+   * left of the anchor" only covers the left edge while the phase is small —
+   * as the phase approaches a full period that repetition slides off the
+   * anchor and the left of the frame goes empty for part of every cycle. That
+   * is a stutter that appears once per wrap and only at some positions, which
+   * is exactly the kind of thing that gets shipped.
+   */
+  _scrollOffsets(lineW, blockH, S, anchorX, anchorY) {
+    if (this._scrollX === 0 && this._scrollY === 0) return [[0, 0]];
+    const gap = (this._scrollGap / 100) * S;
+    const wrap = (p, period) => ((p % period) + period) % period;
+    const axis = (moving, extent, phase, anchor) => {
+      if (!moving) return [0];
+      // Floor the period: a zero or sub-pixel period (empty line, no gap) would
+      // otherwise ask for thousands of repetitions and hang the frame.
+      const period = Math.max(8, extent + gap);
+      const off = wrap(phase, period);
+      // Repetitions that cover the whole canvas from wherever the anchor is.
+      const first = Math.floor((-extent - anchor - off) / period);
+      const last  = Math.ceil((S - anchor - off) / period);
+      const n = Math.min(64, last - first + 1);
+      return Array.from({ length: n }, (_, i) => off + (first + i) * period);
+    };
+    const xs = axis(this._scrollX !== 0, lineW,  this._scrollPX, anchorX);
+    const ys = axis(this._scrollY !== 0, blockH, this._scrollPY, anchorY);
+    const out = [];
+    for (const ox of xs) for (const oy of ys) out.push([ox, oy]);
+    return out;
   }
 
   _applyEntranceTransform(ctx, mode, phase, alignX, py, k = 1) {
@@ -686,6 +946,126 @@ export class TextLayer {
       ctx.translate(-alignX, -py);
     }
 
+    // ── Per-glyph modifiers ─────────────────────────────────────────────────
+    // Glitch, wave and stagger used to be branches of one `else if` chain, so
+    // they were mutually exclusive by accident rather than by intent. They are
+    // orthogonal — a scrambling line that also staggers in is a legitimate
+    // thing to ask for — so each is a modifier that is null when its feature is
+    // off. When they are ALL null there is no per-glyph work and the block draw
+    // below runs exactly as it always did.
+    //
+    // ORDER MATTERS, and it is: substitution → placement → transition →
+    // displacement. Canvas composes transforms outermost-first, so anything
+    // registered before another lands in the outer frame. Placement (added in
+    // the next step: paths) therefore goes BEFORE transition deliberately, on
+    // two counts: the entrance transforms' Scale anchor is written in linear
+    // draw coordinates, which placement keeps valid by mapping those
+    // coordinates onto the path, and a FadeUp along a ring then reads as
+    // glyphs arriving along the ring instead of the whole ring sliding up.
+    const decodeSpread = Math.max(spread, 0.6);
+    const substitution =
+      this._animMode === 5
+        ? (ch, i) => this._glitchChar(ch, i, this._animAmt / 100)
+        : isDecode
+          // A decode where every glyph settles on the same frame is a cut, not
+          // a decode, so this keeps a floor under the spread even at stagger 0.
+          ? (ch, i, n) =>
+              this._glyphPhase(this._animPhase, i, n, decodeSpread) >= 1
+                ? ch
+                : this._glitchChar(ch, i, 1)
+          : null;
+
+    const displacement =
+      this._animMode === 2
+        ? (i) => Math.sin(i * 0.5 + this._animTime * this._animSpeed * Math.PI * 2)
+                 * (this._animAmt / 100) * fs * 0.4
+        : null;
+
+    // Placement maps the glyph's LINEAR draw position onto the path and turns
+    // it to face along the curve. It translates so that drawing at the linear
+    // coordinates still addresses the glyph — which is what keeps the entrance
+    // transforms' anchor arithmetic (written in those coordinates) valid, and
+    // is why transition is composed after this rather than before.
+    const placement = this._path > 0
+      ? (g, lineY, ox) => {
+          // The scroll offset is folded into the ARC-LENGTH fraction, not the
+          // x position: on a path, scrolling has to move glyphs AROUND the
+          // curve. Adding it to x instead would place every repetition at the
+          // same angles, drawing them all on top of each other.
+          const t  = (g.x - g.x0 + g.adv / 2 + ox) / Math.max(1, g.w);
+          const p  = this._pathPoint(t, S);
+          // Concentric: a second line sits further out, not on top.
+          const cy = py + (lineY - py);
+          g.ctx.translate(alignX + p.x, cy + p.y);
+          if (!this._pathUpright) g.ctx.rotate(p.rot);
+          g.ctx.translate(-(g.x + g.adv / 2), -lineY);
+        }
+      : null;
+
+    // Audio drives ONE property per glyph, chosen by text.audioTarget. It runs
+    // after transition and inside placement, so a glyph on a ring pulses in
+    // place rather than being flung off it.
+    //
+    // Note on Weight: a heavier face is a WIDER face, but the advance always
+    // comes from the base font, so glyphs crowd slightly at high amounts.
+    // That is the trade for a stable line — an advance that breathed with the
+    // level would read as the whole word twitching, not as letters swelling.
+    const audio = this._audioTarget > 0
+      ? (g, lineY) => {
+          const e = this._audioEnv[g.i] ?? 0;
+          const amt = this._audioAmt / 100;
+          const cx = g.x + g.adv / 2;
+          const c = g.ctx;
+          switch (this._audioTarget) {
+            case 1: { // Scale
+              const s = 1 + e * amt * 1.5;
+              c.translate(cx, lineY); c.scale(s, s); c.translate(-cx, -lineY);
+              break;
+            }
+            case 2:   // Rise
+              c.translate(0, -e * amt * fs * 0.6);
+              break;
+            case 3:   // Hue — set here and preserved across the outline pass
+              c.fillStyle = `hsl(${(this._hue + e * amt * 180) % 360}, `
+                          + `${satPct}%, ${lightPct}%)`;
+              break;
+            case 4: { // Weight
+              const w = Math.max(100, Math.min(900,
+                Math.round(this._weight + e * amt * 500)));
+              const saved = this._weight;
+              this._weight = w;
+              c.font = this._fontString(fs);
+              this._weight = saved;
+              break;
+            }
+            case 5:   // Rotate
+              c.translate(cx, lineY);
+              c.rotate(e * amt * 0.6);
+              c.translate(-cx, -lineY);
+              break;
+            case 6:   // Opacity — quiet glyphs dim rather than loud ones brighten
+              c.globalAlpha *= (1 - amt) + amt * e;
+              break;
+          }
+        }
+      : null;
+
+    const transition = staggered
+      ? (g, lineY) => {
+          const local = this._glyphPhase(this._animPhase, g.i, g.n, spread);
+          this._applyEntranceTransform(
+            g.ctx, this._animInMode, local, g.x + g.adv / 2, lineY, k);
+        }
+      : null;
+
+    const perGlyphActive = !!(substitution || displacement || transition || placement || audio);
+
+    // Marquee repetition offsets, computed once for the block so every line
+    // tiles in step. The widest line sets the horizontal period — using each
+    // line's own width would let a multi-line ticker shear apart.
+    const widest = Math.max(...lines.map(l => ctx.measureText(l).width), 0);
+    const offsets = this._scrollOffsets(widest, totalH, S, alignX, py);
+
     lines.forEach((line, i) => {
       let baseY = py - totalH / 2 + lineH * (i + 0.5);
 
@@ -699,45 +1079,28 @@ export class TextLayer {
         ctx.globalAlpha = (this._opacity / 100) * fade;
       }
 
-      if (this._animMode === 2) {
-        // Wave — per-character sin Y offset
-        this._drawGlyphs(ctx, line, alignX, baseY, style, ({ i }) => ({
-          dy: Math.sin(i * 0.5 + this._animTime * this._animSpeed * Math.PI * 2)
-              * (this._animAmt / 100) * fs * 0.4,
-        }));
-      } else if (this._animMode === 5) {
-        // Glitch — continuous scramble, animAmt = fraction of glyphs replaced
-        const amt = this._animAmt / 100;
-        this._drawGlyphs(ctx, line, alignX, baseY, style, ({ ch, i }) => ({
-          ch: this._glitchChar(ch, i, amt),
-        }));
-      } else if (isDecode) {
-        // Decode entrance — each glyph scrambles until its own phase resolves.
-        // A decode where every glyph settles on the same frame is a cut, not a
-        // decode, so this keeps a floor under the spread even at stagger 0.
-        const dSpread = Math.max(spread, 0.6);
-        this._drawGlyphs(ctx, line, alignX, baseY, style, ({ ch, i, n }) => {
-          const local = this._glyphPhase(this._animPhase, i, n, dSpread);
-          return { ch: local >= 1 ? ch : this._glitchChar(ch, i, 1) };
-        });
-      } else if (staggered) {
-        // Per-glyph entrance — the same in-transform, run once per glyph and
-        // anchored on the glyph's own centre so Scale grows each letter in
-        // place rather than the block as a whole.
-        this._drawGlyphs(ctx, line, alignX, baseY, style, ({ i, n, x, adv, ctx: g }) => {
-          const local = this._glyphPhase(this._animPhase, i, n, spread);
-          this._applyEntranceTransform(g, this._animInMode, local, x + adv / 2, baseY, k);
-          return {};
-        });
-      } else {
-        if (this._outline > 0) {
-          this._applyOutlineStyle(ctx, satPct, lightPct);
-          ctx.lineWidth = this._outline * 2 * k;
-          ctx.lineJoin  = 'round';
-          ctx.strokeText(line, alignX, baseY);
-          ctx.fillStyle = `hsl(${this._hue}, ${satPct}%, ${lightPct}%)`;
+      for (const [ox, oy] of offsets) {
+        const lx = alignX + ox;
+        const ly = baseY + oy;
+
+        if (perGlyphActive) {
+          this._drawGlyphs(ctx, line, lx, ly, style, (g) => {
+            const ch = substitution ? substitution(g.ch, g.i, g.n) : g.ch;
+            if (placement)  placement(g, ly, ox);
+            if (transition) transition(g, ly);
+            if (audio)      audio(g, ly);
+            return { ch, dy: displacement ? displacement(g.i) : 0 };
+          });
+        } else {
+          if (this._outline > 0) {
+            this._applyOutlineStyle(ctx, satPct, lightPct);
+            ctx.lineWidth = this._outline * 2 * k;
+            ctx.lineJoin  = 'round';
+            ctx.strokeText(line, lx, ly);
+            ctx.fillStyle = `hsl(${this._hue}, ${satPct}%, ${lightPct}%)`;
+          }
+          ctx.fillText(line, lx, ly);
         }
-        ctx.fillText(line, alignX, baseY);
       }
     });
 

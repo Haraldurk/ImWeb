@@ -42,6 +42,34 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
 - **Glitch** (AnimMode) scrambles characters continuously, and **Decode**
   (AnimIn) resolves the text out of noise as it enters. Four character sets:
   Symbols, ASCII, Blocks, Katakana.
+- **Marquee.** ScrollX and ScrollY crawl the text continuously and repeat it,
+  so a short word tiles across the frame and a long line runs on forever.
+  ScrollGap sets the space between repeats. You could already slide text by
+  putting a sawtooth LFO on TextX — what you could not do was make it wrap.
+- **Paths** — Circle, Arc, Spiral and Wave lay the text along a shape instead
+  of a line. PathAngle is the one to reach for: put an LFO on it and the ring
+  spins. PathFlip rights the glyphs along the bottom of a ring, PathUpright
+  keeps them vertical while their positions still follow the curve, and
+  PathWidth stretches the shape into an ellipse on purpose — at 100 % a circle
+  is round on screen, which it would not otherwise be, since the text canvas
+  is square and your output is not.
+
+  Scroll and paths combine: the text crawls **around** the ring.
+- **The text listens.** AudioTarget drives Scale, Rise, Hue, Weight, Rotate or
+  Opacity from whatever the analyser is pointed at — and it is **per glyph**:
+  on the default Spectrum band each letter reads its own slice of the
+  frequency range, so a word turns into a bank of meters. Point the tap at the
+  master bus and the text moves to the instrument itself.
+
+  AudioBand switches to Level, Bass, Mid or High if you want the whole word
+  moving as one. AudioRange sets how much of the spectrum is spread across the
+  letters — the top of an FFT is nearly always empty, so the default of 50 %
+  keeps every letter alive. AudioSmooth is a release time only: the attack
+  stays fast, because that is what makes it look played rather than animated.
+
+  This needs the audio engine running with something for it to hear. It
+  composes with everything else — a ring of text that pulses on the beat is
+  AudioTarget Scale plus Path Circle.
 
 ### Changed
 - **The Text preview is playable.** Drag it to move the text, Shift+drag to
