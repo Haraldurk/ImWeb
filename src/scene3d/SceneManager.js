@@ -301,8 +301,17 @@ export class SceneManager {
     // On the unit sphere (GeometryFactory radius 1) position == normal ==
     // normalize(position), so this is bit-identical to the old path there.
     const TRIPLANAR_GLSL = `
+      uniform float uTriSharp;
       vec3 _triWeights(vec3 n) {
-        vec3 w = pow(abs(normalize(n)), vec3(6.0));
+        // uTriSharp decides how abruptly the three projections hand over.
+        // Higher = narrower blend zone: crisper detail, but a sharper crease
+        // where planes meet — and in DISPLACEMENT a crease is a physical ridge,
+        // not a soft edge, which is why this needed to be playable rather than
+        // fixed at 6. Measured on a sphere: pow 6 leaves 30.7% of the surface
+        // in a blend zone, pow 3 leaves 55.8%, pow 2 leaves 72.9%. Wider is
+        // smoother but flatter, since it averages three samples over more of
+        // the surface. There is no free setting; that is the point of a knob.
+        vec3 w = pow(abs(normalize(n)), vec3(uTriSharp));
         return w / (w.x + w.y + w.z);
       }
       vec4 _triSample(sampler2D tex, vec3 pos, vec3 nrm, float scale) {
@@ -328,6 +337,10 @@ export class SceneManager {
       shader.uniforms.uDispTexScale = { value: 1 };
       shader.uniforms.uDispTexProj  = { value: 0 };
       shader.uniforms.uTriplanarDisp = { value: 0 };
+      // Shared by the vertex and fragment halves of TRIPLANAR_GLSL — three
+      // hands both stages the same uniforms object, so one entry covers both
+      // and they cannot disagree about the blend.
+      shader.uniforms.uTriSharp   = { value: 6 };
       shader.uniforms.uRimAmount  = { value: 0 };
       shader.uniforms.uRimColor   = { value: new THREE.Color(0xffffff) };
       mat._shader = shader;
@@ -1090,10 +1103,15 @@ export class SceneManager {
       const activeWarp = (warpIdx > 0 && inputs.warpMaps?.[warpIdx - 1]) ? inputs.warpMaps[warpIdx - 1] : null;
       const warpAmt = p.get('displace.warpamt').value / 100;
 
+      const triSharp = p.get('scene3d.mat.triblend')?.value ?? 6;
       const updateMat = (m) => {
         if (m._shader) {
           m._shader.uniforms.uWarpMap.value = (activeWarp === this.target.texture) ? this._fallback : (activeWarp || this._fallback);
           m._shader.uniforms.uWarpAmt.value = warpAmt;
+          // One value for colour AND displacement — they must share a blend or
+          // the relief stops lining up with the picture on it, which is the
+          // whole reason the triplanar formula is a single shared function.
+          if (m._shader.uniforms.uTriSharp) m._shader.uniforms.uTriSharp.value = triSharp;
         }
       };
 

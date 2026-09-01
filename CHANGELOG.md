@@ -42,6 +42,16 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
   interactive, with a tooltip saying which shader they need.
 
 ### Added
+- **Blend Sharp** — how abruptly Seamless mapping hands over between its three
+  projections. It was fixed at 6, which is a reasonable choice for colour and a
+  poor one for displacement: a sharp handover in geometry is a physical ridge,
+  which is the radial star that appears on a displaced sphere. Measured on a
+  sphere, 6 leaves 30.7% of the surface in a blend zone, 3 leaves 55.8%, 2
+  leaves 72.9% — wider is smoother but flatter, since it averages three samples
+  over more of the surface. No setting is free, which is why it is a control
+  rather than a better constant. One value drives colour *and* displacement, so
+  the relief cannot drift out of register with the picture on it. Defaults to 6,
+  so nothing existing moves.
 - **Transparent BG** — the 3D scene can render on nothing, so its layer carries
   real alpha and **Opacity finally reveals what is underneath** instead of
   fading the object into the scene's own dark backdrop, which read as "Opacity

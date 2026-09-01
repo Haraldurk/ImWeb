@@ -3265,6 +3265,29 @@ export function registerCoreParameters(ps) {
     value: 0,
   });
   ps.register({
+    // How abruptly Seamless hands over between its three projections. Higher is
+    // crisper; lower spreads the handover wider. It matters far more for
+    // DISPLACEMENT than for colour, because a sharp handover in geometry is a
+    // physical ridge — the radial star that shows up on a displaced sphere.
+    //
+    // Measured on a sphere: 6 leaves 30.7% of the surface in a blend zone,
+    // 3 leaves 55.8%, 2 leaves 72.9%. Wider is smoother but flatter, since it
+    // averages three samples across more of the surface. No setting is free,
+    // which is exactly why this is a knob and not a better constant. Default 6
+    // is the value it was hardcoded at, so nothing existing moves.
+    //
+    // Deliberately ONE control for colour and displacement: they read the same
+    // shader function, and letting them blend differently would put the relief
+    // out of register with the picture on it.
+    id: "scene3d.mat.triblend",
+    label: "Blend Sharp",
+    group: "scene3d",
+    min: 1,
+    max: 8,
+    value: 6,
+    step: 0.1,
+  });
+  ps.register({
     id: "scene3d.mat.type",
     label: "Material Shader",
     group: "scene3d",
