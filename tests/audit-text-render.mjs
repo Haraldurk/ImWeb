@@ -383,6 +383,34 @@ const BANDS = (i) => (i < 2 ? 0.50 : i < 19 ? 0.20 : i < 148 ? 0.08 : 0.03);
     c.map(d => d.scale));
 }
 
+// ── Rotate is the odd target out ────────────────────────────────────────────
+//
+// Scale, Rise and Opacity are all "more or less of a neutral thing", so uneven
+// letters read fine however the envelope lands. Rotation driven ONE WAY by a
+// unipolar envelope makes every letter lean the same direction, and the word
+// reads as toppling rather than reacting — reported as "difficult to tune,
+// has been all along".
+
+{
+  const t = await makeLayer('ABCDEFGH');
+  t.setAudio(audioFrame(() => 0.6));
+  const c = settle(t, { 'text.audioTarget': 5, 'text.audioAmt': 100,
+    'text.audioSmooth': 0, 'text.audioFocus': 0,
+    'text.audioLo': 30, 'text.audioHi': 20000 });
+  const signs = c.map(d => Math.sign(d.rot));
+  check('Rotate alternates direction per letter — a shimmer, not a lean',
+    c.length === 8 && signs.some(v => v > 0) && signs.some(v => v < 0) &&
+    c.every((d, i) => i === 0 || Math.sign(d.rot) !== Math.sign(c[i - 1].rot)),
+    c.map(d => +d.rot.toFixed(1)));
+  // Legibility: the whole slider has to be usable, so full travel must stay in
+  // a range you can still read the word at. The ~69 deg it briefly carried put
+  // every usable setting in the bottom fifth of the control.
+  check('…and full travel stays legible (under 35 deg)',
+    c.every(d => Math.abs(d.rot) <= 35), c.map(d => +d.rot.toFixed(1)));
+  check('…and it is actually turning at full amount (not a dead control)',
+    c.some(d => Math.abs(d.rot) > 10), c.map(d => +d.rot.toFixed(1)));
+}
+
 // ── Focus, and spaces ───────────────────────────────────────────────────────
 //
 // The owner's own statement of the goal: with "IMWEB FUTURE", a bass sound

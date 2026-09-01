@@ -1155,11 +1155,27 @@ export class TextLayer {
               this._weight = saved;
               break;
             }
-            case 5:   // Rotate
+            case 5: {  // Rotate
+              // BIPOLAR, alternating per letter. The other three targets are
+              // "more or less of a neutral thing", so uneven letters still read
+              // fine. Rotation is not: driven one way by a unipolar envelope
+              // every letter leans the same direction and the word reads as
+              // toppling over rather than reacting. Alternating the sign turns
+              // the same signal into a shimmer, which stays legible at small
+              // amounts and scatters at large ones.
+              //
+              // ~29 deg at full, not the ~69 it briefly had. That depth was
+              // raised to compensate for an envelope the missing noise gate
+              // was holding near zero — with the gate in place the
+              // compensation is wrong, and it squashed the whole usable range
+              // into the bottom of the slider. Fixing the cause invalidated
+              // the workaround.
+              const dir = (g.i & 1) ? -1 : 1;
               c.translate(cx, lineY);
-              c.rotate(e * amt * 1.2);   // ~69 deg at full
+              c.rotate(dir * e * amt * 0.5);
               c.translate(-cx, -lineY);
               break;
+            }
             case 6:   // Opacity — quiet glyphs dim rather than loud ones brighten
               c.globalAlpha *= (1 - amt) + amt * e;
               break;
