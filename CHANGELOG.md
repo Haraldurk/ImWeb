@@ -9,6 +9,13 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
 ## [Unreleased]
 
 ### Fixed
+- **Seamless mapping stays seamless with the emissive lighting.** Making
+  Emissive follow the texture wired the same image in as an emissive map — and
+  three samples that one with plain UV coordinates, so a UV-mapped copy of the
+  texture, seam and pole pinch included, was laid over the seamless triplanar
+  version at a third strength. The emissive map now goes through the same
+  projection as the diffuse map, from the same shader function, so the two
+  cannot disagree.
 - **Putting a texture on the object no longer makes it darker.** An untextured
   object got a free self-lit boost of 0.35; a textured one got whatever the
   Emissive slider said, which is 0 by default — so switching a texture *on*

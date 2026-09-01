@@ -494,6 +494,23 @@ export class SceneManager {
         #endif
         `
       ).replace(
+        '#include <emissivemap_fragment>',
+        // The emissive map is the SAME texture as the diffuse map, so it has to
+        // be projected the same way. three's own chunk samples vEmissiveMapUv —
+        // plain UV — so wiring emissiveMap without this laid a UV-mapped copy,
+        // seam and pole pinch included, over the seamless triplanar diffuse.
+        // Same _triSample as the diffuse path, so the two cannot drift apart.
+        `
+        #ifdef USE_EMISSIVEMAP
+          #ifdef USE_TRIPLANAR
+            vec4 emissiveColor = _triSample(emissiveMap, vObjPos, vObjNormal, 1.0);
+          #else
+            vec4 emissiveColor = texture2D(emissiveMap, vEmissiveMapUv);
+          #endif
+          totalEmissiveRadiance *= emissiveColor.rgb;
+        #endif
+        `
+      ).replace(
         '#include <dithering_fragment>',
         `#include <dithering_fragment>
         if (uRimAmount > 0.0) {
@@ -504,7 +521,7 @@ export class SceneManager {
       );
     };
     mat.customProgramCacheKey = () =>
-      'warpblobrimdispvtfv5' + (mat.defines?.USE_TRIPLANAR ? '_tri' : '');
+      'warpblobrimdispvtfv6' + (mat.defines?.USE_TRIPLANAR ? '_tri' : '');
   }
 
   _rebuildMaterial(type) {
