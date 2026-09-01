@@ -686,6 +686,51 @@ export class TextLayer {
       ctx.translate(-alignX, -py);
     }
 
+    // ── Per-glyph modifiers ─────────────────────────────────────────────────
+    // Glitch, wave and stagger used to be branches of one `else if` chain, so
+    // they were mutually exclusive by accident rather than by intent. They are
+    // orthogonal — a scrambling line that also staggers in is a legitimate
+    // thing to ask for — so each is a modifier that is null when its feature is
+    // off. When they are ALL null there is no per-glyph work and the block draw
+    // below runs exactly as it always did.
+    //
+    // ORDER MATTERS, and it is: substitution → placement → transition →
+    // displacement. Canvas composes transforms outermost-first, so anything
+    // registered before another lands in the outer frame. Placement (added in
+    // the next step: paths) therefore goes BEFORE transition deliberately, on
+    // two counts: the entrance transforms' Scale anchor is written in linear
+    // draw coordinates, which placement keeps valid by mapping those
+    // coordinates onto the path, and a FadeUp along a ring then reads as
+    // glyphs arriving along the ring instead of the whole ring sliding up.
+    const decodeSpread = Math.max(spread, 0.6);
+    const substitution =
+      this._animMode === 5
+        ? (ch, i) => this._glitchChar(ch, i, this._animAmt / 100)
+        : isDecode
+          // A decode where every glyph settles on the same frame is a cut, not
+          // a decode, so this keeps a floor under the spread even at stagger 0.
+          ? (ch, i, n) =>
+              this._glyphPhase(this._animPhase, i, n, decodeSpread) >= 1
+                ? ch
+                : this._glitchChar(ch, i, 1)
+          : null;
+
+    const displacement =
+      this._animMode === 2
+        ? (i) => Math.sin(i * 0.5 + this._animTime * this._animSpeed * Math.PI * 2)
+                 * (this._animAmt / 100) * fs * 0.4
+        : null;
+
+    const transition = staggered
+      ? (g, lineY) => {
+          const local = this._glyphPhase(this._animPhase, g.i, g.n, spread);
+          this._applyEntranceTransform(
+            g.ctx, this._animInMode, local, g.x + g.adv / 2, lineY, k);
+        }
+      : null;
+
+    const perGlyphActive = !!(substitution || displacement || transition);
+
     lines.forEach((line, i) => {
       let baseY = py - totalH / 2 + lineH * (i + 0.5);
 
@@ -699,35 +744,11 @@ export class TextLayer {
         ctx.globalAlpha = (this._opacity / 100) * fade;
       }
 
-      if (this._animMode === 2) {
-        // Wave — per-character sin Y offset
-        this._drawGlyphs(ctx, line, alignX, baseY, style, ({ i }) => ({
-          dy: Math.sin(i * 0.5 + this._animTime * this._animSpeed * Math.PI * 2)
-              * (this._animAmt / 100) * fs * 0.4,
-        }));
-      } else if (this._animMode === 5) {
-        // Glitch — continuous scramble, animAmt = fraction of glyphs replaced
-        const amt = this._animAmt / 100;
-        this._drawGlyphs(ctx, line, alignX, baseY, style, ({ ch, i }) => ({
-          ch: this._glitchChar(ch, i, amt),
-        }));
-      } else if (isDecode) {
-        // Decode entrance — each glyph scrambles until its own phase resolves.
-        // A decode where every glyph settles on the same frame is a cut, not a
-        // decode, so this keeps a floor under the spread even at stagger 0.
-        const dSpread = Math.max(spread, 0.6);
-        this._drawGlyphs(ctx, line, alignX, baseY, style, ({ ch, i, n }) => {
-          const local = this._glyphPhase(this._animPhase, i, n, dSpread);
-          return { ch: local >= 1 ? ch : this._glitchChar(ch, i, 1) };
-        });
-      } else if (staggered) {
-        // Per-glyph entrance — the same in-transform, run once per glyph and
-        // anchored on the glyph's own centre so Scale grows each letter in
-        // place rather than the block as a whole.
-        this._drawGlyphs(ctx, line, alignX, baseY, style, ({ i, n, x, adv, ctx: g }) => {
-          const local = this._glyphPhase(this._animPhase, i, n, spread);
-          this._applyEntranceTransform(g, this._animInMode, local, x + adv / 2, baseY, k);
-          return {};
+      if (perGlyphActive) {
+        this._drawGlyphs(ctx, line, alignX, baseY, style, (g) => {
+          const ch = substitution ? substitution(g.ch, g.i, g.n) : g.ch;
+          if (transition) transition(g, baseY);
+          return { ch, dy: displacement ? displacement(g.i) : 0 };
         });
       } else {
         if (this._outline > 0) {
