@@ -68,14 +68,35 @@ check(`main.js asks for the tap as well as reading it (${consumers} read site(s)
 // The Text layer is the consumer that is NOT a controller assignment, so its
 // request has to hang off its own parameter or a saved project that arrives
 // with the feature already on would come up dead.
-const textAudioWiring = /ps\.get\(\s*["']text\.audioTarget["']\s*\)\s*\.onChange\(([\s\S]{0,200}?)\}\s*\)/
+// The wiring may be an inline body or a named helper shared with the other
+// edge — either is fine, and the check follows both rather than dictating one.
+// Pinning the shape would fail correct code the next time it is refactored,
+// which is the expensive direction (LEARNED 2026-08-14).
+const armHelper = /const\s+_armTextAudio\s*=\s*\(\)\s*=>\s*\{([\s\S]{0,240}?)\}/.exec(main);
+const targetOn  = /ps\.get\(\s*["']text\.audioTarget["']\s*\)\s*\.onChange\(([\s\S]{0,200}?)\)\s*;/
   .exec(main);
+// Whichever of the two actually contains the request is the body to judge.
+const armBody = armHelper && /\bctrl\.enableSound\s*\(/.test(armHelper[1]) ? armHelper[1]
+              : targetOn  && /\bctrl\.enableSound\s*\(/.test(targetOn[1])  ? targetOn[1]
+              : null;
+
 check('text.audioTarget has an onChange (so state recall reaches it too)',
-  !!textAudioWiring);
-check('…and that onChange is what opens the tap',
-  !!textAudioWiring && /\bctrl\.enableSound\s*\(/.test(textAudioWiring[1]));
+  !!targetOn);
+check('…and that onChange reaches the tap request',
+  !!targetOn && !!armBody &&
+  (/\bctrl\.enableSound\s*\(/.test(targetOn[1]) || /_armTextAudio/.test(targetOn[1])));
 check('…and it only opens it when the feature is actually on',
-  !!textAudioWiring && /[><]\s*0|\bOff\b|!==\s*0/.test(textAudioWiring[1]));
+  !!armBody && /[><]\s*0|\bOff\b|!==\s*0/.test(armBody));
+
+// BOTH edges. enableSound() gives up quietly when the engine is not running
+// and nothing retries it, so arming the feature BEFORE starting the engine
+// left it dead until the target was touched again — a state that is
+// indistinguishable from the feature not working at all.
+check('the engine coming up also opens the tap',
+  /ps\.get\(\s*["']audio\.enable["']\s*\)\s*\.onChange\(/.test(main));
+check('…through the same guarded helper, not a second copy of the rule',
+  !!armHelper && /\bctrl\.enableSound\s*\(/.test(armHelper[1])
+              && /audioTarget/.test(armHelper[1]));
 
 // The layer must still treat an absent tap as silence rather than an error —
 // the request can legitimately fail (engine not running, no device).

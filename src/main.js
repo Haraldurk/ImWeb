@@ -4563,9 +4563,18 @@ async function main() {
   // enableSound() is idempotent (it returns immediately if this.sound exists)
   // and degrades quietly when the engine is not running, which is the right
   // shape: turning this on must never be what fails.
-  ps.get("text.audioTarget").onChange((v) => {
-    if (Math.round(v) > 0) ctrl.enableSound();
-  });
+  //
+  // Both EDGES, because either order is a thing a person does: switching the
+  // feature on with the engine already running, or arming the feature first
+  // and starting the engine after. enableSound() returns early with no tap
+  // when the engine is not up, and nothing retries it — so the second order
+  // left the feature permanently dead until the target was touched again,
+  // which is indistinguishable from "it just doesn't work".
+  const _armTextAudio = () => {
+    if (Math.round(ps.get("text.audioTarget").value) > 0) ctrl.enableSound();
+  };
+  ps.get("text.audioTarget").onChange(_armTextAudio);
+  ps.get("audio.enable").onChange((v) => { if (v) _armTextAudio(); });
 
   // Slit scan clear trigger
   ps.get("slitscan.clear").onTrigger(() => slitScan.clear());
