@@ -9,6 +9,13 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
 ## [Unreleased]
 
 ### Fixed
+- **The 3D Transform section listed every control twice**, and included three
+  that belong elsewhere. `#transform-params` was filled by two different
+  builders — the container→params map *and* the explicit list further down —
+  so each row rendered once per writer. The map's entry also matched by
+  substring, so `id.includes('scale')` swept in CloneScale, ScaleStep and
+  Metaball Scale, which belong to Cloner and Metaballs. The explicit builder is
+  now the only writer: 12 rows, in a fixed order, each appearing once.
 - **Text is clean now without turning BlackBG on.** Glyph edges were hard and
   blocky the moment the Text source was switched on, and the only known cure was
   a black background. The layer draws onto a transparent canvas, and the blend
