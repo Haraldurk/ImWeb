@@ -122,6 +122,7 @@ export class SceneManager {
     this._matType   = -1;
     this._toonSteps = -1;
     this._liveTex   = null;
+    this._alphaBg   = false;  // matches the opaque scene.background set above
 
     // Toon gradient: 3-step cel-shading ramp (dark / mid / bright)
     const toonData = new Uint8Array([40, 40, 40, 255,  130, 130, 130, 255,  240, 240, 240, 255]);
@@ -989,8 +990,29 @@ export class SceneManager {
 
       if (this.material.roughness !== undefined) this.material.roughness = p.get('scene3d.mat.roughness').value;
       if (this.material.metalness !== undefined) this.material.metalness = p.get('scene3d.mat.metalness').value;
+      // Transparent background: drop the scene's opaque clear colour so the
+      // render target's alpha means coverage rather than always 1.
+      const alphaBg = !!p.get('scene3d.mat.alphabg')?.value;
+      if (alphaBg !== this._alphaBg) {
+        this._alphaBg = alphaBg;
+        this.scene.background = alphaBg ? null : new THREE.Color(0x020205);
+      }
+
       this.material.opacity  = p.get('scene3d.mat.opacity').value;
       this.material.transparent = this.material.opacity < 1;
+      // Alpha needs its OWN blend factors. The default follows RGB
+      // (SrcAlpha / OneMinusSrcAlpha), which computes dstA = srcA² + … — alpha
+      // multiplied by itself, so a 50% object would land at 25% coverage and
+      // read as far more transparent than it is. One / OneMinusSrcAlpha is the
+      // correct accumulation. RGB stays premultiplied, which is exactly what
+      // Keyer → Alpha Emissive expects.
+      if (this.material.transparent && alphaBg) {
+        this.material.blendSrcAlpha = THREE.OneFactor;
+        this.material.blendDstAlpha = THREE.OneMinusSrcAlphaFactor;
+      } else {
+        this.material.blendSrcAlpha = null;
+        this.material.blendDstAlpha = null;
+      }
 
       // Physical material properties
       if (matType === 1 && this.material.isMeshPhysicalMaterial) {
@@ -1312,7 +1334,20 @@ export class SceneManager {
 
     // Color pass
     this.renderer.setRenderTarget(this.target);
-    this.renderer.render(this.scene, this.camera);
+    if (this._alphaBg) {
+      // Clear to fully transparent so the target carries coverage in alpha.
+      // The renderer is SHARED with the whole pipeline, so its clear state has
+      // to be put back — leaving it at alpha 0 would silently change how every
+      // later pass clears.
+      const _prevClear = this.renderer.getClearColor(new THREE.Color());
+      const _prevAlpha = this.renderer.getClearAlpha();
+      this.renderer.setClearColor(0x000000, 0);
+      this.renderer.clear(true, true, true);
+      this.renderer.render(this.scene, this.camera);
+      this.renderer.setClearColor(_prevClear, _prevAlpha);
+    } else {
+      this.renderer.render(this.scene, this.camera);
+    }
 
     // Depth pass — only when scene3d.depth.active is set, to avoid wasting GPU
     if (params.get('scene3d.depth.active')?.value) {

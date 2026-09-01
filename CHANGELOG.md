@@ -42,6 +42,17 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
   interactive, with a tooltip saying which shader they need.
 
 ### Added
+- **Transparent BG** — the 3D scene can render on nothing, so its layer carries
+  real alpha and **Opacity finally reveals what is underneath** instead of
+  fading the object into the scene's own dark backdrop, which read as "Opacity
+  turns the object black". Off by default, deliberately: it changes what the
+  compositor receives — empty space goes from opaque near-black to nothing — and
+  every existing project keys this layer by luma, so no saved project moves
+  until its author turns it on.
+
+  With it on, set **Keyer → Alpha** and **Alpha Emissive**. The target is
+  premultiplied, and `bg*(1-a)+fg` is the exact composite for premultiplied
+  sources — the same path the Text layer uses, for the same reason.
 - **Roll** — the camera turns about its own view axis, so the whole image
   rotates while the viewpoint stays put. Orbit, Elevation and Distance place the
   camera; Roll is the fourth degree of freedom, and nothing could reach it

@@ -543,7 +543,8 @@ governs which of the parameters below do anything:
 | `scene3d.mat.sat` | 0–100% | Saturation (0 = white) |
 | `scene3d.mat.roughness` | 0–1 | Surface roughness |
 | `scene3d.mat.metalness` | 0–1 | Metallic quality |
-| `scene3d.mat.opacity` | 0–1 | Transparency |
+| `scene3d.mat.opacity` | 0–1 | Transparency. On its own it fades the object into the scene's own dark backdrop — turn on **Transparent BG** to have it reveal the layer underneath instead |
+| `scene3d.mat.alphabg` | TOGGLE | **Transparent BG** — renders the scene on nothing, so the 3D layer carries real alpha. Off by default: it changes what the compositor receives, and existing projects key this layer by luma. With it on, set **Keyer → Alpha** and **Alpha Emissive** — the target is premultiplied, and `bg*(1-a)+fg` is the exact composite for that (the same path the Text layer uses) |
 | `scene3d.mat.clearcoat` | 0–1 | **Physical only** — a lacquer layer over the base |
 | `scene3d.mat.transmit` | 0–1 | **Physical only** — light transmission. This is what makes glass |
 | `scene3d.mat.ior` | 1–3 | **Physical only** — index of refraction (1.5 ≈ glass, 2.4 ≈ diamond) |

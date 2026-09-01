@@ -3061,6 +3061,28 @@ export function registerCoreParameters(ps) {
     value: 2.0,
   });
   ps.register({
+    // Renders the scene on a transparent background so the target carries real
+    // ALPHA — which is what makes Opacity mean "see the layer underneath"
+    // rather than "fade into the 3D scene's own backdrop". Without it the scene
+    // clears to a near-black blue and a half-transparent object blends into it,
+    // so lowering Opacity just turns the object black.
+    //
+    // Off by default, deliberately. Turning it on changes what the compositor
+    // receives — empty space goes from opaque near-black to (0,0,0,0) — and
+    // every existing project keys the 3D layer by LUMA. Opt-in means no saved
+    // project moves until its author chooses.
+    //
+    // With it on, the target is PREMULTIPLIED (standard blending over a
+    // transparent clear produces premultiplied RGB), so the exact composite is
+    // Keyer → Alpha plus Alpha Emissive — the same path the Text layer uses and
+    // for the same reason. See the note above gl_FragColor in shaders/index.js.
+    id: "scene3d.mat.alphabg",
+    label: "Transparent BG",
+    group: "scene3d",
+    type: PARAM_TYPE.TOGGLE,
+    value: 0,
+  });
+  ps.register({
     id: "scene3d.wireframe",
     label: "Wireframe",
     group: "scene3d",
