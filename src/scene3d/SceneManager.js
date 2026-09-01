@@ -284,6 +284,34 @@ export class SceneManager {
   }
 
   _setupMaterial(mat) {
+    // ONE triplanar formula, injected into BOTH the colour and the displacement
+    // shader. They have to agree: if they disagree, T-Displace bumps the mesh
+    // by coordinates the visible texture never used, which reads as "the
+    // displace does not match the texture".
+    //
+    // Weights come from the NORMAL, coordinates from the POSITION. Deriving
+    // both from normalize(position) — as this did — is correct only where the
+    // surface is radial from the object's origin, which is true of a sphere
+    // and of nothing else. A plane lies in z=0, so that direction has z==0
+    // everywhere: the weights collapse onto the X and Y planes, and both of
+    // those sample a single line of the texture indexed by angle around the
+    // centre. Hence a plane that smeared out of its middle.
+    //
+    // On the unit sphere (GeometryFactory radius 1) position == normal ==
+    // normalize(position), so this is bit-identical to the old path there.
+    const TRIPLANAR_GLSL = `
+      vec3 _triWeights(vec3 n) {
+        vec3 w = pow(abs(normalize(n)), vec3(6.0));
+        return w / (w.x + w.y + w.z);
+      }
+      vec4 _triSample(sampler2D tex, vec3 pos, vec3 nrm, float scale) {
+        vec3 w = _triWeights(nrm);
+        vec3 p = pos * scale * 0.5 + 0.5;
+        return textureLod(tex, p.yz, 0.0) * w.x
+             + textureLod(tex, p.xz, 0.0) * w.y
+             + textureLod(tex, p.xy, 0.0) * w.z;
+      }
+    `;
     mat.onBeforeCompile = (shader) => {
       shader.uniforms.uWarpMap    = { value: this._fallback };
       shader.uniforms.uWarpAmt    = { value: 0 };
@@ -319,6 +347,8 @@ export class SceneManager {
         uniform float uDispTexProj;
         uniform float uObjNoiseDisp;
         varying vec3 vObjPos;
+        varying vec3 vObjNormal;
+        ${TRIPLANAR_GLSL}
 
         float _bHash(vec3 p) {
           p = fract(p * vec3(127.1, 311.7, 74.7));
@@ -342,24 +372,22 @@ export class SceneManager {
                + 0.25 * _bNoise(p * 4.0);
         }
         // Additive math noise + texture displacement (independent strengths)
-        float getDisplacement(vec3 pos, vec2 rawUv, vec3 tOff, mat4 _proj, mat4 _mv) {
+        float getDisplacement(vec3 pos, vec3 nrm, vec2 rawUv, vec3 tOff, mat4 _proj, mat4 _mv) {
           float mathNoise = _dispNoise(pos * uDispScale + tOff) * uDisplace;
           if (uTDisplace == 0.0) return mathNoise;
-          vec4 clipPos  = _proj * _mv * vec4(pos, 1.0);
-          vec2 screenUv = (clipPos.xy / clipPos.w) * 0.5 + 0.5;
-          vec2 finalUv  = mix(rawUv, screenUv, uDispTexProj);
-          finalUv = (finalUv - 0.5) * uDispTexScale + 0.5;
           float texVal;
           if (uObjNoiseDisp > 0.5) {
-            vec3 _tBlend = abs(normalize(pos));
-            _tBlend = pow(_tBlend, vec3(6.0));
-            _tBlend /= (_tBlend.x + _tBlend.y + _tBlend.z);
-            vec3 _oN = normalize(pos);
-            float _dx = textureLod(uDispTexture, _oN.yz * 0.5 + 0.5, 0.0).r;
-            float _dy = textureLod(uDispTexture, _oN.xz * 0.5 + 0.5, 0.0).r;
-            float _dz = textureLod(uDispTexture, _oN.xy * 0.5 + 0.5, 0.0).r;
-            texVal = (_dx*_tBlend.x + _dy*_tBlend.y + _dz*_tBlend.z) * 2.0 - 1.0;
+            // Triplanar. uDispTexScale is honoured HERE too — it used to be
+            // computed into finalUv, which this branch never reads, so
+            // Disp. Tex Scale was silently inert whenever the seamless path
+            // was active. At its default of 1 this matches the colour path
+            // exactly, which is the whole point.
+            texVal = _triSample(uDispTexture, pos, nrm, uDispTexScale).r * 2.0 - 1.0;
           } else {
+            vec4 clipPos  = _proj * _mv * vec4(pos, 1.0);
+            vec2 screenUv = (clipPos.xy / clipPos.w) * 0.5 + 0.5;
+            vec2 finalUv  = mix(rawUv, screenUv, uDispTexProj);
+            finalUv = (finalUv - 0.5) * uDispTexScale + 0.5;
             texVal = textureLod(uDispTexture, finalUv, 0.0).r * 2.0 - 1.0;
           }
           return mathNoise + texVal * uTDisplace;
@@ -377,6 +405,7 @@ export class SceneManager {
           }
         #endif
         vObjPos = position;
+        vObjNormal = normal;
         `
       )
       .replace(
@@ -392,12 +421,18 @@ export class SceneManager {
         }
         if (uDisplace > 0.0 || uTDisplace > 0.0) {
           vec3 _dispOff = vec3(uTime * uDispSpeed);
-          #ifdef USE_UV
+          // Sample the SAME uv the colour map does. vMapUv carries the map's
+          // offset/repeat — including the uvSpeedX/Y scroll — so reading the
+          // raw uv attribute here (as this did) left the bumps standing still
+          // while the texture slid over them.
+          #if defined( USE_MAP )
+          vec2 _meshUv = vMapUv;
+          #elif defined( USE_UV )
           vec2 _meshUv = uv;
           #else
           vec2 _meshUv = vec2(0.0);
           #endif
-          float dn = getDisplacement(position, _meshUv, _dispOff, projectionMatrix, modelViewMatrix);
+          float dn = getDisplacement(position, objectNormal, _meshUv, _dispOff, projectionMatrix, modelViewMatrix);
           transformed += objectNormal * dn;
 
           // ── Finite-difference normal recalculation ──────────────────────
@@ -411,8 +446,8 @@ export class SceneManager {
           // direction in texture space so texture-driven bumps produce correct normals
           vec3 _pA   = position + _tan  * _eps;
           vec3 _pB   = position + _btan * _eps;
-          vec3 _dispA = _pA + objectNormal * getDisplacement(_pA, _meshUv + vec2(_uvEps, 0.0),   _dispOff, projectionMatrix, modelViewMatrix);
-          vec3 _dispB = _pB + objectNormal * getDisplacement(_pB, _meshUv + vec2(0.0,   _uvEps), _dispOff, projectionMatrix, modelViewMatrix);
+          vec3 _dispA = _pA + objectNormal * getDisplacement(_pA, objectNormal, _meshUv + vec2(_uvEps, 0.0),   _dispOff, projectionMatrix, modelViewMatrix);
+          vec3 _dispB = _pB + objectNormal * getDisplacement(_pB, objectNormal, _meshUv + vec2(0.0,   _uvEps), _dispOff, projectionMatrix, modelViewMatrix);
           // New object-space normal via cross product of edge vectors
           vec3 _crossVec = cross(_dispA - transformed, _dispB - transformed);
           float _crossLen = length(_crossVec);
@@ -442,20 +477,15 @@ export class SceneManager {
         uniform float uRimAmount;
         uniform vec3  uRimColor;
         varying vec3 vObjPos;
+        varying vec3 vObjNormal;
+        ${TRIPLANAR_GLSL}
         ${shader.fragmentShader}
       `.replace(
         '#include <map_fragment>',
         `
         #ifdef USE_MAP
           #ifdef USE_OBJ_NOISE
-            vec3 _triN = abs(normalize(vObjPos));
-            _triN = pow(_triN, vec3(6.0));
-            _triN /= (_triN.x + _triN.y + _triN.z);
-            vec3 _objN = normalize(vObjPos);
-            vec4 _cx = textureLod(map, _objN.yz * 0.5 + 0.5, 0.0);
-            vec4 _cy = textureLod(map, _objN.xz * 0.5 + 0.5, 0.0);
-            vec4 _cz = textureLod(map, _objN.xy * 0.5 + 0.5, 0.0);
-            vec4 sampledDiffuseColor = _cx * _triN.x + _cy * _triN.y + _cz * _triN.z;
+            vec4 sampledDiffuseColor = _triSample(map, vObjPos, vObjNormal, 1.0);
             diffuseColor *= sampledDiffuseColor;
           #else
             vec4 sampledDiffuseColor = textureLod(map, vMapUv, 0.0);
@@ -474,7 +504,7 @@ export class SceneManager {
       );
     };
     mat.customProgramCacheKey = () =>
-      'warpblobrimdispvtfv3' + (mat.defines?.USE_OBJ_NOISE ? '_tri' : '');
+      'warpblobrimdispvtfv4' + (mat.defines?.USE_OBJ_NOISE ? '_tri' : '');
   }
 
   _rebuildMaterial(type) {
@@ -1023,20 +1053,35 @@ export class SceneManager {
       const displaceTexScale = p.get('scene3d.mat.dispTexScale')?.value  ?? 1;
       const displaceTexProj  = p.get('scene3d.mat.dispTexProj')?.value   ?? 0;
       const dispTex          = inputs.dispTex ?? null;
+      // Which image does T-Displace read? Before this, the answer was "the
+      // global Displace Source layer" (layer.ds) with a special case forcing
+      // Noise when the SURFACE was Noise — so by default it displaced by an
+      // image the object was not showing. scene3d.mat.dispsrc names it:
+      // 0 = follow the surface, 1 = the DS layer (the old route), 2+ = the
+      // texsrc list offset by DISPSRC_TEX_BASE. -1 means the DS layer.
+      const DISPSRC_TEX_BASE = 2;
+      const dispSrcSel = p.get('scene3d.mat.dispsrc')?.value ?? 0;
+      const dispTexSrcIdx =
+        dispSrcSel === 0 ? texSrcIdx :
+        dispSrcSel === 1 ? -1 :
+        dispSrcSel - DISPSRC_TEX_BASE;
       const updateDisplace = (m) => {
         if (m._shader) {
           m._shader.uniforms.uDisplace.value       = displaceAmt;
           m._shader.uniforms.uDispScale.value      = displaceScale;
           m._shader.uniforms.uDispSpeed.value      = displaceSpeed;
-          const _dispSource = (texSrcIdx === 6 && inputs.noise)
-            ? inputs.noise
-            : (dispTex ?? this._fallback);
+          const _dispSource = dispTexSrcIdx === -1
+            ? (dispTex ?? this._fallback)
+            : (texSrcMap[dispTexSrcIdx] ?? this._fallback);
           m._shader.uniforms.uDispTexture.value    = (_dispSource === this.target.texture) ? this._fallback : _dispSource;
           m._shader.uniforms.uTDisplace.value      = tDisplaceAmt;
           m._shader.uniforms.uDispTexScale.value   = displaceTexScale;
           m._shader.uniforms.uDispTexProj.value    = displaceTexProj;
           if (m._shader.uniforms.uObjNoiseDisp !== undefined)
-            m._shader.uniforms.uObjNoiseDisp.value = texSrcIdx === 6 ? 1.0 : 0.0;
+            // The displace path follows ITS OWN source's projection, not the
+            // surface's. With dispsrc = Same as Surface the two coincide,
+            // which is what makes the bumps land on the texture.
+            m._shader.uniforms.uObjNoiseDisp.value = dispTexSrcIdx === 6 ? 1.0 : 0.0;
         }
       };
       updateDisplace(this.material);

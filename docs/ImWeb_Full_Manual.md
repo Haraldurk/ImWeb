@@ -570,6 +570,7 @@ than just the shading. Two independent sources, which sum:
 | `scene3d.mat.dispScale` | 0.1–10 | **DispScale** — spatial frequency of that noise |
 | `scene3d.mat.dispSpeed` | −5 – 5 | **Disp. Speed** — how fast it evolves |
 | `scene3d.mat.tDisplace` | 0–2 | **T-Displace** — displacement driven by the *texture* instead, so the live picture becomes relief |
+| `scene3d.mat.dispsrc` | SELECT | **T-Disp Source** — which image T-Displace reads. *Same as Surface* (default) uses the texture the object is showing, so the relief lands on the picture; *Displace Layer* uses the global DS layer, which is what this did before v0.22.2; the rest name a source directly |
 | `scene3d.mat.dispTexScale` | 0.1–10 | **Disp. Tex Scale** |
 | `scene3d.mat.dispTexProj` | SELECT | **Disp. Projection** — *UV (Skin)* wraps with the model, *Screen (Projector)* stays fixed in frame while the object turns under it |
 

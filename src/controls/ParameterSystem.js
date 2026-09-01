@@ -3139,6 +3139,30 @@ export function registerCoreParameters(ps) {
     step: 0.01,
   });
   ps.register({
+    // Index 0 keeps T-Displace on the SAME image the surface shows, which is
+    // what the control implies. Index 1 is the pre-v0.22.2 route (the global
+    // Displace Source layer) — kept because displacing by one source while
+    // showing another is a real technique, just a bad default. Indices 2+
+    // mirror scene3d.mat.texsrc's own list, offset by DISPSRC_TEX_BASE.
+    id: "scene3d.mat.dispsrc",
+    label: "T-Disp Source",
+    group: "scene3d",
+    type: PARAM_TYPE.SELECT,
+    select: true,
+    options: [
+      "Same as Surface",
+      "Displace Layer",
+      "None",
+      "Camera",
+      "Movie",
+      "Screen",
+      "Draw",
+      "Buffer",
+      "Noise",
+    ],
+    value: 0,
+  });
+  ps.register({
     id: "scene3d.mat.dispScale",
     label: "DispScale",
     group: "scene3d",
