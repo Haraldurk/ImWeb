@@ -4269,6 +4269,18 @@ export function registerCoreParameters(ps) {
   }
 
   // ── Text ──────────────────────────────────────────────────────────────────
+  // Render resolution of the text canvas. group 'text' and therefore CAPTURED
+  // by Display States: the option list is code-defined and append-only, so an
+  // index means the same thing on every machine and every origin (contrast
+  // displace.warpSlot, whose contents are per-origin localStorage).
+  ps.register({
+    id: "text.res",
+    label: "Resolution",
+    group: "text",
+    type: PARAM_TYPE.SELECT,
+    options: ["512", "1024", "2048"],
+    value: 1,
+  });
   ps.register({
     id: "text.size",
     label: "TextSize",
@@ -4330,10 +4342,36 @@ export function registerCoreParameters(ps) {
   });
   ps.register({
     id: "text.font",
-    label: "FontStyle",
+    label: "Font",
     group: "text",
     type: PARAM_TYPE.SELECT,
-    options: ["Sans", "Serif", "Mono", "Bold", "Italic"],
+    // MUST stay in the same order as FONTS in src/inputs/TextLayer.js, and
+    // APPEND-ONLY: this is persisted as an integer index by every saved state,
+    // bank, .imweb file and MIDI mapping. "Bold" and "Italic" are indices 3/4
+    // from before text.weight/text.italic existed and stay exactly where they
+    // are — reordering them silently restyles every project ever saved.
+    options: [
+      "Sans", "Serif", "Mono", "Bold", "Italic",
+      "Inter", "Grotesk", "Archivo", "Oswald", "Playfair",
+      "JetBrains", "Bebas", "Anton", "Orbitron", "Monoton",
+      "MajorMono", "VT323", "DotGothic", "Silkscreen",
+    ],
+    value: 0,
+  });
+  ps.register({
+    id: "text.weight",
+    label: "Weight",
+    group: "text",
+    min: 100,
+    max: 900,
+    value: 400,
+    step: 1,
+  });
+  ps.register({
+    id: "text.italic",
+    label: "Italic",
+    group: "text",
+    type: PARAM_TYPE.TOGGLE,
     value: 0,
   });
   ps.register({
@@ -4464,7 +4502,8 @@ export function registerCoreParameters(ps) {
     label: "AnimMode",
     group: "text",
     type: PARAM_TYPE.SELECT,
-    options: ["None", "Bounce", "Wave", "Fade", "Typewriter"],
+    // APPEND-ONLY — persisted as an integer index. "Glitch" is index 5.
+    options: ["None", "Bounce", "Wave", "Fade", "Typewriter", "Glitch"],
     value: 0,
   });
   ps.register({
@@ -4516,7 +4555,8 @@ export function registerCoreParameters(ps) {
     label: "AnimIn",
     group: "text",
     type: PARAM_TYPE.SELECT,
-    options: ["None", "Fade", "FadeUp", "FadeDown", "Scale", "Blur", "TypeOn"],
+    // APPEND-ONLY — persisted as an integer index. "Decode" is index 7.
+    options: ["None", "Fade", "FadeUp", "FadeDown", "Scale", "Blur", "TypeOn", "Decode"],
     value: 0,
   });
   ps.register({
@@ -4536,6 +4576,31 @@ export function registerCoreParameters(ps) {
     value: 0.3,
     step: 0.01,
     unit: "s",
+  });
+  ps.register({
+    id: "text.stagger",
+    label: "Stagger",
+    group: "text",
+    min: 0,
+    max: 100,
+    value: 0,
+    unit: "%",
+  });
+  ps.register({
+    id: "text.staggerFrom",
+    label: "StaggerFrom",
+    group: "text",
+    type: PARAM_TYPE.SELECT,
+    options: ["Start", "Center", "End", "Random"],
+    value: 0,
+  });
+  ps.register({
+    id: "text.glitchSet",
+    label: "GlitchSet",
+    group: "text",
+    type: PARAM_TYPE.SELECT,
+    options: ["Symbols", "ASCII", "Blocks", "Katakana"],
+    value: 0,
   });
   ps.register({
     id: "text.anim.ease",

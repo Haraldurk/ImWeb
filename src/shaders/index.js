@@ -169,6 +169,16 @@ export const KEYER = /* glsl */ `
     // bg*(1-a) + fg attenuates the background by coverage and then adds the
     // source on top, so a bright aura over a dark patch stays bright. At a=1
     // the two forms are identical, so an opaque object is unaffected either way.
+    //
+    // The same branch is also the exactly-correct composite for a source whose
+    // RGB is already PREMULTIPLIED — bg*(1-a) + fg IS "over" in premultiplied
+    // form. The Text layer uploads premultiplied (TextLayer.js explains why:
+    // TRANSFERMODE blends RGB only, so straight alpha put full-intensity colour
+    // in every antialiased edge pixel and the glyphs came out hard-edged). So
+    // for keyed text, Alpha Emissive ON is the mathematically exact path; with
+    // it OFF, mix() attenuates those edges a second time and the antialiasing
+    // reads slightly thin. Everything at a=1 — which is all of the glyph but
+    // its outermost pixel — is identical either way.
     gl_FragColor = uAlphaEmissive == 1
       ? vec4(bg.rgb * (1.0 - alpha) + fg.rgb, fg.a)
       : mix(bg, fg, alpha);

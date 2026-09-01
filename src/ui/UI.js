@@ -215,7 +215,27 @@ export function buildMappingPanels(ps, contextMenu) {
     'material-params': ps.getGroup('scene3d').filter(p => p.id.includes('mat') || p.id.includes('wire') || p.id.includes('depth')),
     'lights-params':   ps.getGroup('lights3d'),
     'draw-params':     ps.getGroup('draw'),
-    'text-params':     ps.getGroup('text'),
+    // Text — one group across four subsections, the same treatment Effects
+    // gets. 39 rows in registration order mixed typography, colour, sequencing
+    // and transition in one list; the sections are what make it readable.
+    // These are pick() lists, so tests/audit-panel-coverage.mjs fails the
+    // build if a text.* param lands in no section, in two, or under a dead
+    // name — which is what makes it safe to slice the group this way.
+    'text-type-params':       pick('text', ['res', 'font', 'weight', 'italic',
+                                            'size', 'spacing', 'letterspacing',
+                                            'align', 'rotation', 'x', 'y']),
+    'text-color-params':      pick('text', ['hue', 'sat', 'opacity',
+                                            'outline', 'outlineHue', 'outlineSat',
+                                            'shadowBlur', 'shadowX', 'shadowY',
+                                            'bg', 'bgOpacity']),
+    // Sequencing (which unit is showing, and what steps it) sits with the
+    // continuous animation it drives — advancing IS the motion here.
+    'text-motion-params':     pick('text', ['mode', 'advance', 'contentIdx',
+                                            'progress', 'autoplay', 'rate', 'auto',
+                                            'animMode', 'animSpeed', 'animAmt',
+                                            'glitchSet']),
+    'text-transition-params': pick('text', ['anim.in', 'anim.out', 'anim.dur',
+                                            'anim.ease', 'stagger', 'staggerFrom']),
     // layer.*.blendAmount is excluded by ID, the same stated exception the
     // output.interlace row above uses: it stays group 'fg'/'bg' for persistence
     // but its row is built by buildLayerButtons() beside the blend mode it
