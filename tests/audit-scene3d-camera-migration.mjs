@@ -66,27 +66,57 @@ const deg = scene3dCartesianToOrbit(0, 0, 0);
 ok(Number.isFinite(deg.orbit) && Number.isFinite(deg.elev) && Number.isFinite(deg.dist),
    'an eye at the origin yields finite values rather than NaN');
 
-console.log('\nElevation stays off the pole');
+console.log('\nCamera basis is conditioned everywhere — there is no pole');
 
-// At exactly ±90 the eye sits on the Y axis, parallel to three.js's up vector,
-// and lookAt() has no basis to build. Past it the eye crosses to the far side
-// and z flips sign, so a sweep through the pole jumps. The registered range
-// must therefore stop short of 90 — and the migration must be incapable of
-// producing anything outside it, or a loaded project lands somewhere the
-// slider cannot represent.
+// The camera derives its up vector from the orbit frame rather than letting
+// three.js use a fixed (0,1,0). That fixed vector goes PARALLEL to the view
+// direction at the poles, where the cross product that builds the basis has
+// length zero and the image flips. Assert the real property — the basis never
+// degenerates — rather than the range restriction that used to work around it.
 {
-  let worstEl = 0;
-  for (const e of eyes) {
-    const { elev } = scene3dCartesianToOrbit(e.x, e.y, e.z);
-    worstEl = Math.max(worstEl, Math.abs(elev));
-  }
-  ok(worstEl <= 90,
-     `asin bounds migrated elevation to ±90 (worst |elev| ${worstEl.toFixed(3)}°)`);
-  // Straight up must not be produced as a usable camera by any real file.
-  const poleZ = place({ orbit: 0, elev: 90, dist: 5 }).z;
-  const pastZ = place({ orbit: 0, elev: 100, dist: 5 }).z;
-  ok(Math.abs(poleZ) < 1e-9 && pastZ < 0,
-     `the pole is degenerate and past it z flips sign (z@90 ${poleZ.toExponential(1)}, z@100 ${pastZ.toFixed(3)}) — which is why the range stops at 89`);
+  const R = Math.PI / 180;
+  const basis = (azd, eld, rld) => {
+    const el = eld * R, az = azd * R, rl = rld * R;
+    const ce = Math.cos(el), se = Math.sin(el), sa = Math.sin(az), ca = Math.cos(az);
+    const up = [-se * sa, ce, -se * ca];
+    const f  = [-ce * sa, -se, -ce * ca];
+    const c  = [f[1]*up[2]-f[2]*up[1], f[2]*up[0]-f[0]*up[2], f[0]*up[1]-f[1]*up[0]];
+    const cr = Math.cos(rl), sr = Math.sin(rl);
+    const u  = [up[0]*cr+c[0]*sr, up[1]*cr+c[1]*sr, up[2]*cr+c[2]*sr];
+    return { f, u };
+  };
+  const len = a => Math.hypot(...a);
+  const dot = (a, b) => a[0]*b[0] + a[1]*b[1] + a[2]*b[2];
+
+  let worstUp = 0, worstPerp = 0, worstRight = 1, n = 0;
+  for (let az = 0; az < 360; az += 7)
+    for (let el = -180; el <= 180; el += 3)
+      for (const rl of [0, 37, 90, 180, -125]) {
+        const { f, u } = basis(az, el, rl);
+        const r = [f[1]*u[2]-f[2]*u[1], f[2]*u[0]-f[0]*u[2], f[0]*u[1]-f[1]*u[0]];
+        worstUp    = Math.max(worstUp, Math.abs(len(u) - 1));
+        worstPerp  = Math.max(worstPerp, Math.abs(dot(u, f)));
+        worstRight = Math.min(worstRight, len(r));
+        n++;
+      }
+  // Count reported beside the property — an assertion over an empty sweep
+  // passes vacuously, and "0 orientations, all fine" is not a pass.
+  ok(n > 30000, `swept ${n} orientations across the full elevation range`);
+  ok(worstUp < 1e-12,   `up stays a unit vector (worst |‖up‖−1| ${worstUp.toExponential(2)})`);
+  ok(worstPerp < 1e-12, `up stays perpendicular to the view (worst |up·fwd| ${worstPerp.toExponential(2)})`);
+  ok(worstRight > 0.999,
+     `the right vector never collapses — SMALLEST ‖right‖ over the sweep is ${worstRight.toFixed(6)}; ` +
+     `a fixed up gives 0.000000 at the pole and 0.017 by 89°`);
+
+  // The level view must be untouched by all of this.
+  const lvl = basis(0, 0, 0).u;
+  ok(Math.abs(lvl[0]) < 1e-15 && Math.abs(lvl[1] - 1) < 1e-15 && Math.abs(lvl[2]) < 1e-15,
+     `at elevation 0 with no roll, up is exactly (0,1,0) — got (${lvl.map(v => v.toFixed(3))})`);
+
+  // Roll must actually turn the camera, or the control is inert.
+  const rolled = basis(0, 0, 90).u;
+  ok(Math.abs(dot(rolled, lvl)) < 1e-12,
+     `90° of roll turns up a right angle (up·up₀ = ${dot(rolled, lvl).toExponential(2)})`);
 }
 
 console.log('\nKey rewriting');
@@ -205,8 +235,20 @@ console.log('\nRegistered ranges, and the exp taper');
   };
   const elev = declared('scene3d.cam.elev');
   const dist = declared('scene3d.cam.dist');
-  ok(!!elev && elev.min > -90 && elev.max < 90,
-     `Elevation stops short of the pole — declared ${elev?.min}..${elev?.max}`);
+  // Full sweep, now that the derived basis removes the pole. A narrower range
+  // here would mean someone reinstated the workaround without the cause.
+  ok(!!elev && elev.min === -180 && elev.max === 180,
+     `Elevation sweeps the full circle — declared ${elev?.min}..${elev?.max}`);
+  // The migration resets recall bounds to its own copy of these ranges. A copy
+  // that drifts from the registration hands a controller a sweep the parameter
+  // cannot express, silently — so assert the two agree rather than trusting it.
+  const rangeTable = /const S3D_CAM_RANGE = \{([\s\S]*?)\};/.exec(psSrc)?.[1] ?? '';
+  const tableElev = /'scene3d\.cam\.elev':\s*\{\s*min:\s*(-?[0-9.]+),\s*max:\s*(-?[0-9.]+)/.exec(rangeTable);
+  const tableDist = /'scene3d\.cam\.dist':\s*\{\s*min:\s*(-?[0-9.]+),\s*max:\s*(-?[0-9.]+)/.exec(rangeTable);
+  ok(!!tableElev && +tableElev[1] === elev.min && +tableElev[2] === elev.max,
+     `S3D_CAM_RANGE elevation matches the registration (${tableElev?.[1]}..${tableElev?.[2]} vs ${elev.min}..${elev.max})`);
+  ok(!!tableDist && +tableDist[1] === dist.min && +tableDist[2] === dist.max,
+     `S3D_CAM_RANGE distance matches the registration (${tableDist?.[1]}..${tableDist?.[2]} vs ${dist.min}..${dist.max})`);
   ok(!!dist && dist.min > 0 && dist.curve,
      `Distance is exp-tapered with a positive floor — declared ${dist?.min}..${dist?.max}, curve ${dist?.curve}`);
 

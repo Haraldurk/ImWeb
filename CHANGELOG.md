@@ -9,11 +9,17 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
 ## [Unreleased]
 
 ### Added
-- **Cam Spin** turns the camera around the object on its own, in degrees per
-  second — the same grammar as the mesh's Spin X/Y/Z. It accumulates its own
-  angle rather than writing Orbit, so Orbit stays a live offset you can still
+- **Roll** — the camera turns about its own view axis, so the whole image
+  rotates while the viewpoint stays put. Orbit, Elevation and Distance place the
+  camera; Roll is the fourth degree of freedom, and nothing could reach it
+  before.
+- **Spin Orbit, Spin Elev and Spin Roll** turn the camera on their own, in
+  degrees per second — one per angular axis, the way the mesh has Spin X/Y/Z for
+  its three rotations. (A camera's three are not x/y/z: two carry it over the
+  sphere, the third turns it in place.) Each accumulates its own angle rather
+  than writing its parameter, so the angle stays a live offset you can still
   move while it turns, and a saved state captures the angle you set rather than
-  wherever the spin happened to be.
+  wherever the spin had drifted to.
 
 ### Changed
 - **Camera Distance reaches from 0.1 to 100, and slows down as it closes in.**
@@ -22,12 +28,16 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
   move as 10→20 — so the control is now exponential: half the travel lands at
   3.16 rather than 50, and the bottom tenth covers 0.1–0.20 where linear gave
   0.1–10. Controllers sweep the same taper, so an LFO and a hand agree.
-- **Elevation no longer jumps.** It ran ±180, but at exactly 90° the camera sits
-  on the Y axis looking straight down it — parallel to the up vector, where
-  `lookAt` has no basis to build and the image flips. Past 90 the camera crosses
-  to the far side, so sweeping through the pole jumped. Now ±89. Nothing is
-  lost: elevation is read through `asin`, which never returns beyond ±90, so no
-  saved project could hold a value outside the new range.
+- **Elevation no longer jumps, and now goes over the top.** At exactly 90° the
+  camera sits on the Y axis looking straight down it — parallel to the fixed up
+  vector three.js uses by default, where there is no basis to build and the
+  image flips. The camera now derives its up from the orbit frame instead, which
+  is a unit vector at *every* elevation (measured: the camera's right vector is
+  1.000000 throughout, against 0.000000 at the pole and 0.017 by 89° with a
+  fixed up). So the pole is simply gone: Elevation keeps its full ±180 and
+  sweeps continuously over the top and down the far side, with no clamp and no
+  twitchy zone approaching one. Level views are untouched — at elevation 0 the
+  derived up is exactly (0,1,0), the same vector as before.
 
 - **The 3D camera orbits.** It had Cam X / Y / Z in world units, but the camera
   has always looked at the origin — so those three numbers were never a free

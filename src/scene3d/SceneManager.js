@@ -1150,21 +1150,42 @@ export class SceneManager {
     // Spherical placement — the exact inverse of scene3dCartesianToOrbit(), so
     // a migrated project opens on the frame it was saved on.
     {
-      // Cam Spin accumulates its own angle rather than writing Orbit, exactly
-      // as the mesh's Spin X/Y/Z leaves the rot params alone: Orbit stays a
-      // live offset you (or a controller) can still move while it turns, and
-      // Display States capture the angle you set, not wherever the spin drifted.
-      const camSpin = p.get('scene3d.cam.spin')?.value ?? 0;
-      if (camSpin !== 0) {
-        this._camSpin = ((this._camSpin ?? 0) + camSpin * dt) % 360;
-      } else if (this._camSpin) {
-        this._camSpin = 0; // back to Orbit alone the moment spin is switched off
-      }
-      const az = ((p.get('scene3d.cam.orbit').value + (this._camSpin ?? 0)) * Math.PI) / 180;
-      const el = (p.get('scene3d.cam.elev').value * Math.PI) / 180;
+      // Each spin accumulates its OWN angle rather than writing its parameter,
+      // exactly as the mesh's Spin X/Y/Z leaves the rot params alone: the angle
+      // stays a live offset you (or a controller) can still move while it turns,
+      // and a Display State captures the angle you set rather than wherever the
+      // spin had drifted to.
+      const spin = (id, key) => {
+        const rate = p.get(id)?.value ?? 0;
+        if (rate !== 0) this[key] = ((this[key] ?? 0) + rate * dt) % 360;
+        else if (this[key]) this[key] = 0; // release the offset when switched off
+        return this[key] ?? 0;
+      };
+      const R  = Math.PI / 180;
+      const az = (p.get('scene3d.cam.orbit').value + spin('scene3d.cam.spinOrbit', '_camSpinOrbit')) * R;
+      const el = (p.get('scene3d.cam.elev').value  + spin('scene3d.cam.spinElev',  '_camSpinElev'))  * R;
+      const rl = (p.get('scene3d.cam.roll').value  + spin('scene3d.cam.spinRoll',  '_camSpinRoll'))  * R;
       const d  =  p.get('scene3d.cam.dist').value;
-      const ch = Math.cos(el);
-      this.camera.position.set(d * ch * Math.sin(az), d * Math.sin(el), d * ch * Math.cos(az));
+
+      const ce = Math.cos(el), se = Math.sin(el);
+      const sa = Math.sin(az), ca = Math.cos(az);
+      this.camera.position.set(d * ce * sa, d * se, d * ce * ca);
+
+      // Derive up from the orbit frame instead of leaving three.js to use a
+      // fixed (0,1,0). That fixed vector goes parallel to the view direction at
+      // the poles, where lookAt() has no basis to build and the image flips;
+      // this tangent — the direction of increasing elevation — is a unit vector
+      // at EVERY elevation, so the camera sweeps over the top continuously.
+      // At elevation 0 it is exactly (0,1,0), so level views are unchanged.
+      const upX = -se * sa, upY = ce, upZ = -se * ca;
+      // Roll turns the camera about its own view axis. up ⊥ forward, so
+      // Rodrigues collapses to  up·cos(roll) + (forward × up)·sin(roll).
+      const fx = -ce * sa, fy = -se, fz = -ce * ca;          // forward, unit
+      const cx = fy * upZ - fz * upY;                         // forward × up
+      const cy = fz * upX - fx * upZ;
+      const cz = fx * upY - fy * upX;
+      const cr = Math.cos(rl), sr = Math.sin(rl);
+      this.camera.up.set(upX * cr + cx * sr, upY * cr + cy * sr, upZ * cr + cz * sr);
     }
     this.camera.lookAt(0, 0, 0);
     this.camera.updateProjectionMatrix();

@@ -1390,7 +1390,7 @@ const S3D_CAM_RENAME = {
 // parameter cannot express.
 const S3D_CAM_RANGE = {
   'scene3d.cam.orbit': { min: 0,   max: 360 },
-  'scene3d.cam.elev':  { min: -89, max: 89 },
+  'scene3d.cam.elev':  { min: -180, max: 180 },
   'scene3d.cam.dist':  { min: 0.1, max: 100 },
 };
 
@@ -3098,19 +3098,31 @@ export function registerCoreParameters(ps) {
     unit: "°",
   });
   ps.register({
-    // ±89, NOT ±180. At exactly 90 the camera sits on the Y axis looking
-    // straight down it, parallel to three.js's up vector, and lookAt() has no
-    // basis to build — the image flips. Past 90 the camera crosses to the far
-    // side, so z changes sign and a sweep through the pole jumps. (The SDF's
-    // orbitY runs ±180 because a raymarcher builds its own basis and tolerates
-    // it; copying that range here was wrong.) Nothing is lost: the migration
-    // reads elevation through Math.asin, which only ever returns ±90, so no
-    // saved project can hold a value outside this range.
+    // Full ±180, and it sweeps continuously over the top. An earlier cut of
+    // this clamped to ±89 because lookAt()'s fixed up vector of (0,1,0) goes
+    // parallel to the view direction at the pole and the basis collapses — but
+    // that was patching the symptom. SceneManager now DERIVES up from the orbit
+    // frame, which is well conditioned everywhere (the camera's right vector
+    // measures 1.0 at every elevation, against 0.0 at the pole with a fixed
+    // up), so there is no pole to avoid and no twitchy zone approaching one.
     id: "scene3d.cam.elev",
     label: "Elevation",
     group: "scene3d",
-    min: -89,
-    max: 89,
+    min: -180,
+    max: 180,
+    value: 0,
+    step: 0.5,
+    unit: "°",
+  });
+  ps.register({
+    // The fourth degree of freedom, and the one no other control could reach:
+    // orbit/elevation/distance place the camera, roll turns it about its own
+    // view axis, so the whole IMAGE rotates while the viewpoint stays put.
+    id: "scene3d.cam.roll",
+    label: "Roll",
+    group: "scene3d",
+    min: -180,
+    max: 180,
     value: 0,
     step: 0.5,
     unit: "°",
@@ -3130,20 +3142,28 @@ export function registerCoreParameters(ps) {
     step: 0.01,
     curve: "exp",
   });
-  ps.register({
-    // Camera spin, same grammar as the mesh's Spin X/Y/Z: degrees per second,
-    // accumulated internally so the Orbit param stays live as an offset rather
-    // than being written every frame (which would fight a controller on it and
-    // fill Display States with whatever angle the spin happened to be at).
-    id: "scene3d.cam.spin",
-    label: "Cam Spin",
-    group: "scene3d",
-    min: -180,
-    max: 180,
-    value: 0,
-    step: 0.1,
-    unit: "°/s",
-  });
+  // One spin per angular degree of freedom, the way the mesh has Spin X/Y/Z for
+  // its three rotations. A camera's three are NOT x/y/z: orbit and elevation
+  // move it over the sphere, roll turns it in place. Each is degrees per second
+  // and accumulates internally, so its angle param stays live as an offset
+  // rather than being written every frame — which would fight a controller on
+  // it and fill Display States with wherever the spin happened to be.
+  for (const [suffix, label] of [
+    ['spinOrbit', 'Spin Orbit'],
+    ['spinElev',  'Spin Elev'],
+    ['spinRoll',  'Spin Roll'],
+  ]) {
+    ps.register({
+      id: `scene3d.cam.${suffix}`,
+      label,
+      group: "scene3d",
+      min: -180,
+      max: 180,
+      value: 0,
+      step: 0.1,
+      unit: "°/s",
+    });
+  }
   ps.register({
     id: "scene3d.mat.roughness",
     label: "Roughness",

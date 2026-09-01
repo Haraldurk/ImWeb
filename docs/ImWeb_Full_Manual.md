@@ -509,9 +509,17 @@ to a 2×2×2 bounding box on load.
 |-----------|-------|-------------|
 | `scene3d.cam.fov` | 20–120° | Field of view |
 | `scene3d.cam.orbit` | 0–360° | **Orbit** — rotates the camera around the object. Put an LFO here and the scene turns |
-| `scene3d.cam.elev` | −89 – 89° | **Elevation** — above or below the object. Stops short of straight up: at 90° the camera looks down its own up axis and the image flips |
+| `scene3d.cam.elev` | −180 – 180° | **Elevation** — latitude: 0° level with the object, +90° directly overhead, and onward continuously over the top |
+| `scene3d.cam.roll` | −180 – 180° | **Roll** — turns the camera about its own view axis, rotating the whole image without moving the viewpoint |
 | `scene3d.cam.dist` | 0.1–100 | **Distance** — how far back the camera sits. Exponential, so the fader slows as it closes in; half travel is ≈3.2, not 50 |
-| `scene3d.cam.spin` | −180 – 180 °/s | **Cam Spin** — orbits on its own, in degrees per second. Adds to Orbit rather than overwriting it, so Orbit stays live as an offset |
+| `scene3d.cam.spinOrbit` | −180 – 180 °/s | **Spin Orbit** — circles the object on its own. Adds to Orbit rather than overwriting it, so Orbit stays live as an offset |
+| `scene3d.cam.spinElev` | −180 – 180 °/s | **Spin Elev** — tumbles over the top, same offset grammar |
+| `scene3d.cam.spinRoll` | −180 – 180 °/s | **Spin Roll** — rotates the image, same offset grammar |
+
+> The camera is a turntable: Orbit is longitude, Elevation is latitude, Distance
+> is altitude, and Roll turns the head. Those four are the whole of what a
+> target-locked camera can do — there is no "Orbit Z", because two angles and a
+> radius already reach every point on the sphere.
 
 #### Parameters — Material
 
