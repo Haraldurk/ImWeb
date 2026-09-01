@@ -19,7 +19,7 @@
  * Run:  node tests/audit-text-render.mjs
  */
 
-import { makeLayer, tick, REST, CHAR_W } from './text-render-harness.mjs';
+import { makeLayer, tick, audioFrame, REST, CHAR_W } from './text-render-harness.mjs';
 
 console.log('\nText render behaviour audit\n');
 
@@ -30,6 +30,25 @@ const fail = (m, d) => {
   failed = true;
 };
 const check = (m, cond, d) => (cond ? ok(m) : fail(m, d));
+
+/**
+ * Run the envelope to rest and return the LAST frame that actually drew.
+ *
+ * Once the followers converge the layer stops re-rendering — correctly, that
+ * is the whole point of the dirty flag — so the final tick records nothing.
+ * Reading that empty list made three assertions pass vacuously (`[].every()`
+ * is true, and `new Set([]).size === [].length`), which is the failure mode
+ * this helper exists to remove: it returns the real frame, and every caller
+ * asserts a glyph count so an empty result can never read as a pass.
+ */
+const settle = (layer, opts, frames = 40) => {
+  let last = [];
+  for (let i = 0; i < frames; i++) {
+    const c = tick(layer, opts, 0.016);
+    if (c.length) last = c;
+  }
+  return last;
+};
 
 // ── 1. The default case is untouched ────────────────────────────────────────
 
@@ -289,6 +308,121 @@ const check = (m, cond, d) => (cond ? ok(m) : fail(m, d));
     c.filter((d, i) => d.s !== 'ABCD'[i]).length === c.length &&
     c.some(d => d.a < 1),
     c);
+}
+
+// ── 10. Audio reactivity ────────────────────────────────────────────────────
+//
+// The point of this feature is that each glyph reads its OWN slice of the
+// spectrum. A check that only proves "the text moves when there is sound"
+// would pass just as happily on a single level driving every glyph, which is
+// the thing it is not.
+
+{
+  // Energy only in the bottom eighth of the spectrum: the leading glyphs must
+  // respond and the trailing ones must not.
+  const t = await makeLayer('ABCDEFGH');
+  t.setAudio(audioFrame((i, n) => (i < n / 8 ? 1 : 0)));
+  const o = { 'text.audioTarget': 1, 'text.audioAmt': 100, 'text.audioSmooth': 0 };
+  const c = settle(t, o);
+  check('Spectrum: a bass-only signal scales the LEADING glyphs, not the rest',
+    c.length === 8 && c[0].scale > 1.05 && c[7].scale < 1.01,
+    c.map(d => d.scale));
+}
+
+{
+  // The same signal on a uniform band must move every glyph equally — this is
+  // the control that proves the check above is measuring per-glyph mapping.
+  const t = await makeLayer('ABCDEFGH');
+  t.setAudio(audioFrame((i, n) => (i < n / 8 ? 1 : 0), 256, { level: 1 }));
+  const o = { 'text.audioTarget': 1, 'text.audioAmt': 100, 'text.audioSmooth': 0,
+              'text.audioBand': 1 };
+  const c = settle(t, o);
+  check('Level: one number drives every glyph the same amount',
+    c.length === 8 && c.every(d => Math.abs(d.scale - c[0].scale) < 1e-6) && c[0].scale > 1.05,
+    c.map(d => d.scale));
+}
+
+{
+  const t = await makeLayer('ABCDEFGH');
+  t.setAudio(audioFrame(() => 0));
+  const o = { 'text.audioTarget': 1, 'text.audioAmt': 100 };
+  const c = settle(t, o);
+  check('silence leaves the glyphs at rest',
+    c.length === 8 && c.every(d => Math.abs(d.scale - 1) < 1e-6), c.map(d => d.scale));
+}
+
+{
+  // Fast attack, slow release. A symmetric filter would fail this both ways.
+  const t = await makeLayer('AAAA');
+  const o = { 'text.audioTarget': 1, 'text.audioAmt': 100, 'text.audioSmooth': 100 };
+  t.setAudio(audioFrame(() => 1));
+  const rise = tick(t, o, 0.05);
+  t.setAudio(audioFrame(() => 0));
+  const fall = tick(t, o, 0.05);
+  check('the envelope attacks fast and releases slowly',
+    rise[0].scale > 1.4 && fall[0].scale > rise[0].scale * 0.6,
+    { rise: rise[0].scale, fall: fall[0].scale });
+}
+
+{
+  // Falling as well as rising must keep re-rendering, or the text freezes at
+  // its loudest and stays there — the failure you would only notice as
+  // "why is it stuck bright".
+  const t = await makeLayer('AAAA');
+  const o = { 'text.audioTarget': 1, 'text.audioAmt': 100, 'text.audioSmooth': 80 };
+  t.setAudio(audioFrame(() => 1));
+  settle(t, o);
+  t.setAudio(audioFrame(() => 0));
+  const a = tick(t, o, 0.016);
+  const b = tick(t, o, 0.016);
+  check('the decay keeps re-rendering — the text does not stick at its loudest',
+    a.length > 0 && b.length > 0 && b[0].scale < a[0].scale, { a: a[0]?.scale, b: b[0]?.scale });
+}
+
+{
+  const t = await makeLayer('ABCD');
+  const o = { 'text.audioTarget': 3, 'text.audioAmt': 100, 'text.audioSmooth': 0,
+              'text.outline': 4 };
+  t.setAudio(audioFrame((i, n) => 1 - i / n));
+  const c = settle(t, o);
+  check('Hue: each glyph takes its own colour, and the OUTLINE pass keeps it',
+    c.length === 4 && new Set(c.map(d => d.fill)).size === 4, c.map(d => d.fill));
+}
+
+{
+  const t = await makeLayer('ABCD');
+  const o = { 'text.audioTarget': 4, 'text.audioAmt': 100, 'text.audioSmooth': 0 };
+  t.setAudio(audioFrame((i, n) => 1 - i / n));
+  const c = settle(t, o);
+  check('Weight: each glyph gets its own weight, and the advance does NOT move',
+    c.length === 4 && new Set(c.map(d => d.font)).size === 4 &&
+    c.map(d => d.x - c[0].x).join() === `0,${CHAR_W},${CHAR_W * 2},${CHAR_W * 3}`,
+    c.map(d => d.font));
+}
+
+{
+  // Audio runs INSIDE placement, so a glyph on a ring pulses in place rather
+  // than being flung off it.
+  const t = await makeLayer('ABCDEFGH');
+  t.setOutputAspect(16 / 9);
+  const o = { 'text.path': 1, 'text.pathRadius': 40,
+              'text.audioTarget': 1, 'text.audioAmt': 100, 'text.audioSmooth': 0 };
+  t.setAudio(audioFrame(() => 1));
+  const c = settle(t, o);
+  const R = 0.4 * 256;
+  const radii = c.map(d => Math.hypot((d.x - 256) * (16 / 9), d.y - 256));
+  check('audio + path: glyphs pulse ON the ring, not off it',
+    c.length === 8 && c.every(d => d.scale > 1.05) &&
+    radii.every(r => Math.abs(r - R) < R * 0.15),
+    { scales: c.map(d => d.scale), radii: radii.map(r => +r.toFixed(1)) });
+}
+
+{
+  const t = await makeLayer('ABCD');
+  t.setAudio(null);
+  const c = tick(t, { 'text.audioTarget': 1, 'text.audioAmt': 100 }, 0.016);
+  check('no audio host at all is silence, not an error',
+    c.length === 4 && c.every(d => Math.abs(d.scale - 1) < 1e-6), c.map(d => d.scale));
 }
 
 void REST;

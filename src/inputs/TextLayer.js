@@ -183,6 +183,18 @@ export class TextLayer {
     // Output aspect (width/height), for keeping a circle round ON SCREEN.
     this._aspect = 1;
 
+    // Audio reactivity. `_audio` is pushed in from the render loop (see
+    // setAudio) — this class never imports the audio half, the same injection
+    // rule ControllerManager and VectorscopeInput follow for the §8.6 tap.
+    this._audio       = null;
+    this._audioTarget = 0;
+    this._audioBand   = 0;
+    this._audioAmt    = 50;
+    this._audioSmooth = 40;
+    this._audioRange  = 50;
+    // Per-glyph envelope followers, indexed by glyph. Grown on demand.
+    this._audioEnv    = new Float32Array(0);
+
     this._render();
     // The bundled faces are not there yet on the first frame; re-render once
     // they are, or the boot texture keeps the fallback face forever.
@@ -205,6 +217,74 @@ export class TextLayer {
   setOutputAspect(a) {
     const v = Number.isFinite(a) && a > 0 ? a : 1;
     if (v !== this._aspect) { this._aspect = v; this._render(); }
+  }
+
+  /**
+   * The current audio picture, pushed in once a frame by the render loop:
+   * `{ freq: Uint8Array, level, bass, mid, high }`, or null when nothing is
+   * listening. Injected rather than imported — this class must not learn what
+   * an AnalyserNode is, and the test harness has to be able to drive it with a
+   * plain object.
+   *
+   * Held by reference and read at render time. The array is the analyser's own
+   * buffer and is refilled in place every frame, which is exactly what we want:
+   * no copy, and never a stale frame.
+   */
+  setAudio(a) { this._audio = a || null; }
+
+  /**
+   * Advance the per-glyph envelope followers.
+   *
+   * Fast attack, slow release — a peak-hold, which is what makes a spectrum
+   * read as a bank of meters rather than as jitter. A symmetric filter slow
+   * enough to stop the flicker also swallows every transient, and transients
+   * are the whole point.
+   */
+  _tickAudio(dt) {
+    const n = (this._units[this._idx] ?? '').length;
+    if (!n) return false;
+    if (this._audioEnv.length < n) this._audioEnv = new Float32Array(n);
+
+    const a = this._audio;
+    const N = a?.freq?.length ?? 0;
+    // Spectrum spreads the band across the glyphs; the others drive every
+    // glyph from one number, which is still useful and much calmer.
+    const uniform = this._audioBand === 0 ? null
+      : this._audioBand === 1 ? (a?.level ?? 0)
+      : this._audioBand === 2 ? (a?.bass  ?? 0)
+      : this._audioBand === 3 ? (a?.mid   ?? 0)
+      :                         (a?.high  ?? 0);
+
+    // Only the bottom `audioRange` % of the spectrum is spread across the
+    // word. The top of an FFT is almost always empty, and spreading the whole
+    // thing leaves most of the glyphs permanently still.
+    const hi = Math.max(1, Math.floor(N * (this._audioRange / 100)));
+
+    const atkK = 1 - Math.exp(-dt / 0.02);
+    const relK = 1 - Math.exp(-dt / (0.02 + (this._audioSmooth / 100) * 0.5));
+
+    let moved = false;
+    for (let i = 0; i < n; i++) {
+      let v = 0;
+      if (uniform !== null) {
+        v = uniform;
+      } else if (N) {
+        // Average the glyph's whole slice, not one bin — with 256 bins and a
+        // short word, point-sampling picks an arbitrary spike and misses the
+        // energy either side of it.
+        const b0 = Math.floor((i / n) * hi);
+        const b1 = Math.max(b0 + 1, Math.floor(((i + 1) / n) * hi));
+        let s = 0;
+        for (let b = b0; b < b1; b++) s += a.freq[b];
+        v = s / ((b1 - b0) * 255);
+      }
+      const e = this._audioEnv[i];
+      const k = v > e ? atkK : relK;
+      const next = e + (v - e) * k;
+      if (Math.abs(next - e) > 0.0005) moved = true;
+      this._audioEnv[i] = next;
+    }
+    return moved;
   }
 
   /**
@@ -339,6 +419,22 @@ export class TextLayer {
       this._scrollPY += (this._scrollY / 100) * SIZE * (this._size2d / SIZE) * dt;
       dirty = true;
     }
+
+    // Audio reactivity
+    const audioTarget = Math.round(get('text.audioTarget'));
+    const audioBand   = Math.round(get('text.audioBand'));
+    const audioAmt    = get('text.audioAmt');
+    const audioSmooth = get('text.audioSmooth');
+    const audioRange  = get('text.audioRange');
+    if (audioTarget !== this._audioTarget) { this._audioTarget = audioTarget; dirty = true; }
+    if (audioBand   !== this._audioBand)   { this._audioBand   = audioBand;   dirty = true; }
+    if (audioAmt    !== this._audioAmt)    { this._audioAmt    = audioAmt;    dirty = true; }
+    this._audioSmooth = audioSmooth;
+    this._audioRange  = audioRange;
+    // The envelope is an integrator, so it advances on dt and re-renders while
+    // it is still moving — including on the way DOWN, or the text would freeze
+    // at its loudest and stay there.
+    if (audioTarget > 0 && dt > 0 && this._tickAudio(dt)) dirty = true;
 
     // Path layout
     const path        = Math.round(get('text.path'));
@@ -593,11 +689,15 @@ export class TextLayer {
         const gy = baseY + (g?.dy ?? 0);
         if (ch.trim() && ctx.globalAlpha > 0.004) {
           if (this._outline > 0) {
+            // Restore the fill the MODIFIERS left, not a freshly rebuilt base
+            // colour: recomputing it here would silently discard a per-glyph
+            // hue (audio Hue mode) every time an outline was switched on.
+            const fill = ctx.fillStyle;
             this._applyOutlineStyle(ctx, satPct, lightPct);
             ctx.lineWidth = this._outline * 2 * k;
             ctx.lineJoin  = 'round';
             ctx.strokeText(ch, gx, gy);
-            ctx.fillStyle = `hsl(${this._hue}, ${satPct}%, ${lightPct}%)`;
+            ctx.fillStyle = fill;
           }
           ctx.fillText(ch, gx, gy);
         }
@@ -902,6 +1002,54 @@ export class TextLayer {
         }
       : null;
 
+    // Audio drives ONE property per glyph, chosen by text.audioTarget. It runs
+    // after transition and inside placement, so a glyph on a ring pulses in
+    // place rather than being flung off it.
+    //
+    // Note on Weight: a heavier face is a WIDER face, but the advance always
+    // comes from the base font, so glyphs crowd slightly at high amounts.
+    // That is the trade for a stable line — an advance that breathed with the
+    // level would read as the whole word twitching, not as letters swelling.
+    const audio = this._audioTarget > 0
+      ? (g, lineY) => {
+          const e = this._audioEnv[g.i] ?? 0;
+          const amt = this._audioAmt / 100;
+          const cx = g.x + g.adv / 2;
+          const c = g.ctx;
+          switch (this._audioTarget) {
+            case 1: { // Scale
+              const s = 1 + e * amt * 1.5;
+              c.translate(cx, lineY); c.scale(s, s); c.translate(-cx, -lineY);
+              break;
+            }
+            case 2:   // Rise
+              c.translate(0, -e * amt * fs * 0.6);
+              break;
+            case 3:   // Hue — set here and preserved across the outline pass
+              c.fillStyle = `hsl(${(this._hue + e * amt * 180) % 360}, `
+                          + `${satPct}%, ${lightPct}%)`;
+              break;
+            case 4: { // Weight
+              const w = Math.max(100, Math.min(900,
+                Math.round(this._weight + e * amt * 500)));
+              const saved = this._weight;
+              this._weight = w;
+              c.font = this._fontString(fs);
+              this._weight = saved;
+              break;
+            }
+            case 5:   // Rotate
+              c.translate(cx, lineY);
+              c.rotate(e * amt * 0.6);
+              c.translate(-cx, -lineY);
+              break;
+            case 6:   // Opacity — quiet glyphs dim rather than loud ones brighten
+              c.globalAlpha *= (1 - amt) + amt * e;
+              break;
+          }
+        }
+      : null;
+
     const transition = staggered
       ? (g, lineY) => {
           const local = this._glyphPhase(this._animPhase, g.i, g.n, spread);
@@ -910,7 +1058,7 @@ export class TextLayer {
         }
       : null;
 
-    const perGlyphActive = !!(substitution || displacement || transition || placement);
+    const perGlyphActive = !!(substitution || displacement || transition || placement || audio);
 
     // Marquee repetition offsets, computed once for the block so every line
     // tiles in step. The widest line sets the horizontal period — using each
@@ -940,6 +1088,7 @@ export class TextLayer {
             const ch = substitution ? substitution(g.ch, g.i, g.n) : g.ch;
             if (placement)  placement(g, ly, ox);
             if (transition) transition(g, ly);
+            if (audio)      audio(g, ly);
             return { ch, dy: displacement ? displacement(g.i) : 0 };
           });
         } else {

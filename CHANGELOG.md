@@ -55,6 +55,21 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
   is square and your output is not.
 
   Scroll and paths combine: the text crawls **around** the ring.
+- **The text listens.** AudioTarget drives Scale, Rise, Hue, Weight, Rotate or
+  Opacity from whatever the analyser is pointed at — and it is **per glyph**:
+  on the default Spectrum band each letter reads its own slice of the
+  frequency range, so a word turns into a bank of meters. Point the tap at the
+  master bus and the text moves to the instrument itself.
+
+  AudioBand switches to Level, Bass, Mid or High if you want the whole word
+  moving as one. AudioRange sets how much of the spectrum is spread across the
+  letters — the top of an FFT is nearly always empty, so the default of 50 %
+  keeps every letter alive. AudioSmooth is a release time only: the attack
+  stays fast, because that is what makes it look played rather than animated.
+
+  This needs the audio engine running with something for it to hear. It
+  composes with everything else — a ring of text that pulses on the beat is
+  AudioTarget Scale plus Path Circle.
 
 ### Changed
 - **The Text preview is playable.** Drag it to move the text, Shift+drag to

@@ -235,6 +235,8 @@ export function buildMappingPanels(ps, contextMenu) {
                                             'animMode', 'animSpeed', 'animAmt',
                                             'glitchSet',
                                             'scrollX', 'scrollY', 'scrollGap']),
+    'text-audio-params':      pick('text', ['audioTarget', 'audioBand', 'audioAmt',
+                                            'audioSmooth', 'audioRange']),
     'text-path-params':       pick('text', ['path', 'pathRadius', 'pathAngle',
                                             'pathSpread', 'pathWidth', 'pathTwist',
                                             'pathUpright', 'pathFlip']),

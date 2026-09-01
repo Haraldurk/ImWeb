@@ -4682,6 +4682,59 @@ export function registerCoreParameters(ps) {
     value: 0,
   });
   ps.register({
+    // ── Audio reactivity ──────────────────────────────────────────────────────
+    // Per-GLYPH, which is the point: each letter reads its own slice of the
+    // spectrum, so a word becomes a meter bank. The other bands drive every
+    // glyph from one number and are much calmer.
+    // APPEND-ONLY — persisted as integer indices.
+    id: "text.audioTarget",
+    label: "AudioTarget",
+    group: "text",
+    type: PARAM_TYPE.SELECT,
+    options: ["Off", "Scale", "Rise", "Hue", "Weight", "Rotate", "Opacity"],
+    value: 0,
+  });
+  ps.register({
+    id: "text.audioBand",
+    label: "AudioBand",
+    group: "text",
+    type: PARAM_TYPE.SELECT,
+    options: ["Spectrum", "Level", "Bass", "Mid", "High"],
+    value: 0,
+  });
+  ps.register({
+    id: "text.audioAmt",
+    label: "AudioAmt",
+    group: "text",
+    min: 0,
+    max: 100,
+    value: 50,
+    unit: "%",
+  });
+  ps.register({
+    // Release time only — the attack is always fast. A filter slow enough to
+    // stop the flicker in both directions swallows every transient, and the
+    // transients are what makes it look played rather than animated.
+    id: "text.audioSmooth",
+    label: "AudioSmooth",
+    group: "text",
+    min: 0,
+    max: 100,
+    value: 40,
+    unit: "%",
+  });
+  ps.register({
+    // How much of the spectrum is spread across the word. The top of an FFT is
+    // nearly always empty, so spreading all of it leaves most glyphs still.
+    id: "text.audioRange",
+    label: "AudioRange",
+    group: "text",
+    min: 5,
+    max: 100,
+    value: 50,
+    unit: "%",
+  });
+  ps.register({
     id: "text.stagger",
     label: "Stagger",
     group: "text",

@@ -625,6 +625,8 @@ async function main() {
   const strokeLooper = new StrokeLooper(drawLayer, ps);
   ctrl.setStrokeLooper(strokeLooper); // stroke→LFO controller driver
   const textLayer = new TextLayer();
+  // Reused every frame by the render loop — see the setAudio call there.
+  const _textAudio = { freq: null, level: 0, bass: 0, mid: 0, high: 0 };
 
   const scene3d = new SceneManager(renderer, W, H);
   await scene3d.createHypercube({ startDim: 4 });
@@ -8286,6 +8288,24 @@ void main() {
     // layout divides its x extent by this to keep a circle round on screen.
     // setOutputAspect early-returns unless the value actually changed.
     textLayer.setOutputAspect(pipeline.width / Math.max(1, pipeline.height));
+    // The audio picture for per-glyph reactivity. ctrl.tick() has already run
+    // sound.tick() this frame, so freqBuf is current, and it is handed over by
+    // REFERENCE — the analyser refills that same buffer every frame, which is
+    // the freshness we want and costs no copy. _textAudio is reused rather
+    // than rebuilt so a render loop does not allocate an object per frame.
+    // `level` gets the same x4 the VU meter and the sound controllers use, so
+    // "loud" means the same thing everywhere. null when nothing is listening,
+    // which TextLayer reads as silence rather than as an error.
+    if (ctrl.sound) {
+      _textAudio.freq  = ctrl.sound.freqBuf;
+      _textAudio.level = Math.min(1, ctrl.sound.level * 4);
+      _textAudio.bass  = ctrl.sound.bass;
+      _textAudio.mid   = ctrl.sound.mid;
+      _textAudio.high  = ctrl.sound.high;
+      textLayer.setAudio(_textAudio);
+    } else {
+      textLayer.setAudio(null);
+    }
     textLayer.tick(ps, dt);
 
     // Update sound level texture
