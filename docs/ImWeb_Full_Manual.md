@@ -508,7 +508,9 @@ to a 2×2×2 bounding box on load.
 | Parameter | Range | Description |
 |-----------|-------|-------------|
 | `scene3d.cam.fov` | 20–120° | Field of view |
-| `scene3d.cam.x/y/z` | −10 – 10 | Camera position |
+| `scene3d.cam.orbit` | 0–360° | **Orbit** — rotates the camera around the object. Put an LFO here and the scene turns |
+| `scene3d.cam.elev` | −180 – 180° | **Elevation** — above or below the object |
+| `scene3d.cam.dist` | 0.1–30 | **Distance** — how far back the camera sits |
 
 #### Parameters — Material
 

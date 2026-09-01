@@ -8,6 +8,35 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
 
 ## [Unreleased]
 
+### Changed
+- **The 3D camera orbits.** It had Cam X / Y / Z in world units, but the camera
+  has always looked at the origin — so those three numbers were never a free
+  position, only a point on a sphere written in the least playable coordinates
+  available. Circling the object meant moving three sliders along a coordinated
+  arc, which is not doable by hand and is meaningless under a controller: an
+  LFO on Cam X slides the camera *through* the object, not around it. Now
+  **Orbit**, **Elevation** and **Distance** — put an LFO on Orbit and the scene
+  turns. Same names, ranges and defaults as the SDF camera, so the two cameras
+  in the instrument finally behave alike.
+
+  Saved projects convert automatically and open on the frame they were saved
+  on: the conversion is an exact inverse, verified against the renderer's own
+  placement over every camera in MasterProject and FactoryBank. Controllers,
+  rates and response tables move across with the parameter; **recall ranges are
+  reset**, because a min/max in world units means nothing on an axis that runs
+  to 360°.
+- **Math Displace and T-Displace are finely adjustable.** Both ran 0–2 in steps
+  of 0.01, but anything past ~0.15 turns the mesh inside out — so every usable
+  setting lived in the bottom 7% of the fader, and one step was worth a fifth of
+  a working value. Now 0–0.5 in steps of 0.001: the whole travel is playable and
+  the fine end is ten times finer.
+- **Value readouts show as many decimals as the control can actually move.**
+  The row picked its decimals from the range alone, so any parameter quantised
+  finer than that printed a column of identical numbers while the value really
+  moved — indistinguishable from a dead control. Fourteen parameters were
+  affected, including Grain Pos. None loses precision; the readout simply stops
+  hiding what the control is doing.
+
 ### Fixed
 - **The 3D Transform section listed every control twice**, and included three
   that belong elsewhere. `#transform-params` was filled by two different

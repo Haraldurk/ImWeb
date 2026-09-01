@@ -647,7 +647,17 @@ export class Parameter {
     if (this.type === PARAM_TYPE.TOGGLE) return v ? "●" : "○";
     if (this.type === PARAM_TYPE.TRIGGER) return "▶";
     if (this.type === PARAM_TYPE.SELECT) return this.options?.[v] ?? v;
-    const decimals = this.max - this.min > 10 ? 1 : 2;
+    // Decimals must resolve the STEP, not only the range. Picking from the
+    // range alone means a param quantised finer than its row can print shows a
+    // column of identical numbers while the value genuinely moves — which is
+    // indistinguishable from a dead control, and makes the readout useless as
+    // a verification instrument (agrain.pos, step 0.001 on a 0–1 range, is the
+    // case this was learned on). Take whichever is finer; capped at 4 so a
+    // tiny step cannot stretch the row, and floored at the old result so no
+    // existing readout ever loses precision.
+    const rangeDec = this.max - this.min > 10 ? 1 : 2;
+    const stepDec  = this.step > 0 ? Math.ceil(-Math.log10(this.step)) : 0;
+    const decimals = Math.min(4, Math.max(rangeDec, stepDec));
     return v.toFixed(decimals) + (this.unit ? " " + this.unit : "");
   }
 
@@ -1328,6 +1338,111 @@ export function migrateSdfParams(values, recs) {
   migrateSdfCameraRecords(recs, values, eye);
   migrateSdfTile(values);
   return values;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 3D scene camera → orbit. Same shape as the SDF migration above, and no
+// version stamp for the same reason: it renames keys and deletes the originals,
+// so the data answers "has this run?" by itself.
+//
+// This one is a pure reparameterisation. SceneManager has always called
+// lookAt(0,0,0), so the Cartesian triple was already nothing but a point on a
+// sphere around the target — the conversion loses nothing except an eye sitting
+// exactly at the origin, which rendered nothing anyway.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const S3D_CAM_LEGACY = { 'scene3d.cam.x': 0, 'scene3d.cam.y': 0, 'scene3d.cam.z': 5 };
+const S3D_CAM_RENAME = {
+  'scene3d.cam.x': 'scene3d.cam.orbit',
+  'scene3d.cam.y': 'scene3d.cam.elev',
+  'scene3d.cam.z': 'scene3d.cam.dist',
+};
+const S3D_CAM_RANGE = {
+  'scene3d.cam.orbit': { min: 0,    max: 360 },
+  'scene3d.cam.elev':  { min: -180, max: 180 },
+  'scene3d.cam.dist':  { min: 0.1,  max: 30 },
+};
+
+/**
+ * Cartesian eye → orbit/elevation/distance, for a camera that looks at the
+ * origin. The exact inverse of SceneManager's placement, so a migrated project
+ * opens on the identical frame. Negative z falls out of atan2 as azimuth 180°.
+ */
+export function scene3dCartesianToOrbit(x, y, z) {
+  const d = Math.hypot(x, y, z);
+  if (d < 1e-6) {
+    return { orbit: 0, elev: 0, dist: S3D_CAM_RANGE['scene3d.cam.dist'].min };
+  }
+  let az = Math.atan2(x, z) * 180 / Math.PI;
+  if (az < 0) az += 360;
+  const el = Math.asin(Math.max(-1, Math.min(1, y / d))) * 180 / Math.PI;
+  return { orbit: az, elev: el, dist: Math.max(S3D_CAM_RANGE['scene3d.cam.dist'].min, d) };
+}
+
+/** Read the legacy eye from a values map or a controller-record bag. */
+function _scene3dLegacyEye(values, recs) {
+  const read = (id) => {
+    if (values && id in values) return +values[id] || 0;
+    if (recs && recs[id] && typeof recs[id].value === 'number') return recs[id].value;
+    return S3D_CAM_LEGACY[id];
+  };
+  const present = (id) => (values && id in values) || (recs && !!recs[id]);
+  if (!Object.keys(S3D_CAM_LEGACY).some(present)) return null;
+  return { x: read('scene3d.cam.x'), y: read('scene3d.cam.y'), z: read('scene3d.cam.z') };
+}
+
+/** Rewrite a plain id → value map in place. */
+export function migrateScene3dCamera(values, recs, eye = _scene3dLegacyEye(values, recs)) {
+  if (!eye) return values;
+  const o = scene3dCartesianToOrbit(eye.x, eye.y, eye.z);
+  if (values) {
+    // Never clobber a value already written in the new form.
+    if (!('scene3d.cam.orbit' in values)) values['scene3d.cam.orbit'] = o.orbit;
+    if (!('scene3d.cam.elev'  in values)) values['scene3d.cam.elev']  = o.elev;
+    if (!('scene3d.cam.dist'  in values)) values['scene3d.cam.dist']  = o.dist;
+    delete values['scene3d.cam.x'];
+    delete values['scene3d.cam.y'];
+    delete values['scene3d.cam.z'];
+  }
+  return values;
+}
+
+/**
+ * Rewrite a controller-record bag in place. Carries what still means the same
+ * thing on the new axis — table, invert, cycle, slew, the live controller — and
+ * RESETS ctrlMin/ctrlMax, because recall bounds are a box in world units and a
+ * box in XYZ is not a box in azimuth/elevation/distance. Carrying the numbers
+ * would silently leave a ±20 sweep on an axis that runs to 360.
+ */
+export function migrateScene3dCameraRecords(recs, values, eye = _scene3dLegacyEye(values, recs)) {
+  if (!recs || !eye) return recs;
+  const o = scene3dCartesianToOrbit(eye.x, eye.y, eye.z);
+  for (const [oldId, newId] of Object.entries(S3D_CAM_RENAME)) {
+    const rec = recs[oldId];
+    delete recs[oldId];
+    if (!rec || recs[newId]) continue;
+    const range = S3D_CAM_RANGE[newId];
+    // 'scene3d.cam.orbit' → 'orbit', the key scene3dCartesianToOrbit returns.
+    recs[newId] = { ...rec, id: newId, value: o[newId.split('.').pop()],
+                    ctrlMin: range.min, ctrlMax: range.max };
+  }
+  return recs;
+}
+
+/** Both halves, reading the legacy eye ONCE before either starts deleting it. */
+export function migrateScene3dParams(values, recs) {
+  const eye = _scene3dLegacyEye(values, recs);
+  migrateScene3dCamera(values, recs, eye);
+  migrateScene3dCameraRecords(recs, values, eye);
+  return values;
+}
+
+/** migrateScene3dParams over a Display State array. Mutates and returns it. */
+export function migrateStatesScene3dParams(states) {
+  if (Array.isArray(states)) {
+    for (const s of states) if (s?.values) migrateScene3dParams(s.values, s.controllers);
+  }
+  return states;
 }
 
 /** migrateSdfParams over a Display State array. Mutates and returns `states`. */
@@ -2930,29 +3045,45 @@ export function registerCoreParameters(ps) {
     value: 60,
     unit: "°",
   });
+  // The 3D camera is spherical, not Cartesian — SceneManager always calls
+  // lookAt(0,0,0), so cam.x/y/z was never a free position, only ever a point on
+  // a sphere around the target written in the least playable coordinates there
+  // are. Orbiting meant moving three sliders along a coordinated arc: not doable
+  // by hand, and meaningless under a controller, because an LFO on Cam X slides
+  // the camera through the object rather than around it.
+  //
+  // Same treatment sdf.camX/Y/Z got, and deliberately the same names, ranges and
+  // defaults, so the two cameras in this instrument behave alike. Saved projects
+  // are converted by migrateScene3dCamera() — an exact inverse, so a migrated
+  // project opens on the identical frame.
   ps.register({
-    id: "scene3d.cam.x",
-    label: "Cam X",
+    id: "scene3d.cam.orbit",
+    label: "Orbit",
     group: "scene3d",
-    min: -20,
-    max: 20,
+    min: 0,
+    max: 360,
     value: 0,
+    step: 0.5,
+    unit: "°",
   });
   ps.register({
-    id: "scene3d.cam.y",
-    label: "Cam Y",
+    id: "scene3d.cam.elev",
+    label: "Elevation",
     group: "scene3d",
-    min: -20,
-    max: 20,
+    min: -180,
+    max: 180,
     value: 0,
+    step: 0.5,
+    unit: "°",
   });
   ps.register({
-    id: "scene3d.cam.z",
-    label: "Cam Z",
+    id: "scene3d.cam.dist",
+    label: "Distance",
     group: "scene3d",
     min: 0.1,
     max: 30,
     value: 5,
+    step: 0.05,
   });
   ps.register({
     id: "scene3d.mat.roughness",
@@ -3139,23 +3270,31 @@ export function registerCoreParameters(ps) {
     value: 0,
     unit: "%",
   });
+  // Both displacement amounts ran 0–2 at step 0.01. In practice the whole
+  // useful range sits under ~0.15 — a sphere is radius 1, so displacing it by
+  // 2 turns the mesh inside out — which put every playable value in the bottom
+  // 7% of the fader, with one step worth a fifth of a working setting. Max 0.5
+  // is still well past anything recognisable and makes the travel usable;
+  // step 0.001 gives ten times the resolution where the control actually lives.
+  // Left linear rather than tapered: a taper would decouple the printed number
+  // from the fader position, and the range was the actual complaint.
   ps.register({
     id: "scene3d.mat.displace",
     label: "Math Displace",
     group: "scene3d",
     min: 0,
-    max: 2,
+    max: 0.5,
     value: 0,
-    step: 0.01,
+    step: 0.001,
   });
   ps.register({
     id: "scene3d.mat.tDisplace",
     label: "T-Displace",
     group: "scene3d",
     min: 0,
-    max: 2,
+    max: 0.5,
     value: 0,
-    step: 0.01,
+    step: 0.001,
   });
   ps.register({
     // Index 0 keeps T-Displace on the SAME image the surface shows, which is

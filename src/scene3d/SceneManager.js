@@ -906,7 +906,10 @@ export class SceneManager {
       // Screen-space mode: pos.x/y treated as normalised screen coords (±1 = screen edge).
       // Convert to world units using camera FOV and distance from origin.
       const fovRad  = (p.get('scene3d.cam.fov').value * Math.PI) / 180;
-      const camDist = Math.abs(p.get('scene3d.cam.z').value);
+      // Genuinely the distance from the origin now. This read |cam.z|, which
+      // equals the distance only while the camera sits on the Z axis — so
+      // screen-space placement drifted as soon as it was moved off it.
+      const camDist = p.get('scene3d.cam.dist').value;
       const halfH   = Math.tan(fovRad / 2) * camDist;
       const halfW   = halfH * (this.width / this.height);
       this.mesh.position.set(px * halfW, py * halfH, pz);
@@ -1144,11 +1147,15 @@ export class SceneManager {
       }
     // Camera
     this.camera.fov = p.get('scene3d.cam.fov').value;
-    this.camera.position.set(
-      p.get('scene3d.cam.x').value,
-      p.get('scene3d.cam.y').value,
-      p.get('scene3d.cam.z').value
-    );
+    // Spherical placement — the exact inverse of scene3dCartesianToOrbit(), so
+    // a migrated project opens on the frame it was saved on.
+    {
+      const az = (p.get('scene3d.cam.orbit').value * Math.PI) / 180;
+      const el = (p.get('scene3d.cam.elev').value  * Math.PI) / 180;
+      const d  =  p.get('scene3d.cam.dist').value;
+      const ch = Math.cos(el);
+      this.camera.position.set(d * ch * Math.sin(az), d * Math.sin(el), d * ch * Math.cos(az));
+    }
     this.camera.lookAt(0, 0, 0);
     this.camera.updateProjectionMatrix();
 
