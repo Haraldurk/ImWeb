@@ -5048,7 +5048,9 @@ export function registerCoreParameters(ps) {
     group: "text",
     min: 0,
     max: 100,
-    value: 50,
+    // 80, not 50: the owner's verdict on 50 was "too shy", and a default
+    // nobody reaches for is a default that misrepresents the feature.
+    value: 80,
     unit: "%",
   });
   ps.register({
@@ -5060,7 +5062,9 @@ export function registerCoreParameters(ps) {
     group: "text",
     min: 0,
     max: 100,
-    value: 40,
+    // The owner played this at 0 and preferred it there. 10 keeps a trace of
+    // release so a dropped transient does not strobe, without smearing.
+    value: 10,
     unit: "%",
   });
   ps.register({
@@ -5071,7 +5075,11 @@ export function registerCoreParameters(ps) {
     group: "text",
     min: 5,
     max: 100,
-    value: 50,
+    // Logarithmic since the mapping was fixed, so this is now the TOP of the
+    // span: 70 reaches about 4 kHz, which is where a voice or a mix stops.
+    // Under the old linear spread the usable setting was 5 %, which is the
+    // measurement that proved the mapping wrong rather than the default.
+    value: 70,
     unit: "%",
   });
   ps.register({

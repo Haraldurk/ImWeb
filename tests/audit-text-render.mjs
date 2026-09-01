@@ -317,16 +317,49 @@ const settle = (layer, opts, frames = 40) => {
 // would pass just as happily on a single level driving every glyph, which is
 // the thing it is not.
 
+// Glyph → frequency is LOGARITHMIC, so these fixtures are written in bins that
+// correspond to real BANDS. At 48 kHz with 256 bins each bin is ~94 Hz, and the
+// span runs 50 Hz → fTop. A fixture written as "the bottom eighth of the bins"
+// is 0–2.3 kHz, which under log spacing is most of the WORD — it cannot tell
+// the leading glyphs from the trailing ones, and a check built on it passes
+// whatever the mapping does.
+
 {
-  // Energy only in the bottom eighth of the spectrum: the leading glyphs must
-  // respond and the trailing ones must not.
+  // Energy only below ~200 Hz: on a log axis that is the first letter or two.
   const t = await makeLayer('ABCDEFGH');
-  t.setAudio(audioFrame((i, n) => (i < n / 8 ? 1 : 0)));
+  t.setAudio(audioFrame((i) => (i <= 2 ? 1 : 0)));
   const o = { 'text.audioTarget': 1, 'text.audioAmt': 100, 'text.audioSmooth': 0 };
   const c = settle(t, o);
   check('Spectrum: a bass-only signal scales the LEADING glyphs, not the rest',
     c.length === 8 && c[0].scale > 1.05 && c[7].scale < 1.01,
     c.map(d => d.scale));
+}
+
+{
+  // The other end, and the check that would have FAILED before the mapping was
+  // made logarithmic. Energy only above ~9 kHz: with a linear spread over the
+  // default range those bins fell outside the word entirely and nothing moved.
+  const t = await makeLayer('ABCDEFGH');
+  t.setAudio(audioFrame((i) => (i >= 96 ? 1 : 0)));
+  const o = { 'text.audioTarget': 1, 'text.audioAmt': 100, 'text.audioSmooth': 0,
+              'text.audioRange': 100 };
+  const c = settle(t, o);
+  check('Spectrum: a treble-only signal reaches the TRAILING glyphs',
+    c.length === 8 && c[7].scale > 1.05 && c[0].scale < 1.01,
+    c.map(d => d.scale));
+}
+
+{
+  // Every letter must have a band with something in it. A linear spread left
+  // the top half of a word permanently still on real material, which is what
+  // forced AudioRange down to 5 % and threw the treble away.
+  const t = await makeLayer('ABCDEFGH');
+  t.setAudio(audioFrame(() => 0.5));                       // flat spectrum
+  const o = { 'text.audioTarget': 1, 'text.audioAmt': 100, 'text.audioSmooth': 0,
+              'text.audioRange': 100 };
+  const c = settle(t, o);
+  check('every glyph gets a live band — none is left permanently still',
+    c.length === 8 && c.every(d => d.scale > 1.05), c.map(d => d.scale));
 }
 
 {
@@ -381,9 +414,11 @@ const settle = (layer, opts, frames = 40) => {
 
 {
   const t = await makeLayer('ABCD');
+  // Range 100 so the four glyphs span 50 Hz-24 kHz and land in clearly
+  // different bands; a rising ramp then gives each a distinct average.
   const o = { 'text.audioTarget': 3, 'text.audioAmt': 100, 'text.audioSmooth': 0,
-              'text.outline': 4 };
-  t.setAudio(audioFrame((i, n) => 1 - i / n));
+              'text.audioRange': 100, 'text.outline': 4 };
+  t.setAudio(audioFrame((i, n) => i / n));
   const c = settle(t, o);
   check('Hue: each glyph takes its own colour, and the OUTLINE pass keeps it',
     c.length === 4 && new Set(c.map(d => d.fill)).size === 4, c.map(d => d.fill));
@@ -391,8 +426,9 @@ const settle = (layer, opts, frames = 40) => {
 
 {
   const t = await makeLayer('ABCD');
-  const o = { 'text.audioTarget': 4, 'text.audioAmt': 100, 'text.audioSmooth': 0 };
-  t.setAudio(audioFrame((i, n) => 1 - i / n));
+  const o = { 'text.audioTarget': 4, 'text.audioAmt': 100, 'text.audioSmooth': 0,
+              'text.audioRange': 100 };
+  t.setAudio(audioFrame((i, n) => i / n));
   const c = settle(t, o);
   check('Weight: each glyph gets its own weight, and the advance does NOT move',
     c.length === 4 && new Set(c.map(d => d.font)).size === 4 &&

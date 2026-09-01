@@ -255,10 +255,26 @@ export class TextLayer {
       : this._audioBand === 3 ? (a?.mid   ?? 0)
       :                         (a?.high  ?? 0);
 
-    // Only the bottom `audioRange` % of the spectrum is spread across the
-    // word. The top of an FFT is almost always empty, and spreading the whole
-    // thing leaves most of the glyphs permanently still.
-    const hi = Math.max(1, Math.floor(N * (this._audioRange / 100)));
+    // Glyph → frequency is LOGARITHMIC, because hearing is and music is.
+    //
+    // The first version spread bins linearly: 256 bins over 0–24 kHz is ~94 Hz
+    // each, so eleven letters spanned 0–12 kHz and everything past the third
+    // letter sat in a band a real microphone leaves nearly empty. The only way
+    // to make it move was to wind the range down to 5 %, which crushes the
+    // whole word into the bottom 1.2 kHz and throws the top away — the
+    // workaround that proved the mapping was wrong.
+    //
+    // Log spacing gives every letter an equal share of the OCTAVES instead of
+    // an equal share of the hertz, so a word reads bass-to-treble the way a
+    // graphic EQ does. audioRange now sets the top of that span, also
+    // logarithmically: 100 % is the full spectrum, and the default sits around
+    // 4 kHz, which is where a voice or a mix actually stops.
+    const nyq   = (a?.rate ?? 48000) / 2;
+    const F_LO  = 50;
+    const fTop  = F_LO * Math.pow(Math.max(F_LO * 2, nyq) / F_LO, this._audioRange / 100);
+    const hzPer = nyq / Math.max(1, N);
+    const fAt   = (t) => F_LO * Math.pow(fTop / F_LO, t);
+    const binAt = (f) => Math.max(0, Math.min(N - 1, Math.round(f / hzPer)));
 
     const atkK = 1 - Math.exp(-dt / 0.02);
     const relK = 1 - Math.exp(-dt / (0.02 + (this._audioSmooth / 100) * 0.5));
@@ -272,11 +288,17 @@ export class TextLayer {
         // Average the glyph's whole slice, not one bin — with 256 bins and a
         // short word, point-sampling picks an arbitrary spike and misses the
         // energy either side of it.
-        const b0 = Math.floor((i / n) * hi);
-        const b1 = Math.max(b0 + 1, Math.floor(((i + 1) / n) * hi));
+        const b0 = binAt(fAt(i / n));
+        const b1 = Math.max(b0 + 1, binAt(fAt((i + 1) / n)));
         let s = 0;
         for (let b = b0; b < b1; b++) s += a.freq[b];
         v = s / ((b1 - b0) * 255);
+        // Tilt. Real programme material falls off with frequency, so even on a
+        // log axis the treble letters would idle while the bass ones saturate.
+        // A gentle rising weight buys the top half of the word back; without
+        // it the log mapping alone still leaves the word lopsided.
+        const fc = (fAt(i / n) + fAt((i + 1) / n)) * 0.5;
+        v = Math.min(1, v * Math.min(4, Math.max(1, Math.sqrt(fc / 250))));
       }
       const e = this._audioEnv[i];
       const k = v > e ? atkK : relK;
