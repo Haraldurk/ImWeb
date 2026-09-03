@@ -61,6 +61,10 @@ export const PROVIDERS = {
     keyPlaceholder: 'http://localhost:11434',
     models:      ['llama3.2', 'mistral', 'phi3', 'qwen2.5', 'deepseek-r1'],
     defaultModel:'llama3.2',
+    // The only provider whose "key" is an address, so the only one with a
+    // non-empty default. buildDefaultConfig reads this rather than carrying its
+    // own copy of the string.
+    defaultKey:  'http://localhost:11434',
     needsKey:    false,
   },
   openrouter: {
@@ -74,22 +78,57 @@ export const PROVIDERS = {
     defaultModel:'anthropic/claude-sonnet-4.5',
     needsKey:    true,
   },
+  deepseek: {
+    id:          'deepseek',
+    name:        'DeepSeek',
+    keyLabel:    'API Key',
+    keyUrl:      'https://platform.deepseek.com/api_keys',
+    keyUrlLabel: 'Get API key →',
+    keyPlaceholder: 'sk-…',
+    models:      ['deepseek-chat', 'deepseek-reasoner'],
+    defaultModel:'deepseek-chat',
+    needsKey:    true,
+  },
+  kimi: {
+    id:          'kimi',
+    name:        'Kimi (Moonshot)',
+    keyLabel:    'API Key',
+    keyUrl:      'https://platform.moonshot.ai/console/api-keys',
+    keyUrlLabel: 'Get API key →',
+    keyPlaceholder: 'sk-…',
+    // Seed list only — Kimi's lineup moves fast, and "Refresh models" replaces
+    // this with whatever the account can actually reach (see fetchModels).
+    models:      ['kimi-k2.5', 'kimi-k2.6', 'kimi-k2.7-code', 'kimi-k3'],
+    defaultModel:'kimi-k2.6',
+    needsKey:    true,
+  },
 };
 
 // ── Config management ─────────────────────────────────────────────────────────
 
 const CONFIG_KEY = 'imweb-ai-config';
 
+/**
+ * Derived from PROVIDERS, never hand-copied.
+ *
+ * This used to be a second literal list, and the two had already drifted: it
+ * pinned Anthropic to `claude-sonnet-4-6` while PROVIDERS advertised
+ * `claude-sonnet-5` as the default, so the advertised default was one nothing
+ * could ever select. Nothing catches that — both ids are real, both resolve,
+ * and the call succeeds against the wrong model. Same failure as the six
+ * hand-copied SOURCE_DEFS in CLAUDE.md, one subsystem over: a list with two
+ * origins has one that nothing tests.
+ *
+ * Adding a provider now needs no edit here at all.
+ */
 function buildDefaultConfig() {
+  const providers = {};
+  for (const [id, p] of Object.entries(PROVIDERS)) {
+    providers[id] = { apiKey: p.defaultKey ?? '', model: p.defaultModel };
+  }
   return {
     activeProvider: 'gemini',
-    providers: {
-      anthropic:  { apiKey: '', model: 'claude-sonnet-4-6' },
-      gemini:     { apiKey: '', model: 'gemini-2.0-flash' },
-      openai:     { apiKey: '', model: 'gpt-4o-mini'       },
-      ollama:     { apiKey: 'http://localhost:11434', model: 'llama3.2' },
-      openrouter: { apiKey: '', model: 'anthropic/claude-sonnet-4.5' },
-    },
+    providers,
     narrator: { interval: 10000, length: 'medium' },
     coach:    { interval: 45000 },
   };
@@ -169,37 +208,35 @@ async function callGemini(pcfg, system, user, maxTokens) {
     .join('');
 }
 
-async function callOpenAI(pcfg, system, user, maxTokens) {
-  const res = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Content-Type':  'application/json',
-      'Authorization': `Bearer ${pcfg.apiKey}`,
-    },
-    body: JSON.stringify({
-      model:      pcfg.model,
-      max_tokens: maxTokens,
-      messages: [
-        { role: 'system', content: system },
-        { role: 'user',   content: user   },
-      ],
-    }),
-  });
-  if (!res.ok) {
-    const e = await res.json().catch(() => ({}));
-    throw new Error(e.error?.message ?? `OpenAI error ${res.status}`);
-  }
-  return (await res.json()).choices?.[0]?.message?.content ?? '';
-}
+/**
+ * The OpenAI /chat/completions shape, which four of these providers speak
+ * verbatim — OpenAI, OpenRouter, DeepSeek and Kimi. Only the endpoint, the
+ * label in the error and any extra headers differ, so those are DATA rather
+ * than four near-identical functions. CLAUDE.md's rule about copied patterns
+ * ("do not copy the pattern, which is how seven near-duplicates accrued")
+ * applies here as much as it does to _srcUsed.
+ *
+ * Anthropic, Gemini and Ollama each keep their own caller: they differ in
+ * request body, not just in address.
+ */
+const OPENAI_SHAPED = {
+  openai:     { url: 'https://api.openai.com/v1/chat/completions',   label: 'OpenAI' },
+  openrouter: { url: 'https://openrouter.ai/api/v1/chat/completions', label: 'OpenRouter',
+                headers: { 'HTTP-Referer': 'https://imweb.app', 'X-Title': 'ImWeb' } },
+  // Both are documented as OpenAI-compatible; `/v1` is a compatibility path on
+  // each and has nothing to do with the model generation.
+  deepseek:   { url: 'https://api.deepseek.com/v1/chat/completions',  label: 'DeepSeek' },
+  kimi:       { url: 'https://api.moonshot.ai/v1/chat/completions',   label: 'Kimi' },
+};
 
-async function callOpenRouter(pcfg, system, user, maxTokens) {
-  const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+async function callOpenAIShaped(providerId, pcfg, system, user, maxTokens) {
+  const ep = OPENAI_SHAPED[providerId];
+  const res = await fetch(ep.url, {
     method: 'POST',
     headers: {
       'Content-Type':  'application/json',
       'Authorization': `Bearer ${pcfg.apiKey}`,
-      'HTTP-Referer':  'https://imweb.app',
-      'X-Title':       'ImWeb',
+      ...(ep.headers ?? {}),
     },
     body: JSON.stringify({
       model:      pcfg.model,
@@ -212,7 +249,7 @@ async function callOpenRouter(pcfg, system, user, maxTokens) {
   });
   if (!res.ok) {
     const e = await res.json().catch(() => ({}));
-    throw new Error(e.error?.message ?? `OpenRouter error ${res.status}`);
+    throw new Error(e.error?.message ?? `${ep.label} error ${res.status}`);
   }
   return (await res.json()).choices?.[0]?.message?.content ?? '';
 }
@@ -286,6 +323,22 @@ async function fetchModels(providerId) {
       const data = await res.json();
       return (data.data ?? []).map(m => m.id).sort();
     }
+    // Both serve OpenAI's /models listing verbatim. This is the path that
+    // matters for Kimi in particular: its lineup moves faster than any list
+    // shipped in source, so the seed in PROVIDERS is a starting point and THIS
+    // is the truth.
+    case 'deepseek':
+    case 'kimi': {
+      const base = providerId === 'deepseek'
+        ? 'https://api.deepseek.com/v1/models'
+        : 'https://api.moonshot.ai/v1/models';
+      const res = await fetch(base, {
+        headers: { 'Authorization': `Bearer ${pcfg.apiKey}` },
+      });
+      if (!res.ok) throw new Error(`${PROVIDERS[providerId].name} error ${res.status}`);
+      const data = await res.json();
+      return (data.data ?? []).map(m => m.id).sort();
+    }
     default:
       throw new Error(`Unknown provider: ${providerId}`);
   }
@@ -299,12 +352,11 @@ async function _call(system, user, maxTokens = 512) {
   const pcfg = cfg.providers[id];
   if (!pcfg) throw new Error('No provider configured');
   if (PROVIDERS[id]?.needsKey && !pcfg.apiKey) throw new Error('no-key');
+  if (id in OPENAI_SHAPED) return callOpenAIShaped(id, pcfg, system, user, maxTokens);
   switch (id) {
-    case 'anthropic':  return callAnthropic (pcfg, system, user, maxTokens);
-    case 'gemini':     return callGemini    (pcfg, system, user, maxTokens);
-    case 'openai':     return callOpenAI    (pcfg, system, user, maxTokens);
-    case 'ollama':     return callOllama    (pcfg, system, user, maxTokens);
-    case 'openrouter': return callOpenRouter(pcfg, system, user, maxTokens);
+    case 'anthropic':  return callAnthropic(pcfg, system, user, maxTokens);
+    case 'gemini':     return callGemini   (pcfg, system, user, maxTokens);
+    case 'ollama':     return callOllama   (pcfg, system, user, maxTokens);
     default:           throw new Error(`Unknown provider: ${id}`);
   }
 }
