@@ -1,3 +1,8 @@
+---
+name: surgical
+description: Minimal-diff edit workflow for ImWeb — recon with git log and grep, state how the fix could fail, make one str_replace edit, node --check, verify, commit. Use when making a targeted code fix rather than exploring or refactoring.
+---
+
 ## Surgical Edit Workflow
 1. git log --oneline -5 && git status
 2. Grep for the exact target block (max 5 searches)
