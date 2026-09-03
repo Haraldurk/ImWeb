@@ -25,6 +25,46 @@
 /** Ordinary quotes throughout: `${}` inside a single-quoted string is literal. */
 export const MUTATIONS = [
   // ═════════════════════════════════════════════════════════════════════════
+  // Pos Play and partition-relative cues (#84)
+  //
+  // The PR reported "Mutation-calibrated 4/4" and named these four, but ran
+  // them by hand and never committed them — so the calibration was a claim
+  // nobody could re-run, in the registry whose whole point is that these are
+  // kept. Written down here, verbatim from that list, and confirmed caught.
+  // ═════════════════════════════════════════════════════════════════════════
+  {
+    name: 'seek: the read position jumps without riding the duck',
+    audit: 'audit-audio-dsp.mjs',
+    file: 'src/audio/engine/tape-processor.js',
+    why: 'a seek is a discontinuity in the read position and lands as a CLICK unless it happens while the zone is ducked — which is the entire reason it rides the same pend the partition change does rather than being applied where it arrives',
+    find: 'z.pend = true; z.pendPart = z.part; z.pendPos = f;',
+    replace: 'z.pendPart = z.part; z.pendPos = f;',
+  },
+  {
+    name: 'seek: a partition change leaves a queued seek in place',
+    audit: 'audit-audio-dsp.mjs',
+    file: 'src/audio/engine/tape-processor.js',
+    why: 'the two share one duck, so a partition change arriving after a seek must CLEAR it — otherwise the queued fraction is applied against the NEW partition span and the needle lands somewhere nobody asked for, at the one moment the zone is silent and cannot show it',
+    find: 'z.pend = true; z.pendPart = slot; z.pendPos = null;',
+    replace: 'z.pend = true; z.pendPart = slot;',
+  },
+  {
+    name: 'cue: a partial recall writes the value it does not have',
+    audit: 'audit-cue-banks.mjs',
+    file: 'src/core/CueBank.js',
+    why: 'allowPartial means "write what the cue HOLDS and leave the rest alone". Writing the failed Number() instead pushes NaN into a live parameter, which is worse than the dropped cue it replaced — a silent NaN in the audio graph rather than a slot that does nothing',
+    find: 'else if (!this.allowPartial) return null;   // all or nothing',
+    replace: 'else if (!this.allowPartial) return null; else cue[k] = n;',
+  },
+  {
+    name: 'cue: the shipped bank goes back to all-or-nothing',
+    audit: 'audit-cue-banks.mjs',
+    file: 'src/main.js',
+    why: 'the playback cue keys changed, so every project saved before that holds cues missing the new ones. With allowPartial off the bank rejects each of them and the whole bank loads EMPTY — the exact data loss the flag was added to prevent, and it looks like the user never saved any cues',
+    find: '    allowPartial: true,',
+    replace: '    allowPartial: false,',
+  },
+  // ═════════════════════════════════════════════════════════════════════════
   // Rearrangements that walk around a spelling
   //
   // LEARNED 2026-08-15: a regex over source asserts a SPELLING, and the defect

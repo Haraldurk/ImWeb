@@ -100,37 +100,74 @@ console.log('\nthe movie deck bank still behaves as it did');
 
 console.log('\nthe Playback Zone bank');
 {
+  const KEYS = ['start', 'len', 'rate', 'level'];
+  const mk = () => new CueBank(makePs(), { banks: ['aplay'], keys: KEYS, allowPartial: true });
   const ps = makePs();
-  const cues = new CueBank(ps, { banks: ['aplay'], keys: ['part', 'start', 'len'] });
+  const cues = new CueBank(ps, { banks: ['aplay'], keys: KEYS, allowPartial: true });
 
-  ps.set('aplay.part', 2); ps.set('aplay.start', 0.25); ps.set('aplay.len', 0.5);
-  ps.set('aplay.rate', 2); ps.set('aplay.on', 1);
+  ps.set('aplay.start', 0.25); ps.set('aplay.len', 0.5);
+  ps.set('aplay.rate', 2); ps.set('aplay.level', 0.4);
+  ps.set('aplay.part', 2); ps.set('aplay.on', 1); ps.set('aplay.pos', 0.6);
   check('store captures a slot', cues.store('aplay', 0) && cues.has('aplay', 0));
 
   const cue = cues.get('aplay', 0);
-  check('a cue is exactly part/start/len', Object.keys(cue).sort().join() === 'len,part,start',
-    Object.keys(cue).join());
-  // The whole point of the "region only" decision: recall must not touch how
-  // the zone sounds or whether it is running.
-  check('rate, level, unsafe and on are NOT captured',
-    !('rate' in cue) && !('level' in cue) && !('unsafe' in cue) && !('on' in cue),
-    Object.keys(cue).join());
+  check('a cue is exactly start/len/rate/level',
+    Object.keys(cue).sort().join() === 'len,level,rate,start', Object.keys(cue).join());
+  /**
+   * PARTITION IS NOT CAPTURED — owner's call, 2026-08-27. It makes the cue
+   * partition-RELATIVE: eight shapes applied to whichever partition is
+   * selected, rather than eight fixed places on the tape. Asserted rather than
+   * merely commented, because the previous decision was the opposite one and
+   * "which is it this week" is exactly what an audit is for.
+   */
+  check('Partition is NOT captured — cues are partition-relative',
+    !('part' in cue), Object.keys(cue).join());
+  // Pos is a seek. A cue carrying it would restart the read on every recall.
+  check('Pos is NOT captured', !('pos' in cue), Object.keys(cue).join());
+  check('Run is NOT captured — a recall never starts or stops the zone',
+    !('on' in cue), Object.keys(cue).join());
 
-  ps.set('aplay.part', 0); ps.set('aplay.start', 0); ps.set('aplay.len', 1);
-  ps.set('aplay.rate', -1); ps.set('aplay.on', 0);
+  ps.set('aplay.start', 0); ps.set('aplay.len', 1);
+  ps.set('aplay.rate', -1); ps.set('aplay.level', 1);
+  ps.set('aplay.part', 0); ps.set('aplay.on', 0);
   const order = spySets(ps, 'aplay');
   cues.recall('aplay', 0);
-  check('recall restores the region',
-    ps.get('aplay.part').value === 2 && ps.get('aplay.start').value === 0.25
-      && ps.get('aplay.len').value === 0.5,
-    `P${ps.get('aplay.part').value} ${ps.get('aplay.start').value}/${ps.get('aplay.len').value}`);
-  // Start and Length are fractions OF the partition, so writing them first
-  // resolves them against the partition being left.
-  check('recall writes exactly part, start, len in that order',
-    order.join() === 'part,start,len', order.join(' → ') || '(nothing written)');
-  check('recall leaves Rate and Run alone',
-    ps.get('aplay.rate').value === -1 && ps.get('aplay.on').value === 0,
-    `rate ${ps.get('aplay.rate').value}, on ${ps.get('aplay.on').value}`);
+  check('recall restores start, len, rate and level',
+    ps.get('aplay.start').value === 0.25 && ps.get('aplay.len').value === 0.5
+      && ps.get('aplay.rate').value === 2 && ps.get('aplay.level').value === 0.4,
+    `${ps.get('aplay.start').value}/${ps.get('aplay.len').value} rate ${ps.get('aplay.rate').value} lvl ${ps.get('aplay.level').value}`);
+  check('recall writes exactly start, len, rate, level in that order',
+    order.join() === 'start,len,rate,level', order.join(' → ') || '(nothing written)');
+  check('recall leaves Partition and Run alone',
+    ps.get('aplay.part').value === 0 && ps.get('aplay.on').value === 0,
+    `P${ps.get('aplay.part').value}, on ${ps.get('aplay.on').value}`);
+
+  // Schema evolution. Cues stored before Rate and Level joined the set carry
+  // only part/start/len; rejecting them would silently empty the bank of every
+  // project saved until today.
+  const legacy = mk();
+  legacy.restore({ aplay: [{ part: 2, start: 0.3, len: 0.4 }] });
+  const lc = legacy.get('aplay', 0);
+  check('a cue saved before Rate/Level joined still loads', lc !== null,
+    JSON.stringify(lc));
+  check('and keeps the keys it does have',
+    lc && lc.start === 0.3 && lc.len === 0.4, JSON.stringify(lc));
+  check('while the key it never had is simply absent',
+    lc && !('rate' in lc) && !('level' in lc), JSON.stringify(lc));
+
+  // A partial recall must not write `undefined` into the params it lacks —
+  // the value setter would clamp that to min and call it a real edit.
+  const lps = legacy.ps;
+  lps.set('aplay.rate', 1.5); lps.set('aplay.level', 0.8);
+  legacy.recall('aplay', 0);
+  check('a partial recall leaves the missing params untouched',
+    lps.get('aplay.rate').value === 1.5 && lps.get('aplay.level').value === 0.8,
+    `rate ${lps.get('aplay.rate').value}, level ${lps.get('aplay.level').value}`);
+
+  const empty = mk();
+  empty.restore({ aplay: [{ nothing: 1 }] });
+  check('a cue holding NO recognised key is still rejected',
+    empty.get('aplay', 0) === null, JSON.stringify(empty.get('aplay', 0)));
 }
 
 console.log('\nDisplay States must not capture a slot index');
@@ -163,8 +200,10 @@ console.log('\nthe SHIPPED construction, not a hand-built one');
   if (m) {
     const keys = (m[1].match(/keys\s*:\s*\[([^\]]*)\]/) || [, ''])[1]
       .split(',').map(s => s.trim().replace(/['"]/g, '')).filter(Boolean);
-    check('the shipped key order is part, start, len',
-      keys.join() === 'part,start,len', keys.join() || '(no keys found)');
+    check('the shipped key order is start, len, rate, level',
+      keys.join() === 'start,len,rate,level', keys.join() || '(no keys found)');
+    check('the shipped bank allows partial cues (old saves keep their banks)',
+      /allowPartial\s*:\s*true/.test(m[1]), m[1].trim());
     check('the shipped bank is aplay',
       /banks\s*:\s*\[\s*['"]aplay['"]\s*\]/.test(m[1]), m[1].trim());
   }
@@ -177,12 +216,13 @@ console.log('\nthe SHIPPED construction, not a hand-built one');
 console.log('\nproject-file round trip');
 {
   const ps = makePs();
-  const cues = new CueBank(ps, { banks: ['aplay'], keys: ['part', 'start', 'len'] });
-  ps.set('aplay.part', 1); ps.set('aplay.start', 0.1); ps.set('aplay.len', 0.2);
+  const KEYS = ['start', 'len', 'rate', 'level'];
+  const cues = new CueBank(ps, { banks: ['aplay'], keys: KEYS, allowPartial: true });
+  ps.set('aplay.start', 0.1); ps.set('aplay.len', 0.2);
   cues.store('aplay', 3);
   const json = JSON.parse(JSON.stringify(cues.serialize()));
 
-  const fresh = new CueBank(makePs(), { banks: ['aplay'], keys: ['part', 'start', 'len'] });
+  const fresh = new CueBank(makePs(), { banks: ['aplay'], keys: KEYS, allowPartial: true });
   fresh.restore(json);
   check('a stored cue survives serialize → restore',
     JSON.stringify(fresh.get('aplay', 3)) === JSON.stringify(cues.get('aplay', 3)),
@@ -191,14 +231,15 @@ console.log('\nproject-file round trip');
   check('the bank is still eight long', fresh.slots.aplay.length === CUE_SLOTS);
 
   // Every file written before this feature has no playCues key at all.
-  const legacy = new CueBank(makePs(), { banks: ['aplay'], keys: ['part', 'start', 'len'] });
+  const legacy = new CueBank(makePs(), { banks: ['aplay'], keys: KEYS });
   legacy.restore(undefined);
   check('restore(undefined) is survivable', legacy.slots.aplay.length === CUE_SLOTS
     && legacy.slots.aplay.every(c => c === null));
-  legacy.restore({ aplay: [{ part: 1, start: 0.5 }] });     // len missing
-  check('a cue missing a key is dropped, not half-restored',
+  // This bank is STRICT (no allowPartial), like the movie decks.
+  legacy.restore({ aplay: [{ start: 0.5, len: 0.2, rate: 1 }] });   // level missing
+  check('a STRICT bank still drops a cue missing a key',
     legacy.get('aplay', 0) === null, JSON.stringify(legacy.get('aplay', 0)));
-  legacy.restore({ aplay: [{ part: 1, start: 0.5, len: 'x' }] });
+  legacy.restore({ aplay: [{ start: 0.5, len: 0.2, rate: 1, level: 'x' }] });
   check('a non-numeric value is dropped', legacy.get('aplay', 0) === null);
   legacy.restore({ somethingElse: [] });
   check('an unknown bank is ignored', legacy.slots.aplay.length === CUE_SLOTS);

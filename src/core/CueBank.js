@@ -41,12 +41,26 @@ export class CueBank {
    *   recall has written every key. For a movie deck this forces the seek that
    *   writing Pos alone does not perform; a bank whose params take effect on
    *   write needs nothing here.
+   * @param {boolean} [cfg.allowPartial] - accept a stored cue that is missing
+   *   keys, writing only what it has.
+   *
+   *   Off by default, and the movie bank keeps it off deliberately: its three
+   *   keys are only meaningful together, so a cue that lost `pos` would recall
+   *   an in/out pair without the playhead that belongs to it — the exact
+   *   failure this module was written to prevent. A half-restore there is worse
+   *   than no restore.
+   *
+   *   On for a bank whose key list can CHANGE. The zone bank's did: cues stored
+   *   before Rate and Level joined carry only part/start/len, and rejecting
+   *   them would silently empty every saved project's bank on load. Its keys
+   *   are independent of one another, so writing a subset is coherent.
    */
-  constructor(ps, { banks, keys, afterRecall = null }) {
+  constructor(ps, { banks, keys, afterRecall = null, allowPartial = false }) {
     this.ps = ps;
     this.banks = banks;
     this.keys = keys;
     this.afterRecall = afterRecall;
+    this.allowPartial = allowPartial;
     /** @type {Record<string, Array<Record<string, number>|null>>} */
     this.slots = {};
     for (const b of banks) this.slots[b] = new Array(CUE_SLOTS).fill(null);
@@ -95,7 +109,13 @@ export class CueBank {
   recall(prefix, i) {
     const cue = this.get(prefix, i);
     if (!cue) return false;
-    for (const k of this.keys) this.ps.set(`${prefix}.${k}`, cue[k]);
+    // Only what the cue HOLDS. A partial cue (see allowPartial) leaves the
+    // params it does not carry exactly where they are, rather than writing
+    // undefined into them — which the value setter would clamp to min and
+    // silently rewrite as a real edit.
+    for (const k of this.keys) {
+      if (k in cue) this.ps.set(`${prefix}.${k}`, cue[k]);
+    }
     this.afterRecall?.(prefix);
     return true;
   }
@@ -130,10 +150,13 @@ export class CueBank {
         const cue = {};
         for (const k of this.keys) {
           const n = Number(c[k]);
-          if (!Number.isFinite(n)) return null;
-          cue[k] = n;
+          if (Number.isFinite(n)) cue[k] = n;
+          else if (!this.allowPartial) return null;   // all or nothing
         }
-        return cue;
+        // A partial bank still rejects a cue holding NOTHING it recognises —
+        // an empty object is not a cue, and a slot that lights up but restores
+        // nothing is worse than an empty one.
+        return Object.keys(cue).length ? cue : null;
       });
     }
     this.onChange?.();

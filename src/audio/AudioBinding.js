@@ -761,6 +761,7 @@ export class AudioBinding {
     }
     this.engine.playRate(0, g('aplay.rate'));
     this.engine.playLevel(0, g('aplay.level'));
+    this.engine.playPos(0, g('aplay.pos'));
     this.engine.recDynamic(0, !!g('arec.dynamic'));
     this.engine.zonePart('spectral', 0, g('aspec.part'));
     this.engine.zoneUnsafe('spectral', 0, !!g('aspec.unsafe'));
@@ -1239,6 +1240,7 @@ export class AudioBinding {
     }
     this._on('aplay.rate', (v) => this.engine.playRate(0, v));
     this._on('aplay.level', (v) => this.engine.playLevel(0, v));
+    this._on('aplay.pos', (v) => this.engine.playPos(0, v));
     this._on('arec.dynamic', (v) => this.engine.recDynamic(0, !!v));
 
     // The spectral writer. Only the two the ENGINE holds are pushed on change —

@@ -406,7 +406,7 @@ export function buildMappingPanels(ps, contextMenu) {
     // stages at all.
     // ...plus cueSlot/cueStore, appended by id for the same stated reason the
     // decks' are: they are group 'global', so pick() cannot reach them.
-    'audio-play-params': [...pick('aplay', ['part', 'start', 'len', 'rate', 'level', 'unsafe', 'on']),
+    'audio-play-params': [...pick('aplay', ['part', 'start', 'len', 'pos', 'rate', 'level', 'unsafe', 'on']),
       ps.get('aplay.cueSlot'), ps.get('aplay.cueStore')].filter(Boolean),
     // Signal order, not registration order: source → its own controls → filter
     // → saturator → level, so the row list reads as the chain it is.

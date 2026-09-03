@@ -1528,5 +1528,97 @@ console.log('\nthe Playback zone level (fader x anti-click ramp)');
   }
 }
 
+// ── the Playback zone's playhead ───────────────────────────────────────────
+//
+// A SEEK, not a slewed target. It rides the same `pend` duck a partition change
+// does, because moving the read head mid-flight is a discontinuity in the
+// signal — a click. The interesting assertions are therefore about WHEN it
+// lands, not just where.
+console.log('\nthe Playback zone playhead (seek, ducked)');
+{
+  const rig = () => {
+    const r = makeEngine();
+    r.send('/part/0/bounds', 0, SR);
+    r.send('/zone/play/0/part', 0);
+    r.send('/engine/glide', 0);
+    r.send('/zone/play/0/region', 0, 24000);
+    return r;
+  };
+
+  // A silent zone has nothing to click, so it takes the seek immediately.
+  {
+    const { p, send } = rig();
+    send('/zone/play/0/pos', 0.5);
+    check('a stopped zone seeks immediately', Math.abs(p._play[0].phase - 12000) < 1,
+      `phase ${p._play[0].phase}`);
+    check('and it is a fraction OF THE REGION, not of the tape',
+      Math.abs(p._play[0].phase - 0.5 * 24000) < 1, `phase ${p._play[0].phase}`);
+  }
+
+  // A running zone must NOT jump on the spot.
+  {
+    const { p, send, run } = rig();
+    send('/zone/play/0/on');
+    run(60);
+    const before = p._play[0].phase;
+    send('/zone/play/0/pos', 0.75);
+    check('a running zone does not move the head on the message',
+      p._play[0].phase === before, `${before} -> ${p._play[0].phase}`);
+    check('it queues the seek instead', p._play[0].pend === true && p._play[0].pendPos === 0.75,
+      `pend ${p._play[0].pend}, pendPos ${p._play[0].pendPos}`);
+    // Measure AT the landing, not after it. The zone resumes reading the
+    // instant the duck lifts, so a fixed window measures the seek plus however
+    // much playback followed — the first draft read 4054 for a seek to 18000,
+    // which is 18000 + 10054 wrapped, i.e. the code being right.
+    let landed = null;
+    for (let q = 0; q < 200 && landed === null; q++) {
+      run(1);
+      if (!p._play[0].pend) landed = p._play[0].phase;
+    }
+    check('and lands it at the bottom of the duck',
+      landed !== null && Math.abs(landed - 0.75 * 24000) < 200,
+      `phase ${landed}, want ~${0.75 * 24000}`);
+    check('the queue is cleared once applied',
+      p._play[0].pend === false && p._play[0].pendPos === null,
+      `pend ${p._play[0].pend}, pendPos ${p._play[0].pendPos}`);
+    check('the zone is audible again afterwards', run(20).rms > 0.1);
+  }
+
+  // null vs 0 is the whole reason pendPos is nullable: a partition change means
+  // "restart at the top", and 0 is a legal seek target that means the same
+  // place — but they must not be the same VALUE, or a partition change would
+  // read as a seek and vice versa.
+  {
+    const { p, send, run } = rig();
+    send('/part/1/bounds', SR / 2, SR / 2);
+    send('/zone/play/0/on');
+    run(60);
+    send('/zone/play/0/pos', 0.6);
+    send('/zone/play/0/part', 1);              // a partition change AFTER a seek
+    check('a partition change clears a queued seek', p._play[0].pendPos === null,
+      `pendPos ${p._play[0].pendPos}`);
+    let landed2 = null;
+    for (let q = 0; q < 200 && landed2 === null; q++) {
+      run(1);
+      if (!p._play[0].pend) landed2 = p._play[0].phase;
+    }
+    check('and restarts at the top of the region, as it always did',
+      landed2 !== null && landed2 < 200, `phase ${landed2}`);
+    check('the partition still took', p._play[0].part === 1, `P${p._play[0].part}`);
+  }
+
+  // Out of range is clamped rather than refused: a controller sweeping this
+  // will legitimately reach the rails, and a refusal per frame is noise.
+  {
+    const { p, send } = rig();
+    send('/zone/play/0/pos', 5);
+    check('a seek past the end clamps to the end',
+      Math.abs(p._play[0].phase - 24000) < 1, `phase ${p._play[0].phase}`);
+    send('/zone/play/0/pos', -3);
+    check('and a negative one clamps to the start', p._play[0].phase === 0,
+      `phase ${p._play[0].phase}`);
+  }
+}
+
 console.log(failures ? `\n${failures} FAILURE(S)\n` : '\nAll audio DSP checks passed.\n');
 process.exit(failures ? 1 : 0);

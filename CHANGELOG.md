@@ -71,6 +71,16 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
   interactive, with a tooltip saying which shader they need.
 
 ### Added
+- **Pos Play — the Playback zone finally has a playhead.** `aplay.pos`, a
+  fraction of the region (0 = its start, 1 = its end), matching MoviePos being
+  a fraction of the in/out window. Until now the zone always read from the
+  start of its region and there was no way to drop the needle anywhere else:
+  the read head lived in the worklet with no address at all.
+  It is a **seek**, not a slewed target — sliding the read position
+  continuously is what moving Start already does. It rides the same duck a
+  partition change does, so a jump lands in the silence rather than clicking.
+  A stopped zone takes it immediately, and an LFO or MIDI knob on it is a
+  playhead you can sweep.
 - **Two audits promoted out of the verification-instrument cluster in
   `docs/LEARNED.md`.** Six entries there were the same mistake — a reading
   believed without first checking that the thing producing it could answer the
@@ -165,6 +175,19 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
   `git rebase --onto` fix.
 
 ### Changed
+- **Playback Zone cues now capture Start, Length, Rate and Level** (they held
+  Partition, Start and Length). So a cue recalls a stretch of tape *and* the
+  speed and loudness it was played at — including reverse, since Rate is
+  signed. Run is still left alone, so a recall never starts or stops the zone.
+  **Partition is no longer captured**, which makes a cue partition-relative:
+  the same eight apply to whichever partition is selected, so you get eight
+  shapes across four partitions rather than eight fixed places on the tape.
+  Pos is not captured either — a cue that moved the playhead would restart the
+  read every time.
+  Cues saved before this **still load**. A bank whose key list can change now
+  accepts a cue that is missing keys and writes only what it has, leaving the
+  rest of the zone alone. The movie decks stay strict on purpose: their three
+  keys are only meaningful together.
 - **The verify skill now covers the dead-AudioWorklet environment.** The in-app
   browser pane may run Chrome with `--disable-audio`; with no output device the
   render thread never pulls, so `process()` is never called while
