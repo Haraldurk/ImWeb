@@ -43,17 +43,53 @@ registerCoreParameters(ps);
 
 // The served copy is what the app actually fetches; docs/ is what people edit.
 // They drift the moment someone edits one and forgets `npm run sync-docs`.
+//
+// EVERY file that script copies, not just the Guide. This checked the Guide
+// alone for a long time, and the other three drifted unnoticed underneath it:
+// public/docs/ImWeb_Full_Manual.md was last synced in #78 while docs/ had been
+// rewritten twice since (#99, #101), so the app served a manual missing the
+// whole 3D camera table, Transparent BG and Mapping — every symptom of a
+// feature that does not exist, in the one document a confused user opens.
+//
+// The list is DERIVED from the npm script rather than written here. An audit
+// that enumerates its own subjects fails open the day someone adds one
+// (LEARNED 2026-08-15), and that is precisely how three of these four escaped.
 let failures = 0;
-try {
-  const served = readFileSync(resolve(root, 'public/docs/ImWeb-Guide.md'), 'utf8');
-  if (served !== md) {
-    console.error('FAIL — public/docs/ImWeb-Guide.md differs from docs/ImWeb-Guide.md.');
-    console.error('       The app serves the public/ copy. Run: npm run sync-docs');
+{
+  const pkg = JSON.parse(readFileSync(resolve(root, 'package.json'), 'utf8'));
+  const script = pkg.scripts?.['sync-docs'] ?? '';
+  const copied = [...script.matchAll(/docs\/([\w.-]+\.md)/g)]
+    .map(m => m[1])
+    .filter(f => !script.startsWith(`cp public/docs/${f}`));
+  const files = [...new Set(copied)];
+
+  if (files.length < 2) {
+    console.error('FAIL — parsed only ' + files.length + ' file(s) out of the sync-docs script.');
+    console.error('       The script changed shape; this check is now vacuous. Fix the parse.');
     failures++;
   }
-} catch {
-  console.error('FAIL — public/docs/ImWeb-Guide.md is missing. Run: npm run sync-docs');
-  failures++;
+
+  for (const f of files) {
+    let source;
+    try {
+      source = readFileSync(resolve(root, `docs/${f}`), 'utf8');
+    } catch {
+      console.error(`FAIL — docs/${f} is named by sync-docs but does not exist.`);
+      failures++;
+      continue;
+    }
+    try {
+      if (readFileSync(resolve(root, `public/docs/${f}`), 'utf8') !== source) {
+        console.error(`FAIL — public/docs/${f} differs from docs/${f}.`);
+        console.error('       The app serves the public/ copy. Run: npm run sync-docs');
+        failures++;
+      }
+    } catch {
+      console.error(`FAIL — public/docs/${f} is missing. Run: npm run sync-docs`);
+      failures++;
+    }
+  }
+  console.log(`${files.length} served doc(s) checked against docs/`);
 }
 
 // Every track needs steps. A typo in a `track:` value is silent in the app —
