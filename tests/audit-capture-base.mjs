@@ -126,10 +126,29 @@ check('ProjectFile stamps _collect()',
   /_sourceCount:\s*CAPTURE_INDIRECT_BASE/.test(project));
 
 console.log('\nreads on every load path');
+
+// These asserted the call within a fixed CHARACTER DISTANCE of the method name
+// (220 and 260). That is a proximity claim standing in for a structural one, and
+// it fails on correct code: adding one more migration to the same chain pushed
+// the call past the window while every load path still called it. An audit that
+// goes red on a correct refactor teaches people to delete audits, so slice the
+// method body and ask the real question inside it — the same shape
+// audit-blend-percent already uses on this very file.
+const bodyOf = (src, from, to) => {
+  const a = src.indexOf(from);
+  if (a === -1) return null;
+  const b = to ? src.indexOf(to, a + from.length) : -1;
+  return src.slice(a, b === -1 ? src.length : b);
+};
+const importBankBody  = bodyOf(preset, 'static importBank', 'static deserialize');
+const deserializeBody = bodyOf(preset, 'static deserialize', 'async save()');
+
+check('Preset.js still has the methods these checks read',
+  importBankBody !== null && deserializeBody !== null);
 check('Preset.deserialize migrates (covers IndexedDB + .imweb banks)',
-  /static deserialize[\s\S]{0,220}migrateStatesCaptureBase/.test(preset));
+  !!deserializeBody && /migrateStatesCaptureBase\(/.test(deserializeBody));
 check('Preset.importBank migrates (.imbank)',
-  /static importBank[\s\S]{0,260}migrateStatesCaptureBase/.test(preset));
+  !!importBankBody && /migrateStatesCaptureBase\(/.test(importBankBody));
 check('PresetManager.importState migrates (.imstate)',
   /importState\(data[\s\S]{0,120}migrateCaptureBase/.test(preset));
 check('ProjectFile._apply migrates the live params overlay',

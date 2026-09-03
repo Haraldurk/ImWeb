@@ -11,6 +11,8 @@ import {
   migrateStatesCaptureBase,
   migrateSdfParams,
   migrateStatesSdfParams,
+  migrateScene3dParams,
+  migrateStatesScene3dParams,
   PARAM_SCHEMA,
   migrateBlendPercent,
   migrateStatesBlendPercent,
@@ -150,8 +152,9 @@ export class Preset {
     const p = new Preset(targetIndex);
     p.name        = data.name   || `Bank ${targetIndex + 1}`;
     p.states      = migrateStatesBlendPercent(
-                      migrateStatesSdfParams(
-                        migrateStatesCaptureBase(data.states || [], data.sourceCount)),
+                      migrateStatesScene3dParams(
+                        migrateStatesSdfParams(
+                          migrateStatesCaptureBase(data.states || [], data.sourceCount))),
                       data.schema);
     p.activeState = data.activeState ?? 0;
     return p;
@@ -167,9 +170,11 @@ export class Preset {
     Object.assign(p, data);
     migrateStatesCaptureBase(p.states, data.sourceCount);
     migrateStatesSdfParams(p.states);
+    migrateStatesScene3dParams(p.states);
     migrateStatesBlendPercent(p.states, data.schema);
     // The bank's own controller bag, separate from any state's.
     migrateSdfParams(null, p.controllers);
+    migrateScene3dParams(null, p.controllers);
     migrateBlendPercent(null, p.controllers, data.schema);
     return p;
   }
@@ -494,6 +499,7 @@ export class PresetManager extends EventTarget {
   importState(data, targetSlot = null) {
     migrateCaptureBase(data.values, data.sourceCount);
     migrateSdfParams(data.values, data.controllers);
+    migrateScene3dParams(data.values, data.controllers);
     migrateBlendPercent(data.values, data.controllers, data.schema);
     if ('output.transfer' in data.values) {
       data.values['feedback.mode'] = data.values['output.transfer'];

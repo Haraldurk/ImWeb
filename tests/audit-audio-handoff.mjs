@@ -55,7 +55,12 @@ await import(`file://${resolve(root, 'src/audio/engine/tape-processor.js')}`);
 console.log('the audio-relevance list');
 {
   const ids = AUDIO_TARGETS.map((t) => t.id);
-  check('every entry is unique', new Set(ids).size === ids.length, ids.join(', '));
+  // The count is asserted alongside the uniqueness, not as decoration: on an
+  // empty list `new Set([]).size === [].length` is TRUE, so this check — and
+  // the density check below it — would both pass green with the whole target
+  // list gone. See the collection-assertion section of audit-audit-hygiene.
+  check('every entry is unique', ids.length > 0 && new Set(ids).size === ids.length,
+    ids.join(', '));
   // The slot IS the index. Nothing persists it, so it cannot drift — but a
   // reordering would silently repoint a live binding mid-session.
   check('slots are positional and dense', AUDIO_TARGETS.every((t, i) => i === AUDIO_TARGETS.indexOf(t)));

@@ -630,9 +630,34 @@ ImWeb</textarea
                                 </button>
                             </div>
                         </div>
+                        <!-- Four subsections rather than one flat dump of 39
+                             rows. Labels and order live here, in markup;
+                             buildMappingPanels() only maps container id →
+                             params, so regrouping needs no JS change as long
+                             as these ids are preserved. -->
                         <div class="panel-subsection">
-                            <div class="subsection-header">Style</div>
-                            <div id="text-params"></div>
+                            <div class="subsection-header">Type</div>
+                            <div id="text-type-params"></div>
+                        </div>
+                        <div class="panel-subsection">
+                            <div class="subsection-header">Colour</div>
+                            <div id="text-color-params"></div>
+                        </div>
+                        <div class="panel-subsection">
+                            <div class="subsection-header">Motion</div>
+                            <div id="text-motion-params"></div>
+                        </div>
+                        <div class="panel-subsection">
+                            <div class="subsection-header">Audio</div>
+                            <div id="text-audio-params"></div>
+                        </div>
+                        <div class="panel-subsection">
+                            <div class="subsection-header">Path</div>
+                            <div id="text-path-params"></div>
+                        </div>
+                        <div class="panel-subsection">
+                            <div class="subsection-header">Transition</div>
+                            <div id="text-transition-params"></div>
                         </div>
                     
                         </div>

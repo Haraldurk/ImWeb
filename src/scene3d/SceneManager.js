@@ -122,6 +122,7 @@ export class SceneManager {
     this._matType   = -1;
     this._toonSteps = -1;
     this._liveTex   = null;
+    this._alphaBg   = false;  // matches the opaque scene.background set above
 
     // Toon gradient: 3-step cel-shading ramp (dark / mid / bright)
     const toonData = new Uint8Array([40, 40, 40, 255,  130, 130, 130, 255,  240, 240, 240, 255]);
@@ -284,6 +285,43 @@ export class SceneManager {
   }
 
   _setupMaterial(mat) {
+    // ONE triplanar formula, injected into BOTH the colour and the displacement
+    // shader. They have to agree: if they disagree, T-Displace bumps the mesh
+    // by coordinates the visible texture never used, which reads as "the
+    // displace does not match the texture".
+    //
+    // Weights come from the NORMAL, coordinates from the POSITION. Deriving
+    // both from normalize(position) — as this did — is correct only where the
+    // surface is radial from the object's origin, which is true of a sphere
+    // and of nothing else. A plane lies in z=0, so that direction has z==0
+    // everywhere: the weights collapse onto the X and Y planes, and both of
+    // those sample a single line of the texture indexed by angle around the
+    // centre. Hence a plane that smeared out of its middle.
+    //
+    // On the unit sphere (GeometryFactory radius 1) position == normal ==
+    // normalize(position), so this is bit-identical to the old path there.
+    const TRIPLANAR_GLSL = `
+      uniform float uTriSharp;
+      vec3 _triWeights(vec3 n) {
+        // uTriSharp decides how abruptly the three projections hand over.
+        // Higher = narrower blend zone: crisper detail, but a sharper crease
+        // where planes meet — and in DISPLACEMENT a crease is a physical ridge,
+        // not a soft edge, which is why this needed to be playable rather than
+        // fixed at 6. Measured on a sphere: pow 6 leaves 30.7% of the surface
+        // in a blend zone, pow 3 leaves 55.8%, pow 2 leaves 72.9%. Wider is
+        // smoother but flatter, since it averages three samples over more of
+        // the surface. There is no free setting; that is the point of a knob.
+        vec3 w = pow(abs(normalize(n)), vec3(uTriSharp));
+        return w / (w.x + w.y + w.z);
+      }
+      vec4 _triSample(sampler2D tex, vec3 pos, vec3 nrm, float scale) {
+        vec3 w = _triWeights(nrm);
+        vec3 p = pos * scale * 0.5 + 0.5;
+        return textureLod(tex, p.yz, 0.0) * w.x
+             + textureLod(tex, p.xz, 0.0) * w.y
+             + textureLod(tex, p.xy, 0.0) * w.z;
+      }
+    `;
     mat.onBeforeCompile = (shader) => {
       shader.uniforms.uWarpMap    = { value: this._fallback };
       shader.uniforms.uWarpAmt    = { value: 0 };
@@ -298,7 +336,12 @@ export class SceneManager {
       shader.uniforms.uTDisplace    = { value: 0 };
       shader.uniforms.uDispTexScale = { value: 1 };
       shader.uniforms.uDispTexProj  = { value: 0 };
-      shader.uniforms.uObjNoiseDisp = { value: 0 };
+      shader.uniforms.uTriplanarDisp = { value: 0 };
+      // Shared by the vertex and fragment halves of TRIPLANAR_GLSL — three
+      // hands both stages the same uniforms object, so one entry covers both
+      // and they cannot disagree about the blend.
+      shader.uniforms.uTriSharp   = { value: 6 };
+      shader.uniforms.uDispSmooth = { value: 0.3 };
       shader.uniforms.uRimAmount  = { value: 0 };
       shader.uniforms.uRimColor   = { value: new THREE.Color(0xffffff) };
       mat._shader = shader;
@@ -317,8 +360,11 @@ export class SceneManager {
         uniform float uTDisplace;
         uniform float uDispTexScale;
         uniform float uDispTexProj;
-        uniform float uObjNoiseDisp;
+        uniform float uTriplanarDisp;
+        uniform float uDispSmooth;
         varying vec3 vObjPos;
+        varying vec3 vObjNormal;
+        ${TRIPLANAR_GLSL}
 
         float _bHash(vec3 p) {
           p = fract(p * vec3(127.1, 311.7, 74.7));
@@ -342,24 +388,22 @@ export class SceneManager {
                + 0.25 * _bNoise(p * 4.0);
         }
         // Additive math noise + texture displacement (independent strengths)
-        float getDisplacement(vec3 pos, vec2 rawUv, vec3 tOff, mat4 _proj, mat4 _mv) {
+        float getDisplacement(vec3 pos, vec3 nrm, vec2 rawUv, vec3 tOff, mat4 _proj, mat4 _mv) {
           float mathNoise = _dispNoise(pos * uDispScale + tOff) * uDisplace;
           if (uTDisplace == 0.0) return mathNoise;
-          vec4 clipPos  = _proj * _mv * vec4(pos, 1.0);
-          vec2 screenUv = (clipPos.xy / clipPos.w) * 0.5 + 0.5;
-          vec2 finalUv  = mix(rawUv, screenUv, uDispTexProj);
-          finalUv = (finalUv - 0.5) * uDispTexScale + 0.5;
           float texVal;
-          if (uObjNoiseDisp > 0.5) {
-            vec3 _tBlend = abs(normalize(pos));
-            _tBlend = pow(_tBlend, vec3(6.0));
-            _tBlend /= (_tBlend.x + _tBlend.y + _tBlend.z);
-            vec3 _oN = normalize(pos);
-            float _dx = textureLod(uDispTexture, _oN.yz * 0.5 + 0.5, 0.0).r;
-            float _dy = textureLod(uDispTexture, _oN.xz * 0.5 + 0.5, 0.0).r;
-            float _dz = textureLod(uDispTexture, _oN.xy * 0.5 + 0.5, 0.0).r;
-            texVal = (_dx*_tBlend.x + _dy*_tBlend.y + _dz*_tBlend.z) * 2.0 - 1.0;
+          if (uTriplanarDisp > 0.5) {
+            // Triplanar. uDispTexScale is honoured HERE too — it used to be
+            // computed into finalUv, which this branch never reads, so
+            // Disp. Tex Scale was silently inert whenever the seamless path
+            // was active. At its default of 1 this matches the colour path
+            // exactly, which is the whole point.
+            texVal = _triSample(uDispTexture, pos, nrm, uDispTexScale).r * 2.0 - 1.0;
           } else {
+            vec4 clipPos  = _proj * _mv * vec4(pos, 1.0);
+            vec2 screenUv = (clipPos.xy / clipPos.w) * 0.5 + 0.5;
+            vec2 finalUv  = mix(rawUv, screenUv, uDispTexProj);
+            finalUv = (finalUv - 0.5) * uDispTexScale + 0.5;
             texVal = textureLod(uDispTexture, finalUv, 0.0).r * 2.0 - 1.0;
           }
           return mathNoise + texVal * uTDisplace;
@@ -377,6 +421,7 @@ export class SceneManager {
           }
         #endif
         vObjPos = position;
+        vObjNormal = normal;
         `
       )
       .replace(
@@ -392,16 +437,32 @@ export class SceneManager {
         }
         if (uDisplace > 0.0 || uTDisplace > 0.0) {
           vec3 _dispOff = vec3(uTime * uDispSpeed);
-          #ifdef USE_UV
+          // Sample the SAME uv the colour map does. vMapUv carries the map's
+          // offset/repeat — including the uvSpeedX/Y scroll — so reading the
+          // raw uv attribute here (as this did) left the bumps standing still
+          // while the texture slid over them.
+          #if defined( USE_MAP )
+          vec2 _meshUv = vMapUv;
+          #elif defined( USE_UV )
           vec2 _meshUv = uv;
           #else
           vec2 _meshUv = vec2(0.0);
           #endif
-          float dn = getDisplacement(position, _meshUv, _dispOff, projectionMatrix, modelViewMatrix);
+          float dn = getDisplacement(position, objectNormal, _meshUv, _dispOff, projectionMatrix, modelViewMatrix);
           transformed += objectNormal * dn;
 
           // ── Finite-difference normal recalculation ──────────────────────
-          float _eps   = 0.005;
+          // The normal is the DERIVATIVE of the height field, so the baseline
+          // this difference is taken over decides how much a small change in
+          // the texture moves the shading. At 0.005 — half a percent of a unit
+          // sphere — a 0.001 height wobble tilts the normal 11.3° and swings a
+          // specular highlight by 47%, which is why an animated noise texture
+          // that looks calm as a background boils with tiny fast glints once it
+          // drives displacement. At 0.04 the same wobble gives 1.4° and 1%.
+          //
+          // Widening this smooths the SHADING only; the geometry keeps every
+          // bump, since the height itself is untouched.
+          float _eps   = mix(0.005, 0.08, uDispSmooth);
           float _uvEps = 0.01;
           // Build object-space tangent frame from undisplaced normal
           vec3 _arbUp    = abs(objectNormal.x) > 0.9 ? vec3(0.0,1.0,0.0) : vec3(1.0,0.0,0.0);
@@ -411,8 +472,8 @@ export class SceneManager {
           // direction in texture space so texture-driven bumps produce correct normals
           vec3 _pA   = position + _tan  * _eps;
           vec3 _pB   = position + _btan * _eps;
-          vec3 _dispA = _pA + objectNormal * getDisplacement(_pA, _meshUv + vec2(_uvEps, 0.0),   _dispOff, projectionMatrix, modelViewMatrix);
-          vec3 _dispB = _pB + objectNormal * getDisplacement(_pB, _meshUv + vec2(0.0,   _uvEps), _dispOff, projectionMatrix, modelViewMatrix);
+          vec3 _dispA = _pA + objectNormal * getDisplacement(_pA, objectNormal, _meshUv + vec2(_uvEps, 0.0),   _dispOff, projectionMatrix, modelViewMatrix);
+          vec3 _dispB = _pB + objectNormal * getDisplacement(_pB, objectNormal, _meshUv + vec2(0.0,   _uvEps), _dispOff, projectionMatrix, modelViewMatrix);
           // New object-space normal via cross product of edge vectors
           vec3 _crossVec = cross(_dispA - transformed, _dispB - transformed);
           float _crossLen = length(_crossVec);
@@ -442,25 +503,37 @@ export class SceneManager {
         uniform float uRimAmount;
         uniform vec3  uRimColor;
         varying vec3 vObjPos;
+        varying vec3 vObjNormal;
+        ${TRIPLANAR_GLSL}
         ${shader.fragmentShader}
       `.replace(
         '#include <map_fragment>',
         `
         #ifdef USE_MAP
-          #ifdef USE_OBJ_NOISE
-            vec3 _triN = abs(normalize(vObjPos));
-            _triN = pow(_triN, vec3(6.0));
-            _triN /= (_triN.x + _triN.y + _triN.z);
-            vec3 _objN = normalize(vObjPos);
-            vec4 _cx = textureLod(map, _objN.yz * 0.5 + 0.5, 0.0);
-            vec4 _cy = textureLod(map, _objN.xz * 0.5 + 0.5, 0.0);
-            vec4 _cz = textureLod(map, _objN.xy * 0.5 + 0.5, 0.0);
-            vec4 sampledDiffuseColor = _cx * _triN.x + _cy * _triN.y + _cz * _triN.z;
+          #ifdef USE_TRIPLANAR
+            vec4 sampledDiffuseColor = _triSample(map, vObjPos, vObjNormal, 1.0);
             diffuseColor *= sampledDiffuseColor;
           #else
             vec4 sampledDiffuseColor = textureLod(map, vMapUv, 0.0);
             diffuseColor *= sampledDiffuseColor;
           #endif
+        #endif
+        `
+      ).replace(
+        '#include <emissivemap_fragment>',
+        // The emissive map is the SAME texture as the diffuse map, so it has to
+        // be projected the same way. three's own chunk samples vEmissiveMapUv —
+        // plain UV — so wiring emissiveMap without this laid a UV-mapped copy,
+        // seam and pole pinch included, over the seamless triplanar diffuse.
+        // Same _triSample as the diffuse path, so the two cannot drift apart.
+        `
+        #ifdef USE_EMISSIVEMAP
+          #ifdef USE_TRIPLANAR
+            vec4 emissiveColor = _triSample(emissiveMap, vObjPos, vObjNormal, 1.0);
+          #else
+            vec4 emissiveColor = texture2D(emissiveMap, vEmissiveMapUv);
+          #endif
+          totalEmissiveRadiance *= emissiveColor.rgb;
         #endif
         `
       ).replace(
@@ -474,7 +547,7 @@ export class SceneManager {
       );
     };
     mat.customProgramCacheKey = () =>
-      'warpblobrimdispvtfv3' + (mat.defines?.USE_OBJ_NOISE ? '_tri' : '');
+      'warpblobrimdispvtfv6' + (mat.defines?.USE_TRIPLANAR ? '_tri' : '');
   }
 
   _rebuildMaterial(type) {
@@ -876,7 +949,10 @@ export class SceneManager {
       // Screen-space mode: pos.x/y treated as normalised screen coords (±1 = screen edge).
       // Convert to world units using camera FOV and distance from origin.
       const fovRad  = (p.get('scene3d.cam.fov').value * Math.PI) / 180;
-      const camDist = Math.abs(p.get('scene3d.cam.z').value);
+      // Genuinely the distance from the origin now. This read |cam.z|, which
+      // equals the distance only while the camera sits on the Z axis — so
+      // screen-space placement drifted as soon as it was moved off it.
+      const camDist = p.get('scene3d.cam.dist').value;
       const halfH   = Math.tan(fovRad / 2) * camDist;
       const halfW   = halfH * (this.width / this.height);
       this.mesh.position.set(px * halfW, py * halfH, pz);
@@ -896,24 +972,72 @@ export class SceneManager {
       if (this.material.emissive)
         this.material.emissive.setHSL(hue, sat, sat > 0 ? 0.5 : 0.0);
 
-      // Emissive: self-lit white when no texture; slider-driven when textured
+      // Emissive — self-illumination, and it now follows the texture.
+      //
+      // This used to give an UNtextured object a free white emissive of 0.35
+      // and a textured one whatever the Emissive slider said, which defaults to
+      // 0. So switching a texture on silently REMOVED a lighting contribution
+      // and the object got darker — the opposite of what putting a picture on
+      // something is for. Worse, Emissive could not recover it: there was no
+      // emissiveMap outside the adopted-mesh path, so the slider added flat
+      // colour rather than lighting the picture.
+      //
+      // Now emissiveMap follows map, so Emissive means "self-illuminate the
+      // texture", and 0.35 is a FLOOR rather than a special case. That constant
+      // is the one the untextured path already used — reusing it is what makes
+      // "a textured object is lit at least as well as an untextured one" true,
+      // which is the invariant that was broken.
       const emissiveAmt = p.get('scene3d.mat.emissive')?.value ?? 0;
       const emHue = (p.get('scene3d.mat.emissiveHue')?.value ?? 0) / 360;
       const emSat = (p.get('scene3d.mat.emissiveSat')?.value ?? 0) / 100;
-      if (!this.material.map) {
-        if (this.material.emissive) this.material.emissive.set(1, 1, 1);
-        this.material.emissiveIntensity = 0.35;
-      } else {
-        if (this.material.emissive) {
-          this.material.emissive.setHSL(emHue, emSat, 0.15 * emissiveAmt);
-        }
-        this.material.emissiveIntensity = emissiveAmt;
+      const EM_FLOOR = 0.35;
+      if (this.material.emissive) {
+        // White unless a tint is dialled in, so the texture's own colour
+        // survives by default — emissive MULTIPLIES emissiveMap, so a dark
+        // emissive colour would cancel the map entirely.
+        if (emSat > 0) this.material.emissive.setHSL(emHue, emSat, 0.5);
+        else           this.material.emissive.set(1, 1, 1);
       }
+      if (this.material.emissiveMap !== undefined) {
+        const wantEmissiveMap = this.material.map ?? null;
+        // Compare before assigning: USE_EMISSIVEMAP is a shader define, so
+        // touching this every frame would recompile the program every frame.
+        if (this.material.emissiveMap !== wantEmissiveMap) {
+          this.material.emissiveMap = wantEmissiveMap;
+          this.material.needsUpdate = true;
+        }
+      }
+      // Adopted meshes (the Hypercube instancer) were pinned at 1.0 by the
+      // texture-swap branch below; keeping that as their floor leaves them
+      // looking identical at Emissive 0 while the slider still does something.
+      this.material.emissiveIntensity =
+        (this._adoptedMesh ? 1.0 : EM_FLOOR) + emissiveAmt;
 
       if (this.material.roughness !== undefined) this.material.roughness = p.get('scene3d.mat.roughness').value;
       if (this.material.metalness !== undefined) this.material.metalness = p.get('scene3d.mat.metalness').value;
+      // Transparent background: drop the scene's opaque clear colour so the
+      // render target's alpha means coverage rather than always 1.
+      const alphaBg = !!p.get('scene3d.mat.alphabg')?.value;
+      if (alphaBg !== this._alphaBg) {
+        this._alphaBg = alphaBg;
+        this.scene.background = alphaBg ? null : new THREE.Color(0x020205);
+      }
+
       this.material.opacity  = p.get('scene3d.mat.opacity').value;
       this.material.transparent = this.material.opacity < 1;
+      // Alpha needs its OWN blend factors. The default follows RGB
+      // (SrcAlpha / OneMinusSrcAlpha), which computes dstA = srcA² + … — alpha
+      // multiplied by itself, so a 50% object would land at 25% coverage and
+      // read as far more transparent than it is. One / OneMinusSrcAlpha is the
+      // correct accumulation. RGB stays premultiplied, which is exactly what
+      // Keyer → Alpha Emissive expects.
+      if (this.material.transparent && alphaBg) {
+        this.material.blendSrcAlpha = THREE.OneFactor;
+        this.material.blendDstAlpha = THREE.OneMinusSrcAlphaFactor;
+      } else {
+        this.material.blendSrcAlpha = null;
+        this.material.blendDstAlpha = null;
+      }
 
       // Physical material properties
       if (matType === 1 && this.material.isMeshPhysicalMaterial) {
@@ -946,10 +1070,28 @@ export class SceneManager {
 
       // Live texture source on mesh surface
       const texSrcIdx = p.get('scene3d.mat.texsrc')?.value ?? 0;
-      const _useObjNoise = texSrcIdx === 6;
-      if (!!this.material.defines?.USE_OBJ_NOISE !== _useObjNoise) {
-        if (_useObjNoise) this.material.defines.USE_OBJ_NOISE = true;
-        else delete this.material.defines.USE_OBJ_NOISE;
+
+      // Which projection maps a texture onto the mesh. This used to be inferred
+      // — triplanar if and only if the source was Noise — so the seamless
+      // mapping that removes the pinch at a sphere's poles was unreachable for
+      // a movie or the camera, which pinch just as badly. Auto keeps that old
+      // rule so no existing render moves; UV and Seamless override it.
+      //
+      // Both remain useful: triplanar projects from three axes and blends, so
+      // it is seamless and pole-free, but it MIRRORS the far side of the object
+      // and softens the 45-degree seams. Ideal for noise and texture, wrong for
+      // a picture with faces or text in it. Hence a choice, not a rule.
+      const MAPPING_AUTO = 0, MAPPING_UV = 1, MAPPING_TRI = 2;
+      const mappingSel = p.get('scene3d.mat.mapping')?.value ?? MAPPING_AUTO;
+      const resolveTriplanar = (srcIdx) =>
+        mappingSel === MAPPING_TRI ? true :
+        mappingSel === MAPPING_UV  ? false :
+        srcIdx === 6;   // Auto — Noise is procedural, so it costs nothing to wrap
+
+      const _useTriplanar = resolveTriplanar(texSrcIdx);
+      if (!!this.material.defines?.USE_TRIPLANAR !== _useTriplanar) {
+        if (_useTriplanar) this.material.defines.USE_TRIPLANAR = true;
+        else delete this.material.defines.USE_TRIPLANAR;
         this.material.needsUpdate = true;
       }
       const texSrcMap = [null, inputs.camera, inputs.movie, inputs.screen, inputs.draw, inputs.buffer, inputs.noise];
@@ -962,13 +1104,10 @@ export class SceneManager {
         this.material.map = useTex
           ? Object.assign(useTex, { wrapS: THREE.RepeatWrapping, wrapT: THREE.RepeatWrapping })
           : null;
-        if (this._adoptedMesh) {
-          this.material.emissive?.set(1, 1, 1);
-          if (this.material.emissiveMap !== undefined)
-            this.material.emissiveMap = this.material.map;
-          this.material.emissiveIntensity = 1.0;
-          this.material.needsUpdate = true;
-        }
+        // The adopted-mesh branch used to set emissive / emissiveMap /
+        // intensity here as well. That is now done for every mesh in the
+        // emissive block above, and doing it in two places meant the two
+        // disagreed on the frames the texture changed.
       }
 
       // WarpMap displacement on UVs
@@ -976,10 +1115,15 @@ export class SceneManager {
       const activeWarp = (warpIdx > 0 && inputs.warpMaps?.[warpIdx - 1]) ? inputs.warpMaps[warpIdx - 1] : null;
       const warpAmt = p.get('displace.warpamt').value / 100;
 
+      const triSharp = p.get('scene3d.mat.triblend')?.value ?? 6;
       const updateMat = (m) => {
         if (m._shader) {
           m._shader.uniforms.uWarpMap.value = (activeWarp === this.target.texture) ? this._fallback : (activeWarp || this._fallback);
           m._shader.uniforms.uWarpAmt.value = warpAmt;
+          // One value for colour AND displacement — they must share a blend or
+          // the relief stops lining up with the picture on it, which is the
+          // whole reason the triplanar formula is a single shared function.
+          if (m._shader.uniforms.uTriSharp) m._shader.uniforms.uTriSharp.value = triSharp;
         }
       };
 
@@ -1022,21 +1166,39 @@ export class SceneManager {
       const tDisplaceAmt     = p.get('scene3d.mat.tDisplace')?.value      ?? 0;
       const displaceTexScale = p.get('scene3d.mat.dispTexScale')?.value  ?? 1;
       const displaceTexProj  = p.get('scene3d.mat.dispTexProj')?.value   ?? 0;
+      const dispSmooth       = p.get('scene3d.mat.dispsmooth')?.value    ?? 0.3;
       const dispTex          = inputs.dispTex ?? null;
+      // Which image does T-Displace read? Before this, the answer was "the
+      // global Displace Source layer" (layer.ds) with a special case forcing
+      // Noise when the SURFACE was Noise — so by default it displaced by an
+      // image the object was not showing. scene3d.mat.dispsrc names it:
+      // 0 = follow the surface, 1 = the DS layer (the old route), 2+ = the
+      // texsrc list offset by DISPSRC_TEX_BASE. -1 means the DS layer.
+      const DISPSRC_TEX_BASE = 2;
+      const dispSrcSel = p.get('scene3d.mat.dispsrc')?.value ?? 0;
+      const dispTexSrcIdx =
+        dispSrcSel === 0 ? texSrcIdx :
+        dispSrcSel === 1 ? -1 :
+        dispSrcSel - DISPSRC_TEX_BASE;
       const updateDisplace = (m) => {
         if (m._shader) {
           m._shader.uniforms.uDisplace.value       = displaceAmt;
           m._shader.uniforms.uDispScale.value      = displaceScale;
           m._shader.uniforms.uDispSpeed.value      = displaceSpeed;
-          const _dispSource = (texSrcIdx === 6 && inputs.noise)
-            ? inputs.noise
-            : (dispTex ?? this._fallback);
+          const _dispSource = dispTexSrcIdx === -1
+            ? (dispTex ?? this._fallback)
+            : (texSrcMap[dispTexSrcIdx] ?? this._fallback);
           m._shader.uniforms.uDispTexture.value    = (_dispSource === this.target.texture) ? this._fallback : _dispSource;
           m._shader.uniforms.uTDisplace.value      = tDisplaceAmt;
           m._shader.uniforms.uDispTexScale.value   = displaceTexScale;
           m._shader.uniforms.uDispTexProj.value    = displaceTexProj;
-          if (m._shader.uniforms.uObjNoiseDisp !== undefined)
-            m._shader.uniforms.uObjNoiseDisp.value = texSrcIdx === 6 ? 1.0 : 0.0;
+          if (m._shader.uniforms.uTriplanarDisp !== undefined)
+            // The displace path follows ITS OWN source's projection, not the
+            // surface's. With dispsrc = Same as Surface the two coincide,
+            // which is what makes the bumps land on the texture.
+              m._shader.uniforms.uTriplanarDisp.value = resolveTriplanar(dispTexSrcIdx) ? 1.0 : 0.0;
+          if (m._shader.uniforms.uDispSmooth)
+            m._shader.uniforms.uDispSmooth.value = dispSmooth;
         }
       };
       updateDisplace(this.material);
@@ -1081,11 +1243,46 @@ export class SceneManager {
       }
     // Camera
     this.camera.fov = p.get('scene3d.cam.fov').value;
-    this.camera.position.set(
-      p.get('scene3d.cam.x').value,
-      p.get('scene3d.cam.y').value,
-      p.get('scene3d.cam.z').value
-    );
+    // Spherical placement — the exact inverse of scene3dCartesianToOrbit(), so
+    // a migrated project opens on the frame it was saved on.
+    {
+      // Each spin accumulates its OWN angle rather than writing its parameter,
+      // exactly as the mesh's Spin X/Y/Z leaves the rot params alone: the angle
+      // stays a live offset you (or a controller) can still move while it turns,
+      // and a Display State captures the angle you set rather than wherever the
+      // spin had drifted to.
+      const spin = (id, key) => {
+        const rate = p.get(id)?.value ?? 0;
+        if (rate !== 0) this[key] = ((this[key] ?? 0) + rate * dt) % 360;
+        else if (this[key]) this[key] = 0; // release the offset when switched off
+        return this[key] ?? 0;
+      };
+      const R  = Math.PI / 180;
+      const az = (p.get('scene3d.cam.orbit').value + spin('scene3d.cam.spinOrbit', '_camSpinOrbit')) * R;
+      const el = (p.get('scene3d.cam.elev').value  + spin('scene3d.cam.spinElev',  '_camSpinElev'))  * R;
+      const rl = (p.get('scene3d.cam.roll').value  + spin('scene3d.cam.spinRoll',  '_camSpinRoll'))  * R;
+      const d  =  p.get('scene3d.cam.dist').value;
+
+      const ce = Math.cos(el), se = Math.sin(el);
+      const sa = Math.sin(az), ca = Math.cos(az);
+      this.camera.position.set(d * ce * sa, d * se, d * ce * ca);
+
+      // Derive up from the orbit frame instead of leaving three.js to use a
+      // fixed (0,1,0). That fixed vector goes parallel to the view direction at
+      // the poles, where lookAt() has no basis to build and the image flips;
+      // this tangent — the direction of increasing elevation — is a unit vector
+      // at EVERY elevation, so the camera sweeps over the top continuously.
+      // At elevation 0 it is exactly (0,1,0), so level views are unchanged.
+      const upX = -se * sa, upY = ce, upZ = -se * ca;
+      // Roll turns the camera about its own view axis. up ⊥ forward, so
+      // Rodrigues collapses to  up·cos(roll) + (forward × up)·sin(roll).
+      const fx = -ce * sa, fy = -se, fz = -ce * ca;          // forward, unit
+      const cx = fy * upZ - fz * upY;                         // forward × up
+      const cy = fz * upX - fx * upZ;
+      const cz = fx * upY - fy * upX;
+      const cr = Math.cos(rl), sr = Math.sin(rl);
+      this.camera.up.set(upX * cr + cx * sr, upY * cr + cy * sr, upZ * cr + cz * sr);
+    }
     this.camera.lookAt(0, 0, 0);
     this.camera.updateProjectionMatrix();
 
@@ -1170,7 +1367,20 @@ export class SceneManager {
 
     // Color pass
     this.renderer.setRenderTarget(this.target);
-    this.renderer.render(this.scene, this.camera);
+    if (this._alphaBg) {
+      // Clear to fully transparent so the target carries coverage in alpha.
+      // The renderer is SHARED with the whole pipeline, so its clear state has
+      // to be put back — leaving it at alpha 0 would silently change how every
+      // later pass clears.
+      const _prevClear = this.renderer.getClearColor(new THREE.Color());
+      const _prevAlpha = this.renderer.getClearAlpha();
+      this.renderer.setClearColor(0x000000, 0);
+      this.renderer.clear(true, true, true);
+      this.renderer.render(this.scene, this.camera);
+      this.renderer.setClearColor(_prevClear, _prevAlpha);
+    } else {
+      this.renderer.render(this.scene, this.camera);
+    }
 
     // Depth pass — only when scene3d.depth.active is set, to avoid wasting GPU
     if (params.get('scene3d.depth.active')?.value) {

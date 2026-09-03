@@ -1,0 +1,283 @@
+/**
+ * Static audit: Bokeh's numeric contracts — units, and index alignment.
+ *
+ * Why this exists. Bokeh shipped its first working build with a radius that did
+ * nothing visible. `effect.bokehradius` was registered as 0.25-8 "×", copied
+ * from `effect.bloomradius`, and the handler passed that value straight into
+ * `uRadius` — which BOKEH_GATHER consumes as PIXELS. The default 2 was a
+ * two-pixel blur on a nineteen-hundred-pixel canvas.
+ *
+ * What made it expensive to spot: the effect was not inert. The highlight boost
+ * and the power-space accumulation still ran at full strength, so bright areas
+ * bloomed while nothing defocused, and the owner's report was the precise and
+ * accurate "I don't see bokeh, it does bloom". A control that is scaled wrongly
+ * does not look broken. It looks like a different effect.
+ *
+ * The shader was already proven correct in a real GLSL compiler at the time —
+ * with uRadius = 12 on a 64-pixel test image. Both halves were right on their
+ * own; only the units between them disagreed, which is exactly the kind of gap
+ * no single-component test can see.
+ *
+ * Three invariants, each a bug class rather than that one bug:
+ *
+ *   1. UNITS. A radius consumed as pixels must be scaled by a frame dimension
+ *      on the way in, or it silently means something different at every canvas
+ *      size — and, per the 4K report, resolution is what this project gets
+ *      judged on.
+ *   2. INDEX ALIGNMENT. Two SELECTs feed lookup tables by position:
+ *      bokehquality → BOKEH_TIERS, bokehblades → a blade-count array. If a
+ *      table is shorter than its menu, the extra options silently fall back
+ *      rather than erroring — the same shape as `_sdfSrcToLayerIdx`, where
+ *      every index was in range and every option resolved to a real texture,
+ *      three entries away from the one named.
+ *   3. ZERO IS OFF. At radius 0 the pass must short-circuit before the
+ *      highlight boost, or "off" brightens the picture.
+ *
+ * Run:  node tests/audit-bokeh-units.mjs
+ */
+
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { dirname, resolve } from 'node:path';
+
+const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const read = (p) => readFileSync(resolve(root, p), 'utf8');
+
+const pipeline = read('src/core/Pipeline.js');
+const shaders  = read('src/shaders/index.js');
+
+console.log('\nBokeh units and index-alignment audit\n');
+
+let failed = false;
+const ok   = (m) => console.log(`  ok   ${m}`);
+const fail = (m) => { console.error(`  FAIL ${m}`); failed = true; };
+
+const { PARAMS } = await import('../src/controls/ParameterSystem.js')
+  .then((m) => ({ PARAMS: m }))
+  .catch(() => ({ PARAMS: null }));
+
+// ── 1. Units ────────────────────────────────────────────────────────────────
+
+const handler = (() => {
+  const i = pipeline.indexOf('bokeh: (pipe, tex, p) =>');
+  if (i < 0) return null;
+  const j = pipeline.indexOf('\n  levels:', i);
+  return j < 0 ? pipeline.slice(i) : pipeline.slice(i, j);
+})();
+
+if (!handler) {
+  fail('could not locate the bokeh handler in Pipeline.js (renamed? update this audit, do not delete it)');
+} else {
+  // Follow ONE level of indirection. The first version of this check required
+  // pipe.height on the uRadius: line itself, which is a syntactic accident
+  // rather than the invariant: hoisting the expression into a named const —
+  // necessary once a second gather pass needed the same value — preserved the
+  // invariant exactly and still failed the check. An audit that fails on a
+  // correct refactor teaches people to delete audits.
+  const radiusLines = handler.split('\n').filter((l) => l.includes('uRadius:'));
+  if (!radiusLines.length) {
+    fail('the bokeh handler sets no uRadius');
+  } else {
+    const scaled = radiusLines.every((line) => {
+      if (/pipe\.(height|width)/.test(line)) return true;           // inline
+      const ident = line.match(/uRadius:\s*([A-Za-z_$][\w$]*)\s*,/); // via a const
+      if (!ident) return false;
+      const decl = handler.match(
+        new RegExp('(?:const|let)\\s+' + ident[1] + '\\s*=([^;]*);'),
+      );
+      return !!decl && /pipe\.(height|width)/.test(decl[1]);
+    });
+    if (scaled) {
+      ok(`uRadius is scaled by a frame dimension at all ${radiusLines.length} gather call(s)`);
+    } else {
+      fail('a uRadius is passed WITHOUT a pipe.height/width term — ' +
+           'the shader reads it as pixels, so this is a different blur at every canvas size');
+    }
+  }
+
+  // The shader must agree that it is receiving pixels.
+  if (/uRadius;\s*\/\/[^\n]*pixel/i.test(shaders)) {
+    ok('BOKEH_GATHER documents uRadius as pixels (the contract both sides rely on)');
+  } else {
+    fail('BOKEH_GATHER no longer declares uRadius in pixels — the handler scales for pixels');
+  }
+}
+
+// ── 2. Index alignment ──────────────────────────────────────────────────────
+
+const tierMatch = pipeline.match(/const BOKEH_TIERS = \[([^\]]*)\]/);
+const tiers = tierMatch ? tierMatch[1].split(',').filter((s) => s.trim()).length : -1;
+
+const bladeLine = handler?.split('\n').find((l) => l.includes('bokehblades'));
+const bladeMatch = bladeLine?.match(/\[([^\]]*)\]\[/);
+const blades = bladeMatch ? bladeMatch[1].split(',').filter((s) => s.trim()).length : -1;
+
+// Option counts come from the registry, so a menu edit is what moves them.
+let qualityOpts = -1, bladeOpts = -1;
+if (PARAMS?.createParameterSystem) {
+  try {
+    const ps = PARAMS.createParameterSystem();
+    qualityOpts = ps.get('effect.bokehquality')?.options?.length ?? -1;
+    bladeOpts   = ps.get('effect.bokehblades')?.options?.length ?? -1;
+  } catch { /* fall through to the source-scrape below */ }
+}
+if (qualityOpts < 0) {
+  const src = read('src/controls/ParameterSystem.js');
+  const q = src.match(/id: "effect\.bokehquality"[\s\S]{0,240}?options: \[([^\]]*)\]/);
+  const b = src.match(/id: "effect\.bokehblades"[\s\S]{0,240}?options: \[([^\]]*)\]/);
+  qualityOpts = q ? q[1].split(',').filter((s) => s.trim()).length : -1;
+  bladeOpts   = b ? b[1].split(',').filter((s) => s.trim()).length : -1;
+}
+
+if (tiers < 1 || qualityOpts < 1) {
+  fail(`could not compare bokehquality options (${qualityOpts}) with BOKEH_TIERS (${tiers})`);
+} else if (tiers === qualityOpts) {
+  ok(`bokehquality has ${qualityOpts} options and BOKEH_TIERS has ${tiers} entries`);
+} else {
+  fail(`bokehquality has ${qualityOpts} options but BOKEH_TIERS has ${tiers} — ` +
+       'a tier past the end of the array selects undefined and the pass silently stops rendering');
+}
+
+if (blades < 1 || bladeOpts < 1) {
+  fail(`could not compare bokehblades options (${bladeOpts}) with the blade map (${blades})`);
+} else if (blades === bladeOpts) {
+  ok(`bokehblades has ${bladeOpts} options and the blade map has ${blades} entries`);
+} else {
+  fail(`bokehblades has ${bladeOpts} options but the blade map has ${blades} — ` +
+       'the extra option falls back to a circle instead of the iris it names');
+}
+
+// ── 3. Zero is off ──────────────────────────────────────────────────────────
+
+if (/if \(radiusPx < [\d.]+\) \{[^}]*return;/.test(shaders)) {
+  ok('BOKEH_GATHER returns the untouched centre below a sub-pixel radius');
+} else {
+  fail('BOKEH_GATHER has no sub-pixel early return — at radius 0 the highlight ' +
+       'boost still runs, so "off" brightens the picture instead of doing nothing');
+}
+
+if (handler && /const amt = p\.get\('effect\.bokeh'\)\.value \/ 100;\s*\n\s*if \(amt <= 0\) return tex;/.test(handler)) {
+  ok('the handler short-circuits at amount 0, like every other effect');
+} else {
+  fail('the bokeh handler does not early-return at amount 0');
+}
+
+// ── 4. The mask smoother is an exponential accumulator ──────────────────────
+//
+// Same wall the half-float-slew audit guards for MotionExtract. In 8 bits the
+// per-frame step at a long time constant falls below one quantisation level,
+// the write rounds to the value already stored, and the mask FREEZES short of
+// its target. Measured: it stalls at every setting in the 0-2s range, and gets
+// worse the slower the control — which is exactly where it is most wanted.
+
+const ensure = (() => {
+  // Anchor on the METHOD DEFINITION, not the name: the handler's call to
+  // pipe._ensureBokehMaskRT() sits earlier in the file, so a bare indexOf finds
+  // the call site and slices a window with no allocation in it — which reads as
+  // "the target is not FloatType" when it is. (Cost this audit one false
+  // failure before it was noticed.)
+  const i = pipeline.indexOf('\n  _ensureBokehMaskRT() {');
+  if (i < 0) return null;
+  const j = pipeline.indexOf('\n  }', i + 10);
+  return j < 0 ? pipeline.slice(i) : pipeline.slice(i, j);
+})();
+
+if (!ensure) {
+  fail('could not locate _ensureBokehMaskRT in Pipeline.js');
+} else if (/type:\s*THREE\.FloatType/.test(ensure)) {
+  ok('the bokeh mask accumulator is FloatType, so a slow smooth cannot stall');
+} else {
+  fail('the bokeh mask accumulator is not FloatType — an 8-bit exponential ' +
+       'accumulator freezes short of its target at long time constants');
+}
+
+if (handler && /Math\.pow\(0\.02, dt \/ smoothSec\)/.test(handler)) {
+  ok('mask decay uses the 0.02 "time to visually gone" base, as MotionExtract does');
+} else {
+  fail('mask decay does not use the same seconds convention as MotionExtract — ' +
+       'two meanings of "seconds" in one instrument is what made Motion read as wrong');
+}
+
+if (handler && /pipe\._fxDt/.test(handler)) {
+  ok('mask decay is driven by the frame delta, not a per-frame constant');
+} else {
+  fail('mask decay ignores dt — the time constant would mean something ' +
+       'different at every frame rate');
+}
+
+// ── 5. Every uniform a Bokeh shader declares is bound by its material ───────
+//
+// three.js uploads only the uniforms present in `material.uniforms`. A uniform
+// declared in GLSL but missing there is not an error and not a warning — it
+// sits at the GL default, 0 for a float and unit 0 for a sampler. `uDiscAmt`
+// shipped that way: the shader multiplied by it, the material never declared
+// it, so the entire highlight-disc branch contributed exactly nothing while
+// still running an extract and a second full gather every frame and throwing
+// the result away. It cost roughly half the effect's frame time to compute a
+// value that was multiplied by zero.
+//
+// The tell that was available and unread: the feature "worked" because the base
+// gather's own apodization produces discs too, so the visible result was
+// plausible and the branch under test never ran.
+
+const shaderUniforms = (name) => {
+  const i = shaders.indexOf(`export const ${name} =`);
+  if (i < 0) return null;
+  const j = shaders.indexOf('\n`;', i);
+  const body = shaders.slice(i, j < 0 ? undefined : j);
+  return [...new Set([...body.matchAll(/^\s*uniform\s+\w+\s+(u\w+)/gm)].map(m => m[1]))];
+};
+
+// The base uniforms _mat() gives every material for free.
+const MAT_BASE = ['uTexture', 'uFG', 'uBG', 'uDS'];
+
+const matUniforms = (matName) => {
+  const i = pipeline.indexOf(`${matName}: this._mat(`);
+  if (i < 0) return null;
+  // Span to the close of this material's argument list.
+  const j = pipeline.indexOf('\n      }),', i);
+  const body = pipeline.slice(i, j < 0 ? i + 1200 : j);
+  return [...new Set([...body.matchAll(/^\s*(u\w+):\s*\{/gm)].map(m => m[1]))];
+};
+
+for (const [shaderName, matName] of [
+  ['BOKEH_COMPOSITE', 'bokehComposite'],
+  ['BOKEH_MASK_SLEW', 'bokehMaskSlew'],
+  ['BOKEH_DOWNSAMPLE', 'bokehDownsample'],
+]) {
+  const declared = shaderUniforms(shaderName);
+  const bound = matUniforms(matName);
+  if (!declared || !bound) {
+    fail(`could not pair ${shaderName} with this.m.${matName} (renamed? update this audit)`);
+    continue;
+  }
+  const missing = declared.filter(u => !bound.includes(u) && !MAT_BASE.includes(u));
+  if (missing.length) {
+    fail(`${shaderName} declares ${missing.join(', ')} but this.m.${matName} does not — ` +
+         'three.js leaves those at 0 / unit 0 silently, so that code path computes nothing');
+  } else {
+    ok(`every uniform in ${shaderName} is bound by this.m.${matName} (${declared.length})`);
+  }
+}
+
+// The gather is built per tier through BOKEH_TIERS.map, so it is paired once.
+{
+  const declared = shaderUniforms('BOKEH_GATHER');
+  const i = pipeline.indexOf('bokeh: BOKEH_TIERS.map(');
+  const body = i < 0 ? '' : pipeline.slice(i, pipeline.indexOf('\n      )),', i));
+  const bound = [...new Set([...body.matchAll(/^\s*(u\w+):\s*\{/gm)].map(m => m[1]))];
+  const missing = (declared ?? []).filter(u => !bound.includes(u) && !MAT_BASE.includes(u));
+  if (!declared || !body) {
+    fail('could not pair BOKEH_GATHER with the tier materials');
+  } else if (missing.length) {
+    fail(`BOKEH_GATHER declares ${missing.join(', ')} but the tier materials do not bind them`);
+  } else {
+    ok(`every uniform in BOKEH_GATHER is bound by the tier materials (${declared.length})`);
+  }
+}
+
+if (failed) {
+  console.error('\nFAIL — a Bokeh numeric contract is broken.\n');
+  process.exit(1);
+}
+console.log('\nAll Bokeh unit and alignment checks passed.\n');

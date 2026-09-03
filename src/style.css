@@ -3,6 +3,37 @@
    IBM Plex Mono for values, IBM Plex Sans for labels
    ───────────────────────────────────────────────────────────────────────── */
 
+/* ─── Text-layer typefaces ────────────────────────────────────────────────
+   Bundled, not CDN-loaded: ImWeb is an offline-capable PWA and a text
+   instrument that silently falls back to sans-serif on a venue's bad wifi is
+   worse than one with three fonts. Latin subsets only (~290 KB for all 14),
+   served from /fonts by Vite's public dir and picked up by the service
+   worker's runtime cache on first use.
+
+   font-display: block, NOT swap. Swap paints a fallback face first, and
+   TextLayer would happily rasterise that fallback into the canvas texture
+   and never re-render — a wrong font frozen into the signal. The load
+   guarantee in TextLayer's constructor is the other half of this.
+
+   `font-weight: <lo> <hi>` on the variable faces is what exposes the wght
+   axis to text.weight; the static display faces declare a single weight and
+   the browser synthesises the rest.
+   All faces are SIL Open Font License 1.1 — see CREDITS.md.               */
+@font-face { font-family: "IW Inter";      src: url("/fonts/inter.woff2")          format("woff2"); font-weight: 100 900; font-display: block; }
+@font-face { font-family: "IW Grotesk";    src: url("/fonts/space-grotesk.woff2")  format("woff2"); font-weight: 300 700; font-display: block; }
+@font-face { font-family: "IW Oswald";     src: url("/fonts/oswald.woff2")         format("woff2"); font-weight: 200 700; font-display: block; }
+@font-face { font-family: "IW Playfair";   src: url("/fonts/playfair.woff2")       format("woff2"); font-weight: 400 900; font-display: block; }
+@font-face { font-family: "IW Orbitron";   src: url("/fonts/orbitron.woff2")       format("woff2"); font-weight: 400 900; font-display: block; }
+@font-face { font-family: "IW JetBrains";  src: url("/fonts/jetbrains-mono.woff2") format("woff2"); font-weight: 100 800; font-display: block; }
+@font-face { font-family: "IW Archivo";    src: url("/fonts/archivo.woff2")        format("woff2"); font-weight: 100 900; font-display: block; }
+@font-face { font-family: "IW Bebas";      src: url("/fonts/bebas-neue.woff2")     format("woff2"); font-weight: 400;     font-display: block; }
+@font-face { font-family: "IW Anton";      src: url("/fonts/anton.woff2")          format("woff2"); font-weight: 400;     font-display: block; }
+@font-face { font-family: "IW VT323";      src: url("/fonts/vt323.woff2")          format("woff2"); font-weight: 400;     font-display: block; }
+@font-face { font-family: "IW MajorMono";  src: url("/fonts/major-mono.woff2")     format("woff2"); font-weight: 400;     font-display: block; }
+@font-face { font-family: "IW Monoton";    src: url("/fonts/monoton.woff2")        format("woff2"); font-weight: 400;     font-display: block; }
+@font-face { font-family: "IW Silkscreen"; src: url("/fonts/silkscreen.woff2")     format("woff2"); font-weight: 400;     font-display: block; }
+@font-face { font-family: "IW DotGothic";  src: url("/fonts/dotgothic16.woff2")    format("woff2"); font-weight: 400;     font-display: block; }
+
 :root {
     color-scheme: dark;
     --bg-0: #0a0a0b; /* deepest background */
@@ -721,6 +752,16 @@ button.ws-open:hover {
     content: "🔒";
     font-size: 9px;
     margin-left: 3px;
+}
+/* A control that is real and settable but has nothing to act on given another
+   parameter's current value — Bokeh.Iris while Blades is Circle. Dimmed, NOT
+   hidden: a row that vanishes reads as a missing feature, and hiding it would
+   also reflow every row beneath it each time the other control moves, which is
+   the last thing wanted mid-performance. Interaction is deliberately left
+   alone, so the value can still be pre-set or driven by a controller and takes
+   effect the moment the condition clears. The row carries a title saying why. */
+.param-row.param-na {
+    opacity: 0.45;
 }
 .section-header.collapsed::after {
     content: " ▸";

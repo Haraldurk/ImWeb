@@ -66,6 +66,7 @@ import { CameraInput } from "./inputs/CameraInput.js";
 import { MovieInput, MAX_CLIPS } from "./inputs/MovieInput.js";
 import { MovieCues, CUE_SLOTS } from "./inputs/MovieCues.js";
 import { CueBank } from "./core/CueBank.js";
+import { MappingAutosave } from "./state/MappingAutosave.js";
 
 /**
  * How many catalogue entries to rack into Deck A at boot.
@@ -634,6 +635,8 @@ async function main() {
   const strokeLooper = new StrokeLooper(drawLayer, ps);
   ctrl.setStrokeLooper(strokeLooper); // stroke→LFO controller driver
   const textLayer = new TextLayer();
+  // Reused every frame by the render loop — see the setAudio call there.
+  const _textAudio = { freq: null, level: 0, bass: 0, mid: 0, high: 0 };
 
   const scene3d = new SceneManager(renderer, W, H);
   await scene3d.createHypercube({ startDim: 4 });
@@ -2842,6 +2845,50 @@ async function main() {
     await _loadMasterProject();
   }
 
+  /**
+   * Learned MIDI mappings, restored LAST — after whatever bank or project the
+   * boot above put in place.
+   *
+   * Order is the whole design here, because both write `p.controller`. The
+   * autosave is the more recent truth: it is what the rig looked like when you
+   * last had the app open, while a bank carries whatever was mapped when it was
+   * last SAVED. A user-initiated import afterwards still wins outright, and is
+   * picked up as the new autosave within a second.
+   *
+   * Mappings only — never values. See MappingAutosave.js for why that
+   * distinction is load-bearing rather than tidy.
+   */
+  const mappingAutosave = new MappingAutosave(ps, {
+    // Self-contained on purpose. This referenced `setStatus`, which is declared
+    // ~90 lines below inside the Project panel's BUILDER and is not in scope
+    // here — so the moment restore() had something to report it threw
+    // `ReferenceError: setStatus is not defined` inside main(), aborting boot
+    // and leaving the app blank. It only fired for users who actually had saved
+    // mappings, which is why it shipped: a fresh profile restores nothing, so
+    // `if (n && this.onStatus)` never ran.
+    //
+    // It also cannot simply paint immediately: restore() runs long before the
+    // panels exist. So resolve the element at call time and, if it is not there
+    // yet, wait a bounded while rather than dropping the message.
+    onStatus: (msg) => {
+      const paint = () => {
+        const el = document.getElementById('project-file-status');
+        if (!el) return false;
+        el.textContent = msg;
+        el.style.color = 'var(--text-2)';
+        return true;
+      };
+      if (paint()) return;
+      let tries = 0;
+      const t = setInterval(() => {
+        if (paint() || ++tries > 40) clearInterval(t);
+      }, 100);
+    },
+  });
+  mappingAutosave.restore();
+  mappingAutosave.start();
+  if (import.meta.env.DEV) window.__mappings = mappingAutosave;
+
   // Click OSC indicator → prompt for WebSocket URL and connect
   document.getElementById("status-osc")?.addEventListener("click", () => {
     if (oscBridge.active) {
@@ -2912,6 +2959,10 @@ async function main() {
             style="width:100%;border-color:var(--text-2);color:var(--text-2);font-size:9px;opacity:0.6;"
             title="[DEV] Download current project as MasterProject.imweb — place in public/Projects/ to update factory defaults">
             📤 Save as MasterProject  [DEV]</button>
+          <button id="btn-clear-mappings" class="import-btn"
+            style="width:100%;border-color:var(--text-2);color:var(--text-2);font-size:9px;opacity:0.7;"
+            title="Forget the MIDI mappings remembered for this origin. Live mappings are untouched until the next reload.">
+            ⌫ Clear saved MIDI mappings</button>
           <div id="project-file-status" style="font-family:var(--mono);font-size:10px;color:var(--text-2);min-height:14px;"></div>
           <input id="project-file-input" type="file" accept=".imweb,application/json" style="display:none;" />
         </div>
@@ -2925,6 +2976,18 @@ async function main() {
           el.style.color = color;
         }
       };
+
+      // Autosave is a convenience, so it must never be a trap: a mapping you
+      // want gone has to be gone in one click, without hunting through
+      // localStorage. Live mappings are deliberately left alone — clearing is
+      // about what comes back NEXT reload, and silently unmapping the rig
+      // mid-session would be its own surprise.
+      document
+        .getElementById("btn-clear-mappings")
+        ?.addEventListener("click", () => {
+          mappingAutosave.clear();
+          setStatus("Saved mappings cleared — live mappings unchanged until reload");
+        });
 
       document
         .getElementById("btn-export-project")
@@ -4608,6 +4671,34 @@ async function main() {
   // Text layer triggers
   ps.get("text.advance").onTrigger(() => textLayer.advance());
 
+  // Per-glyph audio needs the analyser tap OPEN, and nothing else here opens
+  // it: ctrl.sound is lazy-initialised by _addController when a sound-type
+  // controller is first assigned to some parameter (ControllerManager, "lazy-
+  // init audio input on first assignment"). text.audioTarget is a plain
+  // parameter, not a controller assignment, so without this the feature is
+  // silently inert in its obvious usage — switch it on, nothing moves, no
+  // error anywhere. Asking for it here is the whole fix.
+  //
+  // onChange rather than a one-time call at boot, because a project or Display
+  // State that arrives with audioTarget already set has to open the tap too —
+  // and it fires for that, since state recall writes through ps.set.
+  //
+  // enableSound() is idempotent (it returns immediately if this.sound exists)
+  // and degrades quietly when the engine is not running, which is the right
+  // shape: turning this on must never be what fails.
+  //
+  // Both EDGES, because either order is a thing a person does: switching the
+  // feature on with the engine already running, or arming the feature first
+  // and starting the engine after. enableSound() returns early with no tap
+  // when the engine is not up, and nothing retries it — so the second order
+  // left the feature permanently dead until the target was touched again,
+  // which is indistinguishable from "it just doesn't work".
+  const _armTextAudio = () => {
+    if (Math.round(ps.get("text.audioTarget").value) > 0) ctrl.enableSound();
+  };
+  ps.get("text.audioTarget").onChange(_armTextAudio);
+  ps.get("audio.enable").onChange((v) => { if (v) _armTextAudio(); });
+
   // Slit scan clear trigger
   ps.get("slitscan.clear").onTrigger(() => slitScan.clear());
 
@@ -4947,7 +5038,73 @@ async function main() {
     textPreviewEl.replaceWith(textLayer.canvas);
     textLayer.canvas.id = "text-preview";
     textLayer.canvas.style.cssText =
-      "display:block;width:100%;image-rendering:pixelated;border:1px solid var(--border);background:#000;";
+      "display:block;width:100%;image-rendering:pixelated;border:1px solid var(--border);" +
+      "background:#000;touch-action:none;cursor:move;";
+
+    // Play the text where you can see it. This element IS the live layer
+    // canvas (it replaced the placeholder above), so a pointer on it is a
+    // pointer on the thing being performed:
+    //   drag        → text.x / text.y      Shift+drag → text.rotation
+    //   wheel       → text.size            Alt+wheel  → text.weight
+    // Everything writes through ps.set, so controllers, Display States, MIDI
+    // and the numeric rows all see the change — never poke textLayer._x.
+    let _txDrag = null;
+    const _txNorm = (e) => {
+      const r = textLayer.canvas.getBoundingClientRect();
+      // Normalized against the ELEMENT's box, not the canvas backing store:
+      // text.res changes the backing store under the same CSS size, and a
+      // drag that reads canvas.width would change gain when it did.
+      return {
+        x: ((e.clientX - r.left) / r.width) * 100,
+        y: (1 - (e.clientY - r.top) / r.height) * 100,
+      };
+    };
+    textLayer.canvas.addEventListener("pointerdown", (e) => {
+      if (e.button !== 0) return;
+      const n = _txNorm(e);
+      _txDrag = {
+        id: e.pointerId,
+        rotate: e.shiftKey,
+        startX: e.clientX,
+        rot0: ps.get("text.rotation").value,
+        // Grab offset, so the text does not jump to the cursor on the first
+        // pixel of a drag meant to nudge it.
+        dx: ps.get("text.x").value - n.x,
+        dy: ps.get("text.y").value - n.y,
+      };
+      textLayer.canvas.setPointerCapture(e.pointerId);
+      e.preventDefault();
+    });
+    textLayer.canvas.addEventListener("pointermove", (e) => {
+      if (!_txDrag || e.pointerId !== _txDrag.id) return;
+      // getCoalescedEvents() EXISTS and returns [] for untrusted events, so
+      // `?? [e]` never fires and a scripted drag draws nothing — guard on
+      // .length instead (docs/LEARNED.md; same trap as attachDrawSurface).
+      const pts = e.getCoalescedEvents?.() ?? [];
+      const last = pts.length ? pts[pts.length - 1] : e;
+      if (_txDrag.rotate) {
+        ps.set("text.rotation", _txDrag.rot0 + (last.clientX - _txDrag.startX) * 0.5);
+      } else {
+        const n = _txNorm(last);
+        ps.set("text.x", Math.max(0, Math.min(100, n.x + _txDrag.dx)));
+        ps.set("text.y", Math.max(0, Math.min(100, n.y + _txDrag.dy)));
+      }
+      e.preventDefault();
+    });
+    const _txEnd = (e) => {
+      if (!_txDrag || e.pointerId !== _txDrag.id) return;
+      textLayer.canvas.releasePointerCapture?.(e.pointerId);
+      _txDrag = null;
+    };
+    textLayer.canvas.addEventListener("pointerup", _txEnd);
+    textLayer.canvas.addEventListener("pointercancel", _txEnd);
+    textLayer.canvas.addEventListener("wheel", (e) => {
+      const id = e.altKey ? "text.weight" : "text.size";
+      const p  = ps.get(id);
+      const step = e.altKey ? 10 : 2;
+      ps.set(id, Math.max(p.min, Math.min(p.max, p.value - Math.sign(e.deltaY) * step)));
+      e.preventDefault();
+    }, { passive: false });
   }
 
   const textContentEl = document.getElementById("text-content");
@@ -8053,10 +8210,23 @@ void main() {
     const _pmCap = PARTICLE_MASK_SRC[ps.get("particle.masksrc").value] ?? null;
     const _pmIdx = _pmCap == null ? -1 : _captureIdx(_pmCap);
 
+    // The bokeh mask is a real consumer of whatever it points at, the same
+    // shape as the keyer's external key: only while the effect is actually
+    // doing something. Gated on effect.enable as well, because the master
+    // bypass skips the whole FX loop, so a bypassed bokeh pulls nothing.
+    //
+    // No _captureIdx here — bokehmask is declared `options: SOURCES`, so its
+    // value is already a direct SOURCE_DEFS index. _captureIdx is for the
+    // CAPTURE_SOURCES params, whose menu carries the indirect tail.
+    const _cBokeh =
+      ps.get("effect.enable").value !== 0 && ps.get("effect.bokeh").value > 0
+        ? ps.get("effect.bokehmask").value
+        : -1;
+
     const _direct = (i) =>
       _cFg === i || _cBg === i || _cDs === i || _cTd === i || _cTdMap === i ||
       _cSlit === i || _cVwarp === i || _cDelay === i || _cRutt === i ||
-      _cSdfTex === i || _cSdfRef === i || _cKeySrc === i;
+      _cSdfTex === i || _cSdfRef === i || _cKeySrc === i || _cBokeh === i;
 
     // Per-bus inputs. Which one can actually reach the bus output? MIXBUS
     // computes mix(a, modeResult, xfade): xfade=0 is pure srcA (srcB hidden),
@@ -8292,7 +8462,30 @@ void main() {
       if (fade > 0) warpEditor.decay(fade * dt * 4);
     }
 
-    // Tick text layer (updates text rendering based on text.* params)
+    // Tick text layer (updates text rendering based on text.* params).
+    // The aspect goes in first: the text canvas is square and the compositor
+    // samples it at plain vUv, so it is stretched to fill the frame. Path
+    // layout divides its x extent by this to keep a circle round on screen.
+    // setOutputAspect early-returns unless the value actually changed.
+    textLayer.setOutputAspect(pipeline.width / Math.max(1, pipeline.height));
+    // The audio picture for per-glyph reactivity. ctrl.tick() has already run
+    // sound.tick() this frame, so freqBuf is current, and it is handed over by
+    // REFERENCE — the analyser refills that same buffer every frame, which is
+    // the freshness we want and costs no copy. _textAudio is reused rather
+    // than rebuilt so a render loop does not allocate an object per frame.
+    // `level` gets the same x4 the VU meter and the sound controllers use, so
+    // "loud" means the same thing everywhere. null when nothing is listening,
+    // which TextLayer reads as silence rather than as an error.
+    if (ctrl.sound) {
+      _textAudio.freq  = ctrl.sound.freqBuf;
+      _textAudio.level = Math.min(1, ctrl.sound.level * 4);
+      _textAudio.bass  = ctrl.sound.bass;
+      _textAudio.mid   = ctrl.sound.mid;
+      _textAudio.high  = ctrl.sound.high;
+      textLayer.setAudio(_textAudio);
+    } else {
+      textLayer.setAudio(null);
+    }
     textLayer.tick(ps, dt);
 
     // Update sound level texture

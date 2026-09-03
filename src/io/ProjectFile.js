@@ -20,6 +20,7 @@
  */
 
 import { CAPTURE_INDIRECT_BASE, migrateCaptureBase, migrateSdfParams,
+         migrateScene3dParams,
          PARAM_SCHEMA, migrateBlendPercent } from '../controls/ParameterSystem.js';
 
 const FORMAT_VERSION = 3;
@@ -234,6 +235,7 @@ export class ProjectFile {
     if (data.params) {
       migrateCaptureBase(data.params, data._sourceCount);
       migrateSdfParams(data.params);
+      migrateScene3dParams(data.params);
       migrateBlendPercent(data.params, null, data._schema);
       this.ps.restoreState(data.params);
     }

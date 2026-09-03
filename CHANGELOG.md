@@ -9,6 +9,359 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
 ## [Unreleased]
 
 ### Fixed
+- **Keyer → Alpha no longer takes the background with it.** The emissive
+  composite emitted the *foreground's* alpha as the finished frame's alpha.
+  That was invisible for as long as every foreground was opaque — the two are
+  the same number when the foreground covers everything — but the moment a
+  source carried real coverage (the 3D scene's Transparent BG), the frame
+  reported itself as empty everywhere the object wasn't, and the background
+  vanished. It looks like the background is being keyed out, which is the wrong
+  layer to go looking in. The output alpha is now the composite's own coverage;
+  over an opaque background that is exactly 1, so nothing that composited
+  correctly before moves.
+- **Seamless mapping stays seamless with the emissive lighting.** Making
+  Emissive follow the texture wired the same image in as an emissive map — and
+  three samples that one with plain UV coordinates, so a UV-mapped copy of the
+  texture, seam and pole pinch included, was laid over the seamless triplanar
+  version at a third strength. The emissive map now goes through the same
+  projection as the diffuse map, from the same shader function, so the two
+  cannot disagree.
+- **Putting a texture on the object no longer makes it darker.** An untextured
+  object got a free self-lit boost of 0.35; a textured one got whatever the
+  Emissive slider said, which is 0 by default — so switching a texture *on*
+  silently removed a lighting contribution. Emissive could not bring it back
+  either, because there was no emissive map outside the Hypercube path, so the
+  slider added flat colour instead of lighting the picture. **Emissive now
+  follows the texture** — it means "self-illuminate what is on the surface" —
+  and the 0.35 is a floor for every object rather than a special case.
+- **The 3D scene is lit properly out of the box.** three divides every diffuse
+  contribution by π (`BRDF_Lambert` returns `RECIPROCAL_PI * diffuseColor`), so
+  the old defaults of 1.0 directional and 0.4 ambient put the *brightest* point
+  of a textured object at 0.45 of the texture's own brightness, and the shadow
+  side at 0.13 — which is why everything looked dim until Light Int. was pushed
+  to 2. Defaults are now 1.6 and 0.45, derived rather than dialled: the lit peak
+  lands at 1.00 and the shadow side at 0.49, so the picture stays readable all
+  the way round. Saved projects keep their own values and are unaffected.
+- **Ambient reaches 5.** Its ceiling was 2, and hitting it was how you worked
+  around the dimness above. Now the same range as Light Int. and Point Int.
+- **Clearcoat, Transmit and IOR are dimmed unless the shader is Physical.**
+  They are the *only* things `MeshPhysicalMaterial` adds to Standard, and they
+  are applied nowhere else — so on every other shader the sliders moved and
+  nothing rendered differently. It also explains why Standard and Physical look
+  identical until one of them is raised. Dimmed, not hidden, and still
+  interactive, with a tooltip saying which shader they need.
+
+### Added
+- **Disp. Smooth** — stops an animated texture boiling when it drives
+  displacement. A surface normal is the *derivative* of the height field, and
+  the normals were measured over a fixed baseline of half a percent of the
+  object's size — so a 0.001 wobble in the texture tilted the normal 11.3° and
+  swung a specular highlight by 47%. That is why noise which looks perfectly
+  calm as a background turns into a field of tiny fast glints the moment it is
+  displacing something: the derivative amplifies exactly the high-frequency
+  flicker the eye ignores in a flat image. At the new default the same wobble
+  gives 2.1° and 2%. **The geometry is untouched** — every bump stays, only the
+  shading is measured over a wider span. Set it to 0 for the old behaviour.
+- **Blend Sharp** — how abruptly Seamless mapping hands over between its three
+  projections. It was fixed at 6, which is a reasonable choice for colour and a
+  poor one for displacement: a sharp handover in geometry is a physical ridge,
+  which is the radial star that appears on a displaced sphere. Measured on a
+  sphere, 6 leaves 30.7% of the surface in a blend zone, 3 leaves 55.8%, 2
+  leaves 72.9% — wider is smoother but flatter, since it averages three samples
+  over more of the surface. No setting is free, which is why it is a control
+  rather than a better constant. One value drives colour *and* displacement, so
+  the relief cannot drift out of register with the picture on it. Defaults to 6,
+  so nothing existing moves.
+- **Transparent BG** — the 3D scene can render on nothing, so its layer carries
+  real alpha and **Opacity finally reveals what is underneath** instead of
+  fading the object into the scene's own dark backdrop, which read as "Opacity
+  turns the object black". Off by default, deliberately: it changes what the
+  compositor receives — empty space goes from opaque near-black to nothing — and
+  every existing project keys this layer by luma, so no saved project moves
+  until its author turns it on.
+
+  With it on, set **Keyer → Alpha** and **Alpha Emissive**. The target is
+  premultiplied, and `bg*(1-a)+fg` is the exact composite for premultiplied
+  sources — the same path the Text layer uses, for the same reason.
+- **Roll** — the camera turns about its own view axis, so the whole image
+  rotates while the viewpoint stays put. Orbit, Elevation and Distance place the
+  camera; Roll is the fourth degree of freedom, and nothing could reach it
+  before.
+- **Spin Orbit, Spin Elev and Spin Roll** turn the camera on their own, in
+  degrees per second — one per angular axis, the way the mesh has Spin X/Y/Z for
+  its three rotations. (A camera's three are not x/y/z: two carry it over the
+  sphere, the third turns it in place.) Each accumulates its own angle rather
+  than writing its parameter, so the angle stays a live offset you can still
+  move while it turns, and a saved state captures the angle you set rather than
+  wherever the spin had drifted to.
+
+### Changed
+- **Camera Distance reaches from 0.1 to 100, and slows down as it closes in.**
+  It ran 0.1–30 linearly, which put every close-up framing in the first
+  millimetre of the fader. Distance is perceived as a ratio — 1→2 is the same
+  move as 10→20 — so the control is now exponential: half the travel lands at
+  3.16 rather than 50, and the bottom tenth covers 0.1–0.20 where linear gave
+  0.1–10. Controllers sweep the same taper, so an LFO and a hand agree.
+- **Elevation no longer jumps, and now goes over the top.** At exactly 90° the
+  camera sits on the Y axis looking straight down it — parallel to the fixed up
+  vector three.js uses by default, where there is no basis to build and the
+  image flips. The camera now derives its up from the orbit frame instead, which
+  is a unit vector at *every* elevation (measured: the camera's right vector is
+  1.000000 throughout, against 0.000000 at the pole and 0.017 by 89° with a
+  fixed up). So the pole is simply gone: Elevation keeps its full ±180 and
+  sweeps continuously over the top and down the far side, with no clamp and no
+  twitchy zone approaching one. Level views are untouched — at elevation 0 the
+  derived up is exactly (0,1,0), the same vector as before.
+
+- **The 3D camera orbits.** It had Cam X / Y / Z in world units, but the camera
+  has always looked at the origin — so those three numbers were never a free
+  position, only a point on a sphere written in the least playable coordinates
+  available. Circling the object meant moving three sliders along a coordinated
+  arc, which is not doable by hand and is meaningless under a controller: an
+  LFO on Cam X slides the camera *through* the object, not around it. Now
+  **Orbit**, **Elevation** and **Distance** — put an LFO on Orbit and the scene
+  turns. Same names, ranges and defaults as the SDF camera, so the two cameras
+  in the instrument finally behave alike.
+
+  Saved projects convert automatically and open on the frame they were saved
+  on: the conversion is an exact inverse, verified against the renderer's own
+  placement over every camera in MasterProject and FactoryBank. Controllers,
+  rates and response tables move across with the parameter; **recall ranges are
+  reset**, because a min/max in world units means nothing on an axis that runs
+  to 360°.
+- **Math Displace and T-Displace are finely adjustable.** Both ran 0–2 in steps
+  of 0.01, but anything past ~0.15 turns the mesh inside out — so every usable
+  setting lived in the bottom 7% of the fader, and one step was worth a fifth of
+  a working value. Now 0–0.5 in steps of 0.001: the whole travel is playable and
+  the fine end is ten times finer.
+- **Value readouts show as many decimals as the control can actually move.**
+  The row picked its decimals from the range alone, so any parameter quantised
+  finer than that printed a column of identical numbers while the value really
+  moved — indistinguishable from a dead control. Fourteen parameters were
+  affected, including Grain Pos. None loses precision; the readout simply stops
+  hiding what the control is doing.
+
+### Fixed
+- **The 3D Transform section listed every control twice**, and included three
+  that belong elsewhere. `#transform-params` was filled by two different
+  builders — the container→params map *and* the explicit list further down —
+  so each row rendered once per writer. The map's entry also matched by
+  substring, so `id.includes('scale')` swept in CloneScale, ScaleStep and
+  Metaball Scale, which belong to Cloner and Metaballs. The explicit builder is
+  now the only writer: 12 rows, in a fixed order, each appearing once.
+- **Text is clean now without turning BlackBG on.** Glyph edges were hard and
+  blocky the moment the Text source was switched on, and the only known cure was
+  a black background. The layer draws onto a transparent canvas, and the blend
+  modes composite RGB only — so every antialiased edge pixel arrived at full
+  colour intensity no matter how little of it the glyph actually covered, and
+  the antialiasing was thrown away before it reached the screen. Switching
+  BlackBG on did the compositing inside the canvas instead, which is why it
+  worked. The texture is now uploaded premultiplied, so the edge softening
+  survives to the output whatever the background is.
+
+  If you have projects that use BlackBG purely to make text legible, you can
+  turn it off — the text will look the same or better, and whatever is behind it
+  will come back.
+
+- **A texture on a Plane is recognisable again.** The seamless mapping that
+  removed the pinch at a sphere's poles took *both* its blend weights and its
+  sample coordinates from `normalize(position)` — the direction from the
+  object's centre. That is only meaningful where the surface is radial from
+  the origin, which is true of a sphere and of nothing else. A plane lies flat
+  in z=0, so that direction has z=0 everywhere: the weights collapsed onto two
+  planes that both sampled a single line of the texture, indexed by angle
+  around the middle. Measured over a 64×64 plane, 4096 surface points reached
+  just **46 distinct texels**, with up to **152 points landing on the same
+  one** — the picture smeared out of the centre with all radial detail gone.
+  Weights now come from the **normal** and coordinates from the **position**,
+  which is what triplanar mapping actually is; the same 4096 points now reach
+  4096 texels, one each. On the unit sphere position and normal coincide, so
+  that mapping is unchanged to 2.2e-16 — one double ulp, i.e. exactly.
+- **T-Displace displaces by the texture you can see.** It read the global
+  Displace Source layer (`layer.ds`), with a special case that switched to
+  Noise only when the *surface* was Noise — so by default the relief came from
+  a different image than the object was showing. New **T-Disp Source** control,
+  defaulting to *Same as Surface*; *Displace Layer* keeps the old route for
+  displacing by one source while showing another.
+- **Displacement follows the texture's own UVs.** The colour path samples
+  `vMapUv` — the uv after the map's offset/repeat, including the UVSpeedX/Y
+  scroll — while displacement sampled the raw `uv` attribute. Scrolling a
+  texture therefore slid the picture over bumps that stood still. Both now
+  read the same coordinates.
+- **Disp. Tex Scale works in seamless mode.** It was computed into a uv that
+  the triplanar branch never read, so the control was inert whenever the
+  seamless path was active while still reading as set.
+
+> **Note on existing projects:** T-Disp Source defaults to *Same as Surface*, so
+> a saved project whose T-Displace relied on the DS layer will change. Set
+> T-Disp Source to *Displace Layer* to restore it exactly.
+
+### Added
+- **Mapping — the seamless projection is no longer Noise-only.** Whether a
+  texture was projected seamlessly used to be *inferred* from the source: you
+  got it if and only if you picked Noise. So the mapping that removes the pinch
+  at a sphere's poles was unreachable for a movie or the camera, which pinch
+  just as badly. It is now a control on the material: *UV* follows the model's
+  own coordinates, *Seamless* projects from three axes and blends, and *Auto*
+  (the default) reproduces the old rule exactly, so nothing existing moves.
+  Both explicit modes earn their place — Seamless has no poles and no seam, but
+  it mirrors the far side of the object and softens the 45° diagonals, which is
+  right for noise and texture and wrong for a picture with faces or text in it.
+  The displacement path follows the same choice, so relief and picture stay in
+  the same projection.
+- **Fourteen typefaces**, bundled with the app rather than fetched from the web,
+  so they work offline and in a venue: Inter, Space Grotesk, Archivo, Oswald,
+  Playfair, JetBrains Mono, Bebas, Anton, Orbitron, Monoton, Major Mono, VT323,
+  DotGothic16 and Silkscreen. The five original options are untouched and keep
+  their places, so nothing you have saved changes.
+- **Weight and Italic are their own controls.** Weight is continuous across
+  100–900, which means an LFO or a MIDI fader can play it.
+- **Resolution** (512 / 1024 / 2048, defaulting to 1024). Text was rendered at
+  512 and stretched to your output; at 1024 it is sharp. Sizes, spacing, shadow
+  and outline all scale with it, so raising it sharpens the text without
+  resizing anything.
+- **Stagger** — the transition runs across the glyphs one at a time instead of
+  moving the line as a block, from the Start, Center, End or in Random order.
+  It works with every existing In and Out mode. The transition still takes
+  exactly as long as AnimDur says.
+- **Glitch** (AnimMode) scrambles characters continuously, and **Decode**
+  (AnimIn) resolves the text out of noise as it enters. Four character sets:
+  Symbols, ASCII, Blocks, Katakana.
+- **Marquee.** ScrollX and ScrollY crawl the text continuously and repeat it,
+  so a short word tiles across the frame and a long line runs on forever.
+  ScrollGap sets the space between repeats. You could already slide text by
+  putting a sawtooth LFO on TextX — what you could not do was make it wrap.
+- **Paths** — Circle, Arc, Spiral and Wave lay the text along a shape instead
+  of a line. PathAngle is the one to reach for: put an LFO on it and the ring
+  spins. PathFlip rights the glyphs along the bottom of a ring, PathUpright
+  keeps them vertical while their positions still follow the curve, and
+  PathWidth stretches the shape into an ellipse on purpose — at 100 % a circle
+  is round on screen, which it would not otherwise be, since the text canvas
+  is square and your output is not.
+
+  Scroll and paths combine: the text crawls **around** the ring.
+- **The text listens.** AudioTarget drives Scale, Rise, Hue, Weight, Rotate or
+  Opacity from whatever the analyser is pointed at — and it is **per glyph**:
+  on the default Spectrum band each letter reads its own slice of the
+  frequency range, so a word turns into a bank of meters. Point the tap at the
+  master bus and the text moves to the instrument itself.
+
+  AudioBand switches to Level, Bass, Mid or High if you want the whole word
+  moving as one. AudioRange sets how much of the spectrum is spread across the
+  letters — the top of an FFT is nearly always empty, so the default of 50 %
+  keeps every letter alive. AudioSmooth is a release time only: the attack
+  stays fast, because that is what makes it look played rather than animated.
+
+  This needs the audio engine running with something for it to hear. It
+  composes with everything else — a ring of text that pulses on the beat is
+  AudioTarget Scale plus Path Circle.
+
+### Changed
+- **The Text preview is playable.** Drag it to move the text, Shift+drag to
+  rotate, wheel to size, Alt+wheel for weight — it was already showing the live
+  layer, it just could not be touched.
+- **The Text panel is in four sections** — Type, Colour, Motion, Transition —
+  instead of one list of thirty-nine rows.
+
+---
+
+## [0.22.1] — 2026-08-31 — The Mapping You Had
+
+### Fixed
+- **ImWeb no longer fails to start if you have saved MIDI mappings.** v0.22.0
+  introduced remembering learned mappings across a reload, and the code that
+  reports what it restored called a function that was not in scope where it was
+  called — `ReferenceError: setStatus is not defined`, thrown during startup, so
+  the app came up blank.
+
+  The reference was always wrong; the crash was not always reached. Restoring
+  only announces itself when it actually restored something, so a fresh install
+  started perfectly, the test suite passed, and every automated check was clean.
+  It broke only for people who had already learned a mapping — that is, only for
+  people using the feature it shipped with.
+
+  If you hit it: this release fixes it outright, and no mappings were lost. They
+  were being restored correctly; it was the message about them that failed.
+
+### Changed
+- **Bokeh is much cheaper at large radii.** Past about a third of the Radius
+  range the effect now works at quarter resolution off a downsampled copy of the
+  picture. Nothing visible changes — detail finer than a few pixels cannot
+  survive a blur that wide — but there are four times fewer pixels to compute
+  and the sampling stops thrashing the GPU's texture cache. Measured on the
+  development machine: **21 fps back to 60** at Max quality with a wide radius.
+
+- **Bokeh.Discs now does something.** Its two shader inputs were never connected,
+  so the control had no effect at all — while still running a highlight extract
+  and a second full gather every frame and discarding the result, which was most
+  of the cost above. The discs you could already see were coming from
+  **Bokeh.Ring** alone. With this connected, settings from v0.22.0 will read
+  stronger; pull Discs down rather than Ring if it is too much.
+
+---
+
+## [0.22.0] — 2026-08-30 — Out of Focus
+
+### Added
+- **Bokeh — a lens defocus in Effects › Optics.** Not a blur with a hole in it:
+  bright points spread into real discs, and **Bokeh.Ring** decides where the
+  energy sits across each one. Positive puts a bright rim on every highlight and
+  reads as nearly hollow at the extreme — the soap-bubble bokeh of a fast lens
+  or a mirror lens. Negative is centre-weighted and soft. **Bokeh.Blades** shapes
+  the disc into a 5, 6 or 8-sided iris, with **Bokeh.Iris** to rotate it.
+
+  What decides *where* it defocuses is **Bokeh.Mask** — any routable source, not
+  a depth buffer. Video carries no depth, so the effect reads a mask instead and
+  does not care what the mask means: Motion by default, so a moving subject stays
+  sharp while the static background goes soft. **Bokeh.Focus** picks the mask
+  value that stays sharp, in either direction — 100 % keeps white sharp, 0 %
+  keeps black sharp, and a value in between keeps a band sharp and defocuses away
+  from it on both sides. That is why there is no Invert control; Focus already
+  covers both polarities.
+
+  **Bokeh.Radius** is a percentage of frame height rather than pixels, so a look
+  survives a change of resolution instead of halving in strength between 1080p
+  and 4K. **Bokeh.Quality** (Draft/Good/Fine/Max) sets the sample count. Good is
+  the default and costs roughly one Bloom; a large radius at Draft will show
+  rings, because radius and sample count are coupled by nature.
+
+  **Bokeh.Discs** is what makes discs appear on ordinary footage. A plain
+  gather images what is actually there, so it only forms a disc from a
+  highlight *smaller* than the blur radius — and spreading a point across a
+  disc divides its energy by the sample count, leaving a disc too faint to see.
+  Discs extracts the highlights above **Bokeh.Thresh**, gathers those
+  separately, and adds them back with gain. Raising Thresh shrinks each
+  highlight to its brightest core, which is what lets a large soft highlight
+  become a ring at all: measured on a highlight twice the blur radius, the
+  direct gather gives a rim/centre contrast of 1.00 (no ring possible) while
+  extracting at 93 % gives 14.19. **For visible discs, Thresh wants to be high
+  — 85 % or above — not low.** Set Discs to 0 for a purely optical defocus,
+  which also skips both extra passes.
+
+  **Bokeh.Smooth** eases the mask over time so focus glides in and lets go
+  instead of snapping with every twitch of a motion matte. In seconds, on the
+  same "time to visually gone" convention Motion Extraction uses.
+
+  Bokeh sits immediately before Bloom in the chain, which is where a lens would
+  put it — the boosted highlights feed Bloom's threshold and the two compose as
+  one optical stage. It is fully reorderable like any other effect.
+- **Learned MIDI mappings survive a reload.** They used to live in memory until
+  you remembered to save a preset, bank or project; learn a control, refresh,
+  and it was gone. They are now remembered per origin and restored at startup.
+  **Mappings only — never values.** A controller record carries the parameter's
+  current value as well as its mapping, so persisting the whole thing would
+  boot the instrument into a partial version of however you left it: Run Rec
+  still on, a swept Level still where a knob left it. The value is stripped on
+  the way out and again on the way in.
+  Restored *after* the boot bank or project, because the autosave is the more
+  recent truth — a bank carries whatever was mapped when it was last saved.
+  Anything you import afterwards still wins, and becomes the new autosave.
+  **⌫ Clear saved MIDI mappings** in the Project panel forgets them; live
+  mappings are untouched until the next reload. The status line names the
+  origin they came from, because localStorage is per-origin and ":5173 vs
+  :4173" is the usual reason mappings look lost.
+
+### Fixed
 - **A MIDI button no longer fires twice — once on press and again on release.**
   Hardware buttons are momentary: a Korg nanoKONTROL2 sends CC 127 on press and
   CC 0 on release, and the CC path fed both straight into the parameter. On a
