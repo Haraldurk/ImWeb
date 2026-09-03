@@ -72,6 +72,39 @@ precondition in a SINGLE call, and the phase-defining values carried on EVERY
 telemetry row, so a run proves its own conditions instead of depending on
 memory. See `src/soak.js`.
 
+**Alternate the conditions; never measure A then B.** A fixed order cannot tell
+the condition apart from anything that drifts across the session, and "measure
+A, then measure B" is the natural way to write it. Long-timeslice takes went
+first and came in at 57 fps, short ones after at 43–45, and the conclusion wrote
+itself — it was published in a PR and a commit message as "the single largest
+frame-rate win". It was wrong: performance degraded monotonically all session
+for an unrelated reason, so *whatever ran first would have won*. Run **A B A B**
+or randomise, which turns a session-wide drift from a confound that INVENTS an
+effect into noise that merely widens the error bars. Two corollaries: **report
+the running order with the result** — a table of conditions with no time column
+hides this — and remember that a confound big enough to invent an effect is
+usually big enough to see directly, so plot each take's own progression rather
+than one number per take. That is what showed the first take falling 46 → 21 fps
+*within itself*, which no cross-condition table could have.
+
+**A performance recommendation is a claim, and an unmeasured one belongs in no
+document.** A merged investigation doc correctly diagnosed the recorder's frame
+rate as encoder throughput, then recommended promoting VP8 over VP9 as a
+one-line change because VP8 is the cheaper codec. True — up to a point. Measured
+at 8 Mbit/s: VP8 is 1.75× faster at 0.58 MP and 1.62× at 2.06 MP, then falls off
+a cliff — **7.7 fps against VP9's 26.8 at 2048×1280**. Between writing the
+recommendation and acting on it, 1440p and 4K presets shipped, so the "cheap
+performance fix" would have landed as a **7× regression at a headline resolution
+of the release that introduced it**. Three rules follow. **The window between
+writing a recommendation and acting on it is where it goes stale** — re-measure a
+parked one against the CURRENT feature set, not the one that produced it.
+**Scale the measurement to the whole supported range, not the case that prompted
+it**: every real recording measured was under 2.06 MP, exactly the region where
+VP8 wins, so measuring "the sizes we have files for" would have confirmed the
+wrong answer with clean data. **State what the measurement does not establish** —
+naming the untested path, the single machine, and the one unexplained
+non-monotonic row is what lets a reader know how far to trust a 7× margin.
+
 **And read a red result as a claim about the instrument too.** Three times in
 one session the check was the broken thing: an audit that failed a correct
 refactor because it matched a syntactic accident; a source scrape anchored on a

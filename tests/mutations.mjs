@@ -25,6 +25,39 @@
 /** Ordinary quotes throughout: `${}` inside a single-quoted string is literal. */
 export const MUTATIONS = [
   // ═════════════════════════════════════════════════════════════════════════
+  // Rearrangements that walk around a spelling
+  //
+  // LEARNED 2026-08-15: a regex over source asserts a SPELLING, and the defect
+  // it guards against usually has more than one. These three mutate the code in
+  // ways a reasonable person would write, chosen so the ORIGINAL regex stops
+  // matching while the fault it names is fully present. Each one survived
+  // before the audit it names was rewritten to ask about structure.
+  // ═════════════════════════════════════════════════════════════════════════
+  {
+    name: 'sw: a build-time constant reached for by another name',
+    audit: 'audit-sw-cache-bump.mjs',
+    file: 'public/sw.js',
+    why: 'public/ is copied verbatim and never passes through Vite define, so ANY build-time constant throws a ReferenceError in the worker, install() never completes and the app silently stops working offline. The audit knew one spelling; this is an equally fatal one it could not see',
+    find: "const CACHE = 'imweb-v0.22.1';",
+    replace: "const CACHE = 'imweb-v' + import.meta.env.VITE_APP_VERSION;",
+  },
+  {
+    name: 'sw: an app module pulled in by dynamic import',
+    audit: 'audit-sw-cache-bump.mjs',
+    file: 'public/sw.js',
+    why: 'a service worker is not part of the bundle graph, so this fails at registration exactly as a static import would — but it is not at the start of a line, which is all the original check looked for',
+    find: "const CACHE = ",
+    replace: "const { helper } = await import('./assets/util.js');\nconst CACHE = ",
+  },
+  {
+    name: 'autosave: serializeControllers called WITH an argument',
+    audit: 'audit-mapping-autosave.mjs',
+    file: 'src/state/MappingAutosave.js',
+    why: 'NOTE: the audit behavioural check ("both mapped params were restored") catches this too, so it is not sole-source evidence for the text check — it was written to prove the text check, found it caught elsewhere, and the regex was made structural anyway. The autosave must never serialize controllers — doing so writes live controller state into the mapping file and it is restored over the project on load. Passing an argument is the ordinary way this call would evolve, and it defeats a regex anchored on the empty parens',
+    find: 'return JSON.stringify(this.ps.serializeMappings());',
+    replace: 'return JSON.stringify({ ...this.ps.serializeMappings(), c: this.ps.serializeControllers(this.ps) });',
+  },
+  // ═════════════════════════════════════════════════════════════════════════
   // Promotion pressure on LEARNED.md
   //
   // These mutate the DATA rather than the code, because the data is what this

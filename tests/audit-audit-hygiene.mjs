@@ -267,6 +267,21 @@ console.log('\nCollection assertions guard an empty collection');
   console.log(`  note  ${sites} collection assertion(s) in the suite, all guarded`);
 }
 
+// Attribute a variable to the source file it holds. Broader than section 1s
+// binder on purpose: that one must stay narrow (widening it reintroduced eight
+// false alarms once), while the two sections below only look at variables they
+// have already decided are interesting, so they can afford to follow the
+// per-audit read helpers (`const pipeline = read('src/core/Pipeline.js')`).
+const bindSourceVarsShared = (code) => {
+  const map = new Map();
+  for (const m of code.matchAll(
+    /(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*([^;]*?)(?=;|\n\s*(?:const|let|var|function|check|console|\/\/))/g)) {
+    const lit = /['"`]((?:src|public|tests)\/[^'"`\n]+\.(?:m?js|css|html|glsl))['"`]/.exec(m[2]);
+    if (lit && SOURCEY.test(lit[1])) map.set(m[1], lit[1]);
+  }
+  return map;
+};
+
 // ── A window anchor must be UNAMBIGUOUS in the file it slices ───────────────
 //
 // Promotes the second of the three incidents in the 2026-08-30 entry. An audit
@@ -296,15 +311,7 @@ console.log('\nWindow anchors are unambiguous in their target');
   // already known to slice, so it can afford to follow the per-audit read
   // helpers (`const pipeline = read('src/core/Pipeline.js')`) that the narrow
   // binder cannot see.
-  const bindSourceVars = (code) => {
-    const map = new Map();
-    for (const m of code.matchAll(
-      /(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*([^;]*?)(?=;|\n\s*(?:const|let|var|function|check|console|\/\/))/g)) {
-      const lit = /['"`]((?:src|public|tests)\/[^'"`\n]+\.(?:m?js|css|html|glsl))['"`]/.exec(m[2]);
-      if (lit && SOURCEY.test(lit[1])) map.set(m[1], lit[1]);
-    }
-    return map;
-  };
+  const bindSourceVars = bindSourceVarsShared;
 
   // Returns the needle when this site is a window anchor worth checking, else
   // null. Split out so the positive controls below drive the same code the
@@ -407,6 +414,125 @@ console.log('\nWindow anchors are unambiguous in their target');
       occurrences(pipeline, '\n  _ensureBokehMaskRT() {') === 1);
   }
   console.log(`  note  ${anchors} window anchor(s) in the suite, all unambiguous`);
+}
+
+// ── A NEGATED source-text assertion must have a mutation behind it ──────────
+//
+// Promotes 2026-08-15. A regex over source asserts a SPELLING, and the defect
+// it guards against usually has more than one. A POSITIVE assertion fails safe
+// — rearrange the tokens and it stops matching, so the check goes red and
+// someone looks. A NEGATED one fails OPEN: the same rearrangement makes it stop
+// matching and the check PASSES, on code that now contains the exact fault it
+// names.
+//
+// That is not hypothetical, and it is not rare enough to shrug at. Every one of
+// the three negated source assertions in this suite was walked around by an
+// ordinary rewrite the first time a mutation was pointed at it:
+//
+//   audit-sw-cache-bump  `!includes("__APP_VERSION__")`
+//       -> `import.meta.env.VITE_APP_VERSION` — a different spelling of the
+//          same fatal thing, since public/ never passes through Vite at all
+//   audit-sw-cache-bump  `!/^\s*import\s/m`
+//       -> `await import('./assets/util.js')` mid-line, equally fatal at
+//          registration and not at the start of a line
+//   audit-mapping-autosave  `!/serializeControllers\(\)/`
+//       -> `serializeControllers(ps)`, the ordinary way a call evolves
+//
+// All three are now structural and all three are in tests/mutations.mjs. This
+// check keeps the next one honest: if you write a negated source assertion, the
+// suite requires a mutation proving the rearrangement is caught, because
+// reading the regex is exactly what failed to find these.
+console.log('\nNegated source assertions are backed by a mutation');
+{
+  const mutations = readFileSync(join(ROOT, 'tests/mutations.mjs'), 'utf8');
+  let negated = 0;
+
+  // KNOWN DEBT, measured 2026-09-03. Six audits carry negated source assertions
+  // with no mutation behind them. They are listed rather than fixed because
+  // each needs a plausible rearrangement written and confirmed caught, which is
+  // real work and not this change.
+  //
+  // This list may only SHRINK. Adding a name to it is not a fix — it is a
+  // decision to ship a check that can pass over broken code, and the next
+  // section asserts every name here is still genuinely uncovered, so an entry
+  // that has since been given a mutation fails until it is deleted. A NEW
+  // negated assertion in an audit outside this list fails immediately, which is
+  // the whole point: the debt is bounded and the door is shut behind it.
+  const KNOWN_UNCOVERED = new Set([
+    'audit-audio-monitoring.mjs',
+    'audit-audio-protocol.mjs',
+    'audit-blend-percent.mjs',
+    'audit-sdf-migration.mjs',
+    'audit-table-write-paths.mjs',
+  ]);
+  const stillUncovered = new Set();
+
+  for (const f of auditFiles) {
+    if (f === 'audit-audit-hygiene.mjs') continue;
+    const code = stripComments(readFileSync(join(ROOT, 'tests', f), 'utf8'));
+    const bind = bindSourceVarsShared(code);
+    if (!bind.size) continue;
+
+    const srcLines = code.split('\n');
+    srcLines.forEach((line, i) => {
+      // The assertion may wrap: `check('label',` on one line and the negation
+      // on the next is ordinary formatting, and a line-scoped test missed
+      // exactly one of the suite's three sites that way — a detector that only
+      // sees the tidy spelling is the very thing this section is about.
+      const ctx = srcLines.slice(Math.max(0, i - 2), i + 1).join('\n');
+      if (!/\b(check|ok|assert)\s*\(/.test(ctx)) return;
+      const negRe = /!\s*\/[^\n]*?\/\w*\s*\.test\s*\(\s*([A-Za-z_$][\w$]*)/.exec(line);
+      const negInc = /!\s*([A-Za-z_$][\w$]*)\s*\.\s*(?:includes|match)\s*\(/.exec(line);
+      const v = negRe?.[1] ?? negInc?.[1];
+      if (!v || !bind.has(v)) return;
+      negated++;
+      if (!mutations.includes(`'${f}'`)) stillUncovered.add(f);
+      check(`${f}:${i + 1} negated source assertion has a mutation`,
+        mutations.includes(`'${f}'`) || KNOWN_UNCOVERED.has(f),
+        `this asserts a pattern is ABSENT from ${bind.get(v)}, which passes the ` +
+        `moment someone spells the fault differently — the failure mode is a ` +
+        `GREEN check over broken code. Add an entry to tests/mutations.mjs with ` +
+        `audit: '${f}' that rearranges the tokens, and confirm npm run mutate ` +
+        `reports it caught`);
+    });
+  }
+
+  // Positive controls, for the reason the other sections give: every live site
+  // is covered now, so a subject count cannot separate "clean" from "the
+  // detector stopped matching".
+  const READ = `const css = readFileSync(resolve(root, 'src/style.css'), 'utf8');\n`;
+  const detect = (src) => {
+    const code = stripComments(src);
+    const bind = bindSourceVarsShared(code);
+    const ls = code.split('\n');
+    return ls.some((line, i) => {
+      if (!/\b(check|ok|assert)\s*\(/.test(ls.slice(Math.max(0, i - 2), i + 1).join('\n'))) return false;
+      const a = /!\s*\/[^\n]*?\/\w*\s*\.test\s*\(\s*([A-Za-z_$][\w$]*)/.exec(line);
+      const b = /!\s*([A-Za-z_$][\w$]*)\s*\.\s*(?:includes|match)\s*\(/.exec(line);
+      const v = a?.[1] ?? b?.[1];
+      return !!v && bind.has(v);
+    });
+  };
+  check('detector flags a negated regex over source',
+    detect(READ + `check('not scaled', !/env\\(.*var\\(--ui-scale\\)/.test(css));`));
+  check('detector flags a negated includes over source',
+    detect(READ + `check('absent', !css.includes('--ui-scale'));`));
+  check('detector ignores a POSITIVE source assertion',
+    !detect(READ + `check('present', /var\\(--ui-scale\\)/.test(css));`));
+  check('detector ignores a negation over something that is not a source file',
+    !detect(`const labels = ['a'];\ncheck('none', !labels.includes('b'));`));
+  // The debt list must not go stale. An audit that has since gained a mutation
+  // stays on this list only by someone forgetting, and a forgotten exemption is
+  // how a bounded debt becomes a permanent hole.
+  for (const f of KNOWN_UNCOVERED) {
+    check(`${f} is still genuinely uncovered (else remove it from KNOWN_UNCOVERED)`,
+      stillUncovered.has(f),
+      `it now has a mutation, or no longer carries a negated source assertion — ` +
+      `delete it from the list so the next one cannot hide behind it`);
+  }
+  console.log(`  note  ${negated} negated source assertion(s); ` +
+    `${negated - [...stillUncovered].length} covered, ` +
+    `${KNOWN_UNCOVERED.size} audit(s) on the shrinking debt list`);
 }
 
 function truncate(s) { return s.length > 46 ? s.slice(0, 43) + '…' : s; }

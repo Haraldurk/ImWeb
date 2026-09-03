@@ -75,12 +75,28 @@ note(`app version ${pkgVersion}, cache "${cache}"`);
 // ReferenceError inside the worker. install() never completes, nothing is ever
 // cached, and the app merely stops working offline with no error anyone sees.
 console.log('\nsw.js stays free of build-time constants');
-check('does not reference __APP_VERSION__', !swText.includes('__APP_VERSION__'),
-  'public/ is copied verbatim and never passes through Vite\'s define — this ' +
-  'throws in the worker and kills the install handler. Hand-edit the literal.');
-check('does not import app modules', !/^\s*import\s/m.test(swText),
-  'a service worker is not part of the bundle graph; an import here fails at ' +
-  'registration');
+// Ask what the rule is ABOUT — "no value only a bundler could supply" — rather
+// than naming one spelling of it. The first version of this check looked for
+// the literal `__APP_VERSION__`, and `import.meta.env.VITE_APP_VERSION` walks
+// straight past it while failing in exactly the same way (LEARNED 2026-08-15).
+// `npm run mutate` reports both as caught; the registry carries them.
+const BUILD_CONSTANTS = [
+  ['__APP_VERSION__', 'a Vite define'],
+  ['import.meta.env', 'a Vite env import'],
+  ['process.env', 'a bundler-injected env'],
+];
+for (const [token, what] of BUILD_CONSTANTS) {
+  check(`does not reference ${token}`, !swText.includes(token),
+    `${what}: public/ is copied verbatim and never passes through Vite, so this ` +
+    'is undefined in the worker. It throws, install() never completes, and the ' +
+    'app silently stops working offline. Hand-edit the literal.');
+}
+// Static AND dynamic. `^\s*import\s` saw only the first, and a service worker
+// is no more part of the bundle graph when the import is awaited mid-line.
+check('does not import app modules',
+  !/^\s*import\s/m.test(swText) && !/\bimport\s*\(/.test(swText),
+  'a service worker is not part of the bundle graph; an import here — static or ' +
+  'dynamic — fails at registration');
 
 // ── 3. STRICT mode — self-enabling once the name tracks the version ──────────
 // Matches imweb-v1.2.3 and imweb-v1.2.3-4 (the mid-cycle suffix), and nothing

@@ -68,6 +68,18 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
   reports "not FloatType" about a target that is. The remaining four entries
   are technique rather than invariants and became a preflight section in the
   `verify` skill instead of a weak test.
+- **Negated source-text assertions now require a mutation behind them.** A
+  positive assertion fails safe — rearrange the tokens and it stops matching, so
+  it goes red. A negated one fails **open**: the same rearrangement makes it pass
+  over code containing the exact fault it names. Measuring found 14 such
+  assertions across 8 audits, not the 3 a first pass reported, and all three that
+  first pass did find were walked around on the first try — `__APP_VERSION__`
+  by `import.meta.env.VITE_APP_VERSION` (equally fatal, since `public/` never
+  passes through Vite), `/^\s*import\s/m` by an awaited mid-line `import()`, and
+  `serializeControllers()` by `serializeControllers(ps)`. Those three checks are
+  now structural and carry mutations; five audits with the same shape sit on a
+  debt list that may only shrink, and the audit asserts each name on it is still
+  genuinely uncovered so an exemption cannot go stale.
 - **Disp. Smooth** — stops an animated texture boiling when it drives
   displacement. A surface normal is the *derivative* of the height field, and
   the normals were measured over a fixed baseline of half a percent of the
