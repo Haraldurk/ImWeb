@@ -128,6 +128,16 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
   `git rebase --onto` fix.
 
 ### Changed
+- **The verify skill now covers the dead-AudioWorklet environment.** The in-app
+  browser pane may run Chrome with `--disable-audio`; with no output device the
+  render thread never pulls, so `process()` is never called while
+  `AudioContext.state` reads `'running'`, `addModule()` resolves, and the
+  message port answers normally in both directions. One harness had 29 of 31
+  checks green against a completely frozen audio thread. The skill now leads
+  with a liveness proof — a message only the callback can emit — and skips the
+  audio-dependent checks when it does not arrive, rather than asserting either
+  that audio works there or that it never does. `AudioBinding.js` already
+  implements the same proof for the app's own status display.
 - **Camera Distance reaches from 0.1 to 100, and slows down as it closes in.**
   It ran 0.1–30 linearly, which put every close-up framing in the first
   millimetre of the fader. Distance is perceived as a ratio — 1→2 is the same
