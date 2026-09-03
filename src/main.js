@@ -4548,6 +4548,34 @@ async function main() {
   // Text layer triggers
   ps.get("text.advance").onTrigger(() => textLayer.advance());
 
+  // Per-glyph audio needs the analyser tap OPEN, and nothing else here opens
+  // it: ctrl.sound is lazy-initialised by _addController when a sound-type
+  // controller is first assigned to some parameter (ControllerManager, "lazy-
+  // init audio input on first assignment"). text.audioTarget is a plain
+  // parameter, not a controller assignment, so without this the feature is
+  // silently inert in its obvious usage — switch it on, nothing moves, no
+  // error anywhere. Asking for it here is the whole fix.
+  //
+  // onChange rather than a one-time call at boot, because a project or Display
+  // State that arrives with audioTarget already set has to open the tap too —
+  // and it fires for that, since state recall writes through ps.set.
+  //
+  // enableSound() is idempotent (it returns immediately if this.sound exists)
+  // and degrades quietly when the engine is not running, which is the right
+  // shape: turning this on must never be what fails.
+  //
+  // Both EDGES, because either order is a thing a person does: switching the
+  // feature on with the engine already running, or arming the feature first
+  // and starting the engine after. enableSound() returns early with no tap
+  // when the engine is not up, and nothing retries it — so the second order
+  // left the feature permanently dead until the target was touched again,
+  // which is indistinguishable from "it just doesn't work".
+  const _armTextAudio = () => {
+    if (Math.round(ps.get("text.audioTarget").value) > 0) ctrl.enableSound();
+  };
+  ps.get("text.audioTarget").onChange(_armTextAudio);
+  ps.get("audio.enable").onChange((v) => { if (v) _armTextAudio(); });
+
   // Slit scan clear trigger
   ps.get("slitscan.clear").onTrigger(() => slitScan.clear());
 

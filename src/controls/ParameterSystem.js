@@ -5043,12 +5043,28 @@ export function registerCoreParameters(ps) {
     value: 0,
   });
   ps.register({
+    // How narrow the pitch-to-letter mapping is — the control for "a bass note
+    // should move one letter, not half the sentence". 0 is broad averaging;
+    // 100 watches a sliver of spectrum per letter and lets only the strongest
+    // letter through. Narrow filters alone are not enough, because real sound
+    // is broadband: the competition is what makes one letter win.
+    id: "text.audioFocus",
+    label: "AudioFocus",
+    group: "text",
+    min: 0,
+    max: 100,
+    value: 50,
+    unit: "%",
+  });
+  ps.register({
     id: "text.audioAmt",
     label: "AudioAmt",
     group: "text",
     min: 0,
     max: 100,
-    value: 50,
+    // 80, not 50: the owner's verdict on 50 was "too shy", and a default
+    // nobody reaches for is a default that misrepresents the feature.
+    value: 80,
     unit: "%",
   });
   ps.register({
@@ -5060,16 +5076,42 @@ export function registerCoreParameters(ps) {
     group: "text",
     min: 0,
     max: 100,
-    value: 40,
+    // The owner played this at 0 and preferred it there. 10 keeps a trace of
+    // release so a dropped transient does not strobe, without smearing.
+    value: 10,
     unit: "%",
   });
+  // Two ends, not one "range". Tuning this means pointing the word at the part
+  // of the spectrum the material actually occupies, and that needs both sides:
+  // a single top edge cannot lift the bottom off the rumble.
   ps.register({
-    // How much of the spectrum is spread across the word. The top of an FFT is
-    // nearly always empty, so spreading all of it leaves most glyphs still.
-    id: "text.audioRange",
-    label: "AudioRange",
+    id: "text.audioLo",
+    label: "AudioLow",
     group: "text",
-    min: 5,
+    min: 20,
+    max: 2000,
+    value: 80,
+    step: 1,
+    unit: "Hz",
+  });
+  ps.register({
+    id: "text.audioHi",
+    label: "AudioHigh",
+    group: "text",
+    min: 200,
+    max: 16000,
+    value: 6000,
+    step: 10,
+    unit: "Hz",
+  });
+  ps.register({
+    // Sensitivity: how much signal it takes to move a letter. Distinct from
+    // AudioAmt, which is how FAR the letter moves once it does. Gain without a
+    // gate would only amplify the noise floor, so the two ship together.
+    id: "text.audioGain",
+    label: "AudioSens",
+    group: "text",
+    min: 0,
     max: 100,
     value: 50,
     unit: "%",

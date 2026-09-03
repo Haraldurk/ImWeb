@@ -189,9 +189,13 @@ export class TextLayer {
     this._audio       = null;
     this._audioTarget = 0;
     this._audioBand   = 0;
-    this._audioAmt    = 50;
-    this._audioSmooth = 40;
-    this._audioRange  = 50;
+    this._audioAmt    = 80;
+    this._audioSmooth = 10;
+    this._audioLo     = 80;     // Hz — low end of the span across the word
+    this._audioHi     = 6000;   // Hz — high end
+    this._audioGain   = 50;     // sensitivity
+    this._audioFocus  = 50;     // how narrow the pitch-to-letter mapping is
+    this._audioRaw    = null;   // pre-envelope values, reused each frame
     // Per-glyph envelope followers, indexed by glyph. Grown on demand.
     this._audioEnv    = new Float32Array(0);
 
@@ -241,9 +245,19 @@ export class TextLayer {
    * are the whole point.
    */
   _tickAudio(dt) {
-    const n = (this._units[this._idx] ?? '').length;
+    const unit = this._units[this._idx] ?? '';
+    const n = unit.length;
     if (!n) return false;
     if (this._audioEnv.length < n) this._audioEnv = new Float32Array(n);
+
+    // Only DRAWN characters take a share of the spectrum. "IMWEB FUTURE IS
+    // HERE" is twenty characters of which three are spaces, so a per-character
+    // split spent fifteen percent of the band on glyphs that never appear —
+    // and every letter's slice was that much wider and blunter for it.
+    const drawn = [];
+    for (let i = 0; i < n; i++) if (unit[i].trim()) drawn.push(i);
+    const dn = drawn.length;
+    if (!dn) return false;
 
     const a = this._audio;
     const N = a?.freq?.length ?? 0;
@@ -255,32 +269,129 @@ export class TextLayer {
       : this._audioBand === 3 ? (a?.mid   ?? 0)
       :                         (a?.high  ?? 0);
 
-    // Only the bottom `audioRange` % of the spectrum is spread across the
-    // word. The top of an FFT is almost always empty, and spreading the whole
-    // thing leaves most of the glyphs permanently still.
-    const hi = Math.max(1, Math.floor(N * (this._audioRange / 100)));
+    // Glyph → frequency is LOGARITHMIC, because hearing is and music is: every
+    // letter gets an equal share of the OCTAVES between Low and High, not an
+    // equal share of the hertz. A linear spread put ten of eleven letters above
+    // 1 kHz where a microphone has almost nothing, which is why the only usable
+    // setting was to squash the whole span into the bass.
+    //
+    // Low and High are two ends rather than one "range", because that is what
+    // tuning this actually needs: you point the word at the part of the
+    // spectrum the material lives in, from both sides.
+    const nyq   = (a?.rate ?? 48000) / 2;
+    const fLo   = Math.max(20, Math.min(this._audioLo, nyq * 0.5));
+    const fHi   = Math.max(fLo * 1.5, Math.min(this._audioHi, nyq));
+    const hzPer = nyq / Math.max(1, N);
+    const fAt   = (t) => fLo * Math.pow(fHi / fLo, t);
+    const binAt = (f) => Math.max(0, Math.min(N - 1, Math.round(f / hzPer)));
+
+    // Sensitivity, and the gate that makes it usable.
+    //
+    // Without a gate the letters never come to rest: a microphone's noise floor
+    // is not zero, the spectral tilt below multiplies it, and every glyph sits
+    // permanently a little bit ON — which reads as "rotated a bit by default",
+    // as movement that looks minimal (the useful travel is squashed above a
+    // raised floor), and as a response too broad to tell one letter from
+    // another. The gate subtracts the resting floor and re-normalises what is
+    // left, so silence is genuinely still and the whole travel is signal.
+    const gain = Math.pow(10, (this._audioGain - 50) / 50);   // 0.1x … 10x
+    const GATE = 0.08;
 
     const atkK = 1 - Math.exp(-dt / 0.02);
     const relK = 1 - Math.exp(-dt / (0.02 + (this._audioSmooth / 100) * 0.5));
 
-    let moved = false;
-    for (let i = 0; i < n; i++) {
+    // FOCUS — how narrow the mapping is. This is the control for "a bass note
+    // should move the I and nothing else".
+    //
+    // Two things stop that happening on their own, and Focus drives both:
+    //
+    //   1. Each letter averages a whole slice of the spectrum. Wide slices
+    //      overlap what the ear hears as one note, so a bass note lands on
+    //      several letters at once. Focus narrows each letter's window toward
+    //      its own centre frequency.
+    //   2. Real sound is broadband. A voice or a mix has energy at EVERY
+    //      frequency, so even with perfect filters every letter has something
+    //      to react to and the whole word shimmers. Narrow filters alone
+    //      cannot fix this; what fixes it is competition — letting the letter
+    //      with the most energy keep it and pushing the rest down.
+    //
+    // At Focus 0 both are off and this is the old broad averaging. At Focus
+    // 100 each letter watches a sliver of spectrum and only the strongest one
+    // survives.
+    const focus = Math.max(0, Math.min(1, this._audioFocus / 100));
+    const raw = this._audioRaw && this._audioRaw.length >= n
+      ? this._audioRaw : (this._audioRaw = new Float32Array(n));
+    raw.fill(0, 0, n);
+
+    for (let r = 0; r < dn; r++) {
+      const i = drawn[r];
       let v = 0;
       if (uniform !== null) {
         v = uniform;
       } else if (N) {
-        // Average the glyph's whole slice, not one bin — with 256 bins and a
-        // short word, point-sampling picks an arbitrary spike and misses the
-        // energy either side of it.
-        const b0 = Math.floor((i / n) * hi);
-        const b1 = Math.max(b0 + 1, Math.floor(((i + 1) / n) * hi));
+        // The letter's own slot, narrowed toward its centre by Focus.
+        const t0 = r / dn, t1 = (r + 1) / dn;
+        const tc = (t0 + t1) * 0.5;
+        const half = (t1 - t0) * 0.5 * (1 - 0.9 * focus);
+        // Average the window, not one bin — with 256 bins and a short word,
+        // point-sampling picks an arbitrary spike and misses the energy either
+        // side of it.
+        const b0 = binAt(fAt(tc - half));
+        const b1 = Math.max(b0 + 1, binAt(fAt(tc + half)));
         let s = 0;
         for (let b = b0; b < b1; b++) s += a.freq[b];
         v = s / ((b1 - b0) * 255);
+        // Tilt. Real programme material falls off with frequency, so even on a
+        // log axis the treble letters would idle while the bass ones saturate.
+        // A gentle rising weight buys the top half of the word back; without
+        // it the log mapping alone still leaves the word lopsided.
+        // Tilt, and Focus is what decides how much of it there is.
+        //
+        // The tilt exists to keep every letter alive: real material falls off
+        // with frequency, so without it the treble letters idle. But that is
+        // exactly the opposite of what Focus asks for — a compensated spectrum
+        // is a FLAT one, and a flat spectrum has no winner. At full Focus the
+        // tilt is therefore off and the letters see the spectrum as it really
+        // is; at Focus 0 it is at full strength and the whole word breathes.
+        const fc = fAt(tc);
+        const tiltCap = 1 + (1 - focus) * 3;
+        v = v * Math.min(tiltCap, Math.max(1, Math.sqrt(fc / 250)));
       }
+      // Sensitivity, THEN the gate — in that order, so turning sensitivity up
+      // lifts the signal above a fixed floor instead of lifting the floor with
+      // it. Gating after the tilt matters too: the tilt multiplies hiss as
+      // readily as music, and ungated that is what held every letter slightly
+      // on at rest.
+      // Left UNCLAMPED on purpose. Clamping to 1 here was destroying the very
+      // contrast the competition below needs: with any generous Sens setting
+      // several letters saturate at exactly 1.0, become indistinguishable, and
+      // Focus can no longer tell which one is loudest. The ceiling is applied
+      // after the competition instead.
+      raw[i] = Math.max(0, (v * gain - GATE) / (1 - GATE));
+    }
+
+    // Competition, the second half of Focus. Skipped for the uniform bands,
+    // where every glyph holds the same number by definition and pushing the
+    // "losers" down would only turn one control into a volume fader.
+    if (focus > 0 && uniform === null) {
+      let vmax = 0;
+      for (let r = 0; r < dn; r++) vmax = Math.max(vmax, raw[drawn[r]]);
+      if (vmax > 0) {
+        const k = focus * 6;
+        for (let r = 0; r < dn; r++) {
+          const i = drawn[r];
+          raw[i] *= Math.pow(raw[i] / vmax, k);
+        }
+      }
+    }
+    // Ceiling last, so everything above has had real headroom to work in.
+    for (let r = 0; r < dn; r++) raw[drawn[r]] = Math.min(1, raw[drawn[r]]);
+
+    let moved = false;
+    for (let i = 0; i < n; i++) {
       const e = this._audioEnv[i];
-      const k = v > e ? atkK : relK;
-      const next = e + (v - e) * k;
+      const k = raw[i] > e ? atkK : relK;
+      const next = e + (raw[i] - e) * k;
       if (Math.abs(next - e) > 0.0005) moved = true;
       this._audioEnv[i] = next;
     }
@@ -425,12 +536,18 @@ export class TextLayer {
     const audioBand   = Math.round(get('text.audioBand'));
     const audioAmt    = get('text.audioAmt');
     const audioSmooth = get('text.audioSmooth');
-    const audioRange  = get('text.audioRange');
+    const audioLo     = get('text.audioLo');
+    const audioHi     = get('text.audioHi');
+    const audioGain   = get('text.audioGain');
+    const audioFocus  = get('text.audioFocus');
     if (audioTarget !== this._audioTarget) { this._audioTarget = audioTarget; dirty = true; }
     if (audioBand   !== this._audioBand)   { this._audioBand   = audioBand;   dirty = true; }
     if (audioAmt    !== this._audioAmt)    { this._audioAmt    = audioAmt;    dirty = true; }
     this._audioSmooth = audioSmooth;
-    this._audioRange  = audioRange;
+    this._audioLo     = audioLo;
+    this._audioHi     = audioHi;
+    if (audioGain !== this._audioGain) { this._audioGain = audioGain; dirty = true; }
+    if (audioFocus !== this._audioFocus) { this._audioFocus = audioFocus; dirty = true; }
     // The envelope is an integrator, so it advances on dt and re-renders while
     // it is still moving — including on the way DOWN, or the text would freeze
     // at its loudest and stay there.
@@ -1018,12 +1135,12 @@ export class TextLayer {
           const c = g.ctx;
           switch (this._audioTarget) {
             case 1: { // Scale
-              const s = 1 + e * amt * 1.5;
+              const s = 1 + e * amt * 2.5;
               c.translate(cx, lineY); c.scale(s, s); c.translate(-cx, -lineY);
               break;
             }
             case 2:   // Rise
-              c.translate(0, -e * amt * fs * 0.6);
+              c.translate(0, -e * amt * fs * 0.9);
               break;
             case 3:   // Hue — set here and preserved across the outline pass
               c.fillStyle = `hsl(${(this._hue + e * amt * 180) % 360}, `
@@ -1038,11 +1155,27 @@ export class TextLayer {
               this._weight = saved;
               break;
             }
-            case 5:   // Rotate
+            case 5: {  // Rotate
+              // BIPOLAR, alternating per letter. The other three targets are
+              // "more or less of a neutral thing", so uneven letters still read
+              // fine. Rotation is not: driven one way by a unipolar envelope
+              // every letter leans the same direction and the word reads as
+              // toppling over rather than reacting. Alternating the sign turns
+              // the same signal into a shimmer, which stays legible at small
+              // amounts and scatters at large ones.
+              //
+              // ~29 deg at full, not the ~69 it briefly had. That depth was
+              // raised to compensate for an envelope the missing noise gate
+              // was holding near zero — with the gate in place the
+              // compensation is wrong, and it squashed the whole usable range
+              // into the bottom of the slider. Fixing the cause invalidated
+              // the workaround.
+              const dir = (g.i & 1) ? -1 : 1;
               c.translate(cx, lineY);
-              c.rotate(e * amt * 0.6);
+              c.rotate(dir * e * amt * 0.5);
               c.translate(-cx, -lineY);
               break;
+            }
             case 6:   // Opacity — quiet glyphs dim rather than loud ones brighten
               c.globalAlpha *= (1 - amt) + amt * e;
               break;

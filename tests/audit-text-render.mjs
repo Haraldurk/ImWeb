@@ -50,6 +50,14 @@ const settle = (layer, opts, frames = 40) => {
   return last;
 };
 
+/**
+ * A stepped spectrum: one level per glyph band when four glyphs span
+ * 30 Hz - 20 kHz. Bins are ~94 Hz apart at 48 kHz, so the boundaries below are
+ * the band edges, and the levels clear the noise gate without saturating after
+ * the spectral tilt.
+ */
+const BANDS = (i) => (i < 2 ? 0.50 : i < 19 ? 0.20 : i < 148 ? 0.08 : 0.03);
+
 // ── 1. The default case is untouched ────────────────────────────────────────
 
 {
@@ -317,16 +325,49 @@ const settle = (layer, opts, frames = 40) => {
 // would pass just as happily on a single level driving every glyph, which is
 // the thing it is not.
 
+// Glyph → frequency is LOGARITHMIC, so these fixtures are written in bins that
+// correspond to real BANDS. At 48 kHz with 256 bins each bin is ~94 Hz, and the
+// span runs 50 Hz → fTop. A fixture written as "the bottom eighth of the bins"
+// is 0–2.3 kHz, which under log spacing is most of the WORD — it cannot tell
+// the leading glyphs from the trailing ones, and a check built on it passes
+// whatever the mapping does.
+
 {
-  // Energy only in the bottom eighth of the spectrum: the leading glyphs must
-  // respond and the trailing ones must not.
+  // Energy only below ~200 Hz: on a log axis that is the first letter or two.
   const t = await makeLayer('ABCDEFGH');
-  t.setAudio(audioFrame((i, n) => (i < n / 8 ? 1 : 0)));
+  t.setAudio(audioFrame((i) => (i <= 2 ? 1 : 0)));
   const o = { 'text.audioTarget': 1, 'text.audioAmt': 100, 'text.audioSmooth': 0 };
   const c = settle(t, o);
   check('Spectrum: a bass-only signal scales the LEADING glyphs, not the rest',
     c.length === 8 && c[0].scale > 1.05 && c[7].scale < 1.01,
     c.map(d => d.scale));
+}
+
+{
+  // The other end, and the check that would have FAILED before the mapping was
+  // made logarithmic. Energy only above ~9 kHz: with a linear spread over the
+  // default range those bins fell outside the word entirely and nothing moved.
+  const t = await makeLayer('ABCDEFGH');
+  t.setAudio(audioFrame((i) => (i >= 96 ? 1 : 0)));
+  const o = { 'text.audioTarget': 1, 'text.audioAmt': 100, 'text.audioSmooth': 0,
+              'text.audioLo': 30, 'text.audioHi': 20000 };
+  const c = settle(t, o);
+  check('Spectrum: a treble-only signal reaches the TRAILING glyphs',
+    c.length === 8 && c[7].scale > 1.05 && c[0].scale < 1.01,
+    c.map(d => d.scale));
+}
+
+{
+  // Every letter must have a band with something in it. A linear spread left
+  // the top half of a word permanently still on real material, which is what
+  // forced AudioRange down to 5 % and threw the treble away.
+  const t = await makeLayer('ABCDEFGH');
+  t.setAudio(audioFrame(() => 0.5));                       // flat spectrum
+  const o = { 'text.audioTarget': 1, 'text.audioAmt': 100, 'text.audioSmooth': 0,
+              'text.audioLo': 30, 'text.audioHi': 20000 };
+  const c = settle(t, o);
+  check('every glyph gets a live band — none is left permanently still',
+    c.length === 8 && c.every(d => d.scale > 1.05), c.map(d => d.scale));
 }
 
 {
@@ -340,6 +381,118 @@ const settle = (layer, opts, frames = 40) => {
   check('Level: one number drives every glyph the same amount',
     c.length === 8 && c.every(d => Math.abs(d.scale - c[0].scale) < 1e-6) && c[0].scale > 1.05,
     c.map(d => d.scale));
+}
+
+// ── Rotate is the odd target out ────────────────────────────────────────────
+//
+// Scale, Rise and Opacity are all "more or less of a neutral thing", so uneven
+// letters read fine however the envelope lands. Rotation driven ONE WAY by a
+// unipolar envelope makes every letter lean the same direction, and the word
+// reads as toppling rather than reacting — reported as "difficult to tune,
+// has been all along".
+
+{
+  const t = await makeLayer('ABCDEFGH');
+  t.setAudio(audioFrame(() => 0.6));
+  const c = settle(t, { 'text.audioTarget': 5, 'text.audioAmt': 100,
+    'text.audioSmooth': 0, 'text.audioFocus': 0,
+    'text.audioLo': 30, 'text.audioHi': 20000 });
+  const signs = c.map(d => Math.sign(d.rot));
+  check('Rotate alternates direction per letter — a shimmer, not a lean',
+    c.length === 8 && signs.some(v => v > 0) && signs.some(v => v < 0) &&
+    c.every((d, i) => i === 0 || Math.sign(d.rot) !== Math.sign(c[i - 1].rot)),
+    c.map(d => +d.rot.toFixed(1)));
+  // Legibility: the whole slider has to be usable, so full travel must stay in
+  // a range you can still read the word at. The ~69 deg it briefly carried put
+  // every usable setting in the bottom fifth of the control.
+  check('…and full travel stays legible (under 35 deg)',
+    c.every(d => Math.abs(d.rot) <= 35), c.map(d => +d.rot.toFixed(1)));
+  check('…and it is actually turning at full amount (not a dead control)',
+    c.some(d => Math.abs(d.rot) > 10), c.map(d => +d.rot.toFixed(1)));
+}
+
+// ── Focus, and spaces ───────────────────────────────────────────────────────
+//
+// The owner's own statement of the goal: with "IMWEB FUTURE", a bass sound
+// should move the I and not the whole of IMWEB. That is a selectivity control,
+// and these are the checks that say whether it works.
+
+{
+  // A bass note over a broadband floor — a real sound, not a lab tone. This is
+  // the owner's case: the low peak should claim the front of the word and the
+  // rest should settle, rather than the whole sentence shimmering.
+  //
+  // Note what this canNOT do, deliberately: a genuinely FLAT band of energy
+  // gives several letters identical readings, and nothing should separate
+  // them. Focus sharpens a peak; it does not invent one.
+  const tone = (i) => Math.max(0.2, 1 - i / 25);
+  const o = { 'text.audioTarget': 1, 'text.audioAmt': 100, 'text.audioSmooth': 0,
+              'text.audioLo': 30, 'text.audioHi': 20000 };
+
+  const broad = await makeLayer('ABCDEFGH');
+  broad.setAudio(audioFrame(tone));
+  const cb = settle(broad, { ...o, 'text.audioFocus': 0 });
+
+  const tight = await makeLayer('ABCDEFGH');
+  tight.setAudio(audioFrame(tone));
+  const ct = settle(tight, { ...o, 'text.audioFocus': 100 });
+
+  const moving = (c) => c.filter(d => d.scale > 1.02).length;
+  check('Focus narrows a tone onto FEWER letters',
+    cb.length === 8 && ct.length === 8 && moving(ct) < moving(cb),
+    { broad: moving(cb), tight: moving(ct) });
+  check('…and it leaves a front-to-back gradient, not a flat block',
+    ct[0].scale > ct[2].scale && ct[2].scale > ct[4].scale,
+    ct.map(d => +d.scale.toFixed(2)));
+}
+
+{
+  // Broadband sound is the case narrow filters alone cannot fix: every letter
+  // has something to react to. Competition is what makes one win.
+  const o = { 'text.audioTarget': 1, 'text.audioAmt': 100, 'text.audioSmooth': 0,
+              'text.audioLo': 30, 'text.audioHi': 20000 };
+  const shaped = (i) => (i < 3 ? 0.9 : 0.35);   // energy everywhere, a bass peak
+
+  const broad = await makeLayer('ABCDEFGH');
+  broad.setAudio(audioFrame(shaped));
+  const cb = settle(broad, { ...o, 'text.audioFocus': 0 });
+
+  const tight = await makeLayer('ABCDEFGH');
+  tight.setAudio(audioFrame(shaped));
+  const ct = settle(tight, { ...o, 'text.audioFocus': 100 });
+
+  const spread = (c) => Math.max(...c.map(d => d.scale)) - Math.min(...c.map(d => d.scale));
+  check('on BROADBAND sound, Focus still separates the letters',
+    cb.length === 8 && ct.length === 8 && spread(ct) > spread(cb),
+    { broad: +spread(cb).toFixed(3), tight: +spread(ct).toFixed(3) });
+}
+
+{
+  // Focus 0 must remain the old broad behaviour, so the control is additive
+  // rather than a change to what everyone already has.
+  const t = await makeLayer('ABCDEFGH');
+  t.setAudio(audioFrame(() => 0.5));
+  const c = settle(t, { ...{ 'text.audioTarget': 1, 'text.audioAmt': 100, 'text.audioSmooth': 0,
+              'text.audioLo': 30, 'text.audioHi': 20000 }, 'text.audioFocus': 0 });
+  check('Focus 0 leaves every letter live (the broad behaviour is intact)',
+    c.length === 8 && c.every(d => d.scale > 1.05), c.map(d => +d.scale.toFixed(2)));
+}
+
+{
+  // Spaces must not consume a slice of the spectrum: a four-word line would
+  // otherwise spend three of its bands on characters that never draw.
+  const o = { ...{ 'text.audioTarget': 1, 'text.audioAmt': 100, 'text.audioSmooth': 0,
+              'text.audioLo': 30, 'text.audioHi': 20000 }, 'text.audioFocus': 0 };
+  const spaced = await makeLayer('AB CD');
+  spaced.setAudio(audioFrame(() => 0.5));
+  const cs = settle(spaced, o);
+  const plain = await makeLayer('ABCD');
+  plain.setAudio(audioFrame(() => 0.5));
+  const cn = settle(plain, o);
+  check('spaces take no share of the spectrum — four letters band identically',
+    cs.length === 4 && cn.length === 4 &&
+    cs.every((d, i) => Math.abs(d.scale - cn[i].scale) < 1e-6),
+    { spaced: cs.map(d => +d.scale.toFixed(3)), plain: cn.map(d => +d.scale.toFixed(3)) });
 }
 
 {
@@ -381,9 +534,13 @@ const settle = (layer, opts, frames = 40) => {
 
 {
   const t = await makeLayer('ABCD');
+  // A STEPPED spectrum, one level per glyph band. A smooth ramp will not do:
+  // the tilt is designed to flatten a falling spectrum, so a ramp comes out
+  // nearly uniform and the check stops discriminating. Levels are chosen to
+  // clear the gate without saturating.
   const o = { 'text.audioTarget': 3, 'text.audioAmt': 100, 'text.audioSmooth': 0,
-              'text.outline': 4 };
-  t.setAudio(audioFrame((i, n) => 1 - i / n));
+              'text.audioLo': 30, 'text.audioHi': 20000, 'text.outline': 4 };
+  t.setAudio(audioFrame(BANDS));
   const c = settle(t, o);
   check('Hue: each glyph takes its own colour, and the OUTLINE pass keeps it',
     c.length === 4 && new Set(c.map(d => d.fill)).size === 4, c.map(d => d.fill));
@@ -391,8 +548,9 @@ const settle = (layer, opts, frames = 40) => {
 
 {
   const t = await makeLayer('ABCD');
-  const o = { 'text.audioTarget': 4, 'text.audioAmt': 100, 'text.audioSmooth': 0 };
-  t.setAudio(audioFrame((i, n) => 1 - i / n));
+  const o = { 'text.audioTarget': 4, 'text.audioAmt': 100, 'text.audioSmooth': 0,
+              'text.audioLo': 30, 'text.audioHi': 20000 };
+  t.setAudio(audioFrame(BANDS));
   const c = settle(t, o);
   check('Weight: each glyph gets its own weight, and the advance does NOT move',
     c.length === 4 && new Set(c.map(d => d.font)).size === 4 &&
