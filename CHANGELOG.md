@@ -476,6 +476,17 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
   to 0.
 
 ### Added
+- **Detached panels stay where you put them.** The floating windows you tear off
+  with ⊞ now survive a reload — which sections are open, where each one sits and
+  how big it is. Two stores, two jobs: a per-origin autosave, rewritten on every
+  detach, drag, resize and re-attach, is what a plain reload restores; the
+  `.imweb` project file carries the same arrangement to another machine.
+  Deliberately **not** a Display State — states are recalled live from MIDI, and
+  layout in a state would rearrange the windows mid-performance. Restored
+  positions are clamped to the current viewport, so a window placed on a second
+  monitor comes back on screen when only the laptop is attached rather than
+  opening somewhere you cannot reach it.
+
 - **One MIDI control per option on a button-group parameter.** Right-click P2
   on Partition Rec → its button pulses → move any control → that button now
   selects P2. Four buttons for four partitions, on a controller with no pads.

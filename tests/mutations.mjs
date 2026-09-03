@@ -838,4 +838,60 @@ export const MUTATIONS = [
     find: '    if (!eng?.ctx || !eng.node) return false;',
     replace: '    if (!eng?.ctx) return false;',
   },
+
+  // ═════════════════════════════════════════════════════════════════════════
+  // Detached-panel layout
+  //
+  // Every one of these produces a layout that looks saved and comes back
+  // unusable, on a display the developer does not have. That is the whole
+  // reason the clamp is a pure function rather than something checked by eye.
+  // ═════════════════════════════════════════════════════════════════════════
+  {
+    name: 'panel-layout: the position clamp loses its upper bound',
+    audit: 'audit-panel-layout.mjs',
+    file: 'src/ui/layout/PanelLayout.js',
+    why: 'the natural half-written clamp — it correctly stops a window going off the LEFT and forgets the right, so a window detached at x=3000 on an external display restores entirely off-screen on the laptop, and the autosave then brings it back off-screen every boot',
+    find: '    x: Math.min(Math.max(x, MARGIN), maxX),',
+    replace: '    x: Math.max(x, MARGIN),',
+  },
+  {
+    name: 'panel-layout: the vertical clamp is computed but not applied to the max',
+    audit: 'audit-panel-layout.mjs',
+    file: 'src/ui/layout/PanelLayout.js',
+    why: 'drops the "the window is bigger than the screen" case: maxY goes negative, the window is parked above the top edge, and its title bar — the only handle it has — is unreachable, so it cannot be moved, resized or closed',
+    find: '  const maxY = Math.max(MARGIN, vh - h - MARGIN);',
+    replace: '  const maxY = vh - h - MARGIN;',
+  },
+  {
+    name: 'panel-layout: the size clamp ignores the CSS min-width',
+    audit: 'audit-panel-layout.mjs',
+    file: 'src/ui/layout/PanelLayout.js',
+    why: 'reads as a tidy simplification, and puts the stored size out of step with the real one — the browser refuses a width below .detached-panel min-width, so the position is then clamped against a width the window does not have and it hangs off the right edge',
+    find: '    w: w == null ? null : Math.max(MIN_W, Math.min(w, vw - 2 * MARGIN)),',
+    replace: '    w: w == null ? null : Math.min(w, vw - 2 * MARGIN),',
+  },
+  {
+    name: 'panel-layout: a corrupt entry survives normalisation',
+    audit: 'audit-panel-layout.mjs',
+    file: 'src/ui/layout/PanelLayout.js',
+    why: 'the filter looks redundant beside the map above it — without it a keyless entry reaches the restore loop, and a layout blob that half-wrote (quota, a force-quit) takes the panel down at boot rather than being ignored',
+    find: '    .filter((p) => p.key);',
+    replace: '    ;',
+  },
+  {
+    name: 'panel-layout: an import before the UI exists drops the layout',
+    audit: 'audit-panel-layout.mjs',
+    file: 'src/io/ProjectFile.js',
+    why: 'the stash branch looks like dead code until you know the first-launch MasterProject import runs long before the hook registers — without it a factory project opens with its windows closed and nothing says why, which is exactly how the glsl key learned this',
+    find: '      else this.pendingPanelLayout = data.panelLayout;',
+    replace: '',
+  },
+  {
+    name: 'panel-layout: two sections come to share a title',
+    audit: 'audit-panel-layout.mjs',
+    file: 'index.html',
+    why: 'sixty-three sections have no id, so the title IS the saved identity — two the same and the second silently overwrites the first\'s window position, which presents as "it forgets one panel" with nothing in the code looking wrong',
+    find: '<div class="section-header">Mix 2</div>',
+    replace: '<div class="section-header">Mix 1</div>',
+  },
 ];
