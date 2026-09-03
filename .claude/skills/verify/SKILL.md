@@ -12,6 +12,110 @@ npm run build                 # ~25s; chunk-size warning is normal
 npx vite preview --port 4173 --strictPort   # serves dist/; dev server https cert is rejected by automation — use preview
 ```
 
+## Preflight: prove the instrument before you trust it
+
+Six entries in `docs/LEARNED.md` are the same mistake — a reading was believed
+without checking that the thing producing it could answer the question. It is
+the most expensive recurring class in this project, because a broken instrument
+does not error: it returns a plausible number, and the session goes on to debug
+the app instead. Run these before forming any hypothesis. Each is one command.
+
+**Is anything listening on that port?** A stale tab is indistinguishable from a
+regression — the app renders, panels respond, numbers look right, and the only
+tell is the URL bar. Three misdiagnoses in one session came from screenshots of
+a build that no longer existed, in tabs pointed at a preview server already shut
+down. Read the port out of the report and check it:
+
+```bash
+lsof -nP -iTCP:4173 -sTCP:LISTEN        # listener only
+```
+
+Then confirm a control the change ADDED is actually in the panel. Two commands,
+settled instantly. Prefer verifying on the port the owner already uses; if a
+throwaway server must exist, say out loud that it is temporary and shut it down
+where they can see. And never `lsof -ti:<port> | xargs kill` — that returns
+CLIENTS as well as the listener, so it can kill the owner's browser. Keep
+`-sTCP:LISTEN`.
+
+**Does the readback clear?** `read_console_messages` accumulates ACROSS
+navigations, so a log you deleted and rebuilt without still comes back — 200
+lines of it, over two fresh loads. Re-reading the same channel cannot settle
+this. Use evidence the old build *cannot* produce: the loaded bundle's content
+hash against the build output, or a symbol that exists only in the new code.
+
+**Can the metric move at all?** A metric that is CAPPED cannot answer a question
+about cost. Four soak phases returned avg_ms 16.675 / 16.670 / 16.670 / 16.670 —
+all pinned at the vsync ceiling, so "the idle-deck gate fires" and "there is
+headroom to absorb the upload" were indistinguishable *by construction*, and the
+comparison the protocol was built around could only ever produce a meaningless
+pass. Check the ceiling BEFORE the run, not after. Then count the EVENT you care
+about rather than inferring it from an aggregate something else is clamping:
+three integer counters settled in 65 s what 55 minutes of frame timing could not.
+
+**Can the readout resolve the effect?** A readout is a valid probe only if its
+resolution is finer than the thing you are looking for. `agrain.pos` carried
+`step: 0.001` under a row that printed 2 decimals, and the verification plan
+written for it ("click two grains and watch the row") could not have shown the
+fix working *or* failing. `tests/audit-readout-resolution.mjs` now holds the line
+for parameter rows, but the general form is still yours to check: an fps counter
+averaged over a second cannot show one dropped frame; a 2-decimal gain readout
+cannot show a −0.001 trim. State also the conditions under which the bug is even
+REACHABLE — a clean run on a 10-second tape gets recorded as a pass for a
+collision that needs 45 seconds to occur.
+
+**Are the preconditions machine-read?** Preconditions verified BY EYE are not
+verified. Three soak runs were invalidated by a patch nobody could read back —
+`layer.ds` on a dead camera source, `displace.amount` still 0, `mix.xfade` at
+0.427 where the phase required 0 — each confirmed "set correctly" by a human
+looking at sliders. Two cheap fixes: one debug handle that returns every
+precondition in a SINGLE call, and the phase-defining values carried on EVERY
+telemetry row, so a run proves its own conditions instead of depending on
+memory. See `src/soak.js`.
+
+**Alternate the conditions; never measure A then B.** A fixed order cannot tell
+the condition apart from anything that drifts across the session, and "measure
+A, then measure B" is the natural way to write it. Long-timeslice takes went
+first and came in at 57 fps, short ones after at 43–45, and the conclusion wrote
+itself — it was published in a PR and a commit message as "the single largest
+frame-rate win". It was wrong: performance degraded monotonically all session
+for an unrelated reason, so *whatever ran first would have won*. Run **A B A B**
+or randomise, which turns a session-wide drift from a confound that INVENTS an
+effect into noise that merely widens the error bars. Two corollaries: **report
+the running order with the result** — a table of conditions with no time column
+hides this — and remember that a confound big enough to invent an effect is
+usually big enough to see directly, so plot each take's own progression rather
+than one number per take. That is what showed the first take falling 46 → 21 fps
+*within itself*, which no cross-condition table could have.
+
+**A performance recommendation is a claim, and an unmeasured one belongs in no
+document.** A merged investigation doc correctly diagnosed the recorder's frame
+rate as encoder throughput, then recommended promoting VP8 over VP9 as a
+one-line change because VP8 is the cheaper codec. True — up to a point. Measured
+at 8 Mbit/s: VP8 is 1.75× faster at 0.58 MP and 1.62× at 2.06 MP, then falls off
+a cliff — **7.7 fps against VP9's 26.8 at 2048×1280**. Between writing the
+recommendation and acting on it, 1440p and 4K presets shipped, so the "cheap
+performance fix" would have landed as a **7× regression at a headline resolution
+of the release that introduced it**. Three rules follow. **The window between
+writing a recommendation and acting on it is where it goes stale** — re-measure a
+parked one against the CURRENT feature set, not the one that produced it.
+**Scale the measurement to the whole supported range, not the case that prompted
+it**: every real recording measured was under 2.06 MP, exactly the region where
+VP8 wins, so measuring "the sizes we have files for" would have confirmed the
+wrong answer with clean data. **State what the measurement does not establish** —
+naming the untested path, the single machine, and the one unexplained
+non-monotonic row is what lets a reader know how far to trust a 7× margin.
+
+**And read a red result as a claim about the instrument too.** Three times in
+one session the check was the broken thing: an audit that failed a correct
+refactor because it matched a syntactic accident; a source scrape anchored on a
+bare name that hit the call site instead of the definition; a render harness
+measuring an annulus around image centre, where there was no disc at all. Before
+believing a failure, confirm the check can distinguish the two states it judges,
+and that it is looking where the effect actually is. A metric that scores both
+states the same is not weak evidence — it is no evidence, in either direction.
+An audit that fails on correct code teaches people to delete audits, which costs
+more than the audit ever saved.
+
 ## Drive
 
 Use claude-in-chrome (real Chrome, CDP input — synthetic JS pointer events
@@ -58,6 +162,59 @@ await Promise.race([
   new Promise(r => setTimeout(r, 250)),
 ]);
 ```
+
+## Critical gotcha: an AudioWorklet that answers the phone but is dead
+
+Same family as the rAF suspension above, and nastier, because a frozen audio
+thread has no fps readout to glance at.
+
+Claude Code's in-app browser pane **may** run Chrome with `--disable-audio`.
+With no output device the render thread never pulls, so `process()` is NEVER
+CALLED — while everything you would check reports health:
+
+- `AudioContext.state` is `'running'`
+- `addModule()` resolves and the processor constructs
+- `port.postMessage` works in **both** directions
+- `onprocessorerror` stays silent, because nothing threw
+
+So every check that talks to the engine over the port passes against a
+completely frozen thread. One step-2 harness had 31 checks and 29 were green in
+that state, including two that read like real DSP verification: "relayout is
+refused while a zone runs" passes on the message thread alone, and "relayout
+succeeds once the zone has faded out" passes because the gain it waits for
+**starts** at 0 — a fade that never ran is indistinguishable from one that
+completed.
+
+**Lead with a liveness proof, not with an assumption.** The proof has to be a
+message only `process()` can emit — in this codebase `/tape/env/dirty`, which
+is flushed from the callback and nowhere else. Wait for it with a real timeout
+and **skip** the audio-dependent checks when it does not arrive, rather than
+letting thirty downstream assertions report misleading failures.
+
+```js
+const alive = await Promise.race([
+  waitForMessage('/tape/env/dirty'),                       // callback-only
+  new Promise(r => setTimeout(() => r(null), 2000)),
+]);
+if (!alive) { console.log('SKIP: audio callback never ran'); /* skip, do not fail */ }
+```
+
+**Do not harden this into "audio never works in the pane."** That is the mirror
+of the original mistake and it throws away the strongest evidence available: a
+later session had `--disable-audio` on no Chrome process at all, `process()`
+genuinely ran, and an Off→On round trip verified a worklet-restart path no
+message-level check could have reached. Let the proof tell you which
+environment you are in.
+
+One `ps` on the browser flags is still the fastest way to EXPLAIN a negative —
+but it is the explanation, not the gate:
+
+```bash
+ps ax -o command | grep -o -- --disable-audio      # note the -- : grep parses a leading dash as an option
+```
+
+Sound itself is never verifiable from here. Say plainly which parts went
+unverified, and hand audio work to the owner's own Chrome.
 
 ## Critical gotcha: `computer` input can land NOWHERE, silently
 

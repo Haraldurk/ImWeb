@@ -44,9 +44,13 @@ calibrateSanitizer(check);
 // ── 1. §4.1 — the engine imports nothing ───────────────────────────────────
 console.log('\nthe engine boundary is real');
 
+// Static AND dynamic. `^\s*import` saw only the first, and a worklet has no
+// module loader either way — an awaited import fails at construction exactly as
+// a top-of-file one does (LEARNED 2026-08-15; the same hole public/sw.js had).
 check('worklet processor has no import statement',
-  !/^\s*import[\s{*'"]/m.test(procCode),
-  'an AudioWorklet has no module loader; an import here is also §4.1 going fake');
+  !/^\s*import[\s{*'"]/m.test(procCode) && !/\bimport\s*\(/.test(procCode),
+  'an AudioWorklet has no module loader; an import here — static or dynamic — is ' +
+  'also §4.1 going fake');
 check('worklet processor has no require()',
   !/\brequire\s*\(/.test(procCode));
 check('worklet processor never mentions ParameterSystem',

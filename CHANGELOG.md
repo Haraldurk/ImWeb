@@ -9,6 +9,25 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
 ## [Unreleased]
 
 ### Fixed
+- **The app was serving a manual two releases out of date.**
+  `public/docs/ImWeb_Full_Manual.md` was last synced in #78 while `docs/` had
+  been rewritten twice since, so the served copy was missing the entire 3D
+  camera parameter table, **Transparent BG**, and **Mapping** — a reader
+  looking up a control they could see on screen found nothing, which reads as
+  the feature not existing. `audit-guide-targets` checked only the Guide for
+  the same drift; it now checks **every** file `npm run sync-docs` copies, with
+  the list derived from the script rather than written out, because an audit
+  that enumerates its own subjects fails open the day someone adds one — which
+  is exactly how three of these four escaped.
+- **Two tour steps named a control that is not on the tab they open.** "Motion
+  Extraction into the keyer" lands the reader on Mix and its first instruction
+  is to set **Motion src**, which lives on Sources; the step now says so
+  instead of leaving them to hunt. "The parameter row" pointed its example at a
+  row on the Effects tab while opening Mix, so the "show me" chip jumped the
+  reader off the tab for no reason — it now points at **Crossfade**, which is
+  on the tab the step opens. The chip always revealed both correctly, which is
+  the trap: every mechanical check passed and the only failing observer was a
+  person reading top to bottom.
 - **Keyer → Alpha no longer takes the background with it.** The emissive
   composite emitted the *foreground's* alpha as the finished frame's alpha.
   That was invisible for as long as every foreground was opaque — the two are
@@ -62,6 +81,40 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
   partition change does, so a jump lands in the silence rather than clicking.
   A stopped zone takes it immediately, and an LFO or MIDI knob on it is a
   playhead you can sweep.
+- **Two audits promoted out of the verification-instrument cluster in
+  `docs/LEARNED.md`.** Six entries there were the same mistake — a reading
+  believed without first checking that the thing producing it could answer the
+  question — and they were the most expensive recurring class in the project,
+  because a broken instrument does not error, it returns a plausible number.
+  `tests/audit-readout-resolution.mjs` drives the real `displayValue` over all
+  257 stepped parameters and fails if a row cannot print two adjacent step
+  values differently, which is what made `agrain.pos` (`step: 0.001` under a
+  2-decimal row) unverifiable and its verification plan incapable of showing
+  either result. `tests/audit-audit-hygiene.mjs` gains a fourth check: an audit
+  that slices a window out of a source file must anchor on a needle that occurs
+  ONCE in it, because `indexOf` silently takes the first match — a bare
+  `_ensureBokehMaskRT` hits the call site 1200 lines above the definition and
+  reports "not FloatType" about a target that is. The remaining four entries
+  are technique rather than invariants and became a preflight section in the
+  `verify` skill instead of a weak test.
+- **Negated source-text assertions now require a mutation behind them.** A
+  positive assertion fails safe — rearrange the tokens and it stops matching, so
+  it goes red. A negated one fails **open**: the same rearrangement makes it pass
+  over code containing the exact fault it names. Measuring found 14 such
+  assertions across 8 audits, not the 3 a first pass reported, and all three that
+  first pass did find were walked around on the first try — `__APP_VERSION__`
+  by `import.meta.env.VITE_APP_VERSION` (equally fatal, since `public/` never
+  passes through Vite), `/^\s*import\s/m` by an awaited mid-line `import()`, and
+  `serializeControllers()` by `serializeControllers(ps)`. Those three checks are
+  now structural and carry mutations; five audits with the same shape sit on a
+  debt list that may only shrink, and the audit asserts each name on it is still
+  genuinely uncovered so an exemption cannot go stale. Three of those five came
+  off the list the same day: a worklet importing an app module through
+  `await import()`, a resolved curve applied in `AudioBinding` as `_t.map(v)`
+  rather than `.apply(v)` — which would shape every value twice, once on the way
+  to the engine and once inside the worklet — and the `param-ctrl-setup` class
+  set by `classList.toggle` where the check looked only for `.add`. All three
+  survived on the first mutation run; all three checks now ask about structure.
 - **Disp. Smooth** — stops an animated texture boiling when it drives
   displacement. A surface normal is the *derivative* of the height field, and
   the normals were measured over a fixed baseline of half a percent of the
@@ -104,6 +157,22 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
   than writing its parameter, so the angle stays a live offset you can still
   move while it turns, and a saved state captures the angle you set rather than
   wherever the spin had drifted to.
+- **A guard against whole-tree staging, and a tool that answers "is this branch
+  merged?" correctly.** `.claude/hooks/guard-git-add.sh` blocks `git add -A`,
+  `git add .`, `--all`, `-u` and their bundled forms when nothing bounds them,
+  printing `git status --short` so the blast radius is read rather than the
+  count; explicit paths and `git add -A -- <path>` pass untouched. This repo has
+  lost real work to an unthinking `-A` twice — another agent's commit swept onto
+  the wrong branch, and a `node_modules` symlink that reached main because
+  `.gitignore` says `node_modules/` and a trailing slash matches a directory,
+  not a link. `scripts/branch-merged.sh` (`npm run branch-check`) answers
+  merged-ness from the forge record plus a content check, because a squash
+  merge severs ancestry and every intuitive test then lies in the direction
+  that leaves work open — verified live against PR #103, where
+  `merge-base --is-ancestor`, `git log main..tip` and `git cherry` all report
+  six unmerged commits on a branch whose work is entirely in main. It also
+  flags any open PR stacked on a base that has already merged and prints the
+  `git rebase --onto` fix.
 
 ### Changed
 - **Playback Zone cues now capture Start, Length, Rate and Level** (they held
@@ -119,6 +188,16 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
   accepts a cue that is missing keys and writes only what it has, leaving the
   rest of the zone alone. The movie decks stay strict on purpose: their three
   keys are only meaningful together.
+- **The verify skill now covers the dead-AudioWorklet environment.** The in-app
+  browser pane may run Chrome with `--disable-audio`; with no output device the
+  render thread never pulls, so `process()` is never called while
+  `AudioContext.state` reads `'running'`, `addModule()` resolves, and the
+  message port answers normally in both directions. One harness had 29 of 31
+  checks green against a completely frozen audio thread. The skill now leads
+  with a liveness proof — a message only the callback can emit — and skips the
+  audio-dependent checks when it does not arrive, rather than asserting either
+  that audio works there or that it never does. `AudioBinding.js` already
+  implements the same proof for the app's own status display.
 - **Camera Distance reaches from 0.1 to 100, and slows down as it closes in.**
   It ran 0.1–30 linearly, which put every close-up framing in the first
   millimetre of the fader. Distance is perceived as a ratio — 1→2 is the same
