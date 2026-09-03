@@ -9,6 +9,25 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
 ## [Unreleased]
 
 ### Fixed
+- **The app was serving a manual two releases out of date.**
+  `public/docs/ImWeb_Full_Manual.md` was last synced in #78 while `docs/` had
+  been rewritten twice since, so the served copy was missing the entire 3D
+  camera parameter table, **Transparent BG**, and **Mapping** — a reader
+  looking up a control they could see on screen found nothing, which reads as
+  the feature not existing. `audit-guide-targets` checked only the Guide for
+  the same drift; it now checks **every** file `npm run sync-docs` copies, with
+  the list derived from the script rather than written out, because an audit
+  that enumerates its own subjects fails open the day someone adds one — which
+  is exactly how three of these four escaped.
+- **Two tour steps named a control that is not on the tab they open.** "Motion
+  Extraction into the keyer" lands the reader on Mix and its first instruction
+  is to set **Motion src**, which lives on Sources; the step now says so
+  instead of leaving them to hunt. "The parameter row" pointed its example at a
+  row on the Effects tab while opening Mix, so the "show me" chip jumped the
+  reader off the tab for no reason — it now points at **Crossfade**, which is
+  on the tab the step opens. The chip always revealed both correctly, which is
+  the trap: every mechanical check passed and the only failing observer was a
+  person reading top to bottom.
 - **Keyer → Alpha no longer takes the background with it.** The emissive
   composite emitted the *foreground's* alpha as the finished frame's alpha.
   That was invisible for as long as every foreground was opaque — the two are

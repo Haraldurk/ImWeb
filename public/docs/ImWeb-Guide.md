@@ -100,7 +100,7 @@ looks empty, you are looking at a collapsed header.
 <!-- guide
 track: basics
 tab: mix
-point: blend.amount
+point: mix.xfade
 -->
 
 Every row is the same shape, and learning it once is learning the whole panel:
@@ -486,8 +486,9 @@ keys: k
 A matte of what moves: white where the picture moves, black where it does not.
 Built to be routed into the keyer, not to be looked at.
 
-Set **Motion src** to `Camera`, press **`k`** for the keyer, then set **Key
-src** to `Motion`.
+Set **Motion src** to `Camera` — it is on the **Sources** tab, under **Motion
+Extraction**. Back on **Mix**, press **`k`** for the keyer, then set **Key src**
+to `Motion`.
 
 **Now set KeyLevelWhite to 100%** — Ctrl+click the value, type `100`, `Enter`.
 The keyer passes a *band*: it rejects the very bright as well as the very dark,
