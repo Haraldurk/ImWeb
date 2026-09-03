@@ -12,6 +12,77 @@ npm run build                 # ~25s; chunk-size warning is normal
 npx vite preview --port 4173 --strictPort   # serves dist/; dev server https cert is rejected by automation — use preview
 ```
 
+## Preflight: prove the instrument before you trust it
+
+Six entries in `docs/LEARNED.md` are the same mistake — a reading was believed
+without checking that the thing producing it could answer the question. It is
+the most expensive recurring class in this project, because a broken instrument
+does not error: it returns a plausible number, and the session goes on to debug
+the app instead. Run these before forming any hypothesis. Each is one command.
+
+**Is anything listening on that port?** A stale tab is indistinguishable from a
+regression — the app renders, panels respond, numbers look right, and the only
+tell is the URL bar. Three misdiagnoses in one session came from screenshots of
+a build that no longer existed, in tabs pointed at a preview server already shut
+down. Read the port out of the report and check it:
+
+```bash
+lsof -nP -iTCP:4173 -sTCP:LISTEN        # listener only
+```
+
+Then confirm a control the change ADDED is actually in the panel. Two commands,
+settled instantly. Prefer verifying on the port the owner already uses; if a
+throwaway server must exist, say out loud that it is temporary and shut it down
+where they can see. And never `lsof -ti:<port> | xargs kill` — that returns
+CLIENTS as well as the listener, so it can kill the owner's browser. Keep
+`-sTCP:LISTEN`.
+
+**Does the readback clear?** `read_console_messages` accumulates ACROSS
+navigations, so a log you deleted and rebuilt without still comes back — 200
+lines of it, over two fresh loads. Re-reading the same channel cannot settle
+this. Use evidence the old build *cannot* produce: the loaded bundle's content
+hash against the build output, or a symbol that exists only in the new code.
+
+**Can the metric move at all?** A metric that is CAPPED cannot answer a question
+about cost. Four soak phases returned avg_ms 16.675 / 16.670 / 16.670 / 16.670 —
+all pinned at the vsync ceiling, so "the idle-deck gate fires" and "there is
+headroom to absorb the upload" were indistinguishable *by construction*, and the
+comparison the protocol was built around could only ever produce a meaningless
+pass. Check the ceiling BEFORE the run, not after. Then count the EVENT you care
+about rather than inferring it from an aggregate something else is clamping:
+three integer counters settled in 65 s what 55 minutes of frame timing could not.
+
+**Can the readout resolve the effect?** A readout is a valid probe only if its
+resolution is finer than the thing you are looking for. `agrain.pos` carried
+`step: 0.001` under a row that printed 2 decimals, and the verification plan
+written for it ("click two grains and watch the row") could not have shown the
+fix working *or* failing. `tests/audit-readout-resolution.mjs` now holds the line
+for parameter rows, but the general form is still yours to check: an fps counter
+averaged over a second cannot show one dropped frame; a 2-decimal gain readout
+cannot show a −0.001 trim. State also the conditions under which the bug is even
+REACHABLE — a clean run on a 10-second tape gets recorded as a pass for a
+collision that needs 45 seconds to occur.
+
+**Are the preconditions machine-read?** Preconditions verified BY EYE are not
+verified. Three soak runs were invalidated by a patch nobody could read back —
+`layer.ds` on a dead camera source, `displace.amount` still 0, `mix.xfade` at
+0.427 where the phase required 0 — each confirmed "set correctly" by a human
+looking at sliders. Two cheap fixes: one debug handle that returns every
+precondition in a SINGLE call, and the phase-defining values carried on EVERY
+telemetry row, so a run proves its own conditions instead of depending on
+memory. See `src/soak.js`.
+
+**And read a red result as a claim about the instrument too.** Three times in
+one session the check was the broken thing: an audit that failed a correct
+refactor because it matched a syntactic accident; a source scrape anchored on a
+bare name that hit the call site instead of the definition; a render harness
+measuring an annulus around image centre, where there was no disc at all. Before
+believing a failure, confirm the check can distinguish the two states it judges,
+and that it is looking where the effect actually is. A metric that scores both
+states the same is not weak evidence — it is no evidence, in either direction.
+An audit that fails on correct code teaches people to delete audits, which costs
+more than the audit ever saved.
+
 ## Drive
 
 Use claude-in-chrome (real Chrome, CDP input — synthetic JS pointer events

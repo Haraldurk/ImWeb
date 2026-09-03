@@ -267,6 +267,148 @@ console.log('\nCollection assertions guard an empty collection');
   console.log(`  note  ${sites} collection assertion(s) in the suite, all guarded`);
 }
 
+// ── A window anchor must be UNAMBIGUOUS in the file it slices ───────────────
+//
+// Promotes the second of the three incidents in the 2026-08-30 entry. An audit
+// that slices a region out of a source file and then asserts about its contents
+// is only asserting about the region it MEANT to slice if the anchor occurs
+// once. `indexOf` silently takes the first match, so a bare method name lands on
+// the CALL SITE when the call happens to appear above the definition:
+//
+//   pipeline.indexOf('_ensureBokehMaskRT')   // → line 196, `pipe._ensureBokehMaskRT()`
+//   pipeline.indexOf('\n  _ensureBokehMaskRT() {')   // → line 1419, the definition
+//
+// The first sliced a window containing no allocation at all and reported "the
+// target is not FloatType" about a target that was — a RED result on correct
+// code, which is the expensive direction: it nearly reverted the fix.
+//
+// Scoped deliberately to slice windows. The obvious wider rule — "a needle must
+// be unique" — fails a correct check: audit-audio-signalpath compares the
+// positions of two CSS selectors, and `body.signalpath-hidden` legitimately
+// heads two adjacent rules, where taking the first is exactly what "declared
+// before" means. Ambiguity is only a defect when it decides the CONTENTS of a
+// window rather than a position, so that is what this asks about.
+console.log('\nWindow anchors are unambiguous in their target');
+{
+  // A broader binder than section 1's, on purpose. That one attributes short
+  // needles to the variable holding a file and must stay narrow — widening it
+  // reintroduced eight false alarms once. This one only ever looks at anchors
+  // already known to slice, so it can afford to follow the per-audit read
+  // helpers (`const pipeline = read('src/core/Pipeline.js')`) that the narrow
+  // binder cannot see.
+  const bindSourceVars = (code) => {
+    const map = new Map();
+    for (const m of code.matchAll(
+      /(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*([^;]*?)(?=;|\n\s*(?:const|let|var|function|check|console|\/\/))/g)) {
+      const lit = /['"`]((?:src|public|tests)\/[^'"`\n]+\.(?:m?js|css|html|glsl))['"`]/.exec(m[2]);
+      if (lit && SOURCEY.test(lit[1])) map.set(m[1], lit[1]);
+    }
+    return map;
+  };
+
+  // Returns the needle when this site is a window anchor worth checking, else
+  // null. Split out so the positive controls below drive the same code the
+  // suite is scanned with — a detector proven on a copy of itself proves
+  // nothing (LEARNED 2026-08-27).
+  const anchorAt = (m, lines, lineNo) => {
+    const [, lhs, , , quote, rawNeedle, hasFrom] = m;
+    // A template with a substitution cannot be resolved statically, and a
+    // search given a `from` offset is a deliberately scoped one — the author
+    // has already answered the question this check asks.
+    if (quote === '`' && /\$\{/.test(rawNeedle)) return null;
+    if (hasFrom) return null;
+    const inlineSlice = /\.slice\s*\(/.test(lines[lineNo - 1] ?? '');
+    const viaVar = lhs && new RegExp(`\\.slice\\s*\\(\\s*(?:[^)]*\\b${lhs}\\b)`)
+      .test(lines.slice(lineNo - 1, lineNo + 5).join('\n'));
+    if (!inlineSlice && !viaVar) return null;
+    return rawNeedle.replace(/\\n/g, '\n').replace(/\\(.)/g, '$1');
+  };
+
+  const SITE = /(?:(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*)?\b([A-Za-z_$][\w$]*)\s*\.\s*(indexOf|lastIndexOf)\(\s*(['"`])((?:[^'"`\\\n]|\\.){3,})\4\s*(,)?/g;
+
+  const occurrences = (hay, needle) => {
+    let n = 0, at = 0;
+    while ((at = hay.indexOf(needle, at)) !== -1) { n++; at += needle.length; }
+    return n;
+  };
+
+  let anchors = 0;
+  for (const f of auditFiles) {
+    if (f === 'audit-audit-hygiene.mjs') continue;
+    const code = stripComments(readFileSync(join(ROOT, 'tests', f), 'utf8'));
+    const bind = bindSourceVars(code);
+    if (!bind.size) continue;
+    const lines = code.split('\n');
+    const cache = new Map();
+
+    for (const m of code.matchAll(SITE)) {
+      const rel = bind.get(m[2]);
+      if (!rel) continue;
+      const lineNo = code.slice(0, m.index).split('\n').length;
+      const needle = anchorAt(m, lines, lineNo);
+      if (needle === null) continue;
+      if (!cache.has(rel)) {
+        try { cache.set(rel, stripComments(readFileSync(join(ROOT, rel), 'utf8'))); }
+        catch { cache.set(rel, null); }
+      }
+      const target = cache.get(rel);
+      if (!target) continue;
+      const n = occurrences(target, needle);
+      if (n === 0) continue;              // section 1's problem, not this one
+      anchors++;
+      check(`${f}:${lineNo} window anchor is unique in ${rel}`, n === 1,
+        `"${truncate(needle)}" occurs ${n} times — indexOf takes the FIRST, which ` +
+        `may be a call site rather than the definition, so the window sliced here ` +
+        `is not the one this check reasons about. Anchor on the definition ` +
+        `("\\n  name() {", "function name(", "export const name =") or pass a ` +
+        `start offset`);
+    }
+  }
+
+  // Positive controls, for the reason the two checks above give: every live
+  // anchor in the suite is unique, so a subject count cannot separate "clean"
+  // from "the detector stopped matching".
+  const drive = (src) => {
+    const code = stripComments(src);
+    const bind = bindSourceVars(code);
+    const lines = code.split('\n');
+    const out = [];
+    for (const m of code.matchAll(SITE)) {
+      if (!bind.get(m[2])) continue;
+      const lineNo = code.slice(0, m.index).split('\n').length;
+      const needle = anchorAt(m, lines, lineNo);
+      if (needle !== null) out.push(needle);
+    }
+    return out;
+  };
+  const READ = `const pipeline = read('src/core/Pipeline.js');\n`;
+  check('detector sees an anchor hoisted into a variable then sliced',
+    drive(READ + `const i = pipeline.indexOf('_ensureBokehMaskRT');\n`
+               + `const body = pipeline.slice(i, i + 400);`).length === 1);
+  check('detector sees an inline slice anchor',
+    drive(READ + `const b = pipeline.slice(pipeline.indexOf('bokeh: ('), 900);`).length === 1);
+  check('detector ignores a scoped search that passes a start offset',
+    drive(READ + `const j = pipeline.indexOf('\\n  }', i + 10);\n`
+               + `const body = pipeline.slice(i, j);`).length === 0);
+  check('detector ignores a lookup that never becomes a window',
+    drive(READ + `check('present', pipeline.indexOf('uRadius') !== -1);`).length === 0);
+  check('detector ignores an unresolvable template anchor',
+    drive(READ + 'const i = pipeline.indexOf(`${name}: this._mat(`);\n'
+               + 'const body = pipeline.slice(i, i + 200);').length === 0);
+  // The historical incident itself, end to end: the bare name really is
+  // ambiguous in the file it was used against, and the fix really is unique.
+  {
+    const pipeline = stripComments(readFileSync(join(ROOT, 'src/core/Pipeline.js'), 'utf8'));
+    check('the 2026-08-30 bare-name anchor is genuinely ambiguous',
+      occurrences(pipeline, '_ensureBokehMaskRT') > 1,
+      `Pipeline.js no longer contains both a call and a definition, so this ` +
+      `control has gone stale — point it at another method that does`);
+    check('…and the definition anchor that replaced it is unique',
+      occurrences(pipeline, '\n  _ensureBokehMaskRT() {') === 1);
+  }
+  console.log(`  note  ${anchors} window anchor(s) in the suite, all unambiguous`);
+}
+
 function truncate(s) { return s.length > 46 ? s.slice(0, 43) + '…' : s; }
 
 console.log(failures
