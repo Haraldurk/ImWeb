@@ -336,16 +336,39 @@ export function buildParamRow(param, contextMenu) {
         const abbr = opt.includes('-') ? opt.split('-').pop().slice(0, 6)
                    : opt.length <= 6   ? opt : opt.slice(0, 4);
         btn.textContent = abbr;
-        btn.title = opt;
         btn.addEventListener('click', () => {
           param.value = i;
           btns.forEach((b, j) => b.classList.toggle('active', j === param.value));
           updateDisplay();
         });
+        // Right-click ONE option to learn a control for it. The row badge
+        // assigns a controller to the whole parameter — one CC sweeping every
+        // option — which is the wrong grammar for a bank of buttons, and
+        // impossible on a controller with no pads. Same gesture as the badge,
+        // one level in.
+        btn.addEventListener('contextmenu', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          const cm = contextMenu?.ctrl;
+          if (!cm?.startMIDILearn) return;
+          group.querySelectorAll('.param-opt-btn.learning')
+            .forEach(el => el.classList.remove('learning'));
+          btn.classList.add('learning');
+          cm.startMIDILearn(param.id, i, () => { paintOpts(); updateDisplay(); });
+        });
         group.appendChild(btn);
         return btn;
       });
-      binding.sync(() => btns.forEach((b, j) => b.classList.toggle('active', j === param.value)));
+      const paintOpts = () => btns.forEach((b, j) => {
+        const c = param.controller;
+        const cc = c?.type === 'midi-cc-map' ? c.ccs?.[j] : null;
+        b.classList.toggle('active', j === param.value);
+        b.classList.toggle('mapped', cc != null);
+        b.title = cc != null
+          ? `${opts[j]} — CC${cc}${c.channel ? ` ch${c.channel}` : ''}\nRight-click to re-learn`
+          : `${opts[j]}\nRight-click to learn a MIDI control for this option`;
+      });
+      binding.sync(paintOpts);
       valueEl.appendChild(group);
     } else {
       // Custom dark dropdown for large option sets
@@ -500,12 +523,17 @@ export function buildParamRow(param, contextMenu) {
     const slider = document.createElement('input');
     slider.type = 'range';
     slider.className = 'param-slider';
-    slider.min   = param.min;
-    slider.max   = param.max;
-    slider.step  = param.step ?? 'any';
-    slider.value = param.value;
+    // A curved param drives the slider in NORMALIZED space — the taper is the
+    // whole point of the fader, so mapping it here rather than only in
+    // setNormalized is what makes a hand and an LFO agree.
+    const curved = param.curve === 'exp';
+    slider.min   = curved ? 0 : param.min;
+    slider.max   = curved ? 1 : param.max;
+    slider.step  = curved ? 0.0001 : (param.step ?? 'any');
+    slider.value = curved ? param.toNorm(param.value) : param.value;
     slider.addEventListener('input', () => {
-      param.value = parseFloat(slider.value);
+      const raw = parseFloat(slider.value);
+      param.value = curved ? param.fromNorm(raw) : raw;
       updateDisplay();
     });
     // While the finger holds the slider it is the SOLE writer: the rAF
@@ -516,13 +544,14 @@ export function buildParamRow(param, contextMenu) {
       _sliderHeld = true;
       row._stopGlide?.(); // grabbing the thumb kills any running physics
     });
+    const _sliderPos = () => (curved ? param.toNorm(param.value) : param.value);
     const _sliderRelease = () => {
       _sliderHeld = false;
-      slider.value = param.value;
+      slider.value = _sliderPos();
     };
     slider.addEventListener('pointerup', _sliderRelease);
     slider.addEventListener('pointercancel', _sliderRelease);
-    binding.sync(() => { if (!_sliderHeld) slider.value = param.value; });
+    binding.sync(() => { if (!_sliderHeld) slider.value = _sliderPos(); });
     row.appendChild(slider);
   }
 

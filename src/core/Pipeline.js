@@ -21,7 +21,8 @@ import {
   TRANSFERMODE, COLORSHIFT, NOISE_BFG, INTERLACE, MIRROR, WARP, FADE, PASSTHROUGH,
   BUFFER_TRANSFORM, INTERP,
   PIXELATE, EDGE, RGBSHIFT, POSTERIZE, SOLARIZE, COLOR_CORRECT, CHROMA_KEY,
-  VIGNETTE, BLOOM_EXTRACT, BLOOM_BLUR, BLOOM_COMPOSITE, KALEIDOSCOPE, PIXEL_SORT,
+  VIGNETTE, BLOOM_EXTRACT, BLOOM_BLUR, BLOOM_COMPOSITE, BOKEH_GATHER,
+  BOKEH_COMPOSITE, BOKEH_MASK_SLEW, BOKEH_DOWNSAMPLE, KALEIDOSCOPE, PIXEL_SORT,
   FILM_GRAIN, FEEDBACK_ROTATE, QUAD_MIRROR, LEVELS, LUT3D, WHITE_BALANCE,
   SHARPEN, MIXBUS, CLIP_FADE,
   POLAR, WAVE, HALFTONE, DUOTONE, LENS,
@@ -34,7 +35,13 @@ const MIX_PREFIX = ['mix', 'mix2', 'mix3'];
 export const DEFAULT_FX_ORDER = [
   'pixelate','edge','sharpen','rgbshift',
   'wave','lens','polar','kaleidoscope','quadmirror','flip',
-  'posterize','solarize','halftone','duotone','vignette','bloom',
+  'posterize','solarize','halftone','duotone','vignette',
+  // Bokeh sits immediately BEFORE bloom on purpose: defocus is a lens
+  // phenomenon and bloom is the highlight half of the same lens, so blurring
+  // first lets the boosted highlights feed bloom's threshold and the two
+  // compose as one optical stage. Reversed, you bloom a sharp image and then
+  // smear the glow, which reads as a post-blur rather than a lens.
+  'bokeh','bloom',
   'outhsv','levels','lut','whitebal','pixelsort','grain',
   // Interlace used to run as a FIXED pass after the whole chain. It is an
   // effect, so it is in the chain now — placed last, which is exactly where it
@@ -42,6 +49,18 @@ export const DEFAULT_FX_ORDER = [
   // point: it can be dragged in front of bloom or grain, which it could not be.
   'interlace',
 ];
+
+/**
+ * Bokeh gather sample counts, INDEX-ALIGNED to effect.bokehquality's options
+ * ["Draft", "Good", "Fine", "Max"]. One compiled material per entry, because
+ * GLSL ES 1.00 requires a constant loop bound and a uniform cannot supply one.
+ *
+ * All four gather at HALF resolution. Good (32) costs roughly one bloom in
+ * texture fetches, which is the only useful calibration available — bloom's
+ * cost is already known by feel. The counts double from there, so Max is about
+ * 4× a bloom rather than the 17× a full-res gather would have been.
+ */
+const BOKEH_TIERS = [16, 32, 64, 128];
 
 const _FX = {
   pixelate: (pipe, tex, p) => {
@@ -153,6 +172,171 @@ const _FX = {
       uTexture: tex,
       uBloom:   pipe._bloomTargetV.texture,
       uStrength: amt * 3,
+    });
+  },
+  bokeh: (pipe, tex, p) => {
+    const amt = p.get('effect.bokeh').value / 100;
+    if (amt <= 0) return tex;
+
+    // The mask is a routable source, so it can be absent — a project saved
+    // before a source existed, or a deck with no clip loaded. _passTo does NOT
+    // substitute a fallback for a null sampler the way _pass does, so this
+    // guard is load-bearing, not defensive noise: without it WebGL gets a null
+    // sampler and the whole frame goes.
+    let maskTex = pipe._resolveSource(pipe._fxInputs, p.get('effect.bokehmask').value);
+    if (!maskTex) return tex;
+
+    // Ease the MASK, not the picture. The gather is stateless, so without this
+    // defocus snaps on and off with every twitch of a motion matte; easing the
+    // mask makes focus drift in and let go, which is what a focus pull looks
+    // like. Double-buffered, not guarded: read one target, write the other,
+    // flip — the same bargain the mix buses make.
+    const smoothSec = p.get('effect.bokehsmooth')?.value ?? 0;
+    if (smoothSec > 0) {
+      const rt  = pipe._ensureBokehMaskRT();
+      const cur = pipe._bokehMaskCur;
+      const nxt = cur ^ 1;
+      // Same "time to visually gone" convention as MotionExtract: after T
+      // seconds, 2% of the old value remains. Two meanings of "seconds" in one
+      // instrument is what made Motion's own controls read as wrong.
+      const dt = pipe._fxDt ?? 1 / 60;
+      pipe._passTo(pipe.m.bokehMaskSlew, {
+        uMask:  maskTex,
+        uPrev:  rt[cur].texture,
+        uDecay: Math.pow(0.02, dt / smoothSec),
+      }, rt[nxt]);
+      pipe._bokehMaskCur = nxt;
+      maskTex = rt[nxt].texture;
+    }
+
+    const q   = Math.max(0, Math.min(BOKEH_TIERS.length - 1,
+                                     p.get('effect.bokehquality')?.value ?? 1));
+    const mat = pipe.m.bokeh[q];
+
+    // The SELECT stores a menu index; the shader wants a blade COUNT. Mapping
+    // by position in the same order the options are declared.
+    const blades = [0, 5, 6, 8][p.get('effect.bokehblades')?.value ?? 0] ?? 0;
+
+    const focus   = (p.get('effect.bokehfocus')?.value   ?? 100) / 100;
+    const feather = (p.get('effect.bokehfeather')?.value ?? 30)  / 100;
+    const ring    = (p.get('effect.bokehring')?.value    ?? 0)   / 100;
+    const iris    = ((p.get('effect.bokehrotate')?.value ?? 0) * Math.PI) / 180;
+    const thresh  = (p.get('effect.bokehthresh')?.value  ?? 70)  / 100;
+    // Percent of frame height → pixels. 0.10 puts full travel at ~108px on a
+    // 1080p canvas, which is the scale the reference photographs sit at; the
+    // default 25 % is ~27px, unmistakably a defocus rather than a sharpen.
+    const radiusPx = ((p.get('effect.bokehradius')?.value ?? 25) / 100) * 0.10 * pipe.height;
+
+    // WIDE MODE. Past this radius the gather is scattering its taps far enough
+    // apart to miss texture cache on nearly every one, which is why measured
+    // cost runs above the fetch-count arithmetic rather than on it. Dropping to
+    // a quarter-res source and target cuts fragments 4× AND shrinks the texture
+    // being randomly walked by 16×.
+    //
+    // The threshold is deliberately well above the point where it becomes
+    // invisible: detail finer than four pixels cannot survive a 32-pixel blur,
+    // so there is nothing to see at the switch. In-focus pixels never reach
+    // this path — the composite takes them from the full-res original.
+    const WIDE_PX = 32;
+    const wide = radiusPx >= WIDE_PX ? pipe._ensureBokehWideRT() : null;
+
+    // What the gathers SAMPLE, and what they render INTO. One decision, so the
+    // base and disc passes cannot disagree about which resolution they are on.
+    let gatherSrc = tex;
+    if (wide) {
+      pipe._passTo(pipe.m.bokehDownsample, { uTexture: tex }, wide.src);
+      gatherSrc = wide.src.texture;
+    }
+    const baseRT = wide ? wide.gather : pipe._bokehTarget;
+
+    // 1. Gather into the dedicated target. _passTo does not ping-pong, so this
+    //    costs no flip — and the target is outside the ping-pong pool, so it
+    //    can never alias tex.
+    pipe._passTo(mat, {
+      uTexture:   gatherSrc,
+      uMask:      maskTex,
+      uRadius:    radiusPx,
+      uFocus:     focus,
+      uFeather:   feather,
+      uBlades:    blades,
+      uIris:      iris,
+      uRing:      ring,
+      uHighlight: (p.get('effect.bokehhighlight')?.value ?? 50) / 100,
+      uThreshold: thresh,
+    }, baseRT);
+
+    // 2. Highlight discs. Extract above threshold, gather THAT with the same
+    //    kernel, and let the composite add it back with gain.
+    //
+    //    Averaging is why this is needed: spreading a point across a disc
+    //    divides its energy by the sample count, so a correct gather produces a
+    //    disc too faint to see and reads as "the effect does nothing". The
+    //    extract also shrinks each highlight to its brightest core, and a
+    //    highlight only reads as a disc once it is small relative to the radius
+    //    — measured, rim/centre contrast is 5.17 at parity and exactly 1.00 by
+    //    twice the radius.
+    //
+    //    Skipped entirely at 0, so the plain optical defocus pays nothing for
+    //    a branch it is not using.
+    const discAmt = (p.get('effect.bokehdiscs')?.value ?? 0) / 100;
+    let discTex = null;
+    if (discAmt > 0) {
+      // Both stages follow the base gather's resolution — extracting at half
+      // res only to gather it at quarter would spend the cost the wide path
+      // exists to avoid.
+      const hiRT   = wide ? wide.hi   : pipe._bokehHiRT;
+      const discRT = wide ? wide.disc : pipe._ensureBokehDiscRT();
+      // BLOOM_EXTRACT is exactly this operation and is already compiled. Both
+      // call sites set uThreshold before rendering, and bokeh runs before bloom
+      // in the chain, so sharing the material cannot leave a stale uniform.
+      pipe._passTo(pipe.m.bloomExtract, {
+        uTexture:   gatherSrc,
+        uThreshold: thresh,
+      }, hiRT);
+      pipe._passTo(mat, {
+        uTexture:   hiRT.texture,
+        uMask:      maskTex,
+        uRadius:    radiusPx,
+        uFocus:     focus,
+        uFeather:   feather,
+        uBlades:    blades,
+        uIris:      iris,
+        uRing:      ring,
+        // The extract has already done the thresholding, so the in-place boost
+        // is switched OFF here. Leaving it on would threshold twice and crush
+        // the disc's own falloff, which is the rim the Ring control shapes.
+        uHighlight: 0,
+        uThreshold: 1.5,
+      }, discRT);
+      discTex = discRT.texture;
+    }
+
+    // 3. Composite at full res. ONE _pass, so this handler nets one flip —
+    //    the same parity as any single-pass effect, which is why it needs no
+    //    manual _current correction the way bloom does.
+    //
+    //    Stating the aliasing case explicitly rather than trusting the guard:
+    //    the previous effect wrote targets[c] and left _current = c^1, so this
+    //    pass writes targets[c^1] while reading tex = targets[c]. They differ.
+    //    _bokehTarget is dedicated and never a ping-pong target. So nothing
+    //    aliases, and the identity guard should never fire here — if it does,
+    //    something upstream changed the flip count and that is the bug.
+    return pipe._pass(pipe.m.bokehComposite, {
+      uTexture: tex,
+      // Whichever target the gather actually rendered into. vUv is normalised,
+      // so the composite does not care which resolution it was — but it does
+      // care that this is not left pointing at the half-res target while the
+      // wide path filled the quarter-res one, which would silently composite
+      // last frame's defocus.
+      uBokeh:   baseRT.texture,
+      // null when Discs is 0 — _pass substitutes the fallback texture, so the
+      // sampler is never left unbound.
+      uDiscs:   discTex,
+      uDiscAmt: discAmt,
+      uMask:    maskTex,
+      uFocus:   focus,
+      uFeather: feather,
+      uAmount:  amt,
     });
   },
   levels: (pipe, tex, p) => {
@@ -349,6 +533,19 @@ export class Pipeline {
     const hh = Math.ceil(height / 2);
     this._bloomTargetH = this._makeTarget(hw, hh);
     this._bloomTargetV = this._makeTarget(hw, hh);
+
+    // Bokeh gathers at half res too, and EVERY quality tier does — including
+    // Max. The phase plan had Max gathering at full res; at 1080p that is
+    // 265M texture fetches a frame against bloom's 15.6M, which is not a
+    // quality tier, it is a way to stop the instrument. Half res costs 4× less
+    // and loses very little, because the thing being resolved is a large soft
+    // disc. Keeping one size for all tiers also means quality can change
+    // without reallocating a target mid-session.
+    //
+    // Sharp regions are NOT degraded by this: the gather is composited back
+    // over the full-res original weighted by the same defocus term, so an
+    // in-focus pixel keeps its full-res value.
+    this._bokehTarget = this._makeTarget(hw, hh);
 
     // Feedback transform targets — dedicated, OUTSIDE the ping-pong pool, for
     // the same reason the mix buses are: a second target beats a guard.
@@ -849,6 +1046,22 @@ export class Pipeline {
     // bypassed chain costs nothing at all — which is the point of having it on
     // a controller. Scope is the post-FX chain only: Blend & Feedback and the
     // colour shift are their own section and are not touched.
+    // Effect handlers are called as (pipe, tex, p) — self-contained on one
+    // texture. Bokeh is the first that reads a SECOND source (its mask), so the
+    // resolved inputs bag is stashed on the pipe here rather than widening the
+    // handler signature for one caller.
+    //
+    // It is set immediately before the loop and not at the declaration on
+    // purpose: `processedInputs` is a `let` that gets REASSIGNED to
+    // this._pInputs partway through render(), so stashing it early would park a
+    // stale bag on the pipe and the mask would silently read the pre-processed
+    // texture.
+    this._fxInputs = processedInputs;
+    // Bokeh's mask smoother is an exponential decay over TIME, so it needs the
+    // frame delta or its time constant would silently mean something different
+    // at every frame rate — a "0.5 s" glide that is really 0.25 s at 120 fps.
+    this._fxDt = dt;
+
     let postOut = shifted;
     if (p.get('effect.enable')?.value !== 0) {
       for (const fx of this.fxOrder) {
@@ -1094,6 +1307,17 @@ export class Pipeline {
     const hh = Math.ceil(h / 2);
     this._bloomTargetH.setSize(hw, hh);
     this._bloomTargetV.setSize(hw, hh);
+    this._bokehTarget.setSize(hw, hh);
+    // Lazily allocated — the guard is the point, not defensive noise.
+    this._bokehMaskRT?.forEach(t => t.setSize(hw, hh));
+    this._bokehHiRT?.setSize(hw, hh);
+    this._bokehDiscRT?.setSize(hw, hh);
+    if (this._bokehWide) {
+      const qw = Math.ceil(w / 4);
+      const qh = Math.ceil(h / 4);
+      for (const t of Object.values(this._bokehWide)) t.setSize(qw, qh);
+    }
+    this.m.bokehDownsample.uniforms.uTexel.value.set(1 / w, 1 / h);
     this._mixRT.forEach(rt => rt && rt.forEach(t => t.setSize(w, h)));
     this._clipFadeRT.forEach(t => t && t.setSize(w, h));
     this._fbRT?.forEach(t => t.setSize(w, h));
@@ -1102,6 +1326,10 @@ export class Pipeline {
       this.m.edge.uniforms.uResolution.value.set(w, h);
       this.m.bloomBlurH.uniforms.uResolution.value.set(w, h);
       this.m.bloomBlurV.uniforms.uResolution.value.set(w, h);
+      // FULL dimensions, exactly as the bloom blurs do, even though the gather
+      // renders at half res: uRadius is then a radius in output pixels, so the
+      // blur does not silently double when the canvas is resized.
+      this.m.bokeh.forEach(m => m.uniforms.uResolution.value.set(w, h));
       this.m.pixelsort.uniforms.uResolution.value.set(w, h);
       this.m.sharpen.uniforms.uResolution.value.set(w, h);
       this.m.halftone.uniforms.uResolution.value.set(w, h);
@@ -1122,6 +1350,87 @@ export class Pipeline {
       type: THREE.UnsignedByteType,
       generateMipmaps: false,
     });
+  }
+
+  /**
+   * Ping-pong pair for the bokeh mask smoother, allocated on first use so a
+   * project that never smooths pays no VRAM — the same bargain the mix buses
+   * make.
+   *
+   * FloatType, not the UnsignedByteType of _makeTarget, and that is a
+   * correctness requirement rather than a quality preference. This is an
+   * exponential accumulator: at a long time constant the per-frame change falls
+   * BELOW one 8-bit level, the write rounds to the value already stored, and
+   * the mask stops moving while still short of its target. It does not
+   * degrade gracefully — it freezes, and only at the slow settings, which is
+   * where the control is most worth having. Same reasoning that put
+   * MotionExtract's background and trail buffers in float.
+   *
+   * LinearFilter is kept: unlike MotionExtract's 1:1 accumulators this one is
+   * read at full res by the composite, so it wants interpolation.
+   */
+  /**
+   * Extract + disc-gather targets for the highlight branch, allocated on first
+   * use. UnsignedByte is fine here — unlike the mask smoother these hold a
+   * single frame's result, not an accumulator, so there is nothing to stall.
+   */
+  /**
+   * Quarter-resolution working set for the WIDE-radius bokeh path.
+   *
+   * Cost here is fragments × samples, and at a large radius both terms hurt at
+   * once: the gather runs a hundred-plus taps per fragment, and those taps are
+   * scattered far enough apart to miss texture cache on nearly every one. A
+   * quarter-res gather cuts the fragments 4×, and reading a pre-downsampled
+   * source cuts the misses, because a 16×-smaller texture keeps far more of
+   * itself resident.
+   *
+   * It costs nothing visually at the radii where it engages. Detail finer than
+   * four pixels cannot survive a thirty-pixel blur, and in-focus pixels never
+   * see this path at all — the composite takes them from the full-res original,
+   * weighted by the same defocus term.
+   *
+   * Allocated lazily and as a set, so a project that never opens the aperture
+   * that far pays no VRAM for any of it.
+   */
+  _ensureBokehWideRT() {
+    if (!this._bokehWide) {
+      const w = Math.ceil(this.width / 4);
+      const h = Math.ceil(this.height / 4);
+      this._bokehWide = {
+        src:    this._makeTarget(w, h),   // downsampled scene
+        gather: this._makeTarget(w, h),   // base defocus
+        hi:     this._makeTarget(w, h),   // extracted highlights
+        disc:   this._makeTarget(w, h),   // those highlights gathered
+      };
+    }
+    return this._bokehWide;
+  }
+
+  _ensureBokehDiscRT() {
+    if (!this._bokehDiscRT) {
+      const w = Math.ceil(this.width / 2);
+      const h = Math.ceil(this.height / 2);
+      this._bokehHiRT   = this._makeTarget(w, h);   // extracted highlights
+      this._bokehDiscRT = this._makeTarget(w, h);   // those highlights gathered
+    }
+    return this._bokehDiscRT;
+  }
+
+  _ensureBokehMaskRT() {
+    if (!this._bokehMaskRT) {
+      const w = Math.ceil(this.width / 2);
+      const h = Math.ceil(this.height / 2);
+      const mk = () => new THREE.WebGLRenderTarget(w, h, {
+        minFilter: THREE.LinearFilter,
+        magFilter: THREE.LinearFilter,
+        format: THREE.RGBAFormat,
+        type: THREE.FloatType,
+        generateMipmaps: false,
+      });
+      this._bokehMaskRT  = [mk(), mk()];
+      this._bokehMaskCur = 0;
+    }
+    return this._bokehMaskRT;
   }
 
   /** Run a shader pass, returns the output texture */
@@ -1486,6 +1795,52 @@ export class Pipeline {
       bloomComposite: this._mat(BLOOM_COMPOSITE, {
         uBloom:    { value: null },
         uStrength: { value: 1 },
+      }),
+      // One material per quality tier, index-aligned to effect.bokehquality's
+      // options. This is not premature optimisation dressed as tiers: GLSL ES
+      // 1.00 requires CONSTANT loop bounds, so the sample count cannot be a
+      // uniform and a variant is the only way to make it adjustable at all.
+      //
+      // Compiled eagerly, all four, because a lazy compile would land the
+      // stall on the first frame after the user turns the knob — the worst
+      // possible moment for a live instrument. Four shader compiles at boot is
+      // cheap; a dropped frame mid-performance is not.
+      bokeh: BOKEH_TIERS.map(n => this._mat(
+        '#define BOKEH_SAMPLES ' + n + '\n' + BOKEH_GATHER,
+        {
+          uMask:       { value: null },
+          uResolution: { value: new THREE.Vector2(1280, 720) },
+          uRadius:     { value: 0 },
+          uFocus:      { value: 1 },
+          uFeather:    { value: 0.3 },
+          uBlades:     { value: 0 },
+          uIris:       { value: 0 },
+          uRing:       { value: 0 },
+          uHighlight:  { value: 0.5 },
+          uThreshold:  { value: 0.7 },
+        },
+      )),
+      bokehDownsample: this._mat(BOKEH_DOWNSAMPLE, {
+        uTexel: { value: new THREE.Vector2(1 / 1280, 1 / 720) },
+      }),
+      bokehMaskSlew: this._mat(BOKEH_MASK_SLEW, {
+        uMask:  { value: null },
+        uPrev:  { value: null },
+        uDecay: { value: 0 },
+      }),
+      bokehComposite: this._mat(BOKEH_COMPOSITE, {
+        uBokeh:   { value: null },
+        // uDiscs/uDiscAmt were declared in the shader and NOT here, which is
+        // silent: three.js only uploads uniforms the material knows about, so
+        // uDiscAmt sat at the GL default of 0 and the whole highlight-disc
+        // branch contributed nothing — while still running an extract and a
+        // second full gather every frame and discarding the result.
+        uDiscs:   { value: null },
+        uDiscAmt: { value: 0 },
+        uMask:    { value: null },
+        uFocus:   { value: 1 },
+        uFeather: { value: 0.3 },
+        uAmount:  { value: 0 },
       }),
       pixelsort: this._mat(PIXEL_SORT, {
         uResolution: { value: new THREE.Vector2(1280, 720) },

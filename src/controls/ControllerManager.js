@@ -8,6 +8,7 @@
  * Planned:   OSC (WebSocket), HID (Gamepad), Wacom (PointerEvents pressure)
  */
 
+import { PARAM_TYPE } from './ParameterSystem.js';
 import { LFOController } from './LFO.js';
 import { BeatDetector }  from './BeatDetector.js';
 import { compileExpression } from './ExprCompiler.js';
@@ -81,6 +82,23 @@ export class ControllerManager {
     this.modifiers = { capsLock: false, shift: false, ctrl: false, alt: false, meta: false };
 
     this._gamepadBtnPrev = []; // tracks button press edges for toggle/trigger params
+    /**
+     * Last value seen per `channel:cc`, for rising-edge detection.
+     *
+     * Keyed by the PHYSICAL control, not by the parameter: "was this button
+     * already down" is a fact about the button, and two params driven by one CC
+     * must agree about it. Updated once per message, after the dispatch loop —
+     * updating inside the loop would let the first param see the edge and every
+     * later one see a level.
+     *
+     * A hardware button is momentary: a Korg nanoKONTROL2 sends 127 on press
+     * and 0 on RELEASE. Without this, `setNormalized(0)` on release turned the
+     * toggle straight back off (so Run Rec only recorded while held) and fired
+     * a TRIGGER a second time, because the value setter fires trigger listeners
+     * on every set regardless of `changed`. Notes and gamepad buttons were
+     * already edge-guarded; MIDI CC was the one input path that never was.
+     */
+    this._ccPrev = new Map();
     this._midiLearnParam = null; // paramId waiting for MIDI learn
     this._midiLearnTimer = null;
 
@@ -752,8 +770,27 @@ export class ControllerManager {
 
   // ── MIDI Learn ────────────────────────────────────────────────────────────
 
-  startMIDILearn(paramId) {
+  /**
+   * @param {string} paramId
+   * @param {number|null} optionIndex - when given, the next CC binds to THAT
+   *   option of a SELECT rather than to the whole parameter, building a
+   *   `midi-cc-map`. This is how a controller with no pads (a nanoKONTROL2 has
+   *   buttons that send CC, not notes) gets one button per partition.
+   */
+  startMIDILearn(paramId, optionIndex = null, onLearned = null) {
     this._midiLearnParam = paramId;
+    this._midiLearnOption = optionIndex;
+    /**
+     * Called after a successful bind, so the row that asked can repaint.
+     *
+     * A callback rather than an event on `ps`: nothing notifies the UI when a
+     * controller is assigned, and learning an option that is ALREADY selected
+     * changes no value, so `binding.sync` never fires and the button would show
+     * no confirmation at all. A closure dies with the row that made it, which
+     * an event listener on a long-lived object would not — rows are rebuilt
+     * constantly (see ParamBinding.dispose).
+     */
+    this._midiLearnDone = onLearned;
 
     // Flash the MIDI indicator
     const el = document.getElementById('status-midi');
@@ -767,6 +804,10 @@ export class ControllerManager {
 
   cancelMIDILearn() {
     this._midiLearnParam = null;
+    this._midiLearnOption = null;
+    this._midiLearnDone = null;
+    document.querySelectorAll('.param-opt-btn.learning')
+      .forEach(el => el.classList.remove('learning'));
     clearTimeout(this._midiLearnTimer);
     const el = document.getElementById('status-midi');
     el?.classList.remove('learning');
@@ -814,7 +855,23 @@ export class ControllerManager {
 
       // MIDI Learn: intercept next CC
       if (this._midiLearnParam && type === 0xB0) {
-        this.assign(this._midiLearnParam, { type: 'midi-cc', cc: data1, channel });
+        if (this._midiLearnOption != null) {
+          // Learn ONE option of a SELECT. Merge into the existing map rather
+          // than replacing it, or learning P2 would forget P0 and P1.
+          const p = this.ps.get(this._midiLearnParam);
+          const n = p?.options?.length ?? 0;
+          const prev = p?.controller?.type === 'midi-cc-map' ? p.controller.ccs : null;
+          const ccs = Array.from({ length: n }, (_, i) => prev?.[i] ?? null);
+          // One CC drives one option: clear any other slot that claimed it, so
+          // re-learning a button moves it instead of firing two options.
+          for (let i = 0; i < ccs.length; i++) if (ccs[i] === data1) ccs[i] = null;
+          ccs[this._midiLearnOption] = data1;
+          this.assign(this._midiLearnParam, { type: 'midi-cc-map', ccs, channel });
+        } else {
+          this.assign(this._midiLearnParam, { type: 'midi-cc', cc: data1, channel });
+        }
+        // Before cancel, which clears it.
+        this._midiLearnDone?.();
         this.cancelMIDILearn();
         // Activity flash
         const el = document.getElementById('status-midi');
@@ -822,13 +879,32 @@ export class ControllerManager {
         return;
       }
 
+      // Rising edge for this physical control, read BEFORE the loop so every
+      // param sees the same answer. Threshold at half scale so a knob swept
+      // across the middle reads as one press, not one per message.
+      const ccKey  = `${channel}:${data1}`;
+      const ccWas  = (this._ccPrev.get(ccKey) ?? 0) / 127;
+      const ccRise = norm > 0.5 && ccWas <= 0.5;
+
       this.ps.getAll().forEach(p => {
         if (!p.controller) return;
         const c = p.controller;
         if (c.channel && c.channel !== channel) return;
 
         if (type === 0xB0 && c.type === 'midi-cc' && c.cc === data1) {
-          p.setNormalized(norm);
+          // A button is not a fader. Toggle and trigger take the PRESS and
+          // ignore the release, matching what midi-note and the gamepad have
+          // always done; anything continuous still follows the value, so a
+          // knob or slider is unaffected.
+          if (p.type === PARAM_TYPE.TOGGLE) { if (ccRise) p.toggle(); }
+          else if (p.type === PARAM_TYPE.TRIGGER) { if (ccRise) p.trigger(); }
+          else p.setNormalized(norm);
+        } else if (type === 0xB0 && c.type === 'midi-cc-map' && Array.isArray(c.ccs)) {
+          // One CC per option (§ SELECT banks). The index is chosen by WHICH
+          // control spoke, not by its value — so four buttons pick four
+          // options, and a release (0) selects nothing.
+          const idx = c.ccs.indexOf(data1);
+          if (idx >= 0 && ccRise) p.value = idx;
         } else if (type === 0x90 && c.type === 'midi-note' && c.note === data1) {
           if (p.type === 'toggle') { if (data2 > 0) p.toggle(); }
           else if (p.type === 'trigger') { if (data2 > 0) p.trigger(); }
@@ -838,6 +914,9 @@ export class ControllerManager {
           p.value = data1;
         }
       });
+
+      // AFTER the dispatch loop, so every param above saw the same edge.
+      if (type === 0xB0) this._ccPrev.set(ccKey, data2);
 
       // Global MIDI PC callback (fires for any PC message regardless of param mapping)
       if (type === 0xC0 && this.onMIDIPC) {

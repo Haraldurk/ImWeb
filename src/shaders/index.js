@@ -169,8 +169,31 @@ export const KEYER = /* glsl */ `
     // bg*(1-a) + fg attenuates the background by coverage and then adds the
     // source on top, so a bright aura over a dark patch stays bright. At a=1
     // the two forms are identical, so an opaque object is unaffected either way.
+    //
+    // The same branch is also the exactly-correct composite for a source whose
+    // RGB is already PREMULTIPLIED — bg*(1-a) + fg IS "over" in premultiplied
+    // form. The Text layer uploads premultiplied (TextLayer.js explains why:
+    // TRANSFERMODE blends RGB only, so straight alpha put full-intensity colour
+    // in every antialiased edge pixel and the glyphs came out hard-edged). So
+    // for keyed text, Alpha Emissive ON is the mathematically exact path; with
+    // it OFF, mix() attenuates those edges a second time and the antialiasing
+    // reads slightly thin. Everything at a=1 — which is all of the glyph but
+    // its outermost pixel — is identical either way.
+    // OUTPUT ALPHA is the composite's own coverage, not the foreground's.
+    // This branch used to emit fg.a, which was invisible for as long as every
+    // foreground was opaque — fg.a was a constant 1, so "the fg's coverage" and
+    // "the result's coverage" were the same number. The moment a source carries
+    // real alpha (the 3D scene's Transparent BG), they diverge: outside the
+    // object fg.a is 0, so the whole frame went transparent and the BACKGROUND
+    // vanished, which is what it looks like — a black frame with only the
+    // subject in it. The background is not being keyed out; the composite is
+    // reporting that nothing is there.
+    //
+    // fg.a + bg.a*(1-fg.a) is "over" in premultiplied form, matching the RGB
+    // line above it. Over an opaque background it is exactly 1, so nothing that
+    // composited correctly before moves.
     gl_FragColor = uAlphaEmissive == 1
-      ? vec4(bg.rgb * (1.0 - alpha) + fg.rgb, fg.a)
+      ? vec4(bg.rgb * (1.0 - alpha) + fg.rgb, fg.a + bg.a * (1.0 - fg.a))
       : mix(bg, fg, alpha);
   }
 `;
@@ -1629,6 +1652,219 @@ export const BLOOM_COMPOSITE = /* glsl */ `
     vec4 orig  = texture2D(uTexture, vUv);
     vec4 bloom = texture2D(uBloom,   vUv);
     gl_FragColor = vec4(orig.rgb + bloom.rgb * uStrength, orig.a);
+  }
+`;
+
+// Variable-radius bokeh gather.
+//
+// BLOOM_BLUR cannot be reused and its own comment says why: it widens tap
+// SPACING rather than adding taps, which is what makes its radius nearly free.
+// That trick cannot work here — a bladed iris kernel is non-separable by
+// definition — so this pass spends real taps distributed across a disc, and
+// sample count is the cost knob.
+//
+// BOKEH_SAMPLES is a preprocessor constant, not a uniform, because GLSL ES 1.00
+// requires CONSTANT loop bounds. Pipeline compiles one material per quality
+// tier by prefixing this source with a #define; the #ifndef below only keeps
+// the bare export compiling on its own.
+export const BOKEH_GATHER = /* glsl */ `
+  #ifndef BOKEH_SAMPLES
+  #define BOKEH_SAMPLES 32
+  #endif
+
+  uniform sampler2D uTexture;
+  uniform sampler2D uMask;
+  uniform vec2      uResolution;
+  uniform float     uRadius;      // max circle of confusion, in pixels
+  uniform float     uFocus;       // 0-1 mask value that stays sharp
+  uniform float     uFeather;     // 0-1 transition width around focus
+  uniform float     uBlades;      // 0 = circle, else blade count
+  uniform float     uIris;        // iris rotation, radians
+  uniform float     uRing;        // -1..1 apodization
+  uniform float     uHighlight;   // 0-1 highlight dominance
+  uniform float     uThreshold;   // 0-1 what counts as a highlight
+
+  varying vec2 vUv;
+
+  const float GOLDEN = 2.39996323;
+  const float PI     = 3.14159265;
+
+  float luma(vec3 c) { return dot(c, vec3(0.2126, 0.7152, 0.0722)); }
+
+  // Cheap per-pixel hash. Used to rotate the sample spiral, nothing else.
+  float hash12(vec2 p) {
+    vec3 p3 = fract(vec3(p.xyx) * 0.1031);
+    p3 += dot(p3, p3.yzx + 33.33);
+    return fract((p3.x + p3.y) * p3.z);
+  }
+
+  void main() {
+    vec4 centre = texture2D(uTexture, vUv);
+
+    // Focus is a PLANE, not a side: distance from the focus value in either
+    // direction defocuses, so uFocus 0 and 1 cover both polarities of a mask
+    // and a mid value keeps a band sharp. This is why there is no Invert.
+    float m   = texture2D(uMask, vUv).r;
+    float coc = smoothstep(0.0, max(uFeather, 0.001), abs(m - uFocus));
+
+    float radiusPx = uRadius * coc;
+    if (radiusPx < 0.5) { gl_FragColor = centre; return; }
+
+    vec2 texel = radiusPx / uResolution;
+
+    // Highlights must DOMINATE the disc, not average into it, or overlapping
+    // discs turn to mush exactly where a real lens gives structure. Gathering
+    // in a power space and taking the root back out preserves highlight energy,
+    // so a bright sample survives being averaged with dark neighbours.
+    float p    = 1.0 + uHighlight * 2.0;
+    float invP = 1.0 / p;
+
+    // Rotate the whole spiral by a per-pixel angle.
+    //
+    // Without this, every fragment samples the SAME set of offsets, so one
+    // bright point lands on a regular lattice of output pixels and the disc
+    // reads as a field of separate dots rather than a disc — worse the larger
+    // the radius, because the same sample count is spread over an area that
+    // grows with its square. Decorrelating the pattern per pixel converts that
+    // structured aliasing into noise, which the eye reads as grain.
+    //
+    // Keyed on gl_FragCoord, so the pattern is STATIC: it does not crawl or
+    // flicker between frames, which a time-seeded jitter would.
+    float jitter = hash12(gl_FragCoord.xy) * 6.28318531;
+
+    vec3  acc  = vec3(0.0);
+    float wsum = 0.0;
+
+    for (int i = 0; i < BOKEH_SAMPLES; i++) {
+      float fi = float(i);
+
+      // sqrt keeps the spiral EQUAL-AREA: without it the samples bunch toward
+      // the centre and the disc reads as a soft blob rather than a disc.
+      float t = (fi + 0.5) / float(BOKEH_SAMPLES);
+      float r = sqrt(t);
+      // uIris is deliberately NOT in here. It orients the POLYGON below, and
+      // the jitter must not rotate that: a per-pixel iris rotation averages
+      // every blade count back into a circle, so Blades would stop working
+      // while still appearing to be set.
+      float a = fi * GOLDEN + jitter;
+
+      // Bladed iris: push the unit disc out to the polygon boundary at this
+      // angle. uBlades 0 leaves it circular.
+      if (uBlades >= 3.0) {
+        // 'half' is a RESERVED word in GLSL ES 1.00 — naming this halfSeg is
+        // not style, it is the difference between compiling and not.
+        float seg     = 2.0 * PI / uBlades;
+        float halfSeg = PI / uBlades;
+        // Evaluated at (a - uIris), so the iris is fixed in SCREEN space and
+        // turns only with uIris, while the samples inside it stay jittered.
+        r *= cos(halfSeg) / cos(mod(a - uIris, seg) - halfSeg);
+      }
+
+      vec2 off = vec2(cos(a), sin(a)) * r * texel;
+      vec3 c   = max(texture2D(uTexture, vUv + off).rgb, 0.0);
+
+      // Apodization — where the energy sits across the disc. Positive puts a
+      // bright rim on every highlight (spherical aberration, or a mirror lens)
+      // and reads as nearly hollow at the extreme; negative is centre-weighted
+      // and smooth. This is what separates an optical effect from a soft one.
+      float w = 1.0;
+      if (uRing >= 0.0) w = mix(1.0, pow(r, 4.0),      uRing);
+      else              w = mix(1.0, 1.0 - r * r,     -uRing);
+
+      // Threshold decides what is a specular worth blooming into a disc, so a
+      // merely light-coloured region does not.
+      float hl = smoothstep(uThreshold - 0.08, uThreshold + 0.08, luma(c));
+      c *= 1.0 + uHighlight * 2.0 * hl;
+
+      acc  += pow(c, vec3(p)) * w;
+      wsum += w;
+    }
+
+    // wsum can go small when uRing drives the weights toward the rim.
+    vec3 col = pow(acc / max(wsum, 0.0001), vec3(invP));
+    gl_FragColor = vec4(col, centre.a);
+  }
+`;
+
+// Quarter-resolution box downsample, for the wide-radius bokeh path.
+//
+// Four taps at ±1 full-res texel, each of which is itself a bilinear 2×2
+// average — so this is a 4×4 box, not a point sample. That matters: a bare
+// bilinear stretch into a quarter-res target only reads 4 of every 16 source
+// pixels, which aliases, and aliasing in the SOURCE of a blur shows up as
+// shimmer under motion rather than as softness.
+export const BOKEH_DOWNSAMPLE = /* glsl */ `
+  uniform sampler2D uTexture;
+  uniform vec2      uTexel;   // 1 / full resolution
+  varying vec2 vUv;
+  void main() {
+    vec4 c = texture2D(uTexture, vUv + uTexel * vec2(-1.0, -1.0))
+           + texture2D(uTexture, vUv + uTexel * vec2( 1.0, -1.0))
+           + texture2D(uTexture, vUv + uTexel * vec2(-1.0,  1.0))
+           + texture2D(uTexture, vUv + uTexel * vec2( 1.0,  1.0));
+    gl_FragColor = c * 0.25;
+  }
+`;
+
+// Temporal smoothing for the bokeh mask.
+//
+// The gather is stateless — it answers the mask instantly, frame by frame, so
+// defocus snaps on and off with every twitch of a motion matte. Easing the MASK
+// instead of the picture makes the discs glide: focus drifts in and lets go
+// rather than flicking, which is the whole character of a real focus pull.
+//
+// Symmetric on purpose. MOTION_MATTE already offers instant-attack /
+// exponential-release through its own uDecay, so an asymmetric curve here would
+// duplicate a control the mask source already has. This one eases BOTH
+// directions, which is the part nothing else provides.
+export const BOKEH_MASK_SLEW = /* glsl */ `
+  uniform sampler2D uMask;   // this frame's mask
+  uniform sampler2D uPrev;   // last frame's smoothed mask
+  uniform float     uDecay;  // per-frame retention; 0 = follow instantly
+  varying vec2 vUv;
+  void main() {
+    float m = texture2D(uMask, vUv).r;
+    float p = texture2D(uPrev, vUv).r;
+    gl_FragColor = vec4(vec3(mix(m, p, uDecay)), 1.0);
+  }
+`;
+
+// Full-res composite for the half-res gather.
+//
+// This exists so half-res gathering costs nothing in the SHARP regions: an
+// in-focus pixel takes the full-res original verbatim and never sees the
+// downsampled buffer. The defocus term is recomputed here rather than passed
+// through the gather's output, because a half-res alpha channel would carry
+// the same downsampling the composite is here to avoid.
+export const BOKEH_COMPOSITE = /* glsl */ `
+  uniform sampler2D uTexture;   // original, full resolution
+  uniform sampler2D uBokeh;     // gathered, half resolution
+  uniform sampler2D uDiscs;     // gathered HIGHLIGHTS, half resolution
+  uniform sampler2D uMask;
+  uniform float     uFocus;
+  uniform float     uFeather;
+  uniform float     uAmount;    // master, crossfades the whole effect
+  uniform float     uDiscAmt;   // how hard the highlight discs are added back
+  varying vec2 vUv;
+  void main() {
+    vec4  orig = texture2D(uTexture, vUv);
+    vec3  blur = texture2D(uBokeh,   vUv).rgb;
+    float m    = texture2D(uMask,    vUv).r;
+    float coc  = smoothstep(0.0, max(uFeather, 0.001), abs(m - uFocus));
+
+    vec3 col = mix(orig.rgb, blur, coc * uAmount);
+
+    // Discs are ADDED, not averaged, and that is the whole reason this branch
+    // exists. Spreading a point across a disc divides its energy by the sample
+    // count: measured, a 4px highlight over a 12px radius peaks at 13/255 —
+    // a disc too faint to see against anything. Adding the gathered highlights
+    // back with gain restores what the averaging took out.
+    //
+    // Scaled by coc so a highlight that is still in FOCUS does not sprout a
+    // disc it has no business having.
+    col += texture2D(uDiscs, vUv).rgb * uDiscAmt * coc * uAmount;
+
+    gl_FragColor = vec4(col, orig.a);
   }
 `;
 

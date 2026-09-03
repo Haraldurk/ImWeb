@@ -210,12 +210,47 @@ export function buildMappingPanels(ps, contextMenu) {
     // its Audio In device row is injected from main.js instead.)
     'bg1-params':      [ps.get('screen.bg1')].filter(Boolean),
     'bg2-params':      [ps.get('screen.bg2')].filter(Boolean),
-    'transform-params': ps.getGroup('scene3d').filter(p => p.id.includes('rot') || p.id.includes('pos') || p.id.includes('scale') || p.id.includes('spin')),
+    // NOTE: 'transform-params' is deliberately NOT listed here. It is built
+    // explicitly further down this file (the Screen XY toggle, the world-units
+    // hint, then a fixed order), and a container filled by both writers renders
+    // every row twice. The substring filter this replaced was wrong twice over:
+    // it duplicated the whole section, and `id.includes('scale')` also swept in
+    // scene3d.clone.scale, clone.scalestep and blob.scale, so CloneScale,
+    // ScaleStep and Metaball Scale appeared under Transform as well as under
+    // the sections they belong to.
     'camera3d-params': ps.getGroup('scene3d').filter(p => p.id.includes('cam')),
     'material-params': ps.getGroup('scene3d').filter(p => p.id.includes('mat') || p.id.includes('wire') || p.id.includes('depth')),
     'lights-params':   ps.getGroup('lights3d'),
     'draw-params':     ps.getGroup('draw'),
-    'text-params':     ps.getGroup('text'),
+    // Text — one group across four subsections, the same treatment Effects
+    // gets. 39 rows in registration order mixed typography, colour, sequencing
+    // and transition in one list; the sections are what make it readable.
+    // These are pick() lists, so tests/audit-panel-coverage.mjs fails the
+    // build if a text.* param lands in no section, in two, or under a dead
+    // name — which is what makes it safe to slice the group this way.
+    'text-type-params':       pick('text', ['res', 'font', 'weight', 'italic',
+                                            'size', 'spacing', 'letterspacing',
+                                            'align', 'rotation', 'x', 'y']),
+    'text-color-params':      pick('text', ['hue', 'sat', 'opacity',
+                                            'outline', 'outlineHue', 'outlineSat',
+                                            'shadowBlur', 'shadowX', 'shadowY',
+                                            'bg', 'bgOpacity']),
+    // Sequencing (which unit is showing, and what steps it) sits with the
+    // continuous animation it drives — advancing IS the motion here.
+    'text-motion-params':     pick('text', ['mode', 'advance', 'contentIdx',
+                                            'progress', 'autoplay', 'rate', 'auto',
+                                            'animMode', 'animSpeed', 'animAmt',
+                                            'glitchSet',
+                                            'scrollX', 'scrollY', 'scrollGap']),
+    'text-audio-params':      pick('text', ['audioTarget', 'audioBand',
+                                            'audioLo', 'audioHi',
+                                            'audioGain', 'audioFocus',
+                                            'audioAmt', 'audioSmooth']),
+    'text-path-params':       pick('text', ['path', 'pathRadius', 'pathAngle',
+                                            'pathSpread', 'pathWidth', 'pathTwist',
+                                            'pathUpright', 'pathFlip']),
+    'text-transition-params': pick('text', ['anim.in', 'anim.out', 'anim.dur',
+                                            'anim.ease', 'stagger', 'staggerFrom']),
     // layer.*.blendAmount is excluded by ID, the same stated exception the
     // output.interlace row above uses: it stays group 'fg'/'bg' for persistence
     // but its row is built by buildLayerButtons() beside the blend mode it
@@ -249,6 +284,13 @@ export function buildMappingPanels(ps, contextMenu) {
                                              'rgbshift', 'rgbangle',
                                              'sharpen',
                                              'bloom', 'bloomthresh', 'bloomradius',
+                                             'bokeh', 'bokehmask', 'bokehradius',
+                                             'bokehfocus', 'bokehfeather',
+                                             'bokehsmooth',
+                                             'bokehblades', 'bokehrotate', 'bokehring',
+                                             'bokehhighlight', 'bokehthresh',
+                                             'bokehdiscs',
+                                             'bokehquality',
                                              'vignette', 'vigradius', 'vigcx', 'vigcy',
                                              'vighue', 'vigtint']),
     'effect-quant-params':   pick('effect', ['posterize', 'solarize', 'solarsoft',
@@ -426,6 +468,111 @@ export function buildMappingPanels(ps, contextMenu) {
       };
       refreshTdScanRows();
       modeParam.onChange(refreshTdScanRows);
+    }
+  }
+
+  // ── Material: Clearcoat / Transmit / IOR exist only on Physical ───────────
+  // MeshPhysicalMaterial extends MeshStandardMaterial and adds exactly these
+  // three; SceneManager applies them under `if (matType === 1 &&
+  // isMeshPhysicalMaterial)`. So on every other shader the sliders move, the
+  // readouts count, and nothing renders differently — which is also why
+  // Standard and Physical look identical until one of them is raised. Reported
+  // as "I don't see any difference between Standard and Physical".
+  //
+  // Dimmed rather than hidden, and left interactive, for the reasons .param-na
+  // documents in style.css.
+  {
+    const matEl = document.getElementById('material-params');
+    const typeParam = ps.get('scene3d.mat.type');
+    const PHYSICAL = 1;
+    const physicalOnly = ['scene3d.mat.clearcoat', 'scene3d.mat.transmit', 'scene3d.mat.ior']
+      .map(id => matEl?.querySelector(`[data-param-id="${id}"]`))
+      .filter(Boolean);
+    if (typeParam && physicalOnly.length) {
+      const refreshPhysicalRows = () => {
+        const na = typeParam.value !== PHYSICAL;
+        for (const r of physicalOnly) {
+          r.classList.toggle('param-na', na);
+          if (na) r.title = 'Physical shader only — Clearcoat, Transmit and IOR are what Physical adds to Standard. Set Material Shader to Physical.';
+          else    r.removeAttribute('title');
+        }
+      };
+      refreshPhysicalRows();
+      typeParam.onChange(refreshPhysicalRows);
+    }
+  }
+
+  // ── Material: what Seamless mapping makes inapplicable ────────────────────
+  // Disp. Projection (UV vs Screen) is read only in the UV branch of
+  // getDisplacement — the triplanar branch never touches it. So whenever the
+  // DISPLACE path resolves to Seamless the control moves and nothing happens,
+  // which is how it was found: set to UV, doing nothing, on a seamless object.
+  //
+  // Blend Sharp is the mirror case: it only means something while Seamless is
+  // in play, since it is the triplanar handover exponent.
+  //
+  // The resolution below mirrors SceneManager.applyParams, which is the source
+  // of truth. It reads the same three params, so the two can only disagree if
+  // that rule changes — and the cost of drift here is a wrong dim, not a wrong
+  // render.
+  {
+    const matEl = document.getElementById('material-params');
+    const mapping = ps.get('scene3d.mat.mapping');
+    const texsrc  = ps.get('scene3d.mat.texsrc');
+    const dispsrc = ps.get('scene3d.mat.dispsrc');
+    const projRow  = matEl?.querySelector('[data-param-id="scene3d.mat.dispTexProj"]');
+    const blendRow = matEl?.querySelector('[data-param-id="scene3d.mat.triblend"]');
+    if (mapping && texsrc && projRow && blendRow) {
+      const NOISE = 6, AUTO = 0, UV = 1, TRI = 2, DISPSRC_TEX_BASE = 2;
+      const dispIsTriplanar = () => {
+        const m = mapping.value;
+        if (m === TRI) return true;
+        if (m === UV)  return false;
+        const sel = dispsrc?.value ?? 0;
+        const idx = sel === 0 ? texsrc.value : sel === 1 ? -1 : sel - DISPSRC_TEX_BASE;
+        return idx === NOISE;   // Auto
+      };
+      const refresh = () => {
+        const projNa = dispIsTriplanar();
+        projRow.classList.toggle('param-na', projNa);
+        if (projNa) projRow.title = 'No effect while the displacement is Seamless — a triplanar projection has no UV to swap for a screen one. Set Mapping to UV.';
+        else        projRow.removeAttribute('title');
+
+        const blendNa = mapping.value === UV;
+        blendRow.classList.toggle('param-na', blendNa);
+        if (blendNa) blendRow.title = 'No effect while Mapping is UV — Blend Sharp is how sharply the three Seamless projections hand over.';
+        else         blendRow.removeAttribute('title');
+      };
+      refresh();
+      mapping.onChange(refresh);
+      texsrc.onChange(refresh);
+      dispsrc?.onChange(refresh);
+    }
+  }
+
+  // ── Bokeh: Iris does nothing while Blades is Circle ───────────────────────
+  // uIris is referenced in exactly one place in BOKEH_GATHER, inside
+  // `if (uBlades >= 3.0)` — a circle is rotationally symmetric, so there is
+  // genuinely nothing for a rotation to change. Without this the slider moves,
+  // the readout counts to 360°, and the picture does not change, which reads as
+  // a broken control rather than an inapplicable one. It was reported as one.
+  //
+  // Dimmed rather than hidden, and left interactive — see .param-na in
+  // style.css for why.
+  {
+    const opticsEl = document.getElementById('effect-optics-params');
+    const irisRow  = opticsEl?.querySelector('[data-param-id="effect.bokehrotate"]');
+    const bladesParam = ps.get('effect.bokehblades');
+    if (irisRow && bladesParam) {
+      const CIRCLE = 0;
+      const refreshBokehIrisRow = () => {
+        const na = bladesParam.value === CIRCLE;
+        irisRow.classList.toggle('param-na', na);
+        if (na) irisRow.title = 'No effect while Bokeh.Blades is Circle — a circular iris has no orientation. Choose 5, 6 or 8 blades.';
+        else    irisRow.removeAttribute('title');
+      };
+      refreshBokehIrisRow();
+      bladesParam.onChange(refreshBokehIrisRow);
     }
   }
 
@@ -1343,6 +1490,7 @@ const _FX_NODE_INFO = {
   posterize:   { label: 'poster',  isActive: p => p.get('effect.posterize').value < 32 },
   solarize:    { label: 'solar',   isActive: p => p.get('effect.solarize').value < 100 },
   vignette:    { label: 'vign',    isActive: p => p.get('effect.vignette').value > 0 },
+  bokeh:       { label: 'bokeh',   isActive: p => p.get('effect.bokeh').value > 0 },
   bloom:       { label: 'bloom',   isActive: p => p.get('effect.bloom').value > 0 },
   levels:      { label: 'levels',  isActive: p => p.get('effect.lvblack').value > 0 || p.get('effect.lvwhite').value < 100 || p.get('effect.lvgamma').value !== 100 },
   // The only entry that needs more than the params: LUT Amount defaults above
