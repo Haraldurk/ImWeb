@@ -301,6 +301,7 @@ const ZONE_SPECIFIC = new Set([
   // and giving `makeZone`'s shared shape a common address would have handed
   // Rec a fader that writes into the tape. Grain has its own, one line down.
   '/zone/play/<n>/level',
+  '/zone/play/<n>/pos',
   '/zone/rec/<n>/dynamic',
   '/zone/rec/<n>/length',
   // The grain player's own vocabulary (§4.6). Note `/zone/grain/<n>/rate` is
@@ -470,6 +471,17 @@ function makeZone() {
     // new region can be anywhere in the tape, and sliding a read position
     // across the gap would sweep through whatever material lies between.
     pend: false, pendPart: 0,
+    /**
+     * A queued seek, as a fraction of the region, or null for "no seek".
+     *
+     * Rides the SAME `pend` duck as a partition change rather than getting its
+     * own: both are discontinuities in the read position, both click if applied
+     * mid-flight, and one mechanism means a cue that moves partition and
+     * position together ducks once instead of twice. null rather than 0 because
+     * 0 is a legal seek target — the start of the region — and a partition
+     * change means exactly that, so the two must stay distinguishable.
+     */
+    pendPos: null,
   };
 }
 
@@ -777,6 +789,8 @@ class TapeProcessor extends AudioWorkletProcessor {
         return this._zoneSet('play', idx[0], 'rateTgt', v[0], 'rateCtrl', m.a);
       case '/zone/play/<n>/level':
         return this._zoneSet('play', idx[0], 'levelTgt', v[0], 'levelCtrl', m.a);
+      case '/zone/play/<n>/pos':
+        return this._playPos(idx[0], v[0]);
       case '/zone/rec/<n>/dynamic':   return this._zoneSet('rec', idx[0], 'dynamic', !!v[0]);
 
       // The spectral writer (§4.5). `/render` is generic over zone type by
@@ -2551,7 +2565,30 @@ class TapeProcessor extends AudioWorkletProcessor {
         `rec zone ${i} is recording; stop it to change partition`);
     }
     if (!z.on && z.gainCur === 0) { z.part = slot; return; }
-    z.pend = true; z.pendPart = slot;
+    z.pend = true; z.pendPart = slot; z.pendPos = null;
+  }
+
+  /**
+   * Move the read head. A fraction OF THE REGION, like every other zone
+   * position (§4.3) — 0 is the start of Start→Start+Length, 1 is its end.
+   *
+   * A SEEK, not a slewed target, and that is the difference from `rate` and the
+   * bounds. Sliding the read position continuously is what moving Start already
+   * does; this is for landing somewhere, which is what a cue recall and a hand
+   * on a knob both want. It therefore ducks — see `pendPos`.
+   *
+   * A silent zone takes it immediately: there is nothing to click.
+   */
+  _playPos(i, frac) {
+    const z = this._play[i];
+    if (!z) return;
+    const f = Math.max(0, Math.min(1, frac));
+    if (!z.on || z.gainCur === 0) {
+      this._computeSpan(z);
+      z.phase = f * (this._sb - this._sa);
+      return;
+    }
+    z.pend = true; z.pendPart = z.part; z.pendPos = f;
   }
 
   /**
@@ -2981,7 +3018,22 @@ class TapeProcessor extends AudioWorkletProcessor {
       if (z.gainCur === 0) {
         if (z.pend) {                              // bottom of the duck: apply
           z.part = z.pendPart;
-          z.phase = 0; z.pend = false;
+          // A seek lands HERE, in the silence, for the same reason a partition
+          // change does: moving the read head mid-flight is a discontinuity in
+          // the signal, i.e. a click. `pendPos` null means "start of the
+          // region", which is what a partition change has always meant.
+          //
+          // The span is recomputed AFTER `part` is taken, so a cue that moves
+          // both at once seeks within the partition it is arriving at rather
+          // than the one it is leaving.
+          if (z.pendPos != null) {
+            this._computeSpan(z);
+            z.phase = z.pendPos * (this._sb - this._sa);
+            z.pendPos = null;
+          } else {
+            z.phase = 0;
+          }
+          z.pend = false;
         }
         if (!z.on) return;
         continue;

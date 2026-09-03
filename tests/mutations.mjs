@@ -25,6 +25,103 @@
 /** Ordinary quotes throughout: `${}` inside a single-quoted string is literal. */
 export const MUTATIONS = [
   // ═════════════════════════════════════════════════════════════════════════
+  // Pos Play and partition-relative cues (#84)
+  //
+  // The PR reported "Mutation-calibrated 4/4" and named these four, but ran
+  // them by hand and never committed them — so the calibration was a claim
+  // nobody could re-run, in the registry whose whole point is that these are
+  // kept. Written down here, verbatim from that list, and confirmed caught.
+  // ═════════════════════════════════════════════════════════════════════════
+  {
+    name: 'seek: the read position jumps without riding the duck',
+    audit: 'audit-audio-dsp.mjs',
+    file: 'src/audio/engine/tape-processor.js',
+    why: 'a seek is a discontinuity in the read position and lands as a CLICK unless it happens while the zone is ducked — which is the entire reason it rides the same pend the partition change does rather than being applied where it arrives',
+    find: 'z.pend = true; z.pendPart = z.part; z.pendPos = f;',
+    replace: 'z.pendPart = z.part; z.pendPos = f;',
+  },
+  {
+    name: 'seek: a partition change leaves a queued seek in place',
+    audit: 'audit-audio-dsp.mjs',
+    file: 'src/audio/engine/tape-processor.js',
+    why: 'the two share one duck, so a partition change arriving after a seek must CLEAR it — otherwise the queued fraction is applied against the NEW partition span and the needle lands somewhere nobody asked for, at the one moment the zone is silent and cannot show it',
+    find: 'z.pend = true; z.pendPart = slot; z.pendPos = null;',
+    replace: 'z.pend = true; z.pendPart = slot;',
+  },
+  {
+    name: 'cue: a partial recall writes the value it does not have',
+    audit: 'audit-cue-banks.mjs',
+    file: 'src/core/CueBank.js',
+    why: 'allowPartial means "write what the cue HOLDS and leave the rest alone". Writing the failed Number() instead pushes NaN into a live parameter, which is worse than the dropped cue it replaced — a silent NaN in the audio graph rather than a slot that does nothing',
+    find: 'else if (!this.allowPartial) return null;   // all or nothing',
+    replace: 'else if (!this.allowPartial) return null; else cue[k] = n;',
+  },
+  {
+    name: 'cue: the shipped bank goes back to all-or-nothing',
+    audit: 'audit-cue-banks.mjs',
+    file: 'src/main.js',
+    why: 'the playback cue keys changed, so every project saved before that holds cues missing the new ones. With allowPartial off the bank rejects each of them and the whole bank loads EMPTY — the exact data loss the flag was added to prevent, and it looks like the user never saved any cues',
+    find: '    allowPartial: true,',
+    replace: '    allowPartial: false,',
+  },
+  // ═════════════════════════════════════════════════════════════════════════
+  // Rearrangements that walk around a spelling
+  //
+  // LEARNED 2026-08-15: a regex over source asserts a SPELLING, and the defect
+  // it guards against usually has more than one. These three mutate the code in
+  // ways a reasonable person would write, chosen so the ORIGINAL regex stops
+  // matching while the fault it names is fully present. Each one survived
+  // before the audit it names was rewritten to ask about structure.
+  // ═════════════════════════════════════════════════════════════════════════
+  {
+    name: 'worklet: an app module pulled in by dynamic import',
+    audit: 'audit-audio-protocol.mjs',
+    file: 'src/audio/engine/tape-processor.js',
+    why: 'an AudioWorklet has no module loader, so this fails at construction exactly as a static import would — but the check looked only at the start of a line, and this is the same hole public/sw.js had',
+    find: 'const PROTO_VERSION = 5;',
+    replace: "const { helpers } = await import('./curve-utils.js');\nconst PROTO_VERSION = 5;",
+  },
+  {
+    name: 'binding: a curve APPLIED by a name that is not .apply()',
+    audit: 'audit-table-write-paths.mjs',
+    file: 'src/audio/AudioBinding.js',
+    why: 'the upload path may RESOLVE a curve and must never apply one — the worklet applies it at audio rate, so a client-side apply shapes the value twice and the doubling looks merely wrong rather than erroring. The check named one spelling of "apply"',
+    find: '      if (d.table) {',
+    replace: '      if (d.table) {\n        const _t = resolveTable(d.table); d.value = _t.map ? _t.map(d.value) : d.value;',
+  },
+  {
+    name: 'row: the setup class added by toggle instead of add',
+    audit: 'audit-audio-monitoring.mjs',
+    file: 'src/ui/components/ParamRow.js',
+    why: 'the class must come from the getter, not be set by the row builder, or the row and the parameter disagree about what is in setup mode. toggle() sets exactly the same class and the check looked only for add()',
+    find: "    row.classList.toggle('active', !!param.controller);",
+    replace: "    row.classList.toggle('active', !!param.controller);\n    row.classList.toggle('param-ctrl-setup', !!param.setup);",
+  },
+  {
+    name: 'sw: a build-time constant reached for by another name',
+    audit: 'audit-sw-cache-bump.mjs',
+    file: 'public/sw.js',
+    why: 'public/ is copied verbatim and never passes through Vite define, so ANY build-time constant throws a ReferenceError in the worker, install() never completes and the app silently stops working offline. The audit knew one spelling; this is an equally fatal one it could not see',
+    find: "const CACHE = 'imweb-v0.22.1';",
+    replace: "const CACHE = 'imweb-v' + import.meta.env.VITE_APP_VERSION;",
+  },
+  {
+    name: 'sw: an app module pulled in by dynamic import',
+    audit: 'audit-sw-cache-bump.mjs',
+    file: 'public/sw.js',
+    why: 'a service worker is not part of the bundle graph, so this fails at registration exactly as a static import would — but it is not at the start of a line, which is all the original check looked for',
+    find: "const CACHE = ",
+    replace: "const { helper } = await import('./assets/util.js');\nconst CACHE = ",
+  },
+  {
+    name: 'autosave: serializeControllers called WITH an argument',
+    audit: 'audit-mapping-autosave.mjs',
+    file: 'src/state/MappingAutosave.js',
+    why: 'NOTE: the audit behavioural check ("both mapped params were restored") catches this too, so it is not sole-source evidence for the text check — it was written to prove the text check, found it caught elsewhere, and the regex was made structural anyway. The autosave must never serialize controllers — doing so writes live controller state into the mapping file and it is restored over the project on load. Passing an argument is the ordinary way this call would evolve, and it defeats a regex anchored on the empty parens',
+    find: 'return JSON.stringify(this.ps.serializeMappings());',
+    replace: 'return JSON.stringify({ ...this.ps.serializeMappings(), c: this.ps.serializeControllers(this.ps) });',
+  },
+  // ═════════════════════════════════════════════════════════════════════════
   // Promotion pressure on LEARNED.md
   //
   // These mutate the DATA rather than the code, because the data is what this
@@ -36,8 +133,19 @@ export const MUTATIONS = [
     audit: 'audit-learned-advisory-age.mjs',
     file: 'docs/LEARNED.md',
     why: 'the easiest way to silence a promotion-pressure audit forever — the parser matches only dated entries, so an undated one is not exempt, it is INVISIBLE, and it ages without ever being counted',
-    find: '- 2026-07-12 [advisory]: Before writing any integration',
-    replace: '- [advisory]: Before writing any integration',
+    // Anchored on the SHAPE of a dated advisory line, not on one date. The
+    // first version named `- 2026-07-12 [advisory]: Before writing any
+    // integration`; that entry was later re-dated as a conscious decision, the
+    // find matched zero times, and the mutation went AMBIGUOUS — asserting
+    // nothing, in the registry whose own header says a mutation that no longer
+    // applies is asserting nothing. `npm test` could not see it because the
+    // registry is on demand. Take the first dated advisory, whichever it is.
+    apply(src) {
+      return src.replace(/^- \d{4}-\d{2}-\d{2} (\[advisory\]:)/m, '- $1');
+    },
+    expect(out) {
+      return /^- \[advisory\]:/m.test(out);
+    },
   },
   {
     name: 'advisory: a non-Claude agent file loses the pointer',
@@ -73,8 +181,14 @@ export const MUTATIONS = [
     audit: 'audit-learned-advisory-age.mjs',
     file: 'docs/LEARNED.md',
     why: 'the whole point of the audit — a lesson carried in prose past 90 days is one the repo has agreed to keep re-learning, and it must go red rather than quietly persist',
-    find: '- 2026-07-12 [advisory]: Before writing any integration',
-    replace: '- 2020-01-01 [advisory]: Before writing any integration',
+    // Same reasoning as above: age the first dated advisory, whichever it is,
+    // rather than naming a date that a later re-dating silently invalidates.
+    apply(src) {
+      return src.replace(/^- \d{4}-\d{2}-\d{2} (\[advisory\]:)/m, '- 2020-01-01 $1');
+    },
+    expect(out) {
+      return /^- 2020-01-01 \[advisory\]:/m.test(out);
+    },
   },
 
   // ═════════════════════════════════════════════════════════════════════════

@@ -124,7 +124,10 @@ console.log('\nit is a setup act: not captured, and never a controller target');
     `'${ps.get('audio.outGain').controllerClass}'`);
   const row = read('src/ui/components/ParamRow.js');
   check('the row builder does not add the class outside that getter',
-    !/classList\.add\('param-ctrl-setup'\)/.test(row),
+    // Not `classList.add(...)` — that named one of at least four ways to set
+    // the same class, and `classList.toggle` walked straight past it. The class
+    // is the getter's to decide, so the builder must not mention it AT ALL.
+    !/param-ctrl-setup/.test(row),
     'updateDisplay() would drop it on the first refresh');
 
   const ui = read('src/ui/UI.js');

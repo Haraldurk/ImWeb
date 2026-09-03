@@ -402,12 +402,31 @@ async function main() {
   const movieInput = new MovieInput();
   const movieInputB = new MovieInput('movieB');
   const movieCues = new MovieCues(ps, { movie: movieInput, movieB: movieInputB });
-  // The Playback Zone's eight region cues. `part` FIRST in the key order —
-  // recall writes in this order, and Start/Length are fractions of the
-  // partition, so writing them before `part` resolves them against the old one.
-  // No afterRecall hook: every one of these takes effect on write, unlike a
-  // movie deck's Pos, which needs the seek forced.
-  const playCues = new CueBank(ps, { banks: ["aplay"], keys: ["part", "start", "len"] });
+  /**
+   * The Playback Zone's eight cues: Start, Length, Rate, Level.
+   *
+   * PARTITION IS DELIBERATELY NOT IN THE SET (owner's call, 2026-08-27). A cue
+   * is therefore partition-RELATIVE: the same eight apply to whichever
+   * partition is selected, so you get eight shapes across four partitions
+   * rather than eight fixed places. The cost is the one this module usually
+   * warns about — Start and Length are fractions OF a partition, so a cue
+   * recalled on P2 covers a different stretch of tape than it did on P0. Here
+   * that IS the feature.
+   *
+   * `pos` is not captured either: the playhead is its own control, and a cue
+   * that moved it would restart the read on every recall.
+   *
+   * `allowPartial` because this list has already changed once. Cues stored
+   * before Rate and Level joined carry only part/start/len, and a strict bank
+   * drops a cue that is missing any key — which would silently empty every
+   * saved project's bank. Partial cues write what they have and leave the rest
+   * alone. The movie bank stays strict on purpose; see CueBank.
+   */
+  const playCues = new CueBank(ps, {
+    banks: ["aplay"],
+    keys: ["start", "len", "rate", "level"],
+    allowPartial: true,
+  });
   // Dev-only console access — Deck B has no UI until v0.12 Step 4
   if (import.meta.env.DEV) window.__decks = { movieInput, movieInputB, ps, movieLibrary, movieCues };
   ctrl._movieInput = movieInput;

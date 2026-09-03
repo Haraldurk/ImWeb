@@ -117,6 +117,9 @@ export const CLIENT_TO_ENGINE = Object.freeze({
   '/zone/<type>/<n>/on': '',
   '/zone/<type>/<n>/off': '',
   '/zone/play/<n>/rate': 'f',      // signed; negative reads backwards
+  '/zone/play/<n>/pos': 'f',       // SEEK, 0..1 of the region — ducks like a
+                                   // partition change, because moving the read
+                                   // head mid-flight is a click
   '/zone/play/<n>/level': 'f',     // the performer's fader, 0..1; NOT the
                                    // engine's anti-click gain ramp, which is
                                    // driven by `on` and by partition swaps and
