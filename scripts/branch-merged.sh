@@ -60,6 +60,15 @@ for BR in "${targets[@]}"; do
   echo
   echo "── $BR ────────────────────────────────────────────"
 
+  # The forge is asked by branch NAME; git needs a ref that exists here. A
+  # branch whose PR is open is very often remote-only in a fresh checkout, and
+  # without this the content check reports "no merge base" — which reads as a
+  # broken branch rather than a missing local ref.
+  REF=""
+  for cand in "$BR" "origin/$BR" "refs/remotes/origin/$BR"; do
+    if git rev-parse --verify --quiet "$cand^{commit}" >/dev/null 2>&1; then REF="$cand"; break; fi
+  done
+
   STATE=""; MERGE_OID=""; BASE=""; NUM=""
   if [ "$have_gh" = "1" ]; then
     read -r NUM STATE MERGE_OID BASE < <(
@@ -121,8 +130,8 @@ else:
         echo "           Base has not merged yet. Merge base-first and rebase this"
         echo "           IMMEDIATELY, or branch both off $MAIN if they do not truly depend."
       fi
-      echo "  VERDICT: OPEN — work in flight."
-      continue
+      echo "  open PRs still get the content check below — \"open\" is where the"
+      echo "  PR sits in the forge, not whether it still holds work."
       ;;
     CLOSED)
       echo "  forge:   PR #$NUM CLOSED without merging — content check below."
@@ -138,18 +147,23 @@ else:
   # grep makes it parse a leading "-" as an option; that errored once and
   # inflated a "missing lines" count with garbage that was one report away from
   # being presented as lost work. Python has no option parsing to trip over.
-  BASE_SHA=$(git merge-base "$REMOTE_MAIN" "$BR" 2>/dev/null)
+  BASE_SHA=$([ -n "$REF" ] && git merge-base "$REMOTE_MAIN" "$REF" 2>/dev/null)
   if [ -z "$BASE_SHA" ]; then
-    echo "  VERDICT: UNKNOWN — no merge base with $REMOTE_MAIN."
+    if [ -z "$REF" ]; then
+      echo "  VERDICT: UNKNOWN — no ref for \"$BR\" here. Run: git fetch origin"
+    else
+      echo "  VERDICT: UNKNOWN — no merge base between $REF and $REMOTE_MAIN."
+    fi
     exit_code=1
     continue
   fi
 
-  git diff --unified=0 "$BASE_SHA" "$BR" |
+  git diff --unified=0 "$BASE_SHA" "$REF" |
   python3 -c '
 import subprocess, sys
 
 remote_main = sys.argv[1]
+state = sys.argv[2] if len(sys.argv) > 2 else ""
 added = {}                       # path -> [line, ...]
 path = None
 for raw in sys.stdin.read().split("\n"):
@@ -163,7 +177,8 @@ for raw in sys.stdin.read().split("\n"):
 
 if not added:
     print("  content: this branch adds no lines over the merge base.")
-    print("  VERDICT: EMPTY — nothing here to lose.")
+    print("  VERDICT: " + ("OPEN BUT EMPTY — close it." if state == "OPEN"
+                             else "EMPTY — nothing here to lose."))
     raise SystemExit(0)
 
 cache = {}
@@ -191,13 +206,20 @@ for p, lines in added.items():
 pct = 100.0 * survived / total if total else 0.0
 print(f"  content: {survived}/{total} added lines ({pct:.0f}%) are present in {remote_main}")
 if not missing:
-    print("  VERDICT: MERGED BY CONTENT — every added line survives in main.")
+    if state == "OPEN":
+        print("  VERDICT: OPEN BUT EMPTY — every added line is already in main.")
+        print("  This is the PR #44 case: it sat open for a day holding nothing because")
+        print("  the branch it was cut from had been squash-merged as part of another PR.")
+        print("  CLOSE it, do not merge it.")
+    else:
+        print("  VERDICT: MERGED BY CONTENT — every added line survives in main.")
     raise SystemExit(0)
 
 n_missing = sum(len(v) for v in missing.values())
 if pct < 20:
     print(f"  {n_missing} of {total} added lines are absent from {remote_main}.")
-    print("  VERDICT: UNMERGED — this branch holds work that is not in main.")
+    print("  VERDICT: " + ("OPEN, AND IT HOLDS REAL WORK" if state == "OPEN"
+                             else "UNMERGED — this branch holds work not in main."))
     raise SystemExit(0)
 
 print(f"  {n_missing} line(s) not found, in {len(missing)} file(s):")
@@ -214,7 +236,7 @@ print("  lost work — on the doc branches every single one turned out to be tha
 print("  including a passage a corrections PR deliberately narrowed. Run:")
 print(f"    git log -S <a distinctive fragment> --oneline {remote_main}")
 raise SystemExit(1)
-' "$REMOTE_MAIN" || exit_code=1
+' "$REMOTE_MAIN" "$STATE" || exit_code=1
 done
 
 echo
