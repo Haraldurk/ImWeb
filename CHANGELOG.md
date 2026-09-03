@@ -94,6 +94,22 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
   than writing its parameter, so the angle stays a live offset you can still
   move while it turns, and a saved state captures the angle you set rather than
   wherever the spin had drifted to.
+- **A guard against whole-tree staging, and a tool that answers "is this branch
+  merged?" correctly.** `.claude/hooks/guard-git-add.sh` blocks `git add -A`,
+  `git add .`, `--all`, `-u` and their bundled forms when nothing bounds them,
+  printing `git status --short` so the blast radius is read rather than the
+  count; explicit paths and `git add -A -- <path>` pass untouched. This repo has
+  lost real work to an unthinking `-A` twice — another agent's commit swept onto
+  the wrong branch, and a `node_modules` symlink that reached main because
+  `.gitignore` says `node_modules/` and a trailing slash matches a directory,
+  not a link. `scripts/branch-merged.sh` (`npm run branch-check`) answers
+  merged-ness from the forge record plus a content check, because a squash
+  merge severs ancestry and every intuitive test then lies in the direction
+  that leaves work open — verified live against PR #103, where
+  `merge-base --is-ancestor`, `git log main..tip` and `git cherry` all report
+  six unmerged commits on a branch whose work is entirely in main. It also
+  flags any open PR stacked on a base that has already merged and prints the
+  `git rebase --onto` fix.
 
 ### Changed
 - **Camera Distance reaches from 0.1 to 100, and slows down as it closes in.**
