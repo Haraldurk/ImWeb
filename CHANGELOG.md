@@ -52,6 +52,22 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
   interactive, with a tooltip saying which shader they need.
 
 ### Added
+- **Two audits promoted out of the verification-instrument cluster in
+  `docs/LEARNED.md`.** Six entries there were the same mistake — a reading
+  believed without first checking that the thing producing it could answer the
+  question — and they were the most expensive recurring class in the project,
+  because a broken instrument does not error, it returns a plausible number.
+  `tests/audit-readout-resolution.mjs` drives the real `displayValue` over all
+  257 stepped parameters and fails if a row cannot print two adjacent step
+  values differently, which is what made `agrain.pos` (`step: 0.001` under a
+  2-decimal row) unverifiable and its verification plan incapable of showing
+  either result. `tests/audit-audit-hygiene.mjs` gains a fourth check: an audit
+  that slices a window out of a source file must anchor on a needle that occurs
+  ONCE in it, because `indexOf` silently takes the first match — a bare
+  `_ensureBokehMaskRT` hits the call site 1200 lines above the definition and
+  reports "not FloatType" about a target that is. The remaining four entries
+  are technique rather than invariants and became a preflight section in the
+  `verify` skill instead of a weak test.
 - **Disp. Smooth** — stops an animated texture boiling when it drives
   displacement. A surface normal is the *derivative* of the height field, and
   the normals were measured over a fixed baseline of half a percent of the
