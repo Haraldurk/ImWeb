@@ -458,12 +458,14 @@ console.log('\nNegated source assertions are backed by a mutation');
   // that has since been given a mutation fails until it is deleted. A NEW
   // negated assertion in an audit outside this list fails immediately, which is
   // the whole point: the debt is bounded and the door is shut behind it.
+  // Three names came off this list within an hour of it being written, which is
+  // the behaviour it was built for: each got a mutation, each mutation SURVIVED
+  // on the first run, and each check was rewritten to ask about structure. The
+  // staleness check below is what forced the removal — it failed the suite the
+  // moment the mutations landed rather than letting the exemptions linger.
   const KNOWN_UNCOVERED = new Set([
-    'audit-audio-monitoring.mjs',
-    'audit-audio-protocol.mjs',
     'audit-blend-percent.mjs',
     'audit-sdf-migration.mjs',
-    'audit-table-write-paths.mjs',
   ]);
   const stillUncovered = new Set();
 

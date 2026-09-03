@@ -66,9 +66,21 @@ check('is called from exactly one site', calls === 1,
 // the engine and once inside the worklet — and the doubling is a curve that
 // merely looks wrong rather than an error.
 const binding = readFileSync(resolve(root, 'src/audio/AudioBinding.js'), 'utf8');
-check('AudioBinding resolves a table but never applies one',
-  !/\.apply\s*\(/.test(binding),
-  'the worklet applies it at audio rate; a client-side apply would double it');
+// Ask what the rule is ABOUT — the resolved curve is never INVOKED here —
+// rather than naming `.apply(`, which is one of many ways to call a function.
+// `_t.map(v)` walked straight past the first version (LEARNED 2026-08-15).
+{
+  const invoked = [];
+  for (const m of binding.matchAll(/(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*[\w.]*resolveTable\s*\(/g)) {
+    const v = m[1];
+    const after = binding.slice(m.index);
+    if (new RegExp(`\\b${v}\\s*\\(|\\b${v}\\s*\\.\\s*\\w+\\s*\\(`).test(after)) invoked.push(v);
+  }
+  check('AudioBinding resolves a table but never applies one',
+    invoked.length === 0 && !/\.apply\s*\(/.test(binding),
+    `the worklet applies it at audio rate; a client-side apply would double it` +
+    (invoked.length ? ` — resolved table(s) ${invoked.join(', ')} are called here` : ''));
+}
 
 // The one call must sit inside Parameter.setNormalized, not somewhere upstream.
 const pSetStart = src.indexOf('  setNormalized(n, table = null) {');

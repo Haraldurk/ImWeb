@@ -34,6 +34,30 @@ export const MUTATIONS = [
   // before the audit it names was rewritten to ask about structure.
   // ═════════════════════════════════════════════════════════════════════════
   {
+    name: 'worklet: an app module pulled in by dynamic import',
+    audit: 'audit-audio-protocol.mjs',
+    file: 'src/audio/engine/tape-processor.js',
+    why: 'an AudioWorklet has no module loader, so this fails at construction exactly as a static import would — but the check looked only at the start of a line, and this is the same hole public/sw.js had',
+    find: 'const PROTO_VERSION = 5;',
+    replace: "const { helpers } = await import('./curve-utils.js');\nconst PROTO_VERSION = 5;",
+  },
+  {
+    name: 'binding: a curve APPLIED by a name that is not .apply()',
+    audit: 'audit-table-write-paths.mjs',
+    file: 'src/audio/AudioBinding.js',
+    why: 'the upload path may RESOLVE a curve and must never apply one — the worklet applies it at audio rate, so a client-side apply shapes the value twice and the doubling looks merely wrong rather than erroring. The check named one spelling of "apply"',
+    find: '      if (d.table) {',
+    replace: '      if (d.table) {\n        const _t = resolveTable(d.table); d.value = _t.map ? _t.map(d.value) : d.value;',
+  },
+  {
+    name: 'row: the setup class added by toggle instead of add',
+    audit: 'audit-audio-monitoring.mjs',
+    file: 'src/ui/components/ParamRow.js',
+    why: 'the class must come from the getter, not be set by the row builder, or the row and the parameter disagree about what is in setup mode. toggle() sets exactly the same class and the check looked only for add()',
+    find: "    row.classList.toggle('active', !!param.controller);",
+    replace: "    row.classList.toggle('active', !!param.controller);\n    row.classList.toggle('param-ctrl-setup', !!param.setup);",
+  },
+  {
     name: 'sw: a build-time constant reached for by another name',
     audit: 'audit-sw-cache-bump.mjs',
     file: 'public/sw.js',

@@ -79,7 +79,13 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
   `serializeControllers()` by `serializeControllers(ps)`. Those three checks are
   now structural and carry mutations; five audits with the same shape sit on a
   debt list that may only shrink, and the audit asserts each name on it is still
-  genuinely uncovered so an exemption cannot go stale.
+  genuinely uncovered so an exemption cannot go stale. Three of those five came
+  off the list the same day: a worklet importing an app module through
+  `await import()`, a resolved curve applied in `AudioBinding` as `_t.map(v)`
+  rather than `.apply(v)` — which would shape every value twice, once on the way
+  to the engine and once inside the worklet — and the `param-ctrl-setup` class
+  set by `classList.toggle` where the check looked only for `.add`. All three
+  survived on the first mutation run; all three checks now ask about structure.
 - **Disp. Smooth** — stops an animated texture boiling when it drives
   displacement. A surface normal is the *derivative* of the height field, and
   the normals were measured over a fixed baseline of half a percent of the
