@@ -224,7 +224,11 @@ console.log('\nboot order: the autosave is applied AFTER the project restore');
   const autosave = stripComments(
     readFileSync(resolve(root, 'src/state/MappingAutosave.js'), 'utf8'));
   check('the autosave CALLS serializeMappings', /serializeMappings\(\)/.test(autosave));
-  check('and never calls serializeControllers', !/serializeControllers\(\)/.test(autosave));
+  // `\\(\\)` asserted a SPELLING — `serializeControllers(ps)` is the ordinary way
+  // this call would evolve and it walked straight past (LEARNED 2026-08-15).
+  // The `\\b` is load-bearing: without it this matches the TAIL of the
+  // legitimate `deserializeControllers(` on line 103 and fails correct code.
+  check('and never calls serializeControllers', !/\bserializeControllers\s*\(/.test(autosave));
 }
 
 console.log(failures ? `\n${failures} FAILURE(S)\n` : '\nAll mapping-autosave checks passed.\n');

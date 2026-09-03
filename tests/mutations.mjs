@@ -25,6 +25,63 @@
 /** Ordinary quotes throughout: `${}` inside a single-quoted string is literal. */
 export const MUTATIONS = [
   // ═════════════════════════════════════════════════════════════════════════
+  // Rearrangements that walk around a spelling
+  //
+  // LEARNED 2026-08-15: a regex over source asserts a SPELLING, and the defect
+  // it guards against usually has more than one. These three mutate the code in
+  // ways a reasonable person would write, chosen so the ORIGINAL regex stops
+  // matching while the fault it names is fully present. Each one survived
+  // before the audit it names was rewritten to ask about structure.
+  // ═════════════════════════════════════════════════════════════════════════
+  {
+    name: 'worklet: an app module pulled in by dynamic import',
+    audit: 'audit-audio-protocol.mjs',
+    file: 'src/audio/engine/tape-processor.js',
+    why: 'an AudioWorklet has no module loader, so this fails at construction exactly as a static import would — but the check looked only at the start of a line, and this is the same hole public/sw.js had',
+    find: 'const PROTO_VERSION = 5;',
+    replace: "const { helpers } = await import('./curve-utils.js');\nconst PROTO_VERSION = 5;",
+  },
+  {
+    name: 'binding: a curve APPLIED by a name that is not .apply()',
+    audit: 'audit-table-write-paths.mjs',
+    file: 'src/audio/AudioBinding.js',
+    why: 'the upload path may RESOLVE a curve and must never apply one — the worklet applies it at audio rate, so a client-side apply shapes the value twice and the doubling looks merely wrong rather than erroring. The check named one spelling of "apply"',
+    find: '      if (d.table) {',
+    replace: '      if (d.table) {\n        const _t = resolveTable(d.table); d.value = _t.map ? _t.map(d.value) : d.value;',
+  },
+  {
+    name: 'row: the setup class added by toggle instead of add',
+    audit: 'audit-audio-monitoring.mjs',
+    file: 'src/ui/components/ParamRow.js',
+    why: 'the class must come from the getter, not be set by the row builder, or the row and the parameter disagree about what is in setup mode. toggle() sets exactly the same class and the check looked only for add()',
+    find: "    row.classList.toggle('active', !!param.controller);",
+    replace: "    row.classList.toggle('active', !!param.controller);\n    row.classList.toggle('param-ctrl-setup', !!param.setup);",
+  },
+  {
+    name: 'sw: a build-time constant reached for by another name',
+    audit: 'audit-sw-cache-bump.mjs',
+    file: 'public/sw.js',
+    why: 'public/ is copied verbatim and never passes through Vite define, so ANY build-time constant throws a ReferenceError in the worker, install() never completes and the app silently stops working offline. The audit knew one spelling; this is an equally fatal one it could not see',
+    find: "const CACHE = 'imweb-v0.22.1';",
+    replace: "const CACHE = 'imweb-v' + import.meta.env.VITE_APP_VERSION;",
+  },
+  {
+    name: 'sw: an app module pulled in by dynamic import',
+    audit: 'audit-sw-cache-bump.mjs',
+    file: 'public/sw.js',
+    why: 'a service worker is not part of the bundle graph, so this fails at registration exactly as a static import would — but it is not at the start of a line, which is all the original check looked for',
+    find: "const CACHE = ",
+    replace: "const { helper } = await import('./assets/util.js');\nconst CACHE = ",
+  },
+  {
+    name: 'autosave: serializeControllers called WITH an argument',
+    audit: 'audit-mapping-autosave.mjs',
+    file: 'src/state/MappingAutosave.js',
+    why: 'NOTE: the audit behavioural check ("both mapped params were restored") catches this too, so it is not sole-source evidence for the text check — it was written to prove the text check, found it caught elsewhere, and the regex was made structural anyway. The autosave must never serialize controllers — doing so writes live controller state into the mapping file and it is restored over the project on load. Passing an argument is the ordinary way this call would evolve, and it defeats a regex anchored on the empty parens',
+    find: 'return JSON.stringify(this.ps.serializeMappings());',
+    replace: 'return JSON.stringify({ ...this.ps.serializeMappings(), c: this.ps.serializeControllers(this.ps) });',
+  },
+  // ═════════════════════════════════════════════════════════════════════════
   // Promotion pressure on LEARNED.md
   //
   // These mutate the DATA rather than the code, because the data is what this
