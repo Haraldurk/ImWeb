@@ -59,6 +59,59 @@ await Promise.race([
 ]);
 ```
 
+## Critical gotcha: an AudioWorklet that answers the phone but is dead
+
+Same family as the rAF suspension above, and nastier, because a frozen audio
+thread has no fps readout to glance at.
+
+Claude Code's in-app browser pane **may** run Chrome with `--disable-audio`.
+With no output device the render thread never pulls, so `process()` is NEVER
+CALLED — while everything you would check reports health:
+
+- `AudioContext.state` is `'running'`
+- `addModule()` resolves and the processor constructs
+- `port.postMessage` works in **both** directions
+- `onprocessorerror` stays silent, because nothing threw
+
+So every check that talks to the engine over the port passes against a
+completely frozen thread. One step-2 harness had 31 checks and 29 were green in
+that state, including two that read like real DSP verification: "relayout is
+refused while a zone runs" passes on the message thread alone, and "relayout
+succeeds once the zone has faded out" passes because the gain it waits for
+**starts** at 0 — a fade that never ran is indistinguishable from one that
+completed.
+
+**Lead with a liveness proof, not with an assumption.** The proof has to be a
+message only `process()` can emit — in this codebase `/tape/env/dirty`, which
+is flushed from the callback and nowhere else. Wait for it with a real timeout
+and **skip** the audio-dependent checks when it does not arrive, rather than
+letting thirty downstream assertions report misleading failures.
+
+```js
+const alive = await Promise.race([
+  waitForMessage('/tape/env/dirty'),                       // callback-only
+  new Promise(r => setTimeout(() => r(null), 2000)),
+]);
+if (!alive) { console.log('SKIP: audio callback never ran'); /* skip, do not fail */ }
+```
+
+**Do not harden this into "audio never works in the pane."** That is the mirror
+of the original mistake and it throws away the strongest evidence available: a
+later session had `--disable-audio` on no Chrome process at all, `process()`
+genuinely ran, and an Off→On round trip verified a worklet-restart path no
+message-level check could have reached. Let the proof tell you which
+environment you are in.
+
+One `ps` on the browser flags is still the fastest way to EXPLAIN a negative —
+but it is the explanation, not the gate:
+
+```bash
+ps ax -o command | grep -o -- --disable-audio      # note the -- : grep parses a leading dash as an option
+```
+
+Sound itself is never verifiable from here. Say plainly which parts went
+unverified, and hand audio work to the owner's own Chrome.
+
 ## Critical gotcha: `computer` input can land NOWHERE, silently
 
 Known for keys since 2026-08-26. **It is also true of clicks** (2026-08-27):
