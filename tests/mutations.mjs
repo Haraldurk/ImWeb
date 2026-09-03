@@ -36,8 +36,19 @@ export const MUTATIONS = [
     audit: 'audit-learned-advisory-age.mjs',
     file: 'docs/LEARNED.md',
     why: 'the easiest way to silence a promotion-pressure audit forever — the parser matches only dated entries, so an undated one is not exempt, it is INVISIBLE, and it ages without ever being counted',
-    find: '- 2026-07-12 [advisory]: Before writing any integration',
-    replace: '- [advisory]: Before writing any integration',
+    // Anchored on the SHAPE of a dated advisory line, not on one date. The
+    // first version named `- 2026-07-12 [advisory]: Before writing any
+    // integration`; that entry was later re-dated as a conscious decision, the
+    // find matched zero times, and the mutation went AMBIGUOUS — asserting
+    // nothing, in the registry whose own header says a mutation that no longer
+    // applies is asserting nothing. `npm test` could not see it because the
+    // registry is on demand. Take the first dated advisory, whichever it is.
+    apply(src) {
+      return src.replace(/^- \d{4}-\d{2}-\d{2} (\[advisory\]:)/m, '- $1');
+    },
+    expect(out) {
+      return /^- \[advisory\]:/m.test(out);
+    },
   },
   {
     name: 'advisory: a non-Claude agent file loses the pointer',
@@ -73,8 +84,14 @@ export const MUTATIONS = [
     audit: 'audit-learned-advisory-age.mjs',
     file: 'docs/LEARNED.md',
     why: 'the whole point of the audit — a lesson carried in prose past 90 days is one the repo has agreed to keep re-learning, and it must go red rather than quietly persist',
-    find: '- 2026-07-12 [advisory]: Before writing any integration',
-    replace: '- 2020-01-01 [advisory]: Before writing any integration',
+    // Same reasoning as above: age the first dated advisory, whichever it is,
+    // rather than naming a date that a later re-dating silently invalidates.
+    apply(src) {
+      return src.replace(/^- \d{4}-\d{2}-\d{2} (\[advisory\]:)/m, '- 2020-01-01 $1');
+    },
+    expect(out) {
+      return /^- 2020-01-01 \[advisory\]:/m.test(out);
+    },
   },
 
   // ═════════════════════════════════════════════════════════════════════════
