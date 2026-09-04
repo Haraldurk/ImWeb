@@ -116,6 +116,16 @@ function rig() {
   ps.register({ id: 'midi.pageNext', label: 'P+', group: 'global', type: PARAM_TYPE.TRIGGER });
   ps.register({ id: 'midi.pickup', label: 'Pickup', group: 'global',
     type: PARAM_TYPE.TOGGLE, value: 1 });
+  /**
+   * Registered at 0, NOT at the shipped 0.3. Learning now slews a continuous
+   * parameter, so with the real default every value-settling assertion in this
+   * file would be measuring the slew instead of the thing under test — pickup
+   * reads `p.normalized`, which during a slew is the moving current value
+   * rather than the target. The slew block below sets it explicitly, and the
+   * real registry's default is asserted separately.
+   */
+  ps.register({ id: 'midi.slew', label: 'Learn Slew', group: 'global',
+    min: 0, max: 1, value: 0, step: 0.01 });
   // A SELECT too long for ParamRow's button group (>8), like clip.slot's 16.
   ps.register({ id: 't.slot', label: 'Slot', group: 'g', type: PARAM_TYPE.SELECT, value: 0,
     options: Array.from({ length: 16 }, (_, i) => String(i)) });
@@ -421,6 +431,12 @@ console.log('\nthe page params exist in the REAL registry, with the right shapes
   check('midi.page has one option per page', real.get('midi.page')?.options?.length === MIDI_PAGES);
   check('pickup defaults ON', real.get('midi.pickup')?.value === 1,
     'the jump is the surprising behaviour, not the pickup');
+  check('midi.slew ships at 0.3 s', real.get('midi.slew')?.value === 0.3,
+    `${real.get('midi.slew')?.value} — the rig registers this at 0 to isolate ` +
+    'value tests, so the shipped default is only checked here');
+  check('midi.slew is continuous and group global',
+    real.get('midi.slew')?.type === PARAM_TYPE.CONTINUOUS &&
+    real.get('midi.slew')?.group === 'global');
 }
 
 console.log('\npages hold separate bindings, and switching projects them');
@@ -673,6 +689,7 @@ console.log('\nlearn accepts NOTES — a keyboard could previously learn nothing
   // A note-OFF (velocity 0) must not bind: it would either double-bind or bind
   // the wrong control on the way up.
   const r2 = rig();
+  r2.ps.set('midi.slew', 0.3);
   r2.cm.setMapMode(true);
   r2.cm.startMIDILearn('t.b');
   r2.noteOff(62);
@@ -771,6 +788,66 @@ console.log('\na note-mapped option LOOKS mapped — a working binding must not 
   c2.startMIDILearn('t.sel', 0); cc2(70);
   check('a CC-only map still reads as it always did', /CC×1/.test(p2.get('t.sel').controllerLabel) &&
     !/N×/.test(p2.get('t.sel').controllerLabel), p2.get('t.sel').controllerLabel);
+}
+
+console.log('\nlearning a control gives a CONTINUOUS parameter a default slew');
+{
+  const { ps, cm, cc, note } = rig();
+  ps.set('midi.slew', 0.3);          // the shipped default, opted into here
+  cm.setMapMode(true);
+
+  check('a fresh param starts unslewed', ps.get('t.a').slew === 0);
+  cm.startMIDILearn('t.a'); cc(21);
+  check('learning a CC slews it', ps.get('t.a').slew === 0.3, String(ps.get('t.a').slew));
+  cm.startMIDILearn('t.b'); note(60);
+  check('learning a NOTE slews it too', ps.get('t.b').slew === 0.3, String(ps.get('t.b').slew));
+
+  // Switches have nothing to smooth between two states.
+  ps.register({ id: 't.tog2', label: 'T', group: 'g', type: PARAM_TYPE.TOGGLE, value: 0 });
+  ps.register({ id: 't.trg2', label: 'R', group: 'g', type: PARAM_TYPE.TRIGGER });
+  cm.startMIDILearn('t.tog2'); cc(30);
+  cm.startMIDILearn('t.trg2'); cc(31);
+  check('a TOGGLE is left unslewed', ps.get('t.tog2').slew === 0, String(ps.get('t.tog2').slew));
+  check('a TRIGGER is left unslewed', ps.get('t.trg2').slew === 0,
+    'a slewed trigger just fires late');
+  cm.startMIDILearn('t.sel', 0); cc(40);
+  check('a SELECT is left unslewed', ps.get('t.sel').slew === 0, String(ps.get('t.sel').slew));
+
+  // A hand-set slew is never overwritten by mapping a control onto it.
+  const r = rig();
+  r.ps.set('midi.slew', 0.3);
+  r.ps.get('t.a').slew = 0.75;
+  r.cm.setMapMode(true);
+  r.cm.startMIDILearn('t.a'); r.cc(21);
+  check('an existing slew survives being mapped', r.ps.get('t.a').slew === 0.75,
+    `${r.ps.get('t.a').slew} — a value set by hand or restored from a file must ` +
+    'not be rewritten by the act of learning');
+
+  // Switching pages must not re-apply it: projection goes through assign().
+  const r2 = rig();
+  r2.cm.setMapMode(true);
+  r2.cm.startMIDILearn('t.a'); r2.cc(21);
+  r2.ps.get('t.a').slew = 0;              // user deliberately turns it off
+  r2.cm.setMapPage(1); r2.cm.setMapPage(0);
+  check('a page round trip does not re-slew it', r2.ps.get('t.a').slew === 0,
+    String(r2.ps.get('t.a').slew));
+
+  // Zero means "off", restoring the old behaviour.
+  const r3 = rig();
+  r3.ps.set('midi.slew', 0);
+  r3.cm.setMapMode(true);
+  r3.cm.startMIDILearn('t.a'); r3.cc(21);
+  check('setting Learn Slew to 0 leaves new bindings unslewed',
+    r3.ps.get('t.a').slew === 0, String(r3.ps.get('t.a').slew));
+
+  // And unmapping is not a binding. Learn Slew must be NON-ZERO here or the
+  // check passes whether or not the guard exists — the rig registers it at 0,
+  // so without this line the assertion is vacuous.
+  const r4 = rig();
+  r4.ps.set('midi.slew', 0.3);
+  r4.cm.setPageBinding('t.a', null);
+  check('unmapping does not slew anything', r4.ps.get('t.a').slew === 0,
+    `${r4.ps.get('t.a').slew} — clearing a binding is not learning one`);
 }
 
 if (failures) {

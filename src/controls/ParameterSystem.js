@@ -5353,6 +5353,29 @@ export function registerCoreParameters(ps) {
     type: PARAM_TYPE.TOGGLE,
     value: 1,
   });
+
+  /**
+   * Slew given to a CONTINUOUS parameter the moment MIDI is learned onto it.
+   *
+   * A hardware fader sends 7-bit steps, so a bare binding moves a value in 128
+   * visible jumps; a little lag makes it read as a move rather than a staircase.
+   * Switches are excluded because there is nothing to smooth between two states,
+   * and a slewed TRIGGER would simply fire late.
+   *
+   * Applied ONLY when the parameter's slew is still 0 — a value you set by hand
+   * is never overwritten by learning a control onto it. Set this to 0 to go back
+   * to the old behaviour of leaving new bindings unslewed.
+   */
+  ps.register({
+    id: "midi.slew",
+    label: "Learn Slew",
+    group: "global",
+    min: 0,
+    max: 1,
+    value: 0.3,
+    step: 0.01,
+    unit: "s",
+  });
   ps.register({
     id: "global.morph",
     label: "Morph",

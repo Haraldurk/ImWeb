@@ -319,7 +319,7 @@ export function buildMappingPanels(ps, contextMenu) {
       // binding TRACK -/+ means clicking these rows, and a control you have to
       // hunt for on another tab is missing from the instruction even when it is
       // present in the app (LEARNED 2026-09-03).
-      !/^midi\.(page|pagePrev|pageNext|pickup)$/.test(p.id) &&
+      !/^midi\.(page|pagePrev|pageNext|pickup|slew)$/.test(p.id) &&
       !/^movieB?\.(cue(Slot|Store)|len)$/.test(p.id)),
     // particle-params rendered separately below (legacy + v2 split)
     // 'particle-params': ps.getGroup('particle'),

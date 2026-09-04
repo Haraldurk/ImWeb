@@ -8,7 +8,7 @@
 // content hash for the bundle each time — so a stale cached index.html points
 // at an asset that no longer exists on disk. That fails as a BLANK APP, not as
 // "my change didn't show up" (see docs/LEARNED.md, 2026-07-31).
-const CACHE = 'imweb-v0.22.1-11'; // bumped: mid-cycle — MIDI map mode, monitor, mapping pages
+const CACHE = 'imweb-v0.22.1-12'; // bumped: mid-cycle — MIDI map mode, monitor, mapping pages
 // The `-N` suffix is the mid-cycle form audit-sw-cache-bump's STRICT mode
 // allows: it keeps naming the current app version (0.22.1) while still being
 // a NEW cache, so unreleased work reaches a returning visitor instead of

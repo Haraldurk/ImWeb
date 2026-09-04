@@ -1020,6 +1020,27 @@ export class ControllerManager {
     p.midiPages.length = Math.max(p.midiPages.length, MIDI_PAGES);
     p.midiPages[this._mapPage] = cfg ? { ...cfg } : null;
     this.assign(paramId, cfg);
+    this._applyLearnSlew(p, cfg);
+  }
+
+  /**
+   * Give a freshly-learned CONTINUOUS parameter a default slew.
+   *
+   * Both learn paths reach this through `setPageBinding`, which is the single
+   * writer for learned bindings — page PROJECTION goes through `assign()`
+   * instead, so switching pages never re-applies it.
+   *
+   * Two guards, both live: a switch has nothing to smooth between two states,
+   * and a parameter whose slew is already non-zero was set deliberately, by
+   * hand or by a saved file, and must not be overwritten by the act of mapping
+   * a control onto it.
+   */
+  _applyLearnSlew(p, cfg) {
+    if (!cfg || !String(cfg.type ?? '').startsWith('midi')) return;
+    if (p.type !== PARAM_TYPE.CONTINUOUS) return;
+    if (p.slew > 0) return;
+    const s = this.ps.get('midi.slew')?.value ?? 0;
+    if (s > 0) p.slew = s;
   }
 
   /** True when any page holds a binding for this param — i.e. paging owns it. */

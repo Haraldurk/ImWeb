@@ -3843,7 +3843,7 @@ async function main() {
    * group would have had to reimplement both. It also makes these rows
    * clickable targets in map mode, which is how TRACK -/+ get bound at all.
    */
-  for (const id of ["midi.page", "midi.pagePrev", "midi.pageNext", "midi.pickup"]) {
+  for (const id of ["midi.page", "midi.pagePrev", "midi.pageNext", "midi.pickup", "midi.slew"]) {
     const prm = ps.get(id);
     if (prm) ioBlock.appendChild(buildParamRow(prm, contextMenu));
   }

@@ -9,6 +9,16 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
 ## [Unreleased]
 
 ### Added
+- **Learning a control gives a continuous parameter a default slew
+  (`midi.slew`, 0.3 s).** A hardware fader sends 7-bit steps, so a bare binding
+  moves a value in 128 visible jumps; a little lag makes it read as a move
+  rather than a staircase. Switches are excluded — there is nothing to smooth
+  between two states, and a slewed TRIGGER just fires late. It applies only
+  when the parameter's slew is still 0, so a value set by hand, adjusted
+  afterwards through the badge popover, or restored from a file is never
+  overwritten by the act of mapping a control onto it. Set Learn Slew to 0 for
+  the previous behaviour. Sits beside Pickup in Sources → I/O.
+
 - **MIDI mapping pages, switchable from hardware and from the app.** Four pages
   of bindings, so eight faders become 32 controls. `param.midiPages[i]` holds
   the binding for page *i* and is the source of truth; `param.controller` is the
