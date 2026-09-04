@@ -55,10 +55,19 @@ export class CueBank {
    *   them would silently empty every saved project's bank on load. Its keys
    *   are independent of one another, so writing a subset is coherent.
    */
-  constructor(ps, { banks, keys, afterRecall = null, allowPartial = false }) {
+  /**
+   * @param {string[]} [cfg.extraKeys] - non-numeric cue data carried verbatim
+   *   through store/serialize/restore. `keys` are parameter names and are
+   *   coerced to Number on restore, which silently DROPS anything else — a
+   *   movie cue's clip reference is a string id, so without this it would be
+   *   captured, saved, and then vanish on the next load, leaving a cue that
+   *   recalls a region belonging to whatever clip happens to be up.
+   */
+  constructor(ps, { banks, keys, extraKeys = [], afterRecall = null, allowPartial = false }) {
     this.ps = ps;
     this.banks = banks;
     this.keys = keys;
+    this.extraKeys = extraKeys;
     this.afterRecall = afterRecall;
     this.allowPartial = allowPartial;
     /** @type {Record<string, Array<Record<string, number>|null>>} */
@@ -156,7 +165,15 @@ export class CueBank {
         // A partial bank still rejects a cue holding NOTHING it recognises —
         // an empty object is not a cue, and a slot that lights up but restores
         // nothing is worse than an empty one.
-        return Object.keys(cue).length ? cue : null;
+        // Extra keys ride along untouched — they are not parameters and must
+        // not go through the Number coercion above.
+        for (const k of this.extraKeys) {
+          if (c[k] != null && c[k] !== '') cue[k] = c[k];
+        }
+        // An extra key alone is not a cue: the region is what a cue IS, so a
+        // slot holding only a clip reference stays empty rather than lighting
+        // up and recalling nothing.
+        return this.keys.some((k) => k in cue) ? cue : null;
       });
     }
     this.onChange?.();

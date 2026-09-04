@@ -8,7 +8,7 @@
  * Planned:   OSC (WebSocket), HID (Gamepad), Wacom (PointerEvents pressure)
  */
 
-import { PARAM_TYPE } from './ParameterSystem.js';
+import { PARAM_TYPE, MIDI_PAGES } from './ParameterSystem.js';
 import { LFOController } from './LFO.js';
 import { BeatDetector }  from './BeatDetector.js';
 import { compileExpression } from './ExprCompiler.js';
@@ -29,6 +29,22 @@ import { compileExpression } from './ExprCompiler.js';
  */
 export const XMAP_HZ_MIN = 0.05;
 export const XMAP_HZ_MAX = 20;
+
+/**
+ * How many rows the incoming-MIDI monitor keeps. Sixteen is about one screen
+ * of the I/O panel and comfortably more than a nanoKONTROL2 sends in one
+ * gesture, and consecutive messages from the same control coalesce into one
+ * row, so this counts distinct controls touched rather than raw traffic.
+ */
+export const MIDI_LOG_MAX = 16;
+
+/**
+ * How close a control must come to a parameter before soft takeover releases.
+ * One MIDI step is 1/127 = 0.0079; half that means a fader landing exactly on
+ * the value picks up rather than sitting one step short for ever, which is the
+ * failure people report as "pickup never engages".
+ */
+export const PICKUP_EPS = 0.004;
 
 /**
  * Map an X-map controller's 0–1 output to an LFO rate, LOGARITHMICALLY.
@@ -55,6 +71,20 @@ export function xmapHz(norm, minHz = XMAP_HZ_MIN, maxHz = XMAP_HZ_MAX) {
   const hi = Math.max(lo, maxHz);
   const n  = Math.max(0, Math.min(1, norm));
   return lo * Math.pow(hi / lo, n);
+}
+
+/**
+ * Escape a parameter id for use inside a QUOTED attribute selector.
+ *
+ * Deliberately NOT the browser-only escape helper on the global `CSS` object:
+ * reaching for it here threw `ReferenceError` the moment a Node-side audit
+ * drove a bind, which took out `audit-midi-buttons` and, because `npm test`
+ * chains with `&&`, silently dropped 322 later checks from the run. Inside
+ * quotes only the quote and the backslash need escaping, so the dependency
+ * bought nothing.
+ */
+function attrEsc(s) {
+  return String(s).replace(/(["\\])/g, '\\$1');
 }
 
 export class ControllerManager {
@@ -101,6 +131,47 @@ export class ControllerManager {
     this._ccPrev = new Map();
     this._midiLearnParam = null; // paramId waiting for MIDI learn
     this._midiLearnTimer = null;
+    this._midiLearnSeq = false;
+    /**
+     * Map Mode — a LATCHING learn, as against the one-shot `startMIDILearn`
+     * fired from the context menu. Mapping a desk with 8 knobs, 8 faders and
+     * 24 buttons meant 40 trips through that menu, because a bind is followed
+     * immediately by `cancelMIDILearn()`. In map mode the bind re-arms instead,
+     * so the loop is click-a-row, move-a-control, repeat.
+     *
+     * Three live states, all reachable:
+     *   _mapMode && !_midiLearnParam  armed, waiting for a row to be picked
+     *   _mapMode &&  _midiLearnParam  row picked, waiting for a control to move
+     *  !_mapMode &&  _midiLearnParam  the old one-shot learn, unchanged
+     */
+    this._mapMode = false;
+
+    /**
+     * Incoming-MIDI monitor. A nanoKONTROL2 has no display: its SCENE button
+     * changes which CCs the controls send and nothing on the device says which
+     * scene is live, so "which track is selected" is unanswerable from the
+     * hardware. The app has to be the display.
+     *
+     * Recording is DOM-free on purpose — a swept fader sends dozens of messages
+     * a second, and a DOM write per message would put MIDI traffic on the
+     * render thread. The views read this buffer once per frame instead.
+     */
+    this._midiLog = [];          // oldest first; newest is the tail
+    this._midiLogDirty = false;
+
+    /**
+     * Mapping pages. `param.midiPages[i]` is the binding for page i and is the
+     * SOURCE OF TRUTH; `param.controller` is the live projection of the current
+     * page. One writer (`setPageBinding`) keeps them from drifting — two writers
+     * is how the six copies of the source list happened.
+     */
+    this._mapPage = 0;
+    /**
+     * Params awaiting soft takeover: paramId -> { prev }. Armed on a page
+     * switch, cleared when the incoming value passes through the parameter's
+     * own. Continuous only — a button has no position to pick up.
+     */
+    this._pickup = new Map();
 
     // MIDI clock sync (0xF8 = 24 pulses per quarter note)
     this._midiClockEnabled  = false;
@@ -138,6 +209,102 @@ export class ControllerManager {
     this._initMIDI();
     this._initSound();
     this._initGamepad();
+  }
+
+  /** Newest message seen, or null. */
+  get midiLast() { return this._midiLog[this._midiLog.length - 1] ?? null; }
+
+  /** The monitor buffer, newest FIRST for display. */
+  get midiLog() { return this._midiLog.slice().reverse(); }
+
+  /** True at most once per change — lets a per-frame painter skip idle frames. */
+  consumeMidiDirty() {
+    const d = this._midiLogDirty;
+    this._midiLogDirty = false;
+    return d;
+  }
+
+  /**
+   * Record one message for the monitor.
+   *
+   * Two filters, both load-bearing. **System Real-Time is dropped**: the clock
+   * branch above returns early only when clock sync is ENABLED, so with it off
+   * 0xF8 falls straight through at 24 pulses per quarter — 48 messages a second
+   * at 120 bpm — and active sensing (0xFE) arrives every ~300 ms besides. Either
+   * one alone scrolls a 16-row monitor into uselessness in under a second, and
+   * the monitor would look broken rather than flooded.
+   *
+   * **Consecutive messages from the SAME control coalesce** into one row whose
+   * value updates and whose count rises. Without it a single fader sweep evicts
+   * every other row, which is exactly when you are looking at the monitor to
+   * find out what else is mapped.
+   */
+  _recordMidi(status, data1, data2) {
+    if (status >= 0xF0) return;            // system common + real-time: never shown
+    const type = status & 0xF0;
+    if (type === 0xA0 || type === 0xD0) return; // aftertouch: continuous, no identity
+    const channel = (status & 0x0F) + 1;
+    const label = { 0x80: 'Note', 0x90: 'Note', 0xB0: 'CC', 0xC0: 'Prog', 0xE0: 'Bend' }[type];
+    if (!label) return;
+
+    const num = data1;
+    const val = type === 0xC0 ? 0 : data2;
+    const tail = this._midiLog[this._midiLog.length - 1];
+    if (tail && tail.type === type && tail.channel === channel && tail.num === num) {
+      tail.val = val;
+      tail.count++;
+      tail.t = performance.now();
+    } else {
+      this._midiLog.push({ type, label, channel, num, val, count: 1, t: performance.now() });
+      if (this._midiLog.length > MIDI_LOG_MAX) this._midiLog.shift();
+    }
+    this._midiLogDirty = true;
+  }
+
+  /**
+   * Reverse index of every live MIDI binding: "type:ch:num" -> [labels].
+   *
+   * Built FRESH by the painter, once per repaint, and deliberately not cached
+   * across frames. A cache would need invalidating, and `assign()` is not the
+   * only writer — `Parameter.deserialize` sets `controller` directly, which is
+   * how MappingAutosave restores a whole rig on boot — so a cached index would
+   * be silently stale after every reload and would need an invalidation call at
+   * each load site, i.e. a rule someone must remember. The cost of not caching
+   * is one pass over the registry per repaint, and only while MIDI is actually
+   * moving; what it buys is that the index cannot disagree with the parameters.
+   *
+   * The expensive shape was O(params x rows) per frame — this is O(params) once.
+   */
+  buildMidiBindIndex() {
+    const ix = new Map();
+    const add = (k, label) => { if (!ix.has(k)) ix.set(k, []); ix.get(k).push(label); };
+    for (const p of this.ps.getAll()) {
+      const c = p.controller;
+      if (!c) continue;
+      const ch = c.channel ?? 0;
+      if (c.type === 'midi-cc' && c.cc != null) add(`176:${ch}:${c.cc}`, p.label);
+      else if (c.type === 'midi-note' && c.note != null) add(`144:${ch}:${c.note}`, p.label);
+      else if (c.type === 'midi-cc-map') {
+        (c.ccs ?? []).forEach((cc, i) => {
+          if (cc != null) add(`176:${ch}:${cc}`, `${p.label}[${p.options?.[i] ?? i}]`);
+        });
+        (c.notes ?? []).forEach((nt, i) => {
+          if (nt != null) add(`144:${ch}:${nt}`, `${p.label}[${p.options?.[i] ?? i}]`);
+        });
+      }
+    }
+    return ix;
+  }
+
+  /** Look one monitor entry up in an index from `buildMidiBindIndex()`. */
+  midiBindingsFor(entry, ix) {
+    if (!ix) return [];
+    // Note-off (0x80) shares an identity with note-on; channel 0 on the
+    // controller means "any channel", so both keys are tried.
+    const t = entry.type === 0x80 ? 144 : entry.type;
+    return ix.get(`${t}:${entry.channel}:${entry.num}`)
+        ?? ix.get(`${t}:0:${entry.num}`)
+        ?? [];
   }
 
   setMontySignal(signal) { this._montySignal = signal; }
@@ -509,6 +676,15 @@ export class ControllerManager {
       (p.xControllers ?? []).forEach((_, i) => this._xLFOs.delete(`${p.id}:${i}`));
       p.controller   = null;
       p.xControllers = [];
+      /**
+       * Pages too. This function claims to clear everything, and since mapping
+       * pages arrived `controller` is only the CURRENT page's projection —
+       * nulling it alone leaves `midiPages` intact, so every binding returns on
+       * the next page switch. Preset.js calls this when loading a bank for
+       * exactly the "no leftovers from the previous bank" reason, which the
+       * page array would silently defeat.
+       */
+      p.midiPages = [];
     });
   }
 
@@ -777,9 +953,16 @@ export class ControllerManager {
    *   `midi-cc-map`. This is how a controller with no pads (a nanoKONTROL2 has
    *   buttons that send CC, not notes) gets one button per partition.
    */
-  startMIDILearn(paramId, optionIndex = null, onLearned = null) {
+  startMIDILearn(paramId, optionIndex = null, onLearned = null, sequential = false) {
     this._midiLearnParam = paramId;
     this._midiLearnOption = optionIndex;
+    /**
+     * Sequential: after each bind, advance to the next option rather than
+     * disarming. True only while walking a SELECT's options in map mode; every
+     * other learn leaves it false, including a single option right-clicked from
+     * its own button, which must still bind exactly one thing.
+     */
+    this._midiLearnSeq = !!sequential;
     /**
      * Called after a successful bind, so the row that asked can repaint.
      *
@@ -794,23 +977,255 @@ export class ControllerManager {
 
     // Flash the MIDI indicator
     const el = document.getElementById('status-midi');
-    if (el) {
-      el.classList.add('learning');
-      clearTimeout(this._midiLearnTimer);
-      // Auto-cancel after 10s
+    if (el) el.classList.add('learning');
+    clearTimeout(this._midiLearnTimer);
+    // Auto-cancel after 10s — but NOT in map mode. Ten seconds is right for a
+    // one-shot fired from a menu and wrong for a mode: reaching across a desk
+    // to the far end of a fader bank routinely takes longer, and having the
+    // arm expire mid-reach reads as the mode being broken.
+    if (!this._mapMode) {
       this._midiLearnTimer = setTimeout(() => this.cancelMIDILearn(), 10000);
     }
+    this._paintMapTarget();
+  }
+
+  // ── Mapping pages ─────────────────────────────────────────────────────────
+
+  /**
+   * Controls that switch pages must not themselves be paged, or you can land on
+   * a page with no way back and the desk is unusable until you reach for the
+   * mouse. Same escape-hatch reasoning as Esc leaving map mode. Pickup is here
+   * too: a preference about how bindings behave cannot sensibly differ per page.
+   */
+  static PAGE_EXEMPT = new Set([
+    'midi.page', 'midi.pagePrev', 'midi.pageNext', 'midi.pickup',
+  ]);
+
+  get mapPage() { return this._mapPage; }
+
+  /**
+   * Write a MIDI binding into the CURRENT page and project it live. The single
+   * writer for paged bindings: learn, unmap and any future path must come
+   * through here, or `midiPages` and `controller` drift apart and the drift is
+   * invisible until a page switch reveals it.
+   */
+  setPageBinding(paramId, cfg) {
+    const p = this.ps.get(paramId);
+    if (!p) return;
+    if (ControllerManager.PAGE_EXEMPT.has(paramId)) {
+      this.assign(paramId, cfg);          // unpaged: lives only in `controller`
+      return;
+    }
+    if (!Array.isArray(p.midiPages)) p.midiPages = [];
+    p.midiPages.length = Math.max(p.midiPages.length, MIDI_PAGES);
+    p.midiPages[this._mapPage] = cfg ? { ...cfg } : null;
+    this.assign(paramId, cfg);
+  }
+
+  /** True when any page holds a binding for this param — i.e. paging owns it. */
+  _isPaged(p) { return Array.isArray(p.midiPages) && p.midiPages.some(Boolean); }
+
+  /**
+   * Switch pages: project every paged parameter's binding for the new page and
+   * arm soft takeover.
+   *
+   * Only parameters that paging OWNS are touched. A param with an LFO and no
+   * page binding anywhere is left completely alone, so switching pages never
+   * silently deletes a non-MIDI controller.
+   */
+  setMapPage(i) {
+    const n = ((i % MIDI_PAGES) + MIDI_PAGES) % MIDI_PAGES;   // wraps both ways
+    if (n === this._mapPage) return;
+    this._mapPage = n;
+    this._pickup.clear();
+    for (const p of this.ps.getAll()) {
+      if (ControllerManager.PAGE_EXEMPT.has(p.id) || !this._isPaged(p)) continue;
+      // Optional-chained: `_isPaged` already guarantees the array exists, but a
+      // future caller that skips that guard should get a null binding, not a
+      // TypeError thrown inside the page switch with half the params projected.
+      const cfg = p.midiPages?.[n] ?? null;
+      this.assign(p.id, cfg);
+      this._repaintCtrlBadge(p.id);
+      // Arm pickup for anything continuous that now has a binding: the fader is
+      // wherever the last page left it, which is not where this parameter is.
+      if (cfg && p.type !== PARAM_TYPE.TOGGLE && p.type !== PARAM_TYPE.TRIGGER
+              && p.type !== PARAM_TYPE.SELECT) {
+        this._pickup.set(p.id, { prev: null });
+      }
+    }
+    if (this.ps.get('midi.page')?.value !== n) this.ps.set('midi.page', n);
+    return n;
+  }
+
+  nextMapPage() { return this.setMapPage(this._mapPage + 1); }
+  prevMapPage() { return this.setMapPage(this._mapPage - 1); }
+
+  /**
+   * Soft takeover. Returns true when this message must be SWALLOWED because the
+   * control has not yet passed through the parameter's current value.
+   *
+   * The first message after arming only records a position — a single reading
+   * cannot say which side of the target the fader is on, and guessing gives a
+   * jump half the time, which is the whole thing pickup exists to prevent.
+   */
+  _pickupBlocks(p, norm) {
+    const st = this._pickup.get(p.id);
+    if (!st) return false;
+    if (!this.ps.get('midi.pickup')?.value) { this._pickup.delete(p.id); return false; }
+    const cur = p.normalized;
+    if (Math.abs(norm - cur) <= PICKUP_EPS) { this._pickup.delete(p.id); return false; }
+    if (st.prev === null) { st.prev = norm; return true; }
+    const crossed = (st.prev < cur && norm >= cur) || (st.prev > cur && norm <= cur);
+    st.prev = norm;
+    if (crossed) { this._pickup.delete(p.id); return false; }
+    return true;
+  }
+
+  // ── Map Mode ──────────────────────────────────────────────────────────────
+
+  /**
+   * Latch learn on or off. Leaving the mode cancels any half-finished arm, so
+   * a stray CC after exit cannot bind to whatever was last clicked.
+   */
+  setMapMode(on) {
+    this._mapMode = !!on;
+    document.body.classList.toggle('midi-map-mode', this._mapMode);
+    document.getElementById('status-midi')?.classList.toggle('mapping', this._mapMode);
+    if (!this._mapMode) this.cancelMIDILearn();
+    this._paintMapTarget();
+  }
+
+  toggleMapMode() { this.setMapMode(!this._mapMode); }
+
+  get mapMode() { return this._mapMode; }
+
+  /**
+   * Drop one parameter's MIDI binding. Exposed so the map-mode click handler
+   * never has to reach into `_paintMapTarget` or `assign` itself — unmapping
+   * and repainting the highlight are one act, and splitting them across two
+   * call sites is how the second one gets forgotten.
+   */
+  unmapMIDI(paramId) {
+    const p = this.ps.get(paramId);
+    if (!p?.controller?.type?.startsWith('midi')) return false;
+    this.setPageBinding(paramId, null);
+    this._paintMapTarget();
+    return true;
+  }
+
+  /**
+   * Repaint one row's controller badge after a bind.
+   *
+   * The one-shot learn gets this free: the context menu passes an `onLearned`
+   * closure that calls the row's own `updateDisplay()`. Map mode has no such
+   * closure — it is driven from a document-level handler that never saw the
+   * row builder — so without this the badge still reads "—" after a successful
+   * bind and the only confirmation you get is the value moving, which for a
+   * TOGGLE mapped to a button you have not pressed yet is no confirmation at
+   * all. In a mode whose whole purpose is mapping forty controls in one pass,
+   * "did that land?" has to be answerable at a glance.
+   *
+   * Writes `className` from `controllerClass` rather than adding a class,
+   * because `updateDisplay()` rewrites it wholesale from that same getter — an
+   * added class would survive only until the row's next refresh.
+   */
+  _repaintCtrlBadge(paramId) {
+    const p = this.ps.get(paramId);
+    if (!p) return;
+    /**
+     * Optional-chained because this is COSMETIC and runs inside the MIDI
+     * message handler: if it throws, it takes the whole dispatch down with it,
+     * so a badge that failed to repaint would stop every mapped control from
+     * working. A repaint is never worth that. (It threw for real once, on a
+     * partial `document` stub, and killed a sibling audit mid-run.)
+     */
+    const el = document.querySelector?.(
+      `.param-row[data-param-id="${attrEsc(paramId)}"] .param-ctrl`);
+    if (!el) return;
+    el.textContent = p.controllerLabel;
+    el.className = `param-ctrl ${p.controllerClass}`;
+  }
+
+  /** Highlight the row currently waiting for a control to move. */
+  _paintMapTarget() {
+    document.querySelectorAll('.param-row.map-target, .map-opt-target')
+      .forEach(el => el.classList.remove('map-target', 'map-opt-target'));
+    if (!this._mapMode || !this._midiLearnParam) return;
+    /**
+     * A tagged custom widget (the Clip Library's slot grid) is not a param row,
+     * so the row highlight below cannot reach it — and walking sixteen options
+     * with no indication of which one is armed means pressing sixteen pads
+     * blind. Mark the armed cell itself.
+     */
+    if (this._midiLearnOption != null) {
+      document.querySelector(
+        `[data-param-id="${attrEsc(this._midiLearnParam)}"]` +
+        `[data-opt-index="${this._midiLearnOption}"]`)?.classList.add('map-opt-target');
+    }
+    const row = document
+      .querySelector(`.param-row[data-param-id="${attrEsc(this._midiLearnParam)}"]`);
+    if (!row) return;
+    row.classList.add('map-target');
+    // Which option is armed, for a SELECT being walked. Rendered by CSS from the
+    // attribute so it survives the row's own repaints.
+    const n = this.ps.get(this._midiLearnParam)?.options?.length ?? 0;
+    if (this._midiLearnSeq && this._midiLearnOption != null && n) {
+      row.dataset.seq = `${this._midiLearnOption + 1}/${n}`;
+    } else {
+      delete row.dataset.seq;
+    }
+  }
+
+  /**
+   * Drop every MIDI binding. Bulk mapping is only safe if there is a way back
+   * out of a bad pass — without this, a run down the wrong panel is 40 manual
+   * unassigns. Returns how many were cleared so the caller can confirm.
+   */
+  clearAllMIDI() {
+    let n = 0;
+    for (const p of this.ps.getAll()) {
+      /**
+       * Count and clear PAGES, not just the live projection. Clearing only
+       * `controller` leaves `midiPages` holding the bindings, so they come back
+       * the moment you switch pages — and a param bound on page 3 would not even
+       * be counted while page 1 is live, so the confirmation would under-report
+       * what it left behind.
+       */
+      // Read BEFORE clearing: emptying the array first destroys the very fact
+      // the second branch needs, and a param holding both pages and a live
+      // binding then counts twice.
+      const hadPages = Array.isArray(p.midiPages) && p.midiPages.some(Boolean);
+      if (Array.isArray(p.midiPages)) {
+        n += p.midiPages.filter(Boolean).length;
+        p.midiPages = [];
+      }
+      if (p.controller?.type?.startsWith('midi')) {
+        // Only page-EXEMPT params reach this without having been counted above;
+        // their binding lives in `controller` alone and is still one binding.
+        if (!hadPages) n++;
+        this.assign(p.id, null);
+      }
+    }
+    return n;
   }
 
   cancelMIDILearn() {
     this._midiLearnParam = null;
     this._midiLearnOption = null;
+    this._midiLearnSeq = false;
     this._midiLearnDone = null;
     document.querySelectorAll('.param-opt-btn.learning')
       .forEach(el => el.classList.remove('learning'));
     clearTimeout(this._midiLearnTimer);
     const el = document.getElementById('status-midi');
     el?.classList.remove('learning');
+    /**
+     * Deliberately does NOT touch `_mapMode`. That is what makes a bind re-arm
+     * instead of exiting: the handler calls this after every successful learn,
+     * the target clears, the mode survives, and the next row click arms again.
+     * Map mode is left only through `setMapMode(false)`.
+     */
+    this._paintMapTarget();
   }
 
   /**
@@ -832,6 +1247,10 @@ export class ControllerManager {
   _attachMIDIInput(input) {
     input.onmidimessage = e => {
       const [status, data1, data2] = e.data;
+      // Before every early return below — the clock branch returns only when
+      // clock sync is ON, and learn returns as soon as it binds, so recording
+      // any later would drop exactly the messages worth watching.
+      this._recordMidi(status, data1, data2);
 
       // MIDI clock: 0xF8 = timing tick (24 per quarter note)
       if (status === 0xF8 && this._midiClockEnabled) {
@@ -854,28 +1273,79 @@ export class ControllerManager {
       const norm    = data2 / 127;
 
       // MIDI Learn: intercept next CC
-      if (this._midiLearnParam && type === 0xB0) {
-        if (this._midiLearnOption != null) {
+      /**
+       * Learn accepts NOTES as well as CC. It used to gate on `type === 0xB0`
+       * alone, which meant a keyboard or pad controller could learn NOTHING —
+       * the arm simply sat there while every key press went unheard. The
+       * `midi-note` type already existed and dispatched; nothing could create
+       * one. Note-ON only (`data2 > 0`): binding on the release would either
+       * double-bind or bind to the wrong control on the way up.
+       */
+      const isCC   = type === 0xB0;
+      const isNote = type === 0x90 && data2 > 0;
+      if (this._midiLearnParam && (isCC || isNote)) {
+        const learned = this._midiLearnParam;   // cancel clears it below
+        const opt     = this._midiLearnOption;
+        if (opt != null) {
           // Learn ONE option of a SELECT. Merge into the existing map rather
           // than replacing it, or learning P2 would forget P0 and P1.
-          const p = this.ps.get(this._midiLearnParam);
+          const p = this.ps.get(learned);
           const n = p?.options?.length ?? 0;
-          const prev = p?.controller?.type === 'midi-cc-map' ? p.controller.ccs : null;
-          const ccs = Array.from({ length: n }, (_, i) => prev?.[i] ?? null);
-          // One CC drives one option: clear any other slot that claimed it, so
-          // re-learning a button moves it instead of firing two options.
-          for (let i = 0; i < ccs.length; i++) if (ccs[i] === data1) ccs[i] = null;
-          ccs[this._midiLearnOption] = data1;
-          this.assign(this._midiLearnParam, { type: 'midi-cc-map', ccs, channel });
+          const isMap = p?.controller?.type === 'midi-cc-map';
+          const prevC = isMap ? p.controller.ccs   : null;
+          const prevN = isMap ? p.controller.notes : null;
+          const ccs   = Array.from({ length: n }, (_, i) => prevC?.[i] ?? null);
+          /**
+           * Notes live in their own array beside `ccs` rather than sharing it.
+           * A number in `ccs` has always meant a CC, in every saved file, so
+           * overloading it would need a migration and a way to tell 60-the-note
+           * from 60-the-CC. A new optional key needs neither: its absence says
+           * "CC only", which is exactly what an older file meant.
+           */
+          const notes = Array.from({ length: n }, (_, i) => prevN?.[i] ?? null);
+          // One control drives one option: clear this control from every slot
+          // in BOTH arrays, so re-learning moves it instead of firing two.
+          for (let i = 0; i < n; i++) {
+            if (isCC   && ccs[i]   === data1) ccs[i]   = null;
+            if (isNote && notes[i] === data1) notes[i] = null;
+          }
+          // Claim the target slot in one array and release it in the other, or
+          // an option re-learned from CC to note would answer to both.
+          ccs[opt]   = isCC   ? data1 : null;
+          notes[opt] = isNote ? data1 : null;
+          this.setPageBinding(learned, { type: 'midi-cc-map', ccs, notes, channel });
         } else {
-          this.assign(this._midiLearnParam, { type: 'midi-cc', cc: data1, channel });
+          this.setPageBinding(learned, isNote
+            ? { type: 'midi-note', note: data1, channel }
+            : { type: 'midi-cc',   cc:   data1, channel });
         }
         // Before cancel, which clears it.
         this._midiLearnDone?.();
+        // Map mode has no per-row callback to repaint the badge; the context
+        // menu's one-shot learn does. Harmless there — it writes the same
+        // values the callback already wrote.
+        this._repaintCtrlBadge(learned);
+        const flash = () => {
+          const el = document.getElementById('status-midi');
+          if (el) { el.classList.add('active'); clearTimeout(el._t); el._t = setTimeout(() => el.classList.remove('active'), 200); }
+        };
+        /**
+         * Sequential option learn: advance to the next option instead of
+         * disarming, so sixteen pads map to sixteen slots in one pass. The
+         * alternative for a SELECT too long to render as a button group was
+         * right-clicking sixteen dropdown items, reopening the menu each time.
+         */
+        if (opt != null && this._midiLearnSeq) {
+          const n = this.ps.get(learned)?.options?.length ?? 0;
+          if (opt + 1 < n) {
+            this._midiLearnOption = opt + 1;
+            this._paintMapTarget();
+            flash();
+            return;
+          }
+        }
         this.cancelMIDILearn();
-        // Activity flash
-        const el = document.getElementById('status-midi');
-        if (el) { el.classList.add('active'); clearTimeout(el._t); el._t = setTimeout(() => el.classList.remove('active'), 200); }
+        flash();
         return;
       }
 
@@ -898,17 +1368,29 @@ export class ControllerManager {
           // knob or slider is unaffected.
           if (p.type === PARAM_TYPE.TOGGLE) { if (ccRise) p.toggle(); }
           else if (p.type === PARAM_TYPE.TRIGGER) { if (ccRise) p.trigger(); }
-          else p.setNormalized(norm);
+          // Buttons are deliberately ABOVE the pickup gate: a button has no
+          // position to pick up, and blocking one after a page switch would
+          // make it look dead until it had been pressed twice.
+          else if (!this._pickupBlocks(p, norm)) p.setNormalized(norm);
         } else if (type === 0xB0 && c.type === 'midi-cc-map' && Array.isArray(c.ccs)) {
           // One CC per option (§ SELECT banks). The index is chosen by WHICH
           // control spoke, not by its value — so four buttons pick four
           // options, and a release (0) selects nothing.
           const idx = c.ccs.indexOf(data1);
           if (idx >= 0 && ccRise) p.value = idx;
+        } else if (type === 0x90 && c.type === 'midi-cc-map' && Array.isArray(c.notes)) {
+          // The note twin of the CC branch above: which KEY spoke picks the
+          // option, so sixteen pads select sixteen slots and a release selects
+          // nothing.
+          const idx = c.notes.indexOf(data1);
+          if (idx >= 0 && data2 > 0) p.value = idx;
         } else if (type === 0x90 && c.type === 'midi-note' && c.note === data1) {
           if (p.type === 'toggle') { if (data2 > 0) p.toggle(); }
           else if (p.type === 'trigger') { if (data2 > 0) p.trigger(); }
-          else p.setNormalized(data2 > 0 ? data2 / 127 : 0);
+          else {
+            const nv = data2 > 0 ? data2 / 127 : 0;
+            if (!this._pickupBlocks(p, nv)) p.setNormalized(nv);
+          }
         } else if (type === 0xC0 && c.type === 'midi-pc') {
           if (this.onMIDIPC) this.onMIDIPC(data1); // global PC callback (preset recall)
           p.value = data1;

@@ -159,8 +159,15 @@ console.log('\nno unreviewed document-level click listeners');
 const EXPECTED = {
   // bank dropdown, status-bar menu, table picker — all opened from a click
   'src/ui/UI.js': 3,
-  // slot picker, parameter search overlay, AI settings panel — click-opened
-  'src/main.js': 3,
+  // slot picker, parameter search overlay, AI settings panel — click-opened.
+  // Plus the MIDI map-mode grab, which CLOSES nothing: it is a capture-phase
+  // interceptor that turns a plain click on a param row into "arm learn for
+  // this row" while map mode is latched. It pairs with a capture-phase
+  // pointerdown for the same reason ParamRow drags do — sliders move on
+  // pointerdown with pointer capture, so swallowing click alone would still
+  // let a drag edit the value. Not a dismissal, so the open/close gesture
+  // rule this audit enforces does not apply to it.
+  'src/main.js': 4,
   // custom select — opened from a click, and its setTimeout is correct there
   'src/ui/components/Select.js': 1,
 };

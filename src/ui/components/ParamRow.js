@@ -361,11 +361,17 @@ export function buildParamRow(param, contextMenu) {
       });
       const paintOpts = () => btns.forEach((b, j) => {
         const c = param.controller;
-        const cc = c?.type === 'midi-cc-map' ? c.ccs?.[j] : null;
+        // An option can be driven by a CC or by a NOTE. Reading only `ccs` left
+        // a note-mapped option unmarked and captioned "learn a MIDI control for
+        // this option" — a mapping that worked but looked absent.
+        const isMap = c?.type === 'midi-cc-map';
+        const cc = isMap ? c.ccs?.[j]   : null;
+        const nt = isMap ? c.notes?.[j] : null;
+        const what = cc != null ? `CC${cc}` : nt != null ? `Note${nt}` : null;
         b.classList.toggle('active', j === param.value);
-        b.classList.toggle('mapped', cc != null);
-        b.title = cc != null
-          ? `${opts[j]} — CC${cc}${c.channel ? ` ch${c.channel}` : ''}\nRight-click to re-learn`
+        b.classList.toggle('mapped', what != null);
+        b.title = what != null
+          ? `${opts[j]} — ${what}${c.channel ? ` ch${c.channel}` : ''}\nRight-click to re-learn`
           : `${opts[j]}\nRight-click to learn a MIDI control for this option`;
       });
       binding.sync(paintOpts);

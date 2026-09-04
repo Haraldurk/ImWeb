@@ -25,6 +25,7 @@ import { ParameterSystem, PARAM_TYPE } from '../src/controls/ParameterSystem.js'
 globalThis.navigator ??= {};
 globalThis.document ??= {
   getElementById: () => null,
+  querySelector: () => null,
   querySelectorAll: () => [],
   addEventListener: () => {},
 };

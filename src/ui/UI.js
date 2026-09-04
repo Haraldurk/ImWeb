@@ -314,6 +314,12 @@ export function buildMappingPanels(ps, contextMenu) {
     // are 'global' for persistence reasons, not because they belong here.
     'global-params':       ps.getGroup('global').filter(p =>
       p.id !== 'glsl.preset' && p.id !== 'displace.warpSlot' &&
+      // The MIDI mapping-page controls. 'global' so Display States cannot
+      // capture them, but they belong beside the monitor in Sources > I/O:
+      // binding TRACK -/+ means clicking these rows, and a control you have to
+      // hunt for on another tab is missing from the instruction even when it is
+      // present in the app (LEARNED 2026-09-03).
+      !/^midi\.(page|pagePrev|pageNext|pickup)$/.test(p.id) &&
       !/^movieB?\.(cue(Slot|Store)|len)$/.test(p.id)),
     // particle-params rendered separately below (legacy + v2 split)
     // 'particle-params': ps.getGroup('particle'),
@@ -4470,6 +4476,16 @@ export function buildClipLibrary(ps, clipLibrary, movieInput, contextMenu, deckB
       const btn = document.createElement('button');
       btn.className = 'clip-slot';
       btn.textContent = String(i).padStart(2, '0');
+      /**
+       * Map-mode target. The Clip Library is a custom widget, not parameter
+       * rows, so map mode had nothing here to click and `clip.slot` — the one
+       * SELECT a pad bank most obviously wants — was unmappable. Rather than
+       * teach the map-mode handler about this widget, the widget declares what
+       * it stands for and the handler honours it generically; any other custom
+       * surface becomes mappable the same way, by tagging.
+       */
+      btn.dataset.paramId  = 'clip.slot';
+      btn.dataset.optIndex = String(i);
 
       // Left-click → select + recall into the target deck (toggle above);
       // ⇧-click → hardware override, always Deck B

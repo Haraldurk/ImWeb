@@ -245,5 +245,112 @@ console.log('\nproject-file round trip');
   check('an unknown bank is ignored', legacy.slots.aplay.length === CUE_SLOTS);
 }
 
+
+console.log('\na movie cue carries the clip its region belongs to');
+{
+  // A stand-in for main.js's clip host: it records what was asked for and can
+  // pretend a clip is missing.
+  const mkHost = (start = 'A') => {
+    const h = {
+      cur: start, asked: [], missing: new Set(),
+      currentId: () => h.cur,
+      select: async (_p, id) => {
+        h.asked.push(id);
+        if (h.missing.has(id)) return false;
+        h.cur = id;
+        return true;
+      },
+    };
+    return h;
+  };
+  const host = mkHost('preload:Dive.mp4');
+  const ps = makePs();
+  const cues = new MovieCues(ps, { movie: { forcePosSeek: () => {} } }, host);
+
+  ps.set('movie.start', 10); ps.set('movie.end', 40); ps.set('movie.pos', 25);
+  cues.store('movie', 0);
+  check('the cue records which clip was loaded',
+    cues.get('movie', 0)?.clip === 'preload:Dive.mp4',
+    JSON.stringify(cues.get('movie', 0)));
+  check('and still records the region', cues.get('movie', 0)?.start === 10);
+
+  // Store a second cue against a different clip.
+  host.cur = 'preload:Gara.mp4';
+  ps.set('movie.start', 60); ps.set('movie.end', 90); ps.set('movie.pos', 70);
+  cues.store('movie', 1);
+  check('a second cue records its own clip',
+    cues.get('movie', 1)?.clip === 'preload:Gara.mp4');
+
+  // Recalling cue 0 must SWITCH the clip back.
+  host.asked.length = 0;
+  cues.recall('movie', 0);
+  await new Promise((r) => setTimeout(r, 0));
+  check('recall asks for the cue\'s clip', host.asked[0] === 'preload:Dive.mp4',
+    JSON.stringify(host.asked));
+  check('the deck ends up on it', host.cur === 'preload:Dive.mp4');
+  check('and the region follows the clip', ps.get('movie.start').value === 10 &&
+    ps.get('movie.pos').value === 25,
+    `${ps.get('movie.start').value}/${ps.get('movie.pos').value}`);
+
+  // Already on the right clip: no switch, and applied SYNCHRONOUSLY so no frame
+  // shows the new region against the old clip.
+  host.asked.length = 0;
+  ps.set('movie.start', 0);
+  cues.recall('movie', 0);
+  check('no clip switch when it is already up', host.asked.length === 0);
+  check('and the region applied without awaiting', ps.get('movie.start').value === 10,
+    String(ps.get('movie.start').value));
+
+  // A clip removed from the library: recall the region anyway rather than
+  // doing nothing, which would read as a dead pad.
+  host.missing.add('preload:Gara.mp4');
+  host.cur = 'preload:Dive.mp4';
+  cues.recall('movie', 1);
+  await new Promise((r) => setTimeout(r, 0));
+  check('a missing clip still recalls its region', ps.get('movie.start').value === 60,
+    String(ps.get('movie.start').value));
+}
+
+console.log('\nthe clip survives save and load — the whole point of extraKeys');
+{
+  const a = new MovieCues(makePs(), {}, { currentId: () => 'preload:Dive.mp4', select: async () => true });
+  a.store('movie', 0);
+  const blob = JSON.parse(JSON.stringify(a.serialize()));
+  check('serialize carries it', blob.movie[0]?.clip === 'preload:Dive.mp4',
+    JSON.stringify(blob.movie[0]));
+
+  const b = new MovieCues(makePs(), {}, null);
+  b.restore(blob);
+  check('RESTORE CARRIES IT TOO', b.get('movie', 0)?.clip === 'preload:Dive.mp4',
+    'restore() coerces every key to Number, which drops a string id — the cue ' +
+    'would come back pointing at no clip and recall a region against whatever ' +
+    'happens to be loaded');
+  check('and the region survives', b.get('movie', 0)?.start === 0);
+
+  // A cue file written before clips were carried still loads.
+  const legacy = new MovieCues(makePs(), {}, null);
+  legacy.restore({ movie: [{ start: 5, end: 50, pos: 20 }] });
+  check('a legacy cue restores', legacy.get('movie', 0)?.start === 5);
+  check('with no clip, and that is not an error', legacy.get('movie', 0)?.clip === undefined);
+
+  // A slot holding ONLY an extra key is not a cue.
+  //
+  // Tested on an allowPartial bank, which is the ONLY configuration where the
+  // guard is reachable: MovieCues is strict, so its numeric loop already
+  // rejects a cue missing `start` long before the extra-key code runs. Asserting
+  // it through MovieCues passed whether or not the guard existed — the guard was
+  // being credited for the strict path's work.
+  const partial = new CueBank(makePs(), {
+    banks: ['aplay'], keys: ['start', 'len'], extraKeys: ['clip'], allowPartial: true,
+  });
+  partial.restore({ aplay: [{ clip: 'preload:Dive.mp4' }] });
+  check('an extra key with no region is not a cue', partial.get('aplay', 0) === null,
+    'a slot that lights up and recalls nothing is worse than an empty one');
+  partial.restore({ aplay: [{ start: 5, clip: 'preload:Dive.mp4' }] });
+  check('but one real key is enough, and carries the extra',
+    partial.get('aplay', 0)?.start === 5 && partial.get('aplay', 0)?.clip === 'preload:Dive.mp4',
+    JSON.stringify(partial.get('aplay', 0)));
+}
+
 console.log(failures ? `\n${failures} FAILURE(S)\n` : '\nAll cue-bank checks passed.\n');
 process.exit(failures ? 1 : 0);
