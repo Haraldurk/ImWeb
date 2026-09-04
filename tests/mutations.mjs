@@ -102,8 +102,21 @@ export const MUTATIONS = [
     audit: 'audit-sw-cache-bump.mjs',
     file: 'public/sw.js',
     why: 'public/ is copied verbatim and never passes through Vite define, so ANY build-time constant throws a ReferenceError in the worker, install() never completes and the app silently stops working offline. The audit knew one spelling; this is an equally fatal one it could not see',
-    find: "const CACHE = 'imweb-v0.22.1';",
-    replace: "const CACHE = 'imweb-v' + import.meta.env.VITE_APP_VERSION;",
+    /**
+     * Anchored on `const APP_SHELL = [`, NOT on the CACHE literal.
+     *
+     * It used to name `const CACHE = 'imweb-v0.22.1';` verbatim, which meant
+     * the mutation stopped applying the first time anyone bumped the cache —
+     * and a mutation that does not apply is byte-for-byte indistinguishable
+     * from an audit hole, which is the whole reason this harness checks. The
+     * cache value is the ONE line in this file guaranteed to change; anchoring
+     * a test on it guaranteed the test would rot.
+     *
+     * What is under test is "the audit catches a build-time constant in sw.js
+     * by any spelling", and any stable host line proves that equally well.
+     */
+    find: "const APP_SHELL = [",
+    replace: "const APP_SHELL = [\n  import.meta.env.VITE_APP_VERSION,",
   },
   {
     name: 'sw: an app module pulled in by dynamic import',
