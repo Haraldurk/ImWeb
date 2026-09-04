@@ -39,12 +39,67 @@ export class MovieCues extends CueBank {
    *   exactly the "in/out without the playhead that belongs to it" this module
    *   exists to prevent, so the recall forces the seek explicitly.
    */
-  constructor(ps, decks = {}) {
+  constructor(ps, decks = {}, clipHost = null) {
     super(ps, {
       banks: CUE_DECKS,
       keys: CUE_KEYS,
+      // The clip the region belongs to. CueBank's own docstring makes the case:
+      // "a region recalled without its partition points at a different piece of
+      // tape entirely." A movie cue had exactly that hole — start/end/pos with
+      // no record of WHICH clip they measure — so recalling one after loading a
+      // different movie landed you in a window that meant nothing.
+      extraKeys: ['clip'],
       afterRecall: (prefix) => decks?.[prefix]?.forcePosSeek?.(),
     });
     this.decks = decks;
+    /**
+     * Injected rather than imported: resolving a clip id means reaching the
+     * movie library and the deck rack, and main.js is the integration hub that
+     * already owns both. Keeping it out of here preserves the property that
+     * this module knows only about parameters and its own bank.
+     *
+     * @type {{ currentId(prefix): string|null,
+     *          select(prefix, id): Promise<boolean> } | null}
+     */
+    this.clipHost = clipHost;
+  }
+
+  /** Capture the region AND which clip it belongs to. */
+  store(prefix, i) {
+    if (!super.store(prefix, i)) return false;
+    const id = this.clipHost?.currentId?.(prefix);
+    if (id) this.get(prefix, i).clip = id;
+    this.onChange?.();
+    return true;
+  }
+
+  /**
+   * Recall the region, switching the deck to the cue's clip first.
+   *
+   * Synchronous whenever it can be — a legacy cue with no clip, or one whose
+   * clip is already up — because the async path leaves one frame in which the
+   * NEW region is being applied to the OLD clip. Only a genuine clip change
+   * pays for the await.
+   */
+  recall(prefix, i) {
+    const cue = this.get(prefix, i);
+    if (!cue) return false;
+    const want = cue.clip;
+    if (!want || !this.clipHost || this.clipHost.currentId?.(prefix) === want) {
+      return super.recall(prefix, i);
+    }
+    this.clipHost.select(prefix, want)
+      .then((ok) => {
+        // Apply the region even if the clip could not be found: the cue's
+        // numbers are still the best guess, and silently doing nothing reads
+        // as a dead pad. The warning says which clip went missing.
+        if (!ok) console.warn(`[MovieCues] clip "${want}" not found; recalling region only`);
+        super.recall(prefix, i);
+      })
+      .catch((e) => {
+        console.warn('[MovieCues] clip switch failed:', e?.message ?? e);
+        super.recall(prefix, i);
+      });
+    return true;
   }
 }

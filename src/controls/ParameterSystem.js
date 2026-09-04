@@ -73,6 +73,11 @@ function _resolveTable(param) {
   return _tableManager.get(param.table);
 }
 
+/** How many MIDI mapping pages exist. Four fits the nanoKONTROL2 TRACK pair.
+ * APPEND-ONLY in spirit: a saved `midiPages` array is indexed by position, so
+ * shrinking this drops bindings off the end of every file that has them. */
+export const MIDI_PAGES = 4;
+
 export const PARAM_TYPE = {
   CONTINUOUS: "continuous", // floating point in [min, max]
   TOGGLE: "toggle", // 0 | 1
@@ -709,8 +714,14 @@ export class Parameter {
       // while you are learning buttons one at a time, and it should look
       // different from a finished one.
       "midi-cc-map": (() => {
-        const n = (c.ccs ?? []).filter((x) => x != null).length;
-        return c.channel ? `${c.channel}:CC×${n}` : `CC×${n}`;
+        // Count BOTH arrays. Options can be bound to notes as well as CCs, and
+        // counting only `ccs` reported "CC×0" for a fully note-mapped SELECT —
+        // which reads as "nothing bound" and is exactly how a working mapping
+        // looks broken.
+        const nc = (c.ccs ?? []).filter((x) => x != null).length;
+        const nn = (c.notes ?? []).filter((x) => x != null).length;
+        const label = nn && !nc ? `N×${nn}` : nn ? `CC×${nc}+N×${nn}` : `CC×${nc}`;
+        return c.channel ? `${c.channel}:${label}` : label;
       })(),
       "lfo-sine": "LFO~",
       "lfo-triangle": "LFO△",
@@ -771,6 +782,11 @@ export class Parameter {
       id: this.id,
       value: this._value,
       controller: this.controller ? { ...this.controller } : null,
+      // Per-page MIDI bindings. Omitted entirely when the parameter has none,
+      // so an unpaged rig serializes exactly as it did before pages existed.
+      midiPages: this.midiPages?.some(Boolean)
+        ? this.midiPages.map((c) => (c ? { ...c } : null))
+        : undefined,
       xControllers: this.xControllers.length
         ? this.xControllers.map((xc) =>
             xc ? { ...xc, _fn: undefined, _rState: undefined } : null,
@@ -812,6 +828,18 @@ export class Parameter {
     if (this.setup) return;
     if (data.value !== undefined) this.value = data.value;
     if (data.controller !== undefined) this.controller = data.controller;
+    /**
+     * A file written before pages existed has no `midiPages` and a single
+     * `controller`. That IS page 1, so seed it there rather than leaving the
+     * binding unpaged — otherwise switching to page 2 and back would lose a
+     * mapping the user never chose to page. The absence of the key answers
+     * "has this been migrated?", so no version stamp is needed.
+     */
+    if (data.midiPages !== undefined) {
+      this.midiPages = (data.midiPages ?? []).map((c) => (c ? { ...c } : null));
+    } else if (data.controller && String(data.controller.type).startsWith("midi")) {
+      this.midiPages = [{ ...data.controller }];
+    }
     if (data.xControllers !== undefined) {
       this.xControllers = (data.xControllers ?? []).map((xc) =>
         xc ? { ...xc } : null,
@@ -2798,6 +2826,24 @@ export function registerCoreParameters(ps) {
     // the slot index too would give those three values a second writer whose
     // onChange fires after the restore, and which one won would depend on
     // restore order. See MovieCues.js.
+    /**
+     * Which clip in the deck's rack is showing. MAX_CLIPS is 8.
+     *
+     * This existed only as a keyboard shortcut (⇧0-8 for deck A, ⌥1-8 for B)
+     * calling `selectClip()` directly, so there was no way to reach it from
+     * MIDI at all — MIDI drives parameters, and switching clips was not one.
+     * Making it a parameter is what `buildCueRow` already does deliberately for
+     * cues: route the click through the param "so a MIDI note mapped to CueSlot
+     * and a click take exactly the same path".
+     *
+     * group 'global', so Display States do NOT capture it. The rack is session
+     * and project state — its contents differ between projects and change as
+     * clips are added or evicted — so a captured index would recall a DIFFERENT
+     * movie. That also keeps today's behaviour exactly: no state captures the
+     * showing clip now, because no parameter existed to capture.
+     */
+    { key: "clip", label: "Clip", type: PARAM_TYPE.SELECT, value: 0, group: "global",
+      options: ["1", "2", "3", "4", "5", "6", "7", "8"] },
     { key: "cueSlot", label: "CueSlot", type: PARAM_TYPE.SELECT, value: 0, group: "global",
       options: ["1", "2", "3", "4", "5", "6", "7", "8"] },
     { key: "cueStore", label: "CueStore", type: PARAM_TYPE.TRIGGER, group: "global" },
@@ -5257,6 +5303,55 @@ export function registerCoreParameters(ps) {
     label: "Tap Tempo",
     group: "global",
     type: PARAM_TYPE.TRIGGER,
+  });
+
+  /**
+   * MIDI mapping pages. Eight faders become 32 controls across four pages.
+   *
+   * These four are PAGE-EXEMPT in ControllerManager: their own MIDI bindings
+   * are never paged. A page-switch control that lived inside the pages could
+   * put you on a page with no way back — the desk would be bricked until you
+   * reached for the mouse — which is the same escape-hatch reasoning as Esc
+   * leaving map mode.
+   *
+   * group 'global', so Display States never capture them: mappings are
+   * persisted by MappingAutosave, "mappings only, never values", and a captured
+   * page index would fight that on every recall.
+   */
+  ps.register({
+    id: "midi.page",
+    label: "Map Page",
+    group: "global",
+    type: PARAM_TYPE.SELECT,
+    value: 0,
+    options: Array.from({ length: MIDI_PAGES }, (_, i) => `${i + 1}`),
+  });
+  ps.register({
+    id: "midi.pagePrev",
+    label: "Map Page −",
+    group: "global",
+    type: PARAM_TYPE.TRIGGER,
+  });
+  ps.register({
+    id: "midi.pageNext",
+    label: "Map Page +",
+    group: "global",
+    type: PARAM_TYPE.TRIGGER,
+  });
+  /**
+   * Soft takeover. The faders here are absolute and not motorised, so after a
+   * page switch fader 1 sits at 80% while its new parameter reads 20% — the
+   * first touch jumps it, which on a live instrument is a visible glitch rather
+   * than a small annoyance. With pickup on, the parameter does not move until
+   * the fader passes THROUGH its current value. On by default: the jump is the
+   * surprising behaviour, not the pickup.
+   */
+  ps.register({
+    id: "midi.pickup",
+    label: "Pickup",
+    group: "global",
+    type: PARAM_TYPE.TOGGLE,
+    value: 1,
   });
   ps.register({
     id: "global.morph",

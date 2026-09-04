@@ -41,6 +41,7 @@ import {
   MIXBUS_IDX,
   PARTICLE_MASK_SRC,
   PARAM_TYPE,
+  MIDI_PAGES,
 } from "./controls/ParameterSystem.js";
 
 /**
@@ -401,7 +402,39 @@ async function main() {
 
   const movieInput = new MovieInput();
   const movieInputB = new MovieInput('movieB');
-  const movieCues = new MovieCues(ps, { movie: movieInput, movieB: movieInputB });
+  /**
+   * How a movie cue resolves its clip. Injected into MovieCues rather than
+   * imported there, because it needs the movie library AND the deck rack, and
+   * main.js is the hub that owns both.
+   *
+   * Resolution order matters: the deck's own rack first, because selecting an
+   * already-loaded clip is instant and does not re-download or re-decode, and
+   * a rack switch mid-performance is the common case. Only a clip that is not
+   * racked pays for a load.
+   */
+  const _deckFor = (prefix) => (prefix === "movieB" ? movieInputB : movieInput);
+  const _clipIdOf = (clip) =>
+    clip?.libId ?? (clip?.name ? movieLibrary.findByFilename(clip.name)?.id ?? null : null);
+  const movieClipHost = {
+    currentId: (prefix) => {
+      const deck = _deckFor(prefix);
+      return _clipIdOf(deck?.clips?.[deck?.currentIndex]);
+    },
+    select: async (prefix, id) => {
+      const deck = _deckFor(prefix);
+      if (!deck) return false;
+      const racked = (deck.clips ?? []).findIndex((c) => _clipIdOf(c) === id);
+      if (racked >= 0) { deck.selectClip(racked); return true; }
+      const entry = movieLibrary.get(id);
+      if (!entry) return false;                 // removed from the library
+      // `{ select: true }`, not a bare `true`: the third argument is an options
+      // object, and a boolean would destructure to undefined and only work by
+      // accident of the default.
+      await loadEntryToDeck(entry, prefix === "movieB" ? "B" : "A", { select: true });
+      return true;
+    },
+  };
+  const movieCues = new MovieCues(ps, { movie: movieInput, movieB: movieInputB }, movieClipHost);
   /**
    * The Playback Zone's eight cues: Start, Length, Rate, Level.
    *
@@ -1435,6 +1468,12 @@ async function main() {
     }
     const idx = await deck.addClip(movieLibrary.sourceOf(entry));
     if (idx < 0) throw new Error(`Deck ${deckId} rack is full`);
+    // Remember WHICH library entry this racked clip is, so a cue can name it.
+    // A racked clip otherwise keeps only `name`/`url`; the library id is the
+    // stable reference (origin-prefixed, designed to survive in a saved
+    // .imweb), and matching on it beats matching on a filename that two
+    // origins could share.
+    if (deck.clips[idx]) deck.clips[idx].libId = entry.id;
     // select=false for imports: dropping a file mid-performance should not yank
     // the output to it. addClip still auto-activates when the rack was empty.
     if (select) deck.selectClip(idx);
@@ -2908,6 +2947,113 @@ async function main() {
   mappingAutosave.start();
   if (import.meta.env.DEV) window.__mappings = mappingAutosave;
 
+  // ── MIDI Map Mode ─────────────────────────────────────────────────────────
+  // Click the MIDI indicator to latch learn on. Then: click a row, move the
+  // control, repeat. The mode survives each bind, which is the whole point —
+  // a one-shot learn made a 40-control desk 40 trips through the context menu.
+  document.getElementById("status-midi")?.addEventListener("click", () => {
+    ctrl.toggleMapMode();
+  });
+
+  /**
+   * Registered in the CAPTURE phase on the document so it runs BEFORE the
+   * row's own handlers: otherwise clicking a trigger row fires the trigger and
+   * clicking a select opens its menu on the way to arming. `pointerdown` is
+   * swallowed as well as `click`, because sliders drag on pointerdown with
+   * pointer capture and would otherwise still edit values in map mode.
+   *
+   * `ctrl.mapMode` is read HERE, at event time, never captured when a row is
+   * built. Rows are rebuilt constantly, so a flag read at build time would
+   * leave every panel built before the mode was entered inert — the same
+   * mistake the warp radius sliders made with a local `let`.
+   */
+  const _mapModeGrab = (e) => {
+    if (!ctrl.mapMode) return;
+    /**
+     * A tagged custom widget — `data-param-id` + `data-opt-index` on any
+     * element — arms that parameter's option directly. Checked BEFORE the
+     * `.param-row` lookup because these live outside rows entirely (the Clip
+     * Library's slot grid is the first). One hook, opted into by tagging, so
+     * the next custom surface does not need its own branch here.
+     */
+    const tagged = e.target.closest?.("[data-param-id][data-opt-index]");
+    if (tagged) {
+      e.preventDefault();
+      e.stopPropagation();
+      if (e.type !== "click") return;
+      const tid = tagged.dataset.paramId;
+      const idx = parseInt(tagged.dataset.optIndex, 10);
+      if (!ps.get(tid) || !Number.isFinite(idx)) return;
+      if ((e.altKey || e.metaKey) && ctrl.unmapMIDI(tid)) return;
+      // Sequential from the cell you clicked, so a pad bank maps in one pass.
+      ctrl.startMIDILearn(tid, idx, null, true);
+      return;
+    }
+
+    const row = e.target.closest?.(".param-row");
+    if (!row) return; // indicator, tabs, menus stay live — there must be a way out
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.type !== "click") return; // pointerdown is only swallowed; click acts
+    const paramId = row.dataset.paramId;
+    if (!paramId) return;
+
+    // Alt/meta-click a mapped row to unmap it. Bulk mapping is only safe with
+    // a cheap way back out of a bad pass.
+    if ((e.altKey || e.metaKey) && ctrl.unmapMIDI(paramId)) return;
+
+    // An option button inside a SELECT arms THAT option, building a
+    // `midi-cc-map` — the right grammar for a bank of buttons, and the path
+    // that already existed behind a per-option right-click.
+    const optBtn = e.target.closest(".param-opt-btn");
+    if (optBtn) {
+      const opts = [...optBtn.parentElement.querySelectorAll(".param-opt-btn")];
+      const idx = opts.indexOf(optBtn);
+      if (idx < 0) return;
+      document.querySelectorAll(".param-opt-btn.learning")
+        .forEach(el => el.classList.remove("learning"));
+      optBtn.classList.add("learning");
+      /**
+       * Sequential from the button you clicked, matching the bare-row and
+       * tagged-widget paths. Arming only the one option looked consistent with
+       * the right-click gesture, but a button group FILLS its row, so in map
+       * mode you essentially always land on a button — which made the walk
+       * unreachable and bound one control where eight were intended.
+       * (Right-click outside map mode still binds exactly one; that gesture
+       * passes no sequential flag.)
+       */
+      ctrl.startMIDILearn(paramId, idx, null, true);
+      return;
+    }
+    /**
+     * A SELECT arms its options in sequence: press a key per option and they
+     * bind in order. That is the only workable path for a long SELECT — the
+     * per-option right-click only exists on the button group, which ParamRow
+     * builds for <= 8 options, so `clip.slot` (16) had no per-option affordance
+     * at all. Sixteen pads to sixteen slots is now one pass, no menus.
+     *
+     * A TOGGLE or TRIGGER takes a whole-param binding as before; walking the
+     * two states of a toggle would be meaningless.
+     */
+    const p = ps.get(paramId);
+    if (p?.type === PARAM_TYPE.SELECT && (p.options?.length ?? 0) > 1) {
+      ctrl.startMIDILearn(paramId, 0, null, true);
+      return;
+    }
+    ctrl.startMIDILearn(paramId);
+  };
+  document.addEventListener("pointerdown", _mapModeGrab, true);
+  document.addEventListener("click", _mapModeGrab, true);
+
+  // Escape leaves map mode. A mode that changes what a plain click means needs
+  // an exit that does not depend on finding the indicator again.
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && ctrl.mapMode) {
+      ctrl.setMapMode(false);
+      e.stopPropagation();
+    }
+  }, true);
+
   // Click OSC indicator → prompt for WebSocket URL and connect
   document.getElementById("status-osc")?.addEventListener("click", () => {
     if (oscBridge.active) {
@@ -3656,6 +3802,143 @@ async function main() {
   _outWinRow.title = outWinSel.title; // the label is the part people point at
   ioOutBlock.appendChild(_outWinRow);
 
+  /**
+   * Clip selection, as a parameter.
+   *
+   * Everything that switches a clip now writes this param instead of calling
+   * `selectClip()` — the keyboard shortcuts, the rack rows, and a MIDI note —
+   * so all three take one path. That is the same reasoning `buildCueRow`
+   * records for cues, and the reason a MIDI key could not switch clips before:
+   * the shortcut reached straight past the parameter system.
+   */
+  const _selectClipFromParam = (prefix, deck, refresh) => (v) => {
+    const idx = Math.round(v);
+    if (!(idx >= 0 && idx < deck.clips.length)) {
+      // An empty rack slot: say so rather than silently doing nothing, and
+      // leave the param where the user put it so the row still reads back.
+      _flashEmptySlot(prefix === "movieB" ? "B" : "A", idx, deck.clips.length);
+      return;
+    }
+    if (deck.currentIndex !== idx) deck.selectClip(idx);
+    if (ps.get(`${prefix}.active`).value) deck.clips[idx]?.video.play().catch(() => {});
+    refresh?.();
+  };
+  ps.get("movie.clip")?.onChange(
+    _selectClipFromParam("movie", movieInput, () => refreshClipsList()));
+  ps.get("movieB.clip")?.onChange(
+    _selectClipFromParam("movieB", movieInputB, () => refreshClipBStatus()));
+
+  // ── MIDI mapping pages ────────────────────────────────────────────────────
+  // Switchable from hardware (bind Map Page −/+ to the nanoKONTROL2's TRACK
+  // buttons) and from the app (the row below). Both drive the same param, so
+  // neither can disagree with the other.
+  ps.get("midi.pagePrev")?.onTrigger(() => ctrl.prevMapPage());
+  ps.get("midi.pageNext")?.onTrigger(() => ctrl.nextMapPage());
+  ps.get("midi.page")?.onChange((v) => ctrl.setMapPage(v | 0));
+
+  /**
+   * Real parameter rows, not hand-built controls. `buildParamRow` renders a
+   * <=8-option SELECT as the same button group AND gives every option its own
+   * right-click MIDI learn, so four pads can pick four pages — a hand-built
+   * group would have had to reimplement both. It also makes these rows
+   * clickable targets in map mode, which is how TRACK -/+ get bound at all.
+   */
+  for (const id of ["midi.page", "midi.pagePrev", "midi.pageNext", "midi.pickup"]) {
+    const prm = ps.get(id);
+    if (prm) ioBlock.appendChild(buildParamRow(prm, contextMenu));
+  }
+
+  /**
+   * Clear All MIDI — narrower than the Active Controllers panel's Clear All,
+   * which calls `clearAllAssignments()` and drops EVERY controller type. This
+   * one spares LFO, mouse, sound and expression controllers and takes only the
+   * MIDI bindings, across all pages. Two different jobs, so two buttons rather
+   * than one that has to be explained.
+   *
+   * Confirmed before firing: it is destructive, un-undoable, and reaches
+   * bindings on pages you cannot currently see — which is exactly the case
+   * where a user's mental model of "what is selected" is narrower than what
+   * the action touches.
+   */
+  const clearRow = document.createElement("div");
+  clearRow.style.cssText = "display:flex;align-items:center;gap:5px;padding:3px 10px 8px;";
+  const clearLbl = document.createElement("span");
+  clearLbl.style.cssText = "font:10px/1.6 var(--mono);color:var(--text-2);min-width:60px;flex-shrink:0;letter-spacing:.05em;text-transform:uppercase;";
+  clearLbl.textContent = "Mappings";
+  const clearBtn = document.createElement("button");
+  clearBtn.className = "param-opt-btn";
+  clearBtn.textContent = "Clear All MIDI";
+  clearBtn.title = "Remove every MIDI binding, on every page. LFO, mouse and audio controllers are kept.";
+  clearBtn.addEventListener("click", () => {
+    const total = ps.getAll().reduce((n, p) =>
+      n + (p.midiPages?.filter(Boolean).length ?? 0) +
+      (p.controller?.type?.startsWith("midi") && !p.midiPages?.some(Boolean) ? 1 : 0), 0);
+    if (!total) { clearBtn.textContent = "Nothing to clear"; setTimeout(() => { clearBtn.textContent = "Clear All MIDI"; }, 1200); return; }
+    if (!confirm(`Remove ${total} MIDI binding${total === 1 ? "" : "s"} across all ${MIDI_PAGES} pages?\n\nLFO, mouse and audio controllers are kept. This cannot be undone.`)) return;
+    const n = ctrl.clearAllMIDI();
+    // Repaint every badge: the rows are built once and nothing else tells them
+    // their controller vanished.
+    ps.getAll().forEach((p) => ctrl._repaintCtrlBadge(p.id));
+    clearBtn.textContent = `Cleared ${n}`;
+    setTimeout(() => { clearBtn.textContent = "Clear All MIDI"; }, 1600);
+  });
+  clearRow.append(clearLbl, clearBtn);
+  ioBlock.appendChild(clearRow);
+
+  // ── Incoming MIDI monitor ─────────────────────────────────────────────────
+  // Lives in I/O, on the Sources tab, so it is visible AT THE SAME TIME as the
+  // parameter rows — a monitor in a modal or its own tab covers the thing you
+  // are mapping, which defeats it.
+  const midiMonRow = document.createElement("div");
+  midiMonRow.style.cssText = "padding:3px 10px 6px;";
+  const midiMonLbl = document.createElement("div");
+  midiMonLbl.style.cssText = "font:10px/1.6 var(--mono);color:var(--text-2);letter-spacing:.05em;text-transform:uppercase;";
+  midiMonLbl.textContent = "MIDI In";
+  const midiMonList = document.createElement("div");
+  midiMonList.id = "midi-monitor";
+  midiMonList.className = "midi-monitor";
+  midiMonList.innerHTML = '<div class="midi-monitor-empty">move a control…</div>';
+  midiMonRow.append(midiMonLbl, midiMonList);
+  ioBlock.appendChild(midiMonRow);
+
+  /**
+   * Paint both MIDI views from the render loop rather than from the message
+   * handler. A swept fader sends dozens of messages a second and a DOM write
+   * per message puts MIDI traffic on the render thread — which would surface as
+   * a mysterious frame-rate drop while a fader moves, not as a monitor bug.
+   * `consumeMidiDirty()` is true only when something arrived since the last
+   * paint, so an idle rig costs one boolean read per frame.
+   */
+  const midiLastEl = document.getElementById("status-midi-last");
+  function _paintMidiMonitor() {
+    if (!ctrl.consumeMidiDirty()) return;
+    const last = ctrl.midiLast;
+    if (midiLastEl) {
+      if (last) {
+        midiLastEl.hidden = false;
+        midiLastEl.textContent = `${last.label}${last.num} ch${last.channel} ▸ ${last.val}`;
+      } else {
+        midiLastEl.hidden = true;
+      }
+    }
+    if (!midiMonList.isConnected || midiMonList.offsetParent === null) return; // panel collapsed/hidden
+    const ix = ctrl.buildMidiBindIndex();
+    const rows = ctrl.midiLog;
+    if (!rows.length) return;
+    midiMonList.innerHTML = rows.map((e) => {
+      const bound = ctrl.midiBindingsFor(e, ix);
+      // The bound column is the reason this beats a plain log: it answers
+      // "is this knob already taken?" BEFORE you map over it.
+      const to = bound.length
+        ? `<span class="midi-mon-bound">${bound.slice(0, 2).join(", ")}${bound.length > 2 ? ` +${bound.length - 2}` : ""}</span>`
+        : '<span class="midi-mon-free">—</span>';
+      const n = e.count > 1 ? `<span class="midi-mon-count">x${e.count}</span>` : "";
+      return `<div class="midi-mon-row"><span class="midi-mon-id">${e.label}${e.num}</span>` +
+             `<span class="midi-mon-ch">ch${e.channel}</span>` +
+             `<span class="midi-mon-val">${e.val}</span>${n}${to}</div>`;
+    }).join("");
+  }
+
   // Phase 23 Step 3: the Mapping tab is retired. I/O leads the SOURCES tab —
   // it is mostly input-device selection (Camera, Audio In) and stays the first
   // thing visible on the first tab, as it was at the top of Mapping.
@@ -3891,6 +4174,9 @@ async function main() {
 
       item.appendChild(thumb);
       item.appendChild(info);
+      // Map-mode target: click a rack row in map mode to bind a key to it.
+      item.dataset.paramId  = `${prefix}.clip`;
+      item.dataset.optIndex = String(i);
 
       item.addEventListener("click", (e) => {
         // ⇧-click → send this clip to Deck B (this deck's selection unchanged)
@@ -3898,9 +4184,10 @@ async function main() {
           onShiftClick(clip);
           return;
         }
-        deck.selectClip(i);
-        if (ps.get(`${prefix}.active`).value) clip.video.play().catch(() => {});
-        refresh();
+        // Through the param, like the shortcut and a mapped MIDI key. Three
+        // entry points, one path — otherwise the param row and the rack could
+        // disagree about which clip is showing.
+        ps.set(`${prefix}.clip`, i);
       });
       item.addEventListener("contextmenu", (e) => {
         e.preventDefault();
@@ -4061,6 +4348,16 @@ async function main() {
       const b = document.createElement("button");
       b.className = "cue-btn";
       b.textContent = String(i + 1);
+      /**
+       * Map-mode target. This row is the cue surface people actually look at —
+       * the `${prefix}.cueSlot` param row exists but lives collapsed inside the
+       * deck's section, so clicking these buttons in map mode did nothing and
+       * the feature read as broken. Tagging is the same generic hook the Clip
+       * Library's slot grid uses; because this builder serves Movie A, Movie B
+       * and the Playback Zone, one tag covers all three.
+       */
+      b.dataset.paramId  = `${prefix}.cueSlot`;
+      b.dataset.optIndex = String(i);
       b.addEventListener("click", (e) => {
         if (e.altKey) {
           bank.clear(prefix, i);
@@ -7245,15 +7542,8 @@ void main() {
     // already covers it. It exists because ⇧0 is where a hand reaching for the
     // first clip lands, and because the key used to reset the whole patch.
     if (e.shiftKey && !e.metaKey && /^Digit[0-8]$/.test(e.code)) {
-      const idx = _clipKeyIndex(e.code);
-      if (idx < movieInput.clips.length) {
-        movieInput.selectClip(idx);
-        if (ps.get("movie.active").value)
-          movieInput.clips[idx]?.video.play().catch(() => {});
-        refreshClipsList();
-      } else {
-        _flashEmptySlot("A", idx, movieInput.clips.length);
-      }
+      // Through the param, so ⇧N and a mapped MIDI key are the same path.
+      ps.set("movie.clip", _clipKeyIndex(e.code));
       e.preventDefault();
       return; // prevent other shortcuts (e.g. / on Nordic layout) from also firing
     }
@@ -7262,15 +7552,8 @@ void main() {
     // on macOS Option+digit emits ¡™£¢∞§¶• rather than a digit, but the code
     // stays DigitN. Guarded off Shift so ⇧⌥N doesn't drive both decks at once.
     if (e.altKey && !e.shiftKey && !e.metaKey && /^Digit[0-8]$/.test(e.code)) {
-      const idx = _clipKeyIndex(e.code);
-      if (idx < movieInputB.clips.length) {
-        movieInputB.selectClip(idx);
-        if (ps.get("movieB.active").value)
-          movieInputB.clips[idx]?.video.play().catch(() => {});
-        refreshClipBStatus();
-      } else {
-        _flashEmptySlot("B", idx, movieInputB.clips.length);
-      }
+      // Through the param, so ⌥N and a mapped MIDI key are the same path.
+      ps.set("movieB.clip", _clipKeyIndex(e.code));
       e.preventDefault();
       return;
     }
@@ -8057,6 +8340,11 @@ void main() {
   function render(now) {
     requestAnimationFrame(render);
     perfFrame(now);
+
+    // Both MIDI views repaint here, at most once a frame, and only when a
+    // message actually arrived. See _paintMidiMonitor for why not in the
+    // message handler.
+    _paintMidiMonitor();
 
     const dt = Math.min((now - lastTime) / 1000, 0.1); // cap at 100ms
     lastTime = now;

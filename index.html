@@ -45,6 +45,17 @@
                 >120 bpm</span
             >
             <span id="status-midi" class="indicator" title="MIDI">MIDI</span>
+            <!-- Last incoming MIDI message. A nanoKONTROL2 has no display and
+                 its SCENE button changes which CCs the controls send, so this
+                 readout is the only way to tell which scene is live. Hidden
+                 until something arrives, so it costs nothing on a rig with no
+                 controller attached. -->
+            <span
+                id="status-midi-last"
+                class="indicator midi-last"
+                title="Last incoming MIDI — move a control to identify it"
+                hidden
+            ></span>
             <span id="status-osc" class="indicator" title="OSC">OSC</span>
             <canvas
                 id="status-vu"

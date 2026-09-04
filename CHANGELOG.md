@@ -8,6 +8,191 @@ ImWeb uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
 
 ## [Unreleased]
 
+### Added
+- **MIDI mapping pages, switchable from hardware and from the app.** Four pages
+  of bindings, so eight faders become 32 controls. `param.midiPages[i]` holds
+  the binding for page *i* and is the source of truth; `param.controller` is the
+  live projection of the current page, with `setPageBinding()` as the single
+  writer so the two cannot drift.
+  - **The page-switch controls are page-EXEMPT** (`midi.page`, `midi.pagePrev`,
+    `midi.pageNext`, `midi.pickup`). A paged page-switch control could strand
+    you on a page with no way back, leaving the desk unusable until you reached
+    for the mouse — the same escape-hatch reasoning as Esc leaving map mode.
+    On a nanoKONTROL2 the TRACK ◀ ▶ pair is the natural home for them.
+  - **Switching never eats a non-MIDI controller.** Only parameters paging owns
+    — those with a binding on some page — are touched, so an LFO on an unpaged
+    parameter survives every switch.
+  - **Soft takeover (`midi.pickup`, on by default).** These faders are absolute
+    and not motorised, so after a switch fader 1 sits at 80% while its new
+    parameter reads 20% and the first touch jumps it — a visible glitch on a
+    live instrument, multiplied by every page. With pickup on, a parameter does
+    not move until the control passes THROUGH its current value. Buttons are
+    deliberately above the gate: a button has no position to pick up, and
+    gating one would make it look dead until pressed twice.
+  - **A file written before pages becomes page 1** rather than staying unpaged,
+    so no existing mapping is lost to the upgrade. The absence of the key
+    answers "has this been migrated?", so no version stamp is needed — and a
+    non-MIDI controller is never dragged into a page by it.
+  - Covered by `tests/audit-midi-map-mode.mjs`, mutation-calibrated 9/9 (empty
+    exempt set, learn bypassing the page, unmap clearing only the projection,
+    pickup gate removed, pickup never arming, every param treated as paged,
+    pickup ignoring its off switch, `midiPages` not persisted, legacy migration
+    dropped). Two of those first "passed" by throwing rather than asserting and
+    were rewritten — a mutation that trips an exception calibrates nothing.
+
+- **Switching movie clips is now a parameter (`movie.clip`, `movieB.clip`), so
+  a MIDI key can do what ⇧0–8 already did.** Clip selection existed only as a
+  keyboard handler calling `selectClip()` directly — it never went near the
+  parameter system, so there was nothing for MIDI to bind to and no amount of
+  map-mode work could reach it. The shortcut, the rack rows and a mapped key
+  now all write the same parameter, which is the rule `buildCueRow` already
+  states for cues: route the click through the param "so a MIDI note mapped to
+  CueSlot and a click take exactly the same path". Rack rows are tagged as
+  map-mode targets too. `group: 'global'`, so Display States do not capture it —
+  the rack differs between projects, so a captured index would recall a
+  different movie, and not capturing it preserves today's behaviour exactly.
+- **Clicking an option button in map mode now walks the whole SELECT.** It armed
+  only the clicked option, which read as consistent with the right-click
+  gesture but made the sequential walk unreachable: a button group FILLS its
+  row, so in map mode you always land on a button, and eight intended bindings
+  became one. Right-click outside map mode still binds exactly one.
+
+- **MIDI learn accepts NOTES, so keyboards and pad controllers work at all.**
+  The learn branch gated on `type === 0xB0`, so on a Launchkey Mini — whose keys
+  and pads send notes — *nothing could be learned*: the arm sat waiting while
+  every press went unheard. The `midi-note` type already existed and dispatched
+  correctly; nothing could create one. Note-ON only, so a release cannot bind.
+- **A movie cue now carries the clip its region belongs to, and recalling one
+  switches the deck to it.** This is what makes "one key per movie clip"
+  possible at all: loading a clip is an ACTION taking a file
+  (`deck.addClip`), not a parameter, so there was nothing for MIDI to bind —
+  and a cue stored only `start`/`end`/`pos`, so recalling one after loading a
+  different movie landed you in a window that measured nothing. CueBank's own
+  docstring names the failure: *"a region recalled without its partition points
+  at a different piece of tape entirely."* Store eight clips to the eight cue
+  slots and map eight keys to `movie.cueSlot`, which already had a row, eight
+  options and per-option learn.
+  - The cue holds the **library entry id** (`preload:Dive.mp4`), not an index
+    into the library. A library-index SELECT would repoint every mapping the
+    moment a movie is added, removed or reordered, because SELECT values persist
+    as integers — the append-only hazard. An id is stable and already designed
+    to survive in a saved `.imweb`.
+  - Recall resolves the **deck rack first** and only loads when the clip is not
+    already racked: selecting a racked clip is instant, and a rack switch is the
+    common case mid-performance.
+  - It stays **synchronous** for a legacy cue or one whose clip is already up.
+    Only a real clip change awaits, because the async path leaves one frame in
+    which the new region is applied to the old clip.
+  - A clip missing from the library recalls the region anyway and warns —
+    silently doing nothing reads as a dead pad.
+  - `CueBank` gained `extraKeys` for this: `restore()` coerces every key to
+    Number, which would have captured and saved the clip id and then dropped it
+    on the next load — a cue that came back pointing at no clip.
+
+- **Custom widgets can declare themselves as map-mode targets.** The cue rows
+  under Movie A, Movie B and the Playback Zone are tagged too — that eight-button
+  bar is the cue surface people actually look at, while the `cueSlot` parameter
+  row sits collapsed inside the deck's section, so clicking the visible one in
+  map mode did nothing and the feature read as broken. One tag in `buildCueRow`
+  covers all three decks. Any element
+  carrying `data-param-id` + `data-opt-index` arms that parameter's option.
+  The Clip Library is the first user: its slot grid is a hand-built widget, not
+  parameter rows, so `clip.slot` — the one SELECT a pad bank most obviously
+  wants — had nothing for map mode to click and was unmappable at any length.
+  Clicking a slot cell now starts the sequential walk from it, so sixteen pads
+  bind to sixteen slots in one pass, and the armed cell is highlighted (the row
+  progress badge cannot reach a widget that is not a row, and walking sixteen
+  options unmarked means pressing sixteen pads blind). A generic hook rather
+  than a branch for this widget: the next custom surface opts in by tagging.
+
+- **Sequential option learn: one key per SELECT option, in a single pass.**
+  Clicking a SELECT row in map mode arms option 0 and advances after each bind,
+  so sixteen pads map to sixteen clip slots by pressing them in order. The
+  per-option right-click only ever existed on the button group, which ParamRow
+  builds for ≤ 8 options — `clip.slot` has 16, so it had no per-option
+  affordance at all, and the alternative was right-clicking sixteen dropdown
+  items and reopening the menu each time. The armed option shows as `3/16` on
+  the row. TOGGLE and TRIGGER still take a whole-param binding.
+  - Per-option maps gained an optional `notes` array beside `ccs`. A number in
+    `ccs` has meant a CC in every saved file, so overloading it would need a
+    migration and a way to tell note 60 from CC 60; a new optional key needs
+    neither, since its absence says "CC only" — exactly what an older file
+    meant. Re-learning an option from note to CC releases the note, or it would
+    answer to both controls for ever.
+
+- **Clear All MIDI, in Sources → I/O.** Narrower than the Active Controllers
+  panel's Clear All, which calls `clearAllAssignments()` and drops every
+  controller type — this one takes only MIDI bindings, across all pages, and
+  leaves LFO, mouse, sound and expression controllers alone. It counts first,
+  confirms, and reports what it removed.
+
+### Fixed
+- **Both clear paths left mapping pages behind.** Since pages arrived,
+  `param.controller` is only the CURRENT page's projection, so nulling it
+  cleared nothing durable: every binding returned on the next page switch.
+  `clearAllMIDI()` also under-counted, because a parameter bound on a page you
+  were not looking at was invisible to it. `clearAllAssignments()` had the same
+  hole, and `Preset.js` calls that when loading a bank precisely to avoid
+  leftovers from the previous one — so stale page bindings would have
+  reappeared on the new bank. Both now clear `midiPages` as well.
+- **The mapping-page controls were on the wrong tab.** All four are group
+  `global`, so they auto-placed into Output → Global / BPM / Morph while the
+  page selector was hand-built in Sources → I/O — `midi.page` therefore
+  rendered twice, and binding TRACK −/+ meant hunting on another tab. They are
+  now excluded from the auto-built Global panel (the treatment `glsl.preset`
+  and `displace.warpSlot` already get) and built in I/O as real parameter rows,
+  which also gives each page option its own right-click learn for free.
+
+- **Incoming-MIDI monitor, in the top bar and in Sources → I/O.** A
+  nanoKONTROL2 has no display, so the CC a control sends is otherwise
+  unknowable. The top bar shows the last message (`CC21 ch1 ▸ 96`); the I/O
+  panel keeps the last 16 controls touched, newest first, each with **what it
+  already drives** — which answers "is this knob already taken?" before you map
+  over it.
+  - **System Real-Time is filtered.** The clock branch returns early only when
+    clock sync is ENABLED, so with it off 0xF8 arrives at 24 ppq — 48 messages a
+    second at 120 bpm — plus active sensing every ~300 ms. Either alone scrolls
+    a 16-row monitor into uselessness in under a second, and it would look
+    broken rather than flooded.
+  - **Consecutive messages from one control coalesce** into a single row with a
+    rising count, so a fader sweep cannot evict every other row — measured at
+    200 messages leaving the other controls in place.
+  - Recording is DOM-free and both views repaint from the render loop, at most
+    once a frame and only when something arrived. A DOM write per message would
+    put MIDI traffic on the render thread and surface as a mysterious frame-rate
+    drop while a fader moves.
+
+- **MIDI Map Mode — a latching learn, so a desk maps in one pass.** Assigning a
+  controller with 8 knobs, 8 faders and 24 buttons meant **40 trips through the
+  context menu**, because `startMIDILearn` is one-shot: the handler calls
+  `cancelMIDILearn()` the instant a control moves. Click the **MIDI** indicator
+  in the top bar to latch learn on, then click a row and move a control,
+  repeatedly — the mode survives each bind. `Esc` or a second click on the
+  indicator leaves it. The mechanism is that `cancelMIDILearn()` clears only the
+  TARGET and never touches the mode flag, so a bind re-arms rather than exits;
+  the one-shot learn from the context menu is untouched.
+  - The 10-second auto-cancel is **not** armed in map mode. Ten seconds is right
+    for a one-shot fired from a menu and wrong for a mode — reaching across a
+    desk to the far end of a fader bank routinely takes longer, and an arm dying
+    mid-reach reads as the mode being broken.
+  - Clicking an individual option of a SELECT arms **that option**, building a
+    `midi-cc-map` — the right grammar for a bank of buttons, and the path that
+    already existed behind a per-option right-click.
+  - **Alt/Cmd-click a mapped row to unmap it**, and `clearAllMIDI()` drops every
+    MIDI binding while leaving LFO, mouse and audio controllers alone. Bulk
+    mapping is only safe with a cheap way back out of a bad pass.
+  - The panel wears an accent frame and a caption while the mode is on. This is
+    not decoration: in map mode a plain left-click means "arm this row" instead
+    of "drag this value", and a mode that silently changes what the primary
+    gesture does has to be unmissable. `pointerdown` is intercepted alongside
+    `click`, because sliders drag on pointerdown with pointer capture and
+    swallowing the click alone would still let a drag edit the value.
+  - `tests/audit-midi-map-mode.mjs` holds the line, mutation-calibrated 3/3
+    against a removed re-arm, a timeout armed in map mode, and an `unmapMIDI`
+    that lost its type guard. Every failure here is silent — a broken re-arm
+    still lights the indicator and still binds the first control, then quietly
+    stops accepting the second, which reads as the hardware dropping out.
+
 ### Fixed
 - **The app was serving a manual two releases out of date.**
   `public/docs/ImWeb_Full_Manual.md` was last synced in #78 while `docs/` had

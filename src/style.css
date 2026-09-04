@@ -5269,3 +5269,160 @@ body.fullscreen-output #app {
     cursor: crosshair;
     touch-action: none;
 }
+
+/* ── MIDI Map Mode ────────────────────────────────────────────────────────────
+   A latching learn: click the MIDI indicator, then click a row and move a
+   control, repeatedly, without a trip through the context menu each time.
+
+   The tint is not decoration. In map mode a plain left-click on a param row
+   means "arm this row" instead of "drag this value", and a mode that silently
+   changes what the primary gesture does is a trap — the state has to be
+   unmissable from anywhere in the panel. */
+body.midi-map-mode .param-row {
+    cursor: crosshair;
+}
+/* An accent FRAME, not a wash. The first version multiplied the accent over
+   the whole panel surface, which read as unmistakable and also crushed every
+   row to near-black — the param readout became unreadable, which is worse than
+   having no indicator at all, because the mode you cannot work in is the mode
+   you cannot leave safely either. The frame is just as unambiguous and costs
+   the text nothing. */
+/* `#control-panel` and `.detached-panel`, NOT `.panel` — there is no `.panel`
+   class in this app. The first version of this rule named one, and because the
+   selector simply matched nothing the frame rendered nowhere while the audits
+   stayed green: a dead selector fails silent, exactly like the guards CLAUDE.md
+   warns about. Caught by reading computed style in the browser, which is the
+   only thing that can see it. */
+body.midi-map-mode #control-panel,
+body.midi-map-mode .detached-panel {
+    box-shadow: inset 0 0 0 2px var(--accent);
+}
+body.midi-map-mode #control-panel::before,
+body.midi-map-mode .detached-panel::before {
+    content: "MIDI MAP — click a row, move a control · Esc to exit";
+    display: block;
+    position: sticky;
+    top: 0;
+    z-index: 40;
+    padding: 3px 8px;
+    background: var(--accent);
+    color: var(--bg-0);
+    font-size: 10px;
+    letter-spacing: 0.04em;
+    text-align: center;
+}
+body.midi-map-mode .param-row:hover {
+    outline: 1px solid var(--accent);
+    outline-offset: -1px;
+}
+/* The row waiting for a control to move. Distinct from :hover so the target
+   stays legible while the pointer is somewhere else — which it usually is,
+   because the other hand is on the hardware. */
+.param-row.map-target {
+    outline: 2px solid var(--accent);
+    outline-offset: -2px;
+    background: var(--accent-dim);
+    animation: map-target-pulse 0.7s ease-in-out infinite alternate;
+}
+@keyframes map-target-pulse {
+    from { opacity: 1; }
+    to   { opacity: 0.55; }
+}
+/* The indicator itself latches on, separately from the .learning flash it
+   already wore for a one-shot learn — mode and arm are different states and
+   both can be true at once. */
+.indicator.mapping {
+    color: var(--bg-0);
+    background: var(--accent);
+    border-color: var(--accent);
+}
+
+/* ── Incoming MIDI monitor ────────────────────────────────────────────────────
+   Two views of one buffer: a last-message readout in the top bar, and this
+   list in Sources > I/O. The device this exists for (nanoKONTROL2) has no
+   display, so the app is the only place the CC number can be read. */
+.indicator.midi-last {
+    font-variant-numeric: tabular-nums;
+    color: var(--accent);
+    border-color: var(--accent-dim);
+    min-width: 11ch;
+    text-align: center;
+}
+.midi-monitor {
+    margin-top: 3px;
+    max-height: 150px;
+    overflow-y: auto;
+    font: 10px/1.7 var(--mono);
+    background: var(--bg-0);
+    border: 1px solid var(--border);
+    border-radius: 2px;
+}
+.midi-monitor-empty {
+    padding: 4px 6px;
+    color: var(--text-2);
+    opacity: 0.6;
+}
+.midi-mon-row {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    padding: 1px 6px;
+    border-bottom: 1px solid var(--bg-1);
+}
+.midi-mon-row:first-child {
+    /* Newest first, so the row you just moved is where the eye already is. */
+    background: var(--bg-1);
+}
+.midi-mon-id {
+    color: var(--accent);
+    min-width: 6ch;
+    font-variant-numeric: tabular-nums;
+}
+.midi-mon-ch,
+.midi-mon-count {
+    color: var(--text-2);
+    opacity: 0.7;
+}
+.midi-mon-val {
+    color: var(--text-1);
+    min-width: 3ch;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+/* The bound column: what this control already drives. Its whole job is to be
+   readable at a glance BEFORE you map over something. */
+.midi-mon-bound {
+    margin-left: auto;
+    color: var(--green);
+    text-align: right;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.midi-mon-free {
+    margin-left: auto;
+    color: var(--text-2);
+    opacity: 0.5;
+}
+
+/* Which option a SELECT is currently arming, while walking its options in map
+   mode. Rendered from the attribute rather than written into the row's text so
+   it survives the row repainting itself. */
+.param-row.map-target[data-seq]::after {
+    content: attr(data-seq);
+    margin-left: auto;
+    padding: 0 4px;
+    font: 9px/1.5 var(--mono);
+    color: var(--bg-0);
+    background: var(--accent);
+    border-radius: 2px;
+}
+
+/* The armed cell of a tagged custom widget (the Clip Library slot grid), while
+   walking its options in map mode. The row highlight cannot reach these — they
+   are not parameter rows — and without it you press sixteen pads blind. */
+.map-opt-target {
+    outline: 2px solid var(--accent);
+    outline-offset: -2px;
+    animation: map-target-pulse 0.7s ease-in-out infinite alternate;
+}
